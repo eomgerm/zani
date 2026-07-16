@@ -80,13 +80,10 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 feat/login-page-S15P11A105-123
 fix/signup-email-validation-S15P11A105-56
 hotfix/null-check-S15P11A105-45
-design/main-page-layout-S15P11A105-8
+fe/main-page-layout-S15P11A105-8
 ```
 
-### 허용 타입
-
-`feat`, `fix`, `refactor`, `docs`, `chore`, `hotfix`, `design`, `test`
-
+- type은 고정된 목록으로 제한하지 않습니다. `feat`, `fix`처럼 커밋 타입과 맞춰 써도 되고, `fe`, `be`처럼 팀에서 편한 접두어를 써도 됩니다.
 - 지라 키는 항상 브랜치 이름 맨 뒤에 붙입니다 (중간에 넣으면 브랜치 이름이 너무 길어지고 잘려 보이기 때문)
 - `main`, `master`, `develop`, `dev`, `release/*` 브랜치는 검사에서 제외됩니다.
 - 지라 티켓 없이 작업이 시작되는 경우는 없어야 하므로, 브랜치를 만들기 전에 지라 티켓부터 생성해주세요.
