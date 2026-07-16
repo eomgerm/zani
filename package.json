@@ -1,0 +1,22 @@
+{
+  "name": "zani",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "gitmoji-cli": "^9.7.0",
+    "husky": "^9.1.7"
+  }
+}
