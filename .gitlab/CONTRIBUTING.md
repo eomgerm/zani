@@ -73,7 +73,7 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 ### 형식
 
 ```
-<type>/<설명(kebab-case, 영문)>-<지라 키>
+<type>/<설명(kebab-case, 영문 또는 한글)>-<지라 키>
 ```
 
 ```
@@ -81,6 +81,7 @@ feat/login-page-S15P11A105-123
 fix/signup-email-validation-S15P11A105-56
 hotfix/null-check-S15P11A105-45
 fe/main-page-layout-S15P11A105-8
+하위-작업/버그-수정-S15P11A105-45
 ```
 
 - type은 고정된 목록으로 제한하지 않습니다. `feat`, `fix`처럼 커밋 타입과 맞춰 써도 되고, `fe`, `be`처럼 팀에서 편한 접두어를 써도 됩니다.
