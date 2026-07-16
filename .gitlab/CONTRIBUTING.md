@@ -63,6 +63,7 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 | 🔀 | `:twisted_rightwards_arrows:` | merge | 브랜치 병합 |
 | ⏪ | `:rewind:` | revert | 이전 커밋으로 되돌리기 |
 | 🎉 | `:tada:` | init | 프로젝트/기능 최초 세팅 |
+| 🎨 | `:art:` | design | UI/디자인 작업 |
 
 > 목록에 필요한 타입이 없다면 `scripts/verify-commit-msg.cjs`의 `TYPES`/`GITMOJI` 배열과 이 표를 함께 수정해주세요.
 

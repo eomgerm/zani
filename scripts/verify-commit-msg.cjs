@@ -19,6 +19,7 @@ const TYPES = [
   'merge',
   'revert',
   'init',
+  'design',
 ];
 
 // gitmoji-cli(npx gitmoji -c)가 붙여넣는 일부 이모지는 U+FE0F(variation selector)가
@@ -26,9 +27,9 @@ const TYPES = [
 const VARIATION_SELECTOR = /️/g;
 const stripVariationSelector = (s) => s.replace(VARIATION_SELECTOR, '');
 
-const GITMOJI = ['✨', '🐛', '📝', '💄', '♻️', '✅', '🔧', '⚡️', '🔥', '🚑', '🚀', '🔀', '⏪', '🎉'].map(
-  stripVariationSelector
-);
+const GITMOJI = [
+  '✨', '🐛', '📝', '💄', '♻️', '✅', '🔧', '⚡️', '🔥', '🚑', '🚀', '🔀', '⏪', '🎉', '🎨',
+].map(stripVariationSelector);
 
 const SKIP_PATTERNS = [/^Merge /, /^Revert /, /^fixup!/, /^squash!/];
 
