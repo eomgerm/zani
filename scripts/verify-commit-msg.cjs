@@ -3,32 +3,16 @@
 // 규칙 문서: .gitlab/CONTRIBUTING.md
 
 const fs = require('fs');
-
-const TYPES = [
-  'feat',
-  'fix',
-  'docs',
-  'style',
-  'refactor',
-  'test',
-  'chore',
-  'perf',
-  'remove',
-  'hotfix',
-  'deploy',
-  'merge',
-  'revert',
-  'init',
-];
+const TYPES = require('./commit-types.cjs');
 
 // gitmoji-cli(npx gitmoji -c)가 붙여넣는 일부 이모지는 U+FE0F(variation selector)가
 // 붙은 채로 들어오므로, 비교 전에 양쪽 모두 U+FE0F를 제거해 정규화한다.
 const VARIATION_SELECTOR = /️/g;
 const stripVariationSelector = (s) => s.replace(VARIATION_SELECTOR, '');
 
-const GITMOJI = ['✨', '🐛', '📝', '💄', '♻️', '✅', '🔧', '⚡️', '🔥', '🚑', '🚀', '🔀', '⏪', '🎉'].map(
-  stripVariationSelector
-);
+const GITMOJI = [
+  '✨', '🐛', '📝', '💄', '♻️', '✅', '🔧', '⚡️', '🔥', '🚑', '🚀', '🔀', '⏪', '🎉', '🎨',
+].map(stripVariationSelector);
 
 const SKIP_PATTERNS = [/^Merge /, /^Revert /, /^fixup!/, /^squash!/];
 

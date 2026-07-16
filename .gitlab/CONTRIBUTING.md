@@ -63,8 +63,9 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 | 🔀 | `:twisted_rightwards_arrows:` | merge | 브랜치 병합 |
 | ⏪ | `:rewind:` | revert | 이전 커밋으로 되돌리기 |
 | 🎉 | `:tada:` | init | 프로젝트/기능 최초 세팅 |
+| 🎨 | `:art:` | design | UI/디자인 작업 |
 
-> 목록에 필요한 타입이 없다면 `scripts/verify-commit-msg.cjs`의 `TYPES`/`GITMOJI` 배열과 이 표를 함께 수정해주세요.
+> 목록에 필요한 타입이 없다면 `scripts/commit-types.cjs`(타입)와 `scripts/verify-commit-msg.cjs`의 `GITMOJI` 배열, 그리고 이 표를 함께 수정해주세요.
 
 `Merge ...`, `Revert ...` 로 시작하는 자동 생성 커밋 메시지는 검사에서 제외됩니다.
 
@@ -73,24 +74,24 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 ### 형식
 
 ```
-<type>/<설명(kebab-case, 영문)>-<지라 키>
+[<플랫폼>/]<커밋타입>/<설명(kebab-case, 영문 또는 한글)>-<지라 키>
 ```
 
 ```
 feat/login-page-S15P11A105-123
 fix/signup-email-validation-S15P11A105-56
 hotfix/null-check-S15P11A105-45
-design/main-page-layout-S15P11A105-8
+ai/feat/model-serving-S15P11A105-8
+fe/fix/버그-수정-S15P11A105-45
 ```
 
-### 허용 타입
-
-`feat`, `fix`, `refactor`, `docs`, `chore`, `hotfix`, `design`, `test`
-
+- **플랫폼**(선택): `fe`, `be`, `ai` 중 하나. 프론트/백엔드/AI 작업임을 구분하고 싶을 때만 붙이고, 없어도 됩니다.
+- **커밋타입**(필수): 커밋 메시지에서 쓰는 타입과 완전히 동일한 목록을 사용합니다 → 위 "Gitmoji ↔ type 매핑" 표 참고. 임의의 단어는 허용되지 않습니다.
 - 지라 키는 항상 브랜치 이름 맨 뒤에 붙입니다 (중간에 넣으면 브랜치 이름이 너무 길어지고 잘려 보이기 때문)
 - `main`, `master`, `develop`, `dev`, `release/*` 브랜치는 검사에서 제외됩니다.
 - 지라 티켓 없이 작업이 시작되는 경우는 없어야 하므로, 브랜치를 만들기 전에 지라 티켓부터 생성해주세요.
 - (기존 GitLab 이슈 번호 기반 규칙은 지라 키로 완전히 대체되었습니다)
+- 브랜치와 커밋 모두 같은 타입 목록(`scripts/commit-types.cjs`)을 참조하므로, 타입을 추가/변경할 때는 이 파일 하나만 고치면 됩니다.
 
 ## 3. Merge Request 규칙
 
@@ -111,4 +112,5 @@ design/main-page-layout-S15P11A105-8
 - `.husky/pre-commit` → `scripts/validate-branch-name.cjs`: 현재 브랜치 이름 검사
 - `.husky/prepare-commit-msg` → `scripts/prepare-commit-msg.cjs`: 브랜치 이름에서 지라 키를 추출해 커밋 메시지 끝에 자동으로 붙임
 - `.husky/commit-msg` → `scripts/verify-commit-msg.cjs`: 커밋 메시지 형식(지라 키 포함) 최종 검사
+- `scripts/commit-types.cjs`: 브랜치/커밋이 공통으로 참조하는 타입 목록 (단일 소스)
 - 검사에 실패하면 이유와 예시를 안내하고 커밋을 중단시킵니다.
