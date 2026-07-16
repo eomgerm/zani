@@ -65,7 +65,7 @@ git commit -m "✨ feat: 로그인 페이지 UI 구현"
 | 🎉 | `:tada:` | init | 프로젝트/기능 최초 세팅 |
 | 🎨 | `:art:` | design | UI/디자인 작업 |
 
-> 목록에 필요한 타입이 없다면 `scripts/verify-commit-msg.cjs`의 `TYPES`/`GITMOJI` 배열과 이 표를 함께 수정해주세요.
+> 목록에 필요한 타입이 없다면 `scripts/commit-types.cjs`(타입)와 `scripts/verify-commit-msg.cjs`의 `GITMOJI` 배열, 그리고 이 표를 함께 수정해주세요.
 
 `Merge ...`, `Revert ...` 로 시작하는 자동 생성 커밋 메시지는 검사에서 제외됩니다.
 
