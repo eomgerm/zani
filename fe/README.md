@@ -81,9 +81,27 @@ src/
 
 새 기능을 추가할 때 기존 도메인 중 하나에 속하면 그 도메인에 코드를 추가하고, 어디에도 속하지 않는 새로운 비즈니스 개념이면 `domains/` 아래 새 도메인을 만듭니다. 현재 각 도메인 레이어와 `shared`의 하위 폴더는 아직 내용이 없어 `.gitkeep`으로만 채워져 있습니다.
 
+## 주요 라이브러리
+
+| 라이브러리 | 용도 |
+| --- | --- |
+| `axios` | `shared/api`의 공통 HTTP 클라이언트, 도메인별 `infrastructure`에서 사용 |
+| `livekit-client`, `@livekit/components-react` | `/prejoin`, `/room`의 실시간 화상 강의(WebRTC) 연결 |
+| `jest`, `jest-environment-jsdom` | 단위 테스트 실행기 |
+| `@testing-library/react`, `@testing-library/jest-dom` | 컴포넌트 렌더링 테스트 |
+
 ## 개발
 
 ```bash
 npm install
 npm run dev
 ```
+
+## 테스트
+
+```bash
+npm run test        # 전체 테스트 1회 실행
+npm run test:watch  # 변경 감지하며 반복 실행
+```
+
+테스트 파일은 대상 코드 옆에 `*.test.ts(x)`로 둡니다 (예: `src/app/home/page.tsx` → `src/app/home/page.test.tsx`).
