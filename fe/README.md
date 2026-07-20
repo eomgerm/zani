@@ -87,7 +87,7 @@ src/
 | --- | --- |
 | `axios` | `shared/api`의 공통 HTTP 클라이언트, 도메인별 `infrastructure`에서 사용 |
 | `livekit-client`, `@livekit/components-react` | `/prejoin`, `/room`의 실시간 화상 강의(WebRTC) 연결 |
-| `jest`, `jest-environment-jsdom` | 단위 테스트 실행기 |
+| `vitest`, `jsdom` | 단위 테스트 실행기 |
 | `@testing-library/react`, `@testing-library/jest-dom` | 컴포넌트 렌더링 테스트 |
 
 ## 개발
