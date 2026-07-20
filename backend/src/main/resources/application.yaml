@@ -1,3 +1,125 @@
 spring:
   application:
     name: ZANI-BE
+  profiles:
+    default: local
+  jpa:
+    open-in-view: false
+
+server:
+  shutdown: graceful
+
+jwt:
+  issuer: ZANI
+  access-token-expiration: 1h
+  refresh-token-expiration: 30d
+
+auth:
+  cookie:
+    refresh-token-name: refresh_token
+    refresh-token-path: /api/v1/auth/refresh
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: ${LOCAL_DB_URL:jdbc:mysql://localhost:3306/zani}
+    username: ${LOCAL_DB_USERNAME:root}
+    password: ${LOCAL_DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${LOCAL_REDIS_HOST:localhost}
+      port: ${LOCAL_REDIS_PORT:6379}
+      password: ${LOCAL_REDIS_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        show_sql: true
+        format_sql: true
+
+jwt:
+  secret: ${LOCAL_JWT_SECRET:zani-local-jwt-secret-key-must-be-at-least-thirty-two-bytes}
+
+auth:
+  cookie:
+    secure: false
+    same-site: Lax
+
+cors:
+  allowed-origins:
+    - ${LOCAL_FRONTEND_ORIGIN:http://localhost:5173}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+jwt:
+  secret: ${JWT_SECRET}
+
+auth:
+  cookie:
+    secure: true
+    same-site: ${AUTH_COOKIE_SAME_SITE:None}
+
+cors:
+  allowed-origins:
+    - ${FRONTEND_ORIGIN}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+jwt:
+  secret: ${JWT_SECRET}
+
+auth:
+  cookie:
+    secure: true
+    same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+
+cors:
+  allowed-origins:
+    - ${FRONTEND_ORIGIN}
