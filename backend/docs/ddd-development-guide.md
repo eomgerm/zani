@@ -1,105 +1,113 @@
-# ZANI 백엔드 DDD 개발 가이드
+# DDD Development Guide for AI Agents
 
-## 1. 목적
+## 1. Document Contract
 
-ZANI 백엔드는 단일 Spring Boot 모듈을 모듈러 모놀리스로 운영한다. 기술 계층보다 업무 도메인 경계를 먼저 드러내고, 도메인 규칙을 프레임워크와 영속성 세부사항으로부터 보호한다.
+| Field | Value |
+| --- | --- |
+| Audience | AI coding agents and backend developers |
+| Scope | `backend/src/main` and `backend/src/test` |
+| Architecture | Single-module modular monolith |
+| Root package | `com.a105.zani` |
+| Status | Normative |
 
-이 가이드는 엄격한 헥사고날 아키텍처를 기계적으로 적용하기 위한 문서가 아니다. 일반적인 수평형 `controller-service-repository` 구조보다 도메인 경계를 강화하되, 실제 요구사항이 없는 추상화는 만들지 않는 실용적 DDD를 목표로 한다.
+This guide defines where backend code belongs, which dependencies are allowed, and how agents should implement changes consistently. It describes architecture rules only; it does not prescribe business-specific features.
 
-## 2. 최상위 패키지
+### Normative keywords
+
+- **MUST / MUST NOT**: mandatory rule.
+- **SHOULD / SHOULD NOT**: default rule; deviate only with a concrete reason.
+- **MAY**: optional choice when the stated condition exists.
+
+When a requested change appears to require violating a MUST rule, stop and ask the user before implementing it.
+
+## 2. Core Invariants
+
+These invariants take priority over examples elsewhere in this document.
+
+| ID | Rule |
+| --- | --- |
+| ARCH-001 | Top-level application packages MUST represent business domains, not technical layers. |
+| ARCH-002 | Dependency direction MUST be `presentation -> application -> domain`, with infrastructure implementing inward-facing contracts. |
+| ARCH-003 | Domain code MUST remain pure Java and MUST NOT depend on Spring, JPA, HTTP, Feign, QueryDSL, or outer layers. |
+| ARCH-004 | Every state change MUST pass through domain behavior that protects invariants. |
+| ARCH-005 | Domain models and JPA entities MUST be separate types. |
+| ARCH-006 | A domain MUST NOT directly access another domain's JPA entities or infrastructure repositories. |
+| ARCH-007 | Command and Query code MUST be logically separated without assuming full CQRS infrastructure. |
+| ARCH-008 | Packages and abstractions MUST NOT be created without a current use case. |
+| ARCH-009 | `common` MUST contain shared technical contracts only, never business ownership. |
+
+## 3. Placement Decision Table
+
+Use this table before creating a file.
+
+| Code responsibility | Required location | Must depend on | Must not expose |
+| --- | --- | --- | --- |
+| REST controller | `<domain>.presentation.controller` | Application UseCase | Concrete service, JPA entity |
+| HTTP request model | `<domain>.presentation.request` | Validation APIs only | Domain or persistence details |
+| HTTP response model | `<domain>.presentation.response` | Application Result mapping | JPA entity |
+| Command UseCase/input/result | `<domain>.application.command.<use-case>` | Domain contracts | HTTP or persistence types |
+| Query UseCase/input/result | `<domain>.application.query.<use-case>` | Query contract or domain contract | QueryDSL types |
+| Application service | `<domain>.application.command` or `<domain>.application.query` | Domain repository and application ports | Infrastructure implementation |
+| External-system Port | `<domain>.application.port` | Internal application/domain types | Vendor DTOs |
+| Aggregate/Value Object | `<domain>.domain.model` | Pure Java types | Framework annotations |
+| Domain repository contract | `<domain>.domain.repository` | Domain model | Spring Data types |
+| Domain policy | `<domain>.domain.policy` | Domain models | Spring services |
+| Domain error | `<domain>.domain.exception` | Domain error contract | HTTP status |
+| JPA entity | `<domain>.infrastructure.persistence.entity` | JPA APIs | Presentation or application |
+| Persistence mapper | `<domain>.infrastructure.persistence.mapper` | Domain model and JPA entity | Mapping concerns outside infrastructure |
+| Spring Data repository | `<domain>.infrastructure.persistence.repository` | JPA entity | Domain repository consumers |
+| Persistence adapter | `<domain>.infrastructure.persistence` | Domain repository and mapper | Spring Data repository outside infrastructure |
+| Complex query Row/adapter | `<domain>.infrastructure.persistence.query` | Query implementation APIs | QueryDSL annotations in application |
+| External client/DTO/config | `<domain>.infrastructure.<system>` | Vendor/client APIs | Vendor contracts outside infrastructure |
+| Shared technical code | `common` | Stable technical contracts | Domain-specific behavior |
+
+If a responsibility is not listed, place it in the innermost layer that can own it without introducing an outward dependency.
+
+## 4. Package Template
+
+Create only the packages required by the current feature.
 
 ```text
-src/main/java/com/a105/zani
+com.a105.zani
 ├── ZaniBeApplication.java
 ├── common
-├── <domain-a>
-├── <domain-b>
-└── <domain-c>
-```
-
-- 최상위 패키지는 업무 도메인 또는 Bounded Context를 표현한다.
-- `common`은 비즈니스 도메인이 아니다.
-- 최상위에 `controller`, `service`, `repository`를 두지 않는다.
-- 실제 도메인 경계는 요구사항을 분석한 뒤 정한다.
-
-## 3. 도메인 내부 구조
-
-```text
-<domain>/
-├── presentation
-│   ├── controller
-│   ├── request
-│   └── response
-├── application
-│   ├── command
-│   ├── query
-│   └── port
-├── domain
-│   ├── model
-│   ├── repository
-│   ├── policy
-│   └── exception
-└── infrastructure
-    ├── persistence
-    │   ├── entity
-    │   ├── mapper
+└── <domain>
+    ├── presentation
+    │   ├── controller
+    │   ├── request
+    │   └── response
+    ├── application
+    │   ├── command
+    │   │   └── <use-case>
+    │   ├── query
+    │   │   └── <use-case>
+    │   └── port
+    ├── domain
+    │   ├── model
     │   ├── repository
-    │   └── query
-    └── <external-system>
-        ├── client
-        ├── config
-        └── adapter
+    │   ├── policy
+    │   └── exception
+    └── infrastructure
+        ├── persistence
+        │   ├── entity
+        │   ├── mapper
+        │   ├── repository
+        │   └── query
+        └── <external-system>
+            ├── client
+            ├── config
+            └── adapter
 ```
 
-모든 도메인이 이 패키지를 전부 가질 필요는 없다.
+Do not create:
 
-- Policy가 없다면 `domain.policy`를 만들지 않는다.
-- 복잡한 조회가 없다면 `infrastructure.persistence.query`를 만들지 않는다.
-- 외부 연동이 없다면 `application.port`와 외부 Adapter를 만들지 않는다.
-- 빈 패키지를 구조를 맞추기 위해 만들지 않는다.
+- `domain.policy` when no cross-object domain rule exists.
+- `infrastructure.persistence.query` for simple repository reads.
+- `application.port` when no external dependency exists.
+- empty Command, Query, or Result types.
+- placeholder directories that contain no source file.
 
-## 4. 계층별 책임
-
-### 4.1 Presentation
-
-- REST Controller
-- HTTP 요청 검증
-- API Request를 Command 또는 Query로 변환
-- Application Result를 API Response로 변환
-- HTTP에만 필요한 상태 코드와 헤더 처리
-
-Presentation은 Application UseCase 인터페이스에 의존한다. 구체 Service 구현체를 직접 호출하지 않는다.
-
-### 4.2 Application
-
-- 유스케이스 흐름 조정
-- 트랜잭션 경계
-- 도메인 모델과 Repository 계약 호출
-- 외부 Port 호출
-- Command와 Query 구분
-
-Application은 비즈니스 규칙을 직접 품기보다 도메인 객체가 규칙을 실행하도록 협력 순서를 구성한다.
-
-### 4.3 Domain
-
-- Aggregate, Entity, Value Object
-- 비즈니스 불변식과 상태 전이
-- Domain Repository 인터페이스
-- 여러 도메인 객체에 걸친 순수 Policy
-- 도메인 예외
-
-Domain은 순수 Java로 작성한다. Spring, JPA, HTTP, Feign, QueryDSL을 알지 못한다.
-
-### 4.4 Infrastructure
-
-- JPA Entity와 Spring Data JPA Repository
-- Domain Repository 구현 Adapter
-- Persistence Mapper
-- JPQL과 QueryDSL 조회 구현
-- 외부 시스템 Client와 Adapter
-- 프레임워크 및 기술 설정
-
-## 5. 의존 방향
+## 5. Dependency Rules
 
 ```text
 presentation -> application -> domain
@@ -107,72 +115,105 @@ presentation -> application -> domain
              infrastructure
 ```
 
-- Domain은 다른 계층에 의존하지 않는다.
-- Application은 Domain에 의존한다.
-- Presentation은 Application UseCase에 의존한다.
-- Infrastructure는 Domain Repository 또는 Application Port를 구현한다.
-- Application과 Domain은 Infrastructure 구현체를 직접 참조하지 않는다.
-- 다른 도메인의 Infrastructure와 JPA Entity를 직접 사용하지 않는다.
+### Allowed dependencies
 
-## 6. Command와 Query
+| From | May depend on |
+| --- | --- |
+| Domain | Java standard library and domain-owned types |
+| Application | Domain and application-owned contracts |
+| Presentation | Application UseCases and presentation-owned models |
+| Infrastructure | Domain contracts, Application contracts and ports, infrastructure libraries |
+| Common | Stable shared technical contracts |
 
-Command와 Query는 별도 서버나 별도 데이터베이스를 사용하는 CQRS를 의미하지 않는다. 하나의 애플리케이션 안에서 요청 목적과 코드 경계를 구분한다.
+### Forbidden dependencies
 
-### 6.1 Command
+- Domain MUST NOT import Spring, Jakarta Persistence, Feign, QueryDSL, servlet, or presentation types.
+- Application MUST NOT import JPA entities, Spring Data repositories, external client DTOs, or infrastructure adapters.
+- Presentation MUST NOT call a concrete Application Service when a UseCase contract is the public boundary.
+- Infrastructure types MUST NOT leak through Application or Domain method signatures.
+- One domain MUST NOT import another domain's `infrastructure` package.
+
+## 6. Command and Query Decision Procedure
+
+Ask the following question first:
+
+> Can this operation change persisted state, emit a state-changing event, or enforce a state transition?
+
+- If **yes**, implement it as a Command.
+- If **no**, implement it as a Query.
+
+This is logical separation inside one application and one database. Do not introduce a separate read database, event bus, or full CQRS stack unless the user explicitly requests it.
+
+### 6.1 Command workflow
 
 ```text
-API Request
+HTTP Request
 -> Command
--> UseCase
+-> Command UseCase
 -> Application Service
--> Domain Model
+-> Domain Model behavior
 -> Domain Repository
 -> Persistence Adapter
 ```
 
-- Application 경계에 `@Transactional`을 적용한다.
-- 상태 변경은 반드시 도메인 모델 메서드를 통과한다.
-- 의미 있는 입력이 없으면 Command 객체를 만들지 않는다.
-- 반환값이 없으면 Result를 만들지 않는다.
+Rules:
 
-### 6.2 Query
+- The Application boundary MUST own `@Transactional`.
+- The service MUST load or create a Domain Model before changing state.
+- The service MUST invoke domain behavior rather than mutating fields directly.
+- The Domain Model MUST reject invalid transitions.
+- Do not create a Command object when there is no meaningful input.
+- Do not create a Result object when the operation has no meaningful output.
 
-단순 조회:
+### 6.2 Query workflow
+
+Simple aggregate read:
 
 ```text
-JPA Entity
+Persistence
 -> Domain Model
 -> Application Result
 ```
 
-목록·검색·집계·리포트:
+Complex list, search, aggregation, or report:
 
 ```text
-JPQL 또는 QueryDSL
+JPQL or QueryDSL
 -> Infrastructure Query Row
 -> Query Repository Adapter
 -> Application Result
 ```
 
-- 필요한 경우 `@Transactional(readOnly = true)`를 사용한다.
-- 단순 조회는 Spring Data JPA 또는 JPQL로 처리한다.
-- 동적 조건, 복잡한 조인, 집계가 있을 때 QueryDSL을 선택한다.
-- 복잡한 조회 때문에 여러 Aggregate 전체를 메모리에 올리지 않는다.
-- Application Result에 `@QueryProjection`을 붙이지 않는다.
-- JPQL `select new`는 Infrastructure Row를 대상으로 한다.
+Rules:
 
-## 7. UseCase와 Application Service
+- A Query MUST NOT change state.
+- Use `@Transactional(readOnly = true)` when a transaction is useful.
+- Prefer Spring Data JPA or JPQL for simple reads.
+- Use QueryDSL only for dynamic conditions, complex joins, or aggregation.
+- Do not load complete Aggregates solely to build a report.
+- Application Result types MUST NOT use `@QueryProjection`.
+- JPQL constructor expressions SHOULD target an Infrastructure Row, not an Application Result.
 
-UseCase는 Application이 외부에 제공하는 좁은 인터페이스다. 일반적으로 하나의 동작을 제공한다.
+## 7. UseCase and Service Granularity
+
+### UseCase
+
+- A UseCase MUST be a narrow Application interface.
+- A UseCase SHOULD normally expose one operation.
+- Its input and output types SHOULD live with that use case.
 
 ```java
 public interface CreateResourceUseCase {
-
     CreateResourceResult create(CreateResourceCommand command);
 }
 ```
 
-관련 UseCase가 같은 Aggregate와 의존성을 공유하면 하나의 Service가 구현할 수 있다.
+### Application Service
+
+- Related UseCases MAY share one service when they operate on the same Aggregate and share dependencies.
+- Do not force a one-to-one UseCase-to-Service mapping.
+- Split a service when responsibilities or dependencies become unrelated.
+- Prefer a responsibility name over an `Impl` suffix.
 
 ```java
 @Service
@@ -184,18 +225,33 @@ class ResourceLifecycleService
 }
 ```
 
-- UseCase와 Service를 1:1로 강제하지 않는다.
-- 모든 기능을 하나의 God Service에 넣지 않는다.
-- 모든 UseCase마다 Service를 따로 만드는 것도 피한다.
-- `ResourceServiceImpl`보다 책임을 나타내는 이름을 사용한다.
+## 8. Domain Modeling Rules
 
-## 8. Domain Model과 JPA Entity
+- An Aggregate MUST protect its own invariants.
+- State-changing setters SHOULD NOT be public.
+- Use behavior names such as `start()`, `close()`, or `changeOwner(...)`.
+- Value Objects SHOULD validate their own construction rules.
+- Domain errors SHOULD describe business meaning without HTTP status codes.
+
+### Domain Policy
+
+Use a Policy only when a pure business rule spans multiple Domain Models and does not naturally belong to one of them.
+
+- Prefer behavior on a Domain Model for single-object rules.
+- Do not create a default `domain.service` package.
+- A Policy SHOULD be pure Java and SHOULD NOT use Spring's `@Service`.
+
+## 9. Persistence Boundary
+
+Required separation:
 
 ```text
 domain/model/Resource.java
 infrastructure/persistence/entity/ResourceJpaEntity.java
 infrastructure/persistence/mapper/ResourcePersistenceMapper.java
 ```
+
+Write path:
 
 ```text
 Application Service
@@ -207,133 +263,148 @@ Application Service
 -> Spring Data JPA Repository
 ```
 
-- Domain Model에 `@Entity`, `@Table`, `@Column`을 붙이지 않는다.
-- JPA 연관관계와 지연 로딩은 Infrastructure 내부 문제로 제한한다.
-- Mapper가 Domain Model과 JPA Entity를 명시적으로 변환한다.
-- Domain Repository 인터페이스는 Domain에 둔다.
-- Persistence Adapter가 Domain Repository를 구현한다.
+Rules:
 
-## 9. Domain Policy
+- Domain Models MUST NOT use `@Entity`, `@Table`, or `@Column`.
+- JPA relationships and lazy loading MUST remain Infrastructure concerns.
+- Mappers MUST make Domain Model/JPA Entity conversion explicit.
+- Domain Repository interfaces MUST use Domain types.
+- Persistence Adapters MUST hide Spring Data repositories.
+- Shared audit fields MAY live in `common.infrastructure.persistence.BaseJpaEntity`.
 
-단일 객체가 처리할 수 있는 규칙은 해당 Domain Model에 둔다.
-
-```java
-resource.start();
-resource.close();
-resource.changeOwner(ownerId);
-```
-
-여러 도메인 객체에 걸친 순수 규칙이 필요할 때만 Policy를 사용한다.
-
-- 기본 구조에서는 `domain.service`를 만들지 않는다.
-- Policy에는 일반적으로 Spring `@Service`를 붙이지 않는다.
-
-## 10. Port와 Adapter
-
-Port는 Application이 외부 시스템에 요구하는 기능의 계약이다. Adapter는 Port를 특정 기술로 구현한다.
+## 10. External Systems: Port and Adapter
 
 ```text
 application/port/ExternalResourcePort.java
-infrastructure/<external-system>/adapter/ExternalResourceAdapter.java
-infrastructure/<external-system>/client/ExternalResourceClient.java
+infrastructure/<system>/adapter/ExternalResourceAdapter.java
+infrastructure/<system>/client/ExternalResourceClient.java
 ```
 
-Adapter는 Application 입력을 외부 Request로 변환하고, 외부 Response를 내부 객체로 변환하며, 외부 오류를 애플리케이션 예외로 바꾼다. 외부 시스템의 상세 계약이 Application이나 Domain으로 유출되지 않게 한다.
+The Adapter MUST:
 
-## 11. 도메인 간 호출
+- convert internal input into the vendor request;
+- call the external client;
+- convert the vendor response into an internal type;
+- map external failures to application-level errors;
+- prevent vendor DTOs and client exceptions from leaking inward.
 
-잘못된 접근:
+Do not create a Port or Adapter until an external dependency exists.
+
+## 11. Cross-Domain Collaboration
+
+Forbidden:
 
 ```text
-domainB/application
--> domainA/infrastructure/persistence/entity
+domainB.application
+-> domainA.infrastructure.persistence
 ```
 
-권장 접근:
+Preferred synchronous collaboration:
 
 ```text
-domainB/application
--> domainA/application/query/GetSummaryUseCase
+domainB.application
+-> domainA.application.query.GetSummaryUseCase
 ```
 
-- 동기 호출은 상대 도메인이 공개한 UseCase를 사용한다.
-- 다른 도메인의 Repository 구현체를 직접 사용하지 않는다.
-- 다른 도메인의 Domain Model을 직접 수정하지 않는다.
-- 비동기 처리나 결합도 완화가 실제로 필요할 때 이벤트를 검토한다.
-- 모든 도메인 호출을 처음부터 이벤트로 만들지 않는다.
+Rules:
 
-## 12. Common 패키지
+- Call another domain through a UseCase it intentionally exposes.
+- Do not use another domain's repository implementation.
+- Do not mutate another domain's Domain Model.
+- Consider events only when asynchronous processing or reduced coupling provides concrete value.
+- Do not make every cross-domain call event-driven by default.
 
-```text
-common/
-├── config
-├── response
-├── error
-└── infrastructure
-    └── persistence
-```
+## 12. Common Package Policy
 
-둘 수 있는 코드:
+`common` is a shared technical area, not a business domain.
 
-- 여러 도메인이 공유하는 프레임워크 설정
-- 전역 예외 처리
-- 공통 API 응답 계약
-- 안정적인 공통 오류 분류
-- JPA Auditing Base Entity
+Allowed examples:
 
-두지 않는 코드:
+- framework configuration shared by multiple domains;
+- global response and error contracts;
+- global exception handling;
+- stable technical abstractions;
+- shared persistence auditing base types.
 
-- 특정 도메인의 Request와 Response
-- Domain Repository
-- 비즈니스 Service
-- 특정 도메인에서만 사용하는 외부 Client
-- 단지 두 곳에서 사용된다는 이유로 옮긴 Domain Model
+Forbidden examples:
 
-## 13. 테스트
+- domain-specific Request or Response types;
+- Domain Repositories or business Services;
+- clients used by only one domain;
+- business models moved only because two callers use them;
+- an unbounded `util` package with unclear ownership.
 
-```text
-src/test/java/com/a105/zani
-├── architecture
-├── <domain-a>
-│   ├── presentation
-│   ├── application
-│   ├── domain
-│   └── infrastructure
-└── <domain-b>
-```
+## 13. Naming Rules
 
-- Domain: Spring 없는 순수 단위 테스트
-- Application: Repository와 Port를 Mock 또는 Fake로 대체
-- Presentation: MVC Slice Test
-- Persistence: JPA Slice Test
-- 외부 Adapter: 필요할 때 Mock Server 또는 계약 테스트
-- Architecture: 실제 패키지 경계가 생긴 뒤 가치가 있을 때 ArchUnit 검토
+| Kind | Preferred pattern | Avoid |
+| --- | --- | --- |
+| Command UseCase | `CreateResourceUseCase` | Generic `ResourceUseCase` |
+| Query UseCase | `GetResourceUseCase`, `GetResourceListUseCase` | Ambiguous `FindService` |
+| Application Service | `ResourceLifecycleService` | `ResourceServiceImpl` |
+| Domain Repository | `ResourceRepository` | Spring-specific name |
+| Persistence Adapter | `ResourcePersistenceAdapter` | Exposing Spring Data repository |
+| JPA Entity | `ResourceJpaEntity` | Reusing Domain Model |
+| Persistence Mapper | `ResourcePersistenceMapper` | Generic global mapper |
+| Query Row | `ResourceSummaryRow` | Application Result with QueryDSL annotations |
+| Application Result | `GetResourceResult`, `ResourceSummaryResult` | UI-specific `View` |
+| External Adapter | `ExternalResourceAdapter` | Vendor DTO returned inward |
 
-## 14. 피해야 할 구조
+Names MUST express business responsibility. Avoid `Manager`, `Helper`, or `Util` unless the responsibility is both technical and precisely bounded.
 
-- 최상위 `controller`, `service`, `repository` 중심의 수평 패키지
-- 모든 코드를 모으는 거대한 `common` 또는 `util`
-- Domain Model에 JPA와 HTTP 책임 혼합
-- 다른 도메인의 Repository와 Entity 직접 참조
-- 모든 UseCase를 하나의 Service에 몰아넣는 God Service
-- 모든 UseCase마다 Service를 하나씩 만드는 과도한 보일러플레이트
-- 단순 조회까지 무조건 QueryDSL 사용
-- 복잡한 집계를 위해 여러 Aggregate 전체 로딩
-- Application Result의 QueryDSL 의존
-- 외부 시스템 DTO가 Application 또는 Domain으로 유출
-- 실제 기능이 없는 빈 패키지와 인터페이스
+## 14. Testing Matrix
 
-## 15. 코드 리뷰 체크리스트
+| Layer | Test style | Real dependencies | Replace |
+| --- | --- | --- | --- |
+| Domain | Pure unit test | Domain Models and Policies | Nothing |
+| Application | Unit test | UseCase service and domain objects | Repository and Port with Mock/Fake |
+| Presentation | MVC slice test | Controller, validation, mapping | Application UseCase |
+| Persistence | JPA slice test | Entity mapping, mapper, adapter, query | External systems |
+| External Adapter | Contract or mock-server test when valuable | Adapter and serialization | Remote system |
+| Architecture | ArchUnit when boundaries exist | Package graph | N/A |
 
-- [ ] 최상위 패키지가 도메인 기준으로 나뉘어 있는가?
-- [ ] Domain이 Spring, JPA, HTTP, Feign을 모르는가?
-- [ ] Controller가 Application UseCase에 의존하는가?
-- [ ] 상태 변경이 Domain Model 메서드를 통과하는가?
-- [ ] Command와 Query의 목적이 구분되는가?
-- [ ] 단순 조회에 불필요한 QueryDSL을 사용하지 않았는가?
-- [ ] JPA Entity와 Domain Model의 변환 경계가 명확한가?
-- [ ] 외부 시스템이 Port와 Adapter 뒤에 숨겨져 있는가?
-- [ ] 다른 도메인의 Infrastructure를 직접 참조하지 않는가?
-- [ ] Common에 비즈니스 코드가 쌓이지 않았는가?
-- [ ] Service가 지나치게 크거나 기계적으로 분리되지 않았는가?
-- [ ] 필요하지 않은 패키지와 추상화를 만들지 않았는가?
+Tests MUST mirror the production domain package structure.
+
+## 15. Prohibited Patterns
+
+| ID | Do not |
+| --- | --- |
+| BAD-001 | Organize top-level code as global `controller`, `service`, and `repository` packages. |
+| BAD-002 | Put business code into a generic `common` or `util` package. |
+| BAD-003 | Mix JPA or HTTP responsibilities into a Domain Model. |
+| BAD-004 | Reference another domain's entity or repository implementation. |
+| BAD-005 | Put every UseCase into one God Service. |
+| BAD-006 | Create one Service per UseCase mechanically. |
+| BAD-007 | Use QueryDSL for every read. |
+| BAD-008 | Load multiple complete Aggregates for a reporting query. |
+| BAD-009 | Add QueryDSL annotations to Application Result types. |
+| BAD-010 | Leak vendor DTOs into Application or Domain. |
+| BAD-011 | Create empty packages, placeholder interfaces, or speculative abstractions. |
+
+## 16. Agent Workflow Checklist
+
+### Before implementation
+
+- [ ] Identify the owning business domain.
+- [ ] Classify the operation as Command or Query.
+- [ ] Use the placement table to map every new type.
+- [ ] Inspect existing conventions in the same domain.
+- [ ] Confirm that every proposed abstraction has a current caller.
+
+### During implementation
+
+- [ ] Preserve the dependency rules in Section 5.
+- [ ] Route state changes through Domain Model behavior.
+- [ ] Keep framework and vendor types in Infrastructure.
+- [ ] Keep HTTP models in Presentation.
+- [ ] Add tests at the layer where behavior changes.
+
+### Before completion
+
+- [ ] No inner layer imports an outer layer.
+- [ ] No domain imports another domain's Infrastructure.
+- [ ] Command and Query responsibilities are not mixed.
+- [ ] JPA entities do not escape Infrastructure.
+- [ ] Domain Models contain no framework annotations.
+- [ ] Simple reads do not use unnecessary query infrastructure.
+- [ ] No speculative package or abstraction was added.
+- [ ] Relevant tests pass and the exact verification command is reported.
