@@ -149,6 +149,8 @@ ZANI는 실시간 강의 중 발생하는 학생의 반응을 AI로 분석하고
 | React | UI 컴포넌트 구성 |
 | WebRTC | 실시간 영상·음성 통신 |
 | LiveKit SDK | 실시간 강의방 및 미디어 연결 |
+| Axios | 공통 API 클라이언트 |
+| Jest, React Testing Library | 단위 테스트 |
 
 ### Backend
 
