@@ -85,6 +85,11 @@ class CreateSessionServiceTest {
         int attemptCount() {
             return attemptCount;
         }
+
+        @Override
+        public java.util.Optional<Session> findByInviteCode(String inviteCode) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
     }
 
     private static class AlwaysAcquireLockPort implements SessionActivationLockPort {

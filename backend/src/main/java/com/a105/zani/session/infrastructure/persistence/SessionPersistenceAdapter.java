@@ -6,6 +6,7 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.mapper.SessionPersistenceMapper;
 import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
+import java.util.Optional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
@@ -31,5 +32,10 @@ public class SessionPersistenceAdapter implements SessionRepository {
         } catch (DataIntegrityViolationException exception) {
             throw new DuplicateInviteCodeException(exception);
         }
+    }
+
+    @Override
+    public Optional<Session> findByInviteCode(String inviteCode) {
+        return sessionJpaRepository.findByInviteCode(inviteCode).map(mapper::toDomain);
     }
 }

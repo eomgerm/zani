@@ -13,7 +13,8 @@ public enum SessionApplicationErrorCode implements ErrorCode {
     INVITE_CODE_GENERATION_FAILED(
             ErrorType.INTERNAL_SERVER_ERROR,
             "SESSION_APP_004",
-            "Failed to generate a unique invite code");
+            "Failed to generate a unique invite code"),
+    SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found for the given invite code");
 
     private final ErrorType type;
     private final String code;

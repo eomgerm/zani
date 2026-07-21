@@ -100,5 +100,12 @@ class CreateSessionConcurrencyTest {
             store.put(session.id(), session);
             return session;
         }
+
+        @Override
+        public java.util.Optional<Session> findByInviteCode(String inviteCode) {
+            return store.values().stream()
+                    .filter(session -> session.inviteCode().equals(inviteCode))
+                    .findFirst();
+        }
     }
 }
