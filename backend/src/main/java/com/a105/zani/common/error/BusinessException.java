@@ -1,6 +1,6 @@
 package com.a105.zani.common.error;
 
-public class BusinessException extends RuntimeException {
+public abstract class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
 

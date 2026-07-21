@@ -9,10 +9,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
-import com.a105.zani.auth.application.exception.AuthErrorCode;
+import com.a105.zani.auth.application.exception.RefreshSessionUnavailableException;
 import com.a105.zani.auth.application.port.RefreshSession;
 import com.a105.zani.auth.application.port.RefreshSessionPort;
-import com.a105.zani.common.error.BusinessException;
 
 @Component
 public class RefreshSessionRedisAdapter implements RefreshSessionPort {
@@ -55,7 +54,7 @@ public class RefreshSessionRedisAdapter implements RefreshSessionPort {
                     Long.toString(timeToLiveMillis));
             return Long.valueOf(1L).equals(result);
         } catch (DataAccessException exception) {
-            throw new BusinessException(AuthErrorCode.REFRESH_SESSION_UNAVAILABLE, exception);
+            throw new RefreshSessionUnavailableException(exception);
         }
     }
 
