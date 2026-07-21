@@ -3,13 +3,17 @@
 이 디렉터리는 ZANI AI의 로컬 개발과 학습에 사용하는 데이터셋을 저장합니다.
 데이터 파일은 Git에 커밋하지 않습니다.
 
-## 예정된 구조
+## 공식 구조
 
 ```text
 datasets/
-├─ raw/          # 원본 영상과 레이블
-├─ interim/      # 검증 또는 정규화한 메타데이터
-└─ processed/    # MediaPipe 특징 배열과 데이터 분할 명세
+├─ raw/engagenet/
+│  ├─ final_labels.csv
+│  ├─ train.txt
+│  ├─ valid.txt
+│  ├─ test.txt
+│  └─ videos/<clip-id>.mp4
+└─ processed/engagenet/    # MediaPipe 특징 배열과 manifest
 ```
 
 EngageNet 데이터셋은 저자의 접근 조건에 따라 별도로 취득해야 합니다. 참여자 영상,

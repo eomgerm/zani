@@ -259,8 +259,8 @@ def train_model(config: TrainingConfig) -> TrainingResult:
     if config.max_epochs <= 0 or config.patience <= 0:
         raise ValueError("max_epochs and patience must be positive")
     _seed_everything(config.seed)
-    config.output_dir.mkdir(parents=True, exist_ok=True)
     datasets = _load_feature_datasets(config.features_root)
+    config.output_dir.mkdir(parents=True, exist_ok=True)
     statistics = compute_feature_statistics(datasets.train.token_arrays())
     device = torch.device(config.device)
     model = EngagementTransformer(
