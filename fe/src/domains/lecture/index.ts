@@ -2,4 +2,5 @@
 export { HomeScreen } from "./presentation/HomeScreen";
 export { MyLecturesScreen } from "./presentation/MyLecturesScreen";
 export { PrejoinScreen } from "./presentation/PrejoinScreen";
+export { RoomScreen } from "./presentation/RoomScreen";
 export { CreateSetupScreen } from "./presentation/CreateSetupScreen";
