@@ -7,6 +7,7 @@ const path = require('node:path');
 const { parseArgs } = require('../lib/args.cjs');
 const { runClaudeReview } = require('../lib/claude.cjs');
 const { checkDddRules } = require('../lib/ddd-rules.cjs');
+const { loadEnvFile } = require('../lib/env.cjs');
 const { checkGitConventions, collectGitContext } = require('../lib/git.cjs');
 const { publishReport } = require('../lib/gitlab.cjs');
 const { collectReviewContext } = require('../lib/repository-context.cjs');
@@ -44,6 +45,7 @@ async function main(argv, adapters = {}) {
   const collectContext = adapters.collectContext || collectGitContext;
   const checkGit = adapters.checkGit || checkGitConventions;
   const checkDdd = adapters.checkDdd || checkDddRules;
+  const loadEnvironment = adapters.loadEnv || loadEnvFile;
   const collectRepositoryContext = adapters.collectRepositoryContext || collectReviewContext;
   const reviewWithClaude = adapters.reviewWithClaude || runClaudeReview;
   const writeReport = adapters.writeReport || writeJsonReport;
@@ -60,6 +62,7 @@ async function main(argv, adapters = {}) {
     }
 
     const context = collectContext(options.baseRef);
+    loadEnvironment(path.join(context.repositoryRoot, '.env'));
     let report;
     if (context.changedFiles.length === 0) {
       report = buildReport({

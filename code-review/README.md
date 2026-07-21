@@ -41,10 +41,15 @@ npm.cmd run review:mr -- --base origin/dev --output code-review/output/my-review
 
 ## GitLab MR에 댓글 게시
 
-GitLab에서 **Personal Access Token**을 만들 때 `api` 권한을 부여합니다. 토큰은 현재 터미널에서만 설정합니다.
+GitLab에서 **Personal Access Token**을 만들 때 `api` 권한을 부여합니다. 저장소 루트의 `.env`에 아래처럼 한 줄을 넣으면 실행할 때 자동으로 읽습니다. `.env`는 Git 추적 대상이 아닙니다.
+
+```text
+GITLAB_TOKEN=발급받은-토큰
+```
+
+이미 PowerShell·Jenkins·GitLab CI에 `GITLAB_TOKEN`이 설정되어 있으면 그 값이 `.env`보다 우선합니다. 토큰은 채팅, 코드, 커밋 메시지에 넣지 않습니다.
 
 ```powershell
-$env:GITLAB_TOKEN = "발급받은-토큰"
 npm.cmd run review:mr -- --mr 17 --publish
 ```
 

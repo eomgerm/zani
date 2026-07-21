@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const test = require('node:test');
 
 const { main } = require('../bin/review.cjs');
@@ -18,12 +19,13 @@ function baseContext(overrides = {}) {
 
 function harness({ context = baseContext(), gitFindings = [], dddFindings = [], claudeReview } = {}) {
   const state = {
-    claudeCalls: 0, repositoryContextCalls: 0, claudeInputs: [], reports: [], publications: [], logs: [], errors: [],
+    claudeCalls: 0, environmentLoads: [], repositoryContextCalls: 0, claudeInputs: [], reports: [], publications: [], logs: [], errors: [],
   };
   return {
     state,
     adapters: {
       collectContext: () => context,
+      loadEnv(filePath) { state.environmentLoads.push(filePath); },
       checkGit: () => gitFindings,
       checkDdd: () => dddFindings,
       collectRepositoryContext() {
@@ -79,6 +81,14 @@ test('main gives Claude bounded repository context for reuse and duplication rev
   assert.equal(exitCode, 0);
   assert.equal(fixture.state.repositoryContextCalls, 1);
   assert.equal(fixture.state.claudeInputs[0].repositoryContext.markdown, '## Reusable repository context\nButton');
+});
+
+test('main loads the repository .env before reviewing or publishing', async () => {
+  const fixture = harness();
+
+  await main([], fixture.adapters);
+
+  assert.deepEqual(fixture.state.environmentLoads, [path.join('C:/repo', '.env')]);
 });
 
 test('main publishes only when explicitly requested', async () => {
