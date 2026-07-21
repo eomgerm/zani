@@ -12,7 +12,12 @@ public enum AuthErrorCode implements ErrorCode {
     REFRESH_SESSION_UNAVAILABLE(
         ErrorType.SERVICE_UNAVAILABLE,
         "AUTH_006",
-        "Refresh session store is unavailable");
+        "Refresh session store is unavailable"),
+    REFRESH_ORIGIN_FORBIDDEN(
+        ErrorType.FORBIDDEN,
+        "AUTH_007",
+        "Refresh origin forbidden"
+    );
 
     private final ErrorType type;
     private final String code;
