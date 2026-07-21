@@ -1,5 +1,5 @@
 // shared/ui 공개 API. 도메인/앱에서는 이 파일을 통해 재사용 UI를 가져온다.
-export { Logo } from "./Logo";
+export { Logo, LOGO_SRC } from "./Logo";
 export { Avatar } from "./Avatar";
 export { Badge } from "./Badge";
 export { Card } from "./Card";

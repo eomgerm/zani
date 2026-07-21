@@ -2,27 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { color } from "@/shared/lib/theme";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
 import { SegmentModal } from "./components/report/SegmentModal";
 
-function tabStyle(active: boolean) {
-  return {
-    padding: "13px 22px",
-    border: "none",
-    background: "none",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontWeight: 800,
-    fontSize: 14.5,
-    color: active ? color.primary : color.textFaint,
-    borderBottom: `2px solid ${active ? color.primary : "transparent"}`,
-    marginBottom: -1,
-  } as const;
-}
+const tabCls = (active: boolean) =>
+  `-mb-px cursor-pointer border-0 border-b-2 bg-transparent px-[22px] py-[13px] font-sans text-[14.5px] font-extrabold ${
+    active ? "border-primary text-primary" : "border-transparent text-ink-faint"
+  }`;
 
 /**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
@@ -50,85 +39,44 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     <>
       <Link
         href="/my-lectures"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          color: color.textSub,
-          fontSize: 14,
-          marginBottom: 16,
-          fontWeight: 800,
-          textDecoration: "none",
-        }}
+        className="mb-4 inline-flex items-center gap-[7px] text-sm font-extrabold text-ink-sub no-underline"
       >
         ← 내 강의실
       </Link>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-.5px" }}>{lecture.title}</h1>
-          <div style={{ color: color.textFainter, fontSize: 13.5, fontWeight: 600 }}>{meta}</div>
+      <div className="mb-5 flex items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
+          <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
         {!failed && (
-          <button
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "13px 22px",
-              borderRadius: 12,
-              border: "none",
-              background: color.primary,
-              color: "#fff",
-              fontWeight: 800,
-              cursor: "pointer",
-              fontSize: 14,
-              flexShrink: 0,
-              fontFamily: "inherit",
-            }}
-          >
-            ⭳ 리포트 다운로드
-          </button>
+          <button className="z-btn z-btn-primary z-btn-md shrink-0">⭳ 리포트 다운로드</button>
         )}
       </div>
 
       {failed && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            background: color.primarySofter,
-            border: `1px solid ${color.borderMuted}`,
-            borderRadius: 16,
-            padding: "20px 22px",
-            marginBottom: 8,
-          }}
-        >
-          <span style={{ width: 44, height: 44, borderRadius: 12, background: color.redSoft, color: color.red, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+        <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-line-muted bg-primary-softer px-[22px] py-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-xl text-danger">
             ⚠️
           </span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800 }}>결과를 생성하지 못했어요</div>
-            <div style={{ color: color.textMuted, fontSize: 13 }}>
+          <div className="flex-1">
+            <div className="font-extrabold">결과를 생성하지 못했어요</div>
+            <div className="text-[13px] text-ink-muted">
               분석 중 문제가 발생했어요. 잠시 후 다시 시도하거나 지원팀에 문의해 주세요.
             </div>
           </div>
-          <Link
-            href="/my-lectures"
-            style={{ padding: "11px 18px", borderRadius: 12, border: `1px solid ${color.borderMuted}`, background: "#fff", color: color.textMuted, fontWeight: 800, fontSize: 14, textDecoration: "none" }}
-          >
+          <Link href="/my-lectures" className="z-btn z-btn-outline z-btn-md">
             내 강의실로
           </Link>
         </div>
       )}
 
       {/* 탭 */}
-      <div style={{ display: "flex", borderBottom: `1px solid ${color.border}`, margin: "22px 0" }}>
-        <button onClick={() => setTab("clip")} style={tabStyle(tab === "clip")}>
+      <div className="my-[22px] flex border-b border-line">
+        <button onClick={() => setTab("clip")} className={tabCls(tab === "clip")}>
           {isInstructor ? "수업 클립" : "복습 클립"}
         </button>
-        <button onClick={() => setTab("report")} style={tabStyle(tab === "report")}>
+        <button onClick={() => setTab("report")} className={tabCls(tab === "report")}>
           {isInstructor ? "수업 리포트" : "학습 리포트"}
         </button>
       </div>

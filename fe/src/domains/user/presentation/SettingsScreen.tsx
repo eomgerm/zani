@@ -2,37 +2,20 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { color } from "@/shared/lib/theme";
 import { Avatar, Card, MOCK_USER } from "@/shared/ui";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      style={{
-        width: 48,
-        height: 28,
-        borderRadius: 999,
-        border: "none",
-        cursor: "pointer",
-        background: on ? color.primary : "#d7dbee",
-        position: "relative",
-        flexShrink: 0,
-        transition: "background .15s",
-      }}
+      className={`relative h-7 w-12 shrink-0 cursor-pointer rounded-full border-0 transition-colors ${
+        on ? "bg-primary" : "bg-[#d7dbee]"
+      }`}
     >
       <span
-        style={{
-          position: "absolute",
-          top: 3,
-          left: on ? 23 : 3,
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left .15s",
-          boxShadow: "0 1px 3px rgba(0,0,0,.2)",
-        }}
+        className={`absolute top-[3px] size-[22px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,.2)] transition-[left] ${
+          on ? "left-[23px]" : "left-[3px]"
+        }`}
       />
     </button>
   );
@@ -52,32 +35,13 @@ function NotifRow({
   onToggle: () => void;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "16px 0",
-        borderTop: `1px solid ${color.borderLight}`,
-      }}
-    >
-      <span
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 11,
-          background: color.primarySoft,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 17,
-        }}
-      >
+    <div className="flex items-center gap-3.5 border-t border-line-light py-4">
+      <span className="flex size-[38px] items-center justify-center rounded-[11px] bg-primary-soft text-[17px]">
         {icon}
       </span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 14.5 }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: color.textFainter, marginTop: 3, lineHeight: 1.5 }}>{desc}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[14.5px] font-extrabold">{title}</div>
+        <div className="mt-[3px] text-[12.5px] leading-[1.5] text-ink-fainter">{desc}</div>
       </div>
       <Toggle on={on} onClick={onToggle} />
     </div>
@@ -97,79 +61,43 @@ export function SettingsScreen() {
 
   return (
     <>
-      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-.5px" }}>계정 설정</h1>
-      <p style={{ color: color.textMuted, margin: "0 0 26px" }}>프로필과 알림을 관리해요.</p>
+      <h1 className="mb-1 text-[26px] font-extrabold tracking-[-.5px]">계정 설정</h1>
+      <p className="mb-[26px] text-ink-muted">프로필과 알림을 관리해요.</p>
 
-      <div style={{ maxWidth: 1180, display: "flex", flexDirection: "column", gap: 20 }}>
+      <div className="flex max-w-[1180px] flex-col gap-5">
         {/* 프로필 정보 */}
-        <Card padding="28px 30px">
-          <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 20 }}>프로필 정보</div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 34, flexWrap: "wrap" }}>
-            <Avatar initial={name.charAt(0)} size={84} style={{ fontSize: 34 }} />
-            <div style={{ flex: 1, minWidth: 260, display: "flex", gap: 22, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ display: "block", fontSize: 13, color: color.textFaint, fontWeight: 700, marginBottom: 7 }}>
-                  이름
-                </label>
+        <Card className="px-[30px] py-7">
+          <div className="mb-5 text-[17px] font-extrabold">프로필 정보</div>
+          <div className="flex flex-wrap items-start gap-[34px]">
+            <Avatar initial={name.charAt(0)} size={84} className="text-[34px]" />
+            <div className="flex min-w-[260px] flex-1 flex-wrap gap-[22px]">
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-[7px] block text-[13px] font-bold text-ink-faint">이름</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    border: `1px solid ${color.borderMuted}`,
-                    borderRadius: 11,
-                    fontSize: 14.5,
-                    outline: "none",
-                    fontFamily: "inherit",
-                    color: color.text,
-                    boxSizing: "border-box",
-                  }}
+                  className="z-input rounded-[11px] px-3.5 py-3"
                 />
               </div>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ display: "block", fontSize: 13, color: color.textFaint, fontWeight: 700, marginBottom: 7 }}>
+              <div className="min-w-[200px] flex-1">
+                <label className="mb-[7px] block text-[13px] font-bold text-ink-faint">
                   이메일 (변경 불가)
                 </label>
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    border: `1px solid ${color.borderLight}`,
-                    borderRadius: 11,
-                    background: color.surfaceMuted,
-                    color: color.textFaint,
-                    fontSize: 14,
-                    boxSizing: "border-box",
-                  }}
-                >
+                <div className="z-field-readonly rounded-[11px] px-3.5 py-3 text-sm">
                   {MOCK_USER.email}
                 </div>
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
-            <button
-              style={{
-                padding: "12px 24px",
-                borderRadius: 12,
-                border: "none",
-                background: color.primary,
-                color: "#fff",
-                fontWeight: 800,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                fontSize: 14,
-              }}
-            >
-              저장하기
-            </button>
+          <div className="mt-5 flex justify-end">
+            <button className="z-btn z-btn-primary z-btn-md">저장하기</button>
           </div>
         </Card>
 
         {/* 알림 설정 */}
-        <Card padding="28px 30px">
-          <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 6 }}>알림 설정</div>
-          <p style={{ color: color.textFaint, fontSize: 13.5, margin: "0 0 18px", lineHeight: 1.55 }}>
+        <Card className="px-[30px] py-7">
+          <div className="mb-1.5 text-[17px] font-extrabold">알림 설정</div>
+          <p className="mb-[18px] text-[13.5px] leading-[1.55] text-ink-faint">
             이메일로 알림을 받아보실 수 있습니다.
           </p>
           <NotifRow
@@ -189,36 +117,18 @@ export function SettingsScreen() {
         </Card>
 
         {/* 계정 관리 */}
-        <Card padding="28px 30px">
-          <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 18 }}>계정 관리</div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 16,
-              flexWrap: "wrap",
-            }}
-          >
+        <Card className="px-[30px] py-7">
+          <div className="mb-[18px] text-[17px] font-extrabold">계정 관리</div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 5 }}>회원 탈퇴</div>
-              <p style={{ color: color.textFaint, fontSize: 13, margin: 0, lineHeight: 1.55 }}>
+              <div className="mb-[5px] text-[14.5px] font-extrabold">회원 탈퇴</div>
+              <p className="text-[13px] leading-[1.55] text-ink-faint">
                 회원 탈퇴 시 모든 데이터가 삭제되며, 복구할 수 없습니다.
               </p>
             </div>
             <button
               onClick={() => setDeleteOpen(true)}
-              style={{
-                padding: "12px 22px",
-                borderRadius: 12,
-                border: "1px solid #f0aeb8",
-                background: "#fff",
-                color: color.red,
-                fontWeight: 800,
-                cursor: "pointer",
-                fontSize: 14,
-                flexShrink: 0,
-              }}
+              className="z-btn z-btn-ghost-danger z-btn-md shrink-0"
             >
               회원 탈퇴
             </button>
@@ -227,63 +137,22 @@ export function SettingsScreen() {
       </div>
 
       {deleteOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(28,32,58,.42)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-            zIndex: 100,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              background: "#fff",
-              borderRadius: 20,
-              padding: "26px 28px",
-              boxShadow: "0 24px 60px rgba(28,32,58,.35)",
-              animation: "zPop .18s",
-            }}
-          >
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "0 0 10px" }}>계정을 탈퇴할까요?</h2>
-            <p style={{ color: color.textMuted, margin: "0 0 22px", fontSize: 14, lineHeight: 1.6 }}>
+        <div className="z-backdrop">
+          <div className="z-modal max-w-[420px]">
+            <h2 className="mb-2.5 text-[19px] font-extrabold">계정을 탈퇴할까요?</h2>
+            <p className="mb-[22px] text-sm leading-[1.6] text-ink-muted">
               계정을 탈퇴하면 ZANI에 저장된 개인 정보와 이용 기록을 복구할 수 없습니다.
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="flex gap-2.5">
               <button
                 onClick={() => setDeleteOpen(false)}
-                style={{
-                  flex: 1,
-                  padding: 13,
-                  borderRadius: 13,
-                  border: `1px solid ${color.borderMuted}`,
-                  background: "#fff",
-                  color: color.textMuted,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
+                className="z-btn z-btn-outline flex-1 rounded-[13px] py-[13px]"
               >
                 취소
               </button>
               <button
                 onClick={() => router.push("/login")}
-                style={{
-                  flex: 1,
-                  padding: 13,
-                  borderRadius: 13,
-                  border: "none",
-                  background: color.red,
-                  color: "#fff",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
+                className="z-btn z-btn-danger flex-1 rounded-[13px] py-[13px]"
               >
                 계정 탈퇴
               </button>

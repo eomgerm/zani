@@ -1,5 +1,4 @@
 import type { Participant } from "../../fixtures";
-import { color } from "@/shared/lib/theme";
 
 /** 갤러리 보기의 참가자 타일. 카메라 대신 이니셜 배경으로 표현한다. */
 export function RoomTile({
@@ -10,59 +9,42 @@ export function RoomTile({
   canControl: boolean;
 }) {
   const { name, color: c, host, hand, mic } = participant;
+
   return (
-    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "4/3", background: `linear-gradient(135deg,${c}cc,${c}88)` }}>
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 26, fontWeight: 800 }}>
+    <div
+      className="relative aspect-[4/3] overflow-hidden rounded-xl"
+      style={{ background: `linear-gradient(135deg,${c}cc,${c}88)` }}
+    >
+      <div className="absolute inset-0 flex items-center justify-center text-[26px] font-extrabold text-white">
         {name.charAt(0)}
       </div>
+
       {host && (
-        <span style={{ position: "absolute", top: 8, right: 8, background: color.primary, color: "#fff", fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 7 }}>
+        <span className="absolute right-2 top-2 rounded-[7px] bg-primary px-2 py-[3px] text-[10px] font-extrabold text-white">
           강사
         </span>
       )}
       {hand && (
-        <div style={{ position: "absolute", top: 8, left: 8, background: color.amber, color: "#372b03", padding: "1px 7px", borderRadius: 7, fontSize: 12, fontWeight: 800 }}>
+        <div className="absolute left-2 top-2 rounded-[7px] bg-warn px-[7px] py-px text-xs font-extrabold text-[#372b03]">
           ✋
         </div>
       )}
-      <div
-        style={{
-          position: "absolute",
-          left: 8,
-          bottom: 8,
-          right: 8,
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          background: "#0009",
-          padding: "4px 8px",
-          borderRadius: 8,
-          backdropFilter: "blur(4px)",
-        }}
-      >
-        {!mic && <span style={{ fontSize: 10 }}>🔇</span>}
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {name}
-        </span>
+
+      <div className="absolute inset-x-2 bottom-2 flex items-center gap-1.5 rounded-lg bg-black/60 px-2 py-1 backdrop-blur-[4px]">
+        {!mic && <span className="text-[10px]">🔇</span>}
+        <span className="truncate text-[11px] font-bold text-white">{name}</span>
       </div>
+
       {canControl && (
-        <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 4 }}>
-          <button title="음소거" style={tileBtn}>🔇</button>
-          <button title="퇴장" style={tileBtn}>⏏</button>
+        <div className="absolute right-1.5 top-1.5 flex gap-1">
+          <button title="음소거" className="size-[26px] cursor-pointer rounded-lg border-0 bg-black/70 text-[11px] text-white backdrop-blur-[4px]">
+            🔇
+          </button>
+          <button title="퇴장" className="size-[26px] cursor-pointer rounded-lg border-0 bg-black/70 text-[11px] text-white backdrop-blur-[4px]">
+            ⏏
+          </button>
         </div>
       )}
     </div>
   );
 }
-
-const tileBtn = {
-  width: 26,
-  height: 26,
-  borderRadius: 8,
-  border: "none",
-  background: "#000000b0",
-  color: "#fff",
-  cursor: "pointer",
-  fontSize: 11,
-  backdropFilter: "blur(4px)",
-} as const;

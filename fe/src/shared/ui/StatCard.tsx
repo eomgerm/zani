@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { color } from "@/shared/lib/theme";
 
 interface StatCardProps {
   /** 상단 라벨 (아이콘 포함 노드 허용) */
@@ -15,21 +14,10 @@ interface StatCardProps {
  */
 export function StatCard({ label, value, suffix }: StatCardProps) {
   return (
-    <div style={{ border: `1px solid ${color.borderLight}`, borderRadius: 14, padding: "16px 18px" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          fontSize: 12.5,
-          color: color.textFaint,
-          marginBottom: 10,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-        <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-.5px" }}>{value}</span>
+    <div className="z-box px-[18px] py-4">
+      <div className="mb-2.5 flex items-center gap-2 text-[12.5px] text-ink-faint">{label}</div>
+      <div className="flex items-baseline gap-[7px]">
+        <span className="text-2xl font-black tracking-[-.5px]">{value}</span>
         {suffix}
       </div>
     </div>

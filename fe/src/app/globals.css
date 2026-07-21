@@ -1,31 +1,205 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ==========================================================================
+   ZANI 디자인 토큰
+   프로토타입 팔레트를 Tailwind 유틸리티로 노출한다.
+   예) --color-primary → bg-primary / text-primary / border-primary
+   ========================================================================== */
+@theme {
+  /* brand */
+  --color-primary: #1cdd93;
+  --color-primary-dark: #19c986;
+  --color-primary-deep: #16c582;
+  --color-primary-alt: #21e298;
+  --color-primary-soft: #e9f8f2;
+  --color-primary-softer: #f0f8f5;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-space-grotesk), var(--font-noto-sans-kr);
-  --font-mono: var(--font-space-mono);
-}
+  /* surfaces */
+  --color-surface: #ffffff;
+  --color-canvas: #f4f7f6;
+  --color-mint: #ecf5f1;
+  --color-mint-deep: #e8f2ee;
+  --color-faint: #fbfbfe;
+  --color-muted-surface: #f5f8f7;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* text */
+  --color-ink: #2c3049;
+  --color-ink-muted: #6a7096;
+  --color-ink-faint: #8a90b4;
+  --color-ink-fainter: #9aa0c2;
+  --color-ink-disabled: #b0b5d2;
+  --color-ink-sub: #5a5f7d;
+  --color-ink-label: #4a4f6d;
+
+  /* borders */
+  --color-line: #e6efeb;
+  --color-line-muted: #dfebe7;
+  --color-line-mint: #e8f2ee;
+  --color-line-light: #edf2f0;
+  --color-line-soft: #e3eeea;
+  --color-line-primary: #c6eedf;
+
+  /* accents */
+  --color-danger: #e0455f;
+  --color-danger-soft: #ffe7ea;
+  --color-danger-softer: #fdeeee;
+  --color-danger-light: #ff8a9f;
+  --color-warn: #f4c325;
+  --color-warn-text: #b78f0c;
+  --color-warn-soft: #fdf6df;
+  --color-pink: #f26d7d;
+  --color-violet: #7c6bf0;
+  --color-info: #4a6fd6;
+  --color-sunday: #e0616f;
+  --color-saturday: #4a7bd6;
+  --color-disabled: #c7cbe6;
+  --color-primary-mint: #ebf8f3;
+  --color-primary-bright: #54eab0;
+  --color-ink-ghost: #a7adcb;
+  --color-ink-quiet: #b7bcd8;
+
+  /* dark surfaces (강의실 스테이지 / 영상 편집기) */
+  --color-stage: #0a0b10;
+  --color-panel: #12152a;
+  --color-panel-2: #1a1e35;
+  --color-panel-line: #262b46;
+  --color-panel-line-soft: #3a4066;
+  --color-panel-text: #eef0fa;
+  --color-panel-text-muted: #8b93bf;
+  --color-panel-text-faint: #c7ccf0;
+  --color-room-line: #2a2e48;
+  --color-room-input: #14162a;
+  --color-room-edge: #34395a;
+  --color-panel-btn: #1c2036;
+  --color-panel-video: #161a2e;
+  --color-panel-muted: #8a90b8;
+  --color-panel-soft: #cfd3f0;
+  --color-panel-dim: #aeb4d8;
+
+  /* fonts */
+  --font-sans: var(--font-space-grotesk), var(--font-noto-sans-kr), sans-serif;
+  --font-mono: var(--font-space-mono), monospace;
+
+  /* shadows */
+  --shadow-card: 0 4px 22px rgba(24, 74, 62, 0.05);
+  --shadow-soft: 0 12px 40px rgba(24, 74, 62, 0.07);
+  --shadow-pop: 0 12px 34px rgba(24, 74, 62, 0.16);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-space-grotesk), var(--font-noto-sans-kr), sans-serif;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
 
-/* ZANI 프로토타입 화면에서 사용하는 애니메이션 keyframes */
+/* ==========================================================================
+   공통 컴포넌트 클래스
+   화면 전반에서 반복되는 표면·버튼·입력·뱃지·모달 패턴을 모아둔다.
+   ========================================================================== */
+@layer components {
+  /* ---- 표면 ---- */
+  .z-card {
+    @apply bg-surface border border-line rounded-[18px] shadow-card;
+  }
+  .z-card-lg {
+    @apply bg-surface border border-line rounded-[20px] shadow-card;
+  }
+  /* 테두리만 있는 박스 (통계 타일, 인사이트 카드 등) */
+  .z-box {
+    @apply border border-line-light rounded-[14px];
+  }
+
+  /* ---- 버튼 ----
+     마크업에서 조합해 사용한다: class="z-btn z-btn-primary z-btn-lg"
+     (Tailwind v4의 @apply는 커스텀 클래스를 참조할 수 없어 베이스를 분리) */
+  .z-btn {
+    @apply inline-flex items-center justify-center gap-2 font-extrabold
+           cursor-pointer font-sans no-underline transition-colors;
+  }
+  .z-btn-primary {
+    @apply bg-primary text-white border-0 hover:bg-primary-dark;
+  }
+  .z-btn-outline {
+    @apply bg-surface text-ink-muted border border-line-muted hover:bg-primary-softer;
+  }
+  .z-btn-danger {
+    @apply bg-danger text-white border-0;
+  }
+  .z-btn-ghost-danger {
+    @apply bg-surface text-danger border border-[#f0aeb8] hover:bg-[#fff5f6];
+  }
+  /* 버튼 크기 */
+  .z-btn-md {
+    @apply px-[22px] py-[13px] rounded-xl text-sm;
+  }
+  .z-btn-lg {
+    @apply px-[26px] py-[15px] rounded-[13px] text-[15px];
+  }
+  .z-btn-block {
+    @apply w-full py-[15px] rounded-[13px] text-[15px];
+  }
+
+  /* ---- 입력 ---- */
+  .z-input {
+    @apply w-full px-4 py-3 border border-line-muted rounded-xl text-[14.5px]
+           outline-none font-sans text-ink box-border bg-surface;
+  }
+  /* z-input 과 함께 사용: class="z-input z-textarea" */
+  .z-textarea {
+    @apply leading-[1.7] resize-y;
+  }
+  /* 읽기 전용 값 표시 필드 */
+  .z-field-readonly {
+    @apply px-[15px] py-3 border border-line-light rounded-xl
+           bg-muted-surface text-ink-faint text-sm box-border;
+  }
+
+  /* ---- 뱃지 / 칩 ---- */
+  .z-badge {
+    @apply inline-block px-2.5 py-[3px] rounded-lg text-xs font-extrabold whitespace-nowrap;
+  }
+  .z-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full font-extrabold;
+  }
+
+  /* ---- 모달 ---- */
+  .z-backdrop {
+    @apply fixed inset-0 flex items-center justify-center p-6 z-[100]
+           bg-[rgba(28,32,58,.42)];
+  }
+  .z-modal {
+    @apply w-full bg-surface rounded-[20px] px-7 py-[26px]
+           shadow-[0_24px_60px_rgba(28,32,58,.35)] animate-[zPop_.18s];
+  }
+
+  /* ---- 강의실 스테이지 오버레이 칩 ---- */
+  .z-stage-chip {
+    @apply inline-flex items-center gap-[7px] bg-[#0e1020cc] text-[#e7e9fb]
+           text-[12.5px] font-extrabold px-[13px] py-2 rounded-[10px]
+           backdrop-blur-[6px];
+  }
+
+  /* ---- 섹션 제목 ---- */
+  .z-section-title {
+    @apply flex items-center gap-2 font-extrabold text-base;
+  }
+
+  /* ---- 흰 배경 아이콘 칩 (로그인 히어로 등) ---- */
+  .z-icon-chip {
+    @apply flex size-[46px] shrink-0 items-center justify-center rounded-[13px]
+           bg-surface text-[22px] shadow-[0_4px_12px_rgba(18,184,134,.18)];
+  }
+
+  /* ---- 체크 표시 (장치 점검 등) ---- */
+  .z-check {
+    @apply flex size-[26px] items-center justify-center rounded-lg
+           bg-primary-soft text-sm font-black text-primary;
+  }
+}
+
+/* ==========================================================================
+   프로토타입 애니메이션
+   ========================================================================== */
 @keyframes zFloat {
   0% {
     transform: translateY(0) scale(1);

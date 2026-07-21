@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { color } from "@/shared/lib/theme";
 import { lectures } from "./fixtures";
 
 /**
@@ -17,66 +16,45 @@ export function NoteScreen({ lectureId }: { lectureId: string }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const isEmpty = !note.trim();
-  const meta = `수강생 ${lecture.students ?? 0}명 · ${lecture.date} · ${lecture.dur}`;
 
   return (
-    <div style={{ minHeight: "100vh", background: color.bg, padding: "32px 24px" }}>
-      <div style={{ maxWidth: 760, margin: "0 auto" }}>
+    <div className="min-h-screen bg-canvas px-6 py-8">
+      <div className="mx-auto max-w-[760px]">
         <Link
           href="/my-lectures"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, color: color.textFaint, fontSize: 14, marginBottom: 16, fontWeight: 700, textDecoration: "none" }}
+          className="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-ink-faint no-underline"
         >
           ← 내 강의실로 돌아가기
         </Link>
 
-        <div style={{ background: "#fff", border: `1px solid ${color.border}`, borderRadius: 20, padding: "30px 32px", boxShadow: "0 4px 22px rgba(24,74,62,.05)" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: color.amberSoft, color: color.amberText, padding: "5px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 800, marginBottom: 16 }}>
+        <div className="z-card-lg px-8 py-[30px]">
+          <div className="z-pill mb-4 bg-warn-soft px-3 py-[5px] text-[12.5px] text-warn-text">
             ✏️ 사후 메모 작성
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 6px", letterSpacing: "-.4px" }}>{lecture.title}</h1>
-          <p style={{ color: color.textFaint, margin: "0 0 22px", fontSize: 14 }}>{meta}</p>
-          <p style={{ color: color.textSub, fontSize: 14, lineHeight: 1.7, margin: "0 0 14px" }}>
-            수업에서 중요하게 설명한 내용, 다시 강조하고 싶은 개념, 수업 중 느낀 점이나 AI가 분석할 때 참고할 내용을
-            자유롭게 작성해 주세요.
+          <h1 className="mb-1.5 text-2xl font-extrabold tracking-[-.4px]">{lecture.title}</h1>
+          <p className="mb-[22px] text-sm text-ink-faint">
+            수강생 {lecture.students ?? 0}명 · {lecture.date} · {lecture.dur}
           </p>
+          <p className="mb-3.5 text-sm leading-[1.7] text-ink-sub">
+            수업에서 중요하게 설명한 내용, 다시 강조하고 싶은 개념, 수업 중 느낀 점이나 AI가 분석할
+            때 참고할 내용을 자유롭게 작성해 주세요.
+          </p>
+
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="예) Context 리렌더링 파트에서 학생들이 많이 헷갈려 했다. 다음 시간에 Provider value 참조 개념을 예시로 다시 짚어주면 좋겠다."
-            style={{
-              width: "100%",
-              minHeight: 260,
-              padding: "18px 20px",
-              border: `1px solid ${color.borderMuted}`,
-              borderRadius: 14,
-              fontSize: 14.5,
-              lineHeight: 1.7,
-              background: color.surfaceFaint,
-              outline: "none",
-              resize: "vertical",
-              fontFamily: "inherit",
-              color: color.text,
-              boxSizing: "border-box",
-            }}
+            className="z-input z-textarea min-h-[260px] rounded-[14px] bg-faint px-5 py-[18px]"
           />
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 18 }}>
-            <p style={{ flex: 1, margin: 0, fontSize: 12.5, color: "#a7adcb", lineHeight: 1.5 }}>
-              AI가 녹화 영상·전사·수업 이벤트·채팅·학생 반응과 함께 메모를 분석해 관련 영상 구간을 자동으로 연결해요.
+
+          <div className="mt-[18px] flex items-center gap-3">
+            <p className="flex-1 text-[12.5px] leading-[1.5] text-ink-ghost">
+              AI가 녹화 영상·전사·수업 이벤트·채팅·학생 반응과 함께 메모를 분석해 관련 영상 구간을
+              자동으로 연결해요.
             </p>
             <button
               onClick={() => setConfirmOpen(true)}
-              style={{
-                padding: "14px 26px",
-                borderRadius: 14,
-                border: "none",
-                background: color.primary,
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 15,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                fontFamily: "inherit",
-              }}
+              className="z-btn z-btn-primary z-btn-lg whitespace-nowrap"
             >
               분석 시작
             </button>
@@ -85,26 +63,26 @@ export function NoteScreen({ lectureId }: { lectureId: string }) {
       </div>
 
       {confirmOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(28,32,58,.42)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 100 }}>
-          <div style={{ width: "100%", maxWidth: 420, background: "#fff", borderRadius: 20, padding: "26px 28px", boxShadow: "0 24px 60px rgba(28,32,58,.35)", animation: "zPop .18s" }}>
-            <h2 style={{ fontSize: 19, fontWeight: 800, margin: "0 0 10px" }}>
+        <div className="z-backdrop">
+          <div className="z-modal max-w-[420px]">
+            <h2 className="mb-2.5 text-[19px] font-extrabold">
               {isEmpty ? "메모 없이 분석을 시작할까요?" : "분석을 시작할까요?"}
             </h2>
-            <p style={{ color: color.textMuted, margin: "0 0 22px", fontSize: 14, lineHeight: 1.6 }}>
+            <p className="mb-[22px] text-sm leading-[1.6] text-ink-muted">
               {isEmpty
                 ? "작성한 사후 메모가 없습니다. 메모 없이도 분석을 진행할 수 있습니다."
                 : "분석을 시작하면 사후 메모를 수정할 수 없습니다."}
             </p>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="flex gap-2.5">
               <button
                 onClick={() => setConfirmOpen(false)}
-                style={{ flex: 1, padding: 13, borderRadius: 13, border: `1px solid ${color.borderMuted}`, background: "#fff", color: color.textMuted, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}
+                className="z-btn z-btn-outline flex-1 rounded-[13px] py-[13px]"
               >
                 {isEmpty ? "계속 작성" : "취소"}
               </button>
               <button
                 onClick={() => router.push("/my-lectures")}
-                style={{ flex: 1, padding: 13, borderRadius: 13, border: "none", background: color.primary, color: "#fff", fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}
+                className="z-btn z-btn-primary flex-1 rounded-[13px] py-[13px]"
               >
                 {isEmpty ? "메모 없이 분석 시작" : "분석 시작"}
               </button>

@@ -1,4 +1,3 @@
-import { color } from "@/shared/lib/theme";
 import { focusColor, focusBg, focusLabel, type LearnSegment } from "../../fixtures";
 
 interface SegmentModalProps {
@@ -15,70 +14,54 @@ export function SegmentModal({ segment, role, onClose }: SegmentModalProps) {
   const scopeLabel = role === "instructor" ? "전체 집중" : "내 집중";
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(24,28,52,.5)",
-        zIndex: 80,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        animation: "zPop .16s",
-      }}
-    >
+    <div onClick={onClose} className="z-backdrop z-[80] animate-[zPop_.16s] bg-[rgba(24,28,52,.5)]">
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "100%", maxWidth: 560, maxHeight: "88vh", overflowY: "auto", background: "#fff", borderRadius: 20, boxShadow: "0 30px 70px rgba(24,28,52,.4)" }}
+        className="max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-[20px] bg-surface shadow-[0_30px_70px_rgba(24,28,52,.4)]"
       >
-        <div style={{ position: "relative", padding: "24px 26px 4px" }}>
-          <button onClick={onClose} style={{ position: "absolute", right: 18, top: 18, width: 32, height: 32, borderRadius: 9, border: "none", background: color.primarySofter, color: color.textFaint, fontSize: 15, cursor: "pointer" }}>
+        <div className="relative px-[26px] pb-1 pt-6">
+          <button
+            onClick={onClose}
+            className="absolute right-[18px] top-[18px] size-8 cursor-pointer rounded-[9px] border-0 bg-primary-softer text-[15px] text-ink-faint"
+          >
             ✕
           </button>
-          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#3bbd8b", marginBottom: 6 }}>선택 구간 · {segment.range}</div>
-          <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.4px", color: color.text }}>{segment.title}</div>
+          <div className="mb-1.5 text-[12.5px] font-extrabold text-[#3bbd8b]">
+            선택 구간 · {segment.range}
+          </div>
+          <div className="text-[21px] font-extrabold tracking-[-.4px] text-ink">{segment.title}</div>
         </div>
-        <div style={{ padding: "18px 26px 26px" }}>
-          <div style={{ border: `1px solid ${color.borderLight}`, borderRadius: 14, padding: "16px 18px", marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 800, color: color.textFaint }}>{scopeLabel} 평가</span>
-              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, color: c }}>
-                <b style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.5px", fontFamily: "var(--font-space-grotesk), monospace" }}>{score}</b>
-                <span style={{ fontSize: 13, fontWeight: 800, color: color.textFainter }}>/ 4</span>
+
+        <div className="px-[26px] pb-[26px] pt-[18px]">
+          <div className="z-box mb-4 px-[18px] py-4">
+            <div className="mb-3 flex items-center justify-between gap-2.5">
+              <span className="text-[12.5px] font-extrabold text-ink-faint">{scopeLabel} 평가</span>
+              <span className="inline-flex items-baseline gap-1" style={{ color: c }}>
+                <b className="text-[26px] font-black tracking-[-.5px]">{score}</b>
+                <span className="text-[13px] font-extrabold text-ink-fainter">/ 4</span>
               </span>
             </div>
-            <div style={{ height: 9, borderRadius: 999, background: "#eef0f6", overflow: "hidden", marginBottom: 11 }}>
-              <div style={{ height: "100%", width: `${(score / 4) * 100}%`, background: c, borderRadius: 999 }} />
+            <div className="mb-[11px] h-[9px] overflow-hidden rounded-full bg-[#eef0f6]">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${(score / 4) * 100}%`, background: c }}
+              />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 10px", borderRadius: 999, color: c, background: focusBg(score) }}>
+            <div className="flex items-center gap-[9px]">
+              <span
+                className="inline-block rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold"
+                style={{ color: c, background: focusBg(score) }}
+              >
                 {focusLabel(score)}
               </span>
-              <span style={{ fontSize: 12.5, color: color.textSub, lineHeight: 1.5, flex: 1 }}>{ev}</span>
+              <span className="flex-1 text-[12.5px] leading-[1.5] text-ink-sub">{ev}</span>
             </div>
           </div>
-          <div style={{ fontWeight: 800, fontSize: 13.5, color: color.text, marginBottom: 8 }}>이 구간 설명</div>
-          <p style={{ margin: "0 0 22px", color: color.textSub, fontSize: 13.5, lineHeight: 1.7 }}>{segment.desc}</p>
-          <button
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              width: "100%",
-              padding: 14,
-              borderRadius: 13,
-              border: "none",
-              background: color.primary,
-              color: "#fff",
-              fontFamily: "inherit",
-              fontWeight: 800,
-              fontSize: 14.5,
-              cursor: "pointer",
-            }}
-          >
+
+          <div className="mb-2 text-[13.5px] font-extrabold text-ink">이 구간 설명</div>
+          <p className="mb-[22px] text-[13.5px] leading-[1.7] text-ink-sub">{segment.desc}</p>
+
+          <button className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-[14.5px]">
             ↗ {segment.seek} 복습 클립 바로가기
           </button>
         </div>

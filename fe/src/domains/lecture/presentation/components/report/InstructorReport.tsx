@@ -1,4 +1,3 @@
-import { color } from "@/shared/lib/theme";
 import { Card, FocusFlowChart, EvalDonuts, StatCard } from "@/shared/ui";
 import {
   evalDonutData,
@@ -9,6 +8,7 @@ import {
   learnSegments,
 } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
+import { FocusLegend } from "./FocusLegend";
 
 interface Props {
   activeSeg: number;
@@ -21,9 +21,9 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
 
   return (
     <>
-      <Card padding="22px 24px" style={{ marginBottom: 20 }}>
-        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 18 }}>한눈에 보기</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
+      <Card className="mb-5 px-6 py-[22px]">
+        <div className="mb-[18px] text-[17px] font-extrabold">한눈에 보기</div>
+        <div className="grid grid-cols-5 gap-3.5">
           {instructorGlance.map((g) => (
             <StatCard
               key={g.label}
@@ -36,7 +36,7 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
               value={g.value}
               suffix={
                 g.badge ? (
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: color.amberText, background: "#fdf6df", padding: "2px 7px", borderRadius: 6 }}>
+                  <span className="rounded-md bg-warn-soft px-[7px] py-0.5 text-[10.5px] font-extrabold text-warn-text">
                     {g.badge}
                   </span>
                 ) : undefined
@@ -46,97 +46,89 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
         </div>
       </Card>
 
-      <Card padding="22px 24px 14px" style={{ marginBottom: 20 }}>
-        <FlowHeader />
+      <Card className="mb-5 px-6 pb-3.5 pt-[22px]">
+        <FocusLegend title="학습 흐름" scope="전체 집중" />
         <FocusFlowChart segments={flow} activeSeg={activeSeg} onSelect={onSelect} />
       </Card>
 
-      <Card padding="22px 24px" style={{ marginBottom: 20 }}>
-        <TimelineHeader />
-        <TimelineSegments segments={learnSegments} role="instructor" activeSeg={activeSeg} onSelect={onSelect} />
+      <Card className="mb-5 px-6 py-[22px]">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <div className="z-section-title">
+            <span className="text-primary">🎬</span>타임라인
+          </div>
+          <span className="text-[11.5px] text-ink-fainter">
+            구간을 누르면 집중도 평가와 설명, 복습 클립 바로가기가 열려요.
+          </span>
+        </div>
+        <div className="mb-3 mt-1.5 text-xs font-bold text-ink-faint">
+          수업 내용 기반 구간 · 전체 집중 점수 (0–4)
+        </div>
+        <TimelineSegments
+          segments={learnSegments}
+          role="instructor"
+          activeSeg={activeSeg}
+          onSelect={onSelect}
+        />
       </Card>
 
-      <Card padding="22px 24px" style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16, marginBottom: 18 }}>
-          <span style={{ color: color.primary }}>💡</span>인사이트
+      <Card className="mb-5 px-6 py-[22px]">
+        <div className="z-section-title mb-[18px]">
+          <span className="text-primary">💡</span>인사이트
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        <div className="grid grid-cols-4 gap-3.5">
           {insights.map((it, i) => (
-            <div key={i} style={{ border: `1px solid ${color.borderLight}`, borderRadius: 14, padding: 16, background: color.surfaceFaint }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: it.bg, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 11 }}>
+            <div key={i} className="z-box bg-faint p-4">
+              <div
+                className="mb-[11px] flex size-[34px] items-center justify-center rounded-[10px]"
+                style={{ background: it.bg }}
+              >
                 {it.icon}
               </div>
-              <div style={{ fontSize: 12.5, color: color.textLabel, lineHeight: 1.55, fontWeight: 600 }}>{it.text}</div>
+              <div className="text-[12.5px] font-semibold leading-[1.55] text-ink-label">
+                {it.text}
+              </div>
             </div>
           ))}
         </div>
       </Card>
 
-      <Card padding="22px 24px" style={{ marginBottom: 20 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 14 }}>AI 수업 피드백</div>
-        <div style={{ background: color.bg, borderRadius: 12, padding: "16px 20px", marginBottom: 22 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13.5, marginBottom: 8 }}>
-            <span style={{ color: color.primary }}>✨</span>종합 포인트
+      <Card className="mb-5 px-6 py-[22px]">
+        <div className="mb-3.5 text-base font-extrabold">AI 수업 피드백</div>
+        <div className="mb-[22px] rounded-xl bg-canvas px-5 py-4">
+          <div className="mb-2 flex items-center gap-2 text-[13.5px] font-extrabold">
+            <span className="text-primary">✨</span>종합 포인트
           </div>
-          <p style={{ margin: 0, color: color.textSub, fontSize: 13, lineHeight: 1.75 }}>{instructorSummary}</p>
+          <p className="text-[13px] leading-[1.75] text-ink-sub">{instructorSummary}</p>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 26, alignItems: "start" }}>
+
+        <div className="grid grid-cols-2 items-start gap-[26px]">
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <span style={{ fontWeight: 800, fontSize: 14 }}>분야별 평가</span>
-              <span style={{ fontSize: 11.5, color: color.textFainter }}>AI가 4개 항목으로 평가했어요.</span>
+            <div className="mb-3.5 flex items-center gap-2">
+              <span className="text-sm font-extrabold">분야별 평가</span>
+              <span className="text-[11.5px] text-ink-fainter">AI가 4개 항목으로 평가했어요.</span>
             </div>
-            <div style={{ background: color.surfaceFaint, border: "1px solid #f1f2f8", borderRadius: 14, padding: "18px 16px" }}>
+            <div className="rounded-[14px] border border-[#f1f2f8] bg-faint px-4 py-[18px]">
               <EvalDonuts data={evalDonutData} />
             </div>
           </div>
+
           <div>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14 }}>수업 개선 TIP</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="mb-3.5 text-sm font-extrabold">수업 개선 TIP</div>
+            <div className="flex flex-col gap-3">
               {improveTips.map((t) => (
-                <div key={t.title} style={{ border: `1px solid ${color.borderLight}`, borderRadius: 13, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, fontWeight: 800, fontSize: 12.5, marginBottom: 6 }}>
+                <div key={t.title} className="rounded-[13px] border border-line-light px-4 py-3.5">
+                  <div className="mb-1.5 flex items-center gap-[7px] text-[12.5px] font-extrabold">
                     <span style={{ color: t.color }}>{t.icon}</span>
                     {t.title}
                   </div>
-                  <p style={{ margin: "0 0 6px", fontSize: 11.5, color: color.textFaint, lineHeight: 1.5 }}>{t.obs}</p>
-                  <div style={{ fontSize: 11, color: color.textSub, lineHeight: 1.5 }}>{t.tip}</div>
+                  <p className="mb-1.5 text-[11.5px] leading-[1.5] text-ink-faint">{t.obs}</p>
+                  <div className="text-[11px] leading-[1.5] text-ink-sub">{t.tip}</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
       </Card>
-    </>
-  );
-}
-
-function FlowHeader() {
-  return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16 }}>
-        <span style={{ color: color.primary }}>📈</span>학습 흐름
-      </div>
-      <div style={{ display: "flex", gap: 14, fontSize: 12, color: color.textMuted, flexWrap: "wrap", fontWeight: 700 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: color.primaryDeep, background: "#eaf7f2", padding: "3px 10px", borderRadius: 999 }}>전체 집중</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 36, height: 8, borderRadius: 999, background: "linear-gradient(90deg,#e0455f,#f4c325,#16c582)" }} />0 낮음 → 4 높음
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function TimelineHeader() {
-  return (
-    <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16 }}>
-          <span style={{ color: color.primary }}>🎬</span>타임라인
-        </div>
-        <span style={{ fontSize: 11.5, color: color.textFainter }}>구간을 누르면 집중도 평가와 설명, 복습 클립 바로가기가 열려요.</span>
-      </div>
-      <div style={{ fontSize: 12, color: color.textFaint, fontWeight: 700, margin: "6px 0 12px" }}>수업 내용 기반 구간 · 전체 집중 점수 (0–4)</div>
     </>
   );
 }

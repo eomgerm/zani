@@ -1,15 +1,14 @@
 import Link from "next/link";
-import { color } from "@/shared/lib/theme";
 import type { Lecture } from "../fixtures";
 
 const WEEKDAYS = [
-  { label: "일", color: "#e0616f" },
-  { label: "월", color: color.textFaint },
-  { label: "화", color: color.textFaint },
-  { label: "수", color: color.textFaint },
-  { label: "목", color: color.textFaint },
-  { label: "금", color: color.textFaint },
-  { label: "토", color: "#4a7bd6" },
+  { label: "일", cls: "text-sunday" },
+  { label: "월", cls: "text-ink-faint" },
+  { label: "화", cls: "text-ink-faint" },
+  { label: "수", cls: "text-ink-faint" },
+  { label: "목", cls: "text-ink-faint" },
+  { label: "금", cls: "text-ink-faint" },
+  { label: "토", cls: "text-saturday" },
 ];
 
 /** 2026년 7월 강의 캘린더. 내 강의실 캘린더 보기 전용. */
@@ -23,9 +22,7 @@ export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
   for (const l of lectures) {
     if (!l.date.startsWith("2026-07")) continue;
     const d = parseInt(l.date.slice(8), 10);
-    const list = byDay.get(d) ?? [];
-    list.push(l);
-    byDay.set(d, list);
+    byDay.set(d, [...(byDay.get(d) ?? []), l]);
   }
 
   const cells: ({ blank: true } | { blank: false; day: number })[] = [];
@@ -34,67 +31,51 @@ export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
   while (cells.length % 7 !== 0) cells.push({ blank: true });
 
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: `1px solid ${color.border}`,
-        borderRadius: 20,
-        padding: "24px 26px",
-        boxShadow: "0 4px 22px rgba(24,74,62,.05)",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <div style={{ fontWeight: 800, fontSize: 18 }}>2026년 7월</div>
+    <div className="z-card-lg px-[26px] py-6">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="text-lg font-extrabold">2026년 7월</div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 8, marginBottom: 8 }}>
+
+      <div className="mb-2 grid grid-cols-7 gap-2">
         {WEEKDAYS.map((w) => (
-          <div key={w.label} style={{ textAlign: "center", fontSize: 11.5, fontWeight: 800, color: w.color, padding: "2px 0" }}>
+          <div key={w.label} className={`py-0.5 text-center text-[11.5px] font-extrabold ${w.cls}`}>
             {w.label}
           </div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 8 }}>
+
+      <div className="grid grid-cols-7 gap-2">
         {cells.map((cell, i) => {
           if (cell.blank) return <div key={i} />;
           const { day } = cell;
           const dow = (firstDow + day - 1) % 7;
           const isToday = day === 16;
           const items = byDay.get(day) ?? [];
-          const numColor = isToday ? color.primary : dow === 0 ? "#e0616f" : dow === 6 ? "#4a7bd6" : color.textMuted;
+          const numCls = isToday
+            ? "text-primary"
+            : dow === 0
+              ? "text-sunday"
+              : dow === 6
+                ? "text-saturday"
+                : "text-ink-muted";
+
           return (
             <div
               key={i}
-              style={{
-                minHeight: 84,
-                border: `1px solid ${isToday ? "#c6eedf" : "#eff1f8"}`,
-                borderRadius: 12,
-                padding: "7px 8px",
-                background: isToday ? color.primarySofter : "#fff",
-                display: "flex",
-                flexDirection: "column",
-                gap: 3,
-                overflow: "hidden",
-              }}
+              className={`flex min-h-[84px] flex-col gap-[3px] overflow-hidden rounded-xl border px-2 py-[7px] ${
+                isToday ? "border-line-primary bg-primary-softer" : "border-[#eff1f8] bg-surface"
+              }`}
             >
-              <span style={{ fontSize: 12, fontWeight: 800, color: numColor }}>{day}</span>
+              <span className={`text-xs font-extrabold ${numCls}`}>{day}</span>
               {items.slice(0, 2).map((l) => {
-                const c = l.role === "instructor" ? color.primary : "#4a6fd6";
+                const isIns = l.role === "instructor";
                 return (
                   <Link
                     key={l.id}
                     href={l.status === "LIVE" ? `/room/${l.id}` : `/my-lectures/${l.id}/report`}
-                    style={{
-                      fontSize: 10,
-                      padding: "2px 5px",
-                      borderRadius: 5,
-                      background: `${c}22`,
-                      color: c,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      fontWeight: 700,
-                      textDecoration: "none",
-                    }}
+                    className={`truncate rounded-[5px] px-[5px] py-0.5 text-[10px] font-bold no-underline ${
+                      isIns ? "bg-primary/15 text-primary" : "bg-info/15 text-info"
+                    }`}
                   >
                     {l.title}
                   </Link>

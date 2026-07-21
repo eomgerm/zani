@@ -1,10 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { color } from "@/shared/lib/theme";
 import { lectures } from "./fixtures";
 import { LectureCard } from "./components/LectureCard";
 import { LectureCalendar } from "./components/LectureCalendar";
+
+/** 알약형 토글 버튼 클래스 */
+function pillCls(active: boolean) {
+  return `cursor-pointer rounded-full border-0 px-[18px] py-2 font-sans text-[13.5px] font-extrabold ${
+    active ? "bg-surface text-primary shadow-[0_2px_6px_rgba(24,74,62,.1)]" : "bg-transparent text-ink-faint"
+  }`;
+}
 
 /**
  * SC-05 내 강의실. 참여/진행 강의를 검색·정렬·리스트/캘린더로 확인한다.
@@ -27,49 +33,52 @@ export function MyLecturesScreen() {
 
   return (
     <>
-      <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 4px", letterSpacing: "-.5px" }}>내 강의실</h1>
-      <p style={{ color: color.textMuted, margin: "0 0 22px" }}>
+      <h1 className="mb-1 text-[26px] font-extrabold tracking-[-.5px]">내 강의실</h1>
+      <p className="mb-[22px] text-ink-muted">
         실제로 생성했거나 참여한 수업만 모아서 보여드려요.
       </p>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22, flexWrap: "wrap" }}>
-        <div style={{ display: "inline-flex", background: color.primarySofter, border: `1px solid ${color.borderMint}`, borderRadius: 999, padding: 4 }}>
+      <div className="mb-[22px] flex flex-wrap items-center gap-2.5">
+        <div className="inline-flex rounded-full border border-line-mint bg-primary-softer p-1">
           {(["student", "instructor"] as const).map((k) => (
-            <button key={k} onClick={() => setTab(k)} style={pillToggle(tab === k)}>
+            <button key={k} onClick={() => setTab(k)} className={pillCls(tab === k)}>
               {k === "student" ? "참여강의" : "진행강의"}
             </button>
           ))}
         </div>
-        <div style={{ flex: 1, minWidth: 20 }} />
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "0 14px",
-            height: 40,
-            borderRadius: 12,
-            border: `1px solid ${color.borderMuted}`,
-            background: "#fff",
-            minWidth: 200,
-          }}
-        >
-          <span style={{ color: color.textFainter }}>🔍</span>
+
+        <div className="min-w-[20px] flex-1" />
+
+        <div className="flex h-10 min-w-[200px] items-center gap-2 rounded-xl border border-line-muted bg-surface px-3.5">
+          <span className="text-ink-fainter">🔍</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="강의 제목 검색"
-            style={{ border: "none", outline: "none", background: "none", fontSize: 13.5, fontFamily: "inherit", width: "100%", color: color.text }}
+            className="w-full border-0 bg-transparent font-sans text-[13.5px] text-ink outline-none"
           />
         </div>
-        <button onClick={() => setSortDesc((v) => !v)} style={outlineBtn}>
+
+        <button
+          onClick={() => setSortDesc((v) => !v)}
+          className="z-btn h-10 gap-[7px] rounded-xl border border-line-muted bg-surface px-3.5 text-[13px] font-bold text-ink-muted"
+        >
           ⇅ {sortDesc ? "최신순" : "오래된순"}
         </button>
-        <div style={{ display: "inline-flex", background: color.primarySofter, border: `1px solid ${color.borderMint}`, borderRadius: 999, padding: 4, gap: 2 }}>
-          <button onClick={() => setView("list")} title="리스트 보기" style={viewToggle(view === "list")}>
+
+        <div className="inline-flex gap-0.5 rounded-full border border-line-mint bg-primary-softer p-1">
+          <button
+            onClick={() => setView("list")}
+            title="리스트 보기"
+            className={`h-[30px] w-[34px] rounded-full border-0 text-sm ${pillCls(view === "list")}`}
+          >
             ☰
           </button>
-          <button onClick={() => setView("cal")} title="캘린더 보기" style={viewToggle(view === "cal")}>
+          <button
+            onClick={() => setView("cal")}
+            title="캘린더 보기"
+            className={`h-[30px] w-[34px] rounded-full border-0 text-sm ${pillCls(view === "cal")}`}
+          >
             📅
           </button>
         </div>
@@ -77,13 +86,13 @@ export function MyLecturesScreen() {
 
       {view === "list" ? (
         visible.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "70px 20px", color: color.textFainter }}>
-            <div style={{ fontSize: 44, marginBottom: 14 }}>📭</div>
-            <div style={{ fontWeight: 700, color: color.textMuted, marginBottom: 4 }}>강의가 없어요</div>
-            <div style={{ fontSize: 13.5 }}>홈에서 강의를 열거나 초대 코드로 참여해보세요.</div>
+          <div className="px-5 py-[70px] text-center text-ink-fainter">
+            <div className="mb-3.5 text-[44px]">📭</div>
+            <div className="mb-1 font-bold text-ink-muted">강의가 없어요</div>
+            <div className="text-[13.5px]">홈에서 강의를 열거나 초대 코드로 참여해보세요.</div>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 22 }}>
+          <div className="grid grid-cols-3 gap-[22px]">
             {visible.map((l, i) => (
               <LectureCard key={l.id} lecture={l} index={i} />
             ))}
@@ -95,49 +104,3 @@ export function MyLecturesScreen() {
     </>
   );
 }
-
-function pillToggle(active: boolean) {
-  return {
-    padding: "8px 18px",
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontWeight: 800,
-    fontSize: 13.5,
-    background: active ? "#fff" : "transparent",
-    color: active ? color.primary : color.textFaint,
-    boxShadow: active ? "0 2px 6px rgba(24,74,62,.1)" : "none",
-  } as const;
-}
-
-function viewToggle(active: boolean) {
-  return {
-    width: 34,
-    height: 30,
-    borderRadius: 999,
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontSize: 14,
-    background: active ? "#fff" : "transparent",
-    color: active ? color.primary : color.textFaint,
-    boxShadow: active ? "0 2px 6px rgba(24,74,62,.1)" : "none",
-  } as const;
-}
-
-const outlineBtn = {
-  display: "flex",
-  alignItems: "center",
-  gap: 7,
-  height: 40,
-  padding: "0 14px",
-  borderRadius: 12,
-  border: `1px solid ${color.borderMuted}`,
-  background: "#fff",
-  cursor: "pointer",
-  fontFamily: "inherit",
-  fontWeight: 700,
-  fontSize: 13,
-  color: color.textMuted,
-} as const;

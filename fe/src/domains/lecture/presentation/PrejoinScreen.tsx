@@ -3,9 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { color } from "@/shared/lib/theme";
 
-const MIC_BARS = Array.from({ length: 14 }, (_, i) => ({ duration: 0.6 + (i % 5) * 0.12, delay: i * 0.05 }));
+const MIC_BARS = Array.from({ length: 14 }, (_, i) => ({
+  duration: 0.6 + (i % 5) * 0.12,
+  delay: i * 0.05,
+}));
 
 /**
  * SC-08 입장 전 점검. 얼굴 위치·움직임 확인 단계를 거쳐 강의실로 입장한다.
@@ -15,112 +17,81 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
-  const next = () => setStep((s) => (s < 3 ? ((s + 1) as 2 | 3) : s));
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 28,
-        background: color.bgMint,
-      }}
-    >
-      <div style={{ width: "100%", maxWidth: 1200 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-          <Link href="/home" style={backBtn}>
+    <div className="flex min-h-screen items-center justify-center bg-mint p-7">
+      <div className="w-full max-w-[1200px]">
+        <div className="mb-5 flex items-center gap-3">
+          <Link
+            href="/home"
+            className="z-btn size-11 rounded-[13px] border border-line-muted bg-surface text-[17px] text-ink-sub shadow-[0_2px_8px_rgba(24,74,62,.05)]"
+          >
             ←
           </Link>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 22, letterSpacing: "-.4px" }}>입장 전 점검</div>
-            <div style={{ color: color.textFaint, fontSize: 13.5, marginTop: 2 }}>
-              초대 코드 <b style={{ color: color.primary }}>{inviteCode}</b> · 카메라와 마이크를 확인해 주세요
+            <div className="text-[22px] font-extrabold tracking-[-.4px]">입장 전 점검</div>
+            <div className="mt-0.5 text-[13.5px] text-ink-faint">
+              초대 코드 <b className="text-primary">{inviteCode}</b> · 카메라와 마이크를 확인해
+              주세요
             </div>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: 22, alignItems: "stretch" }}>
+        <div className="grid grid-cols-[1.55fr_1fr] items-stretch gap-[22px]">
           {/* 카메라 프리뷰 */}
-          <div style={{ position: "relative", borderRadius: 22, overflow: "hidden", background: "#1a1d30", minHeight: 540 }}>
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "repeating-linear-gradient(135deg,#1e2138,#1e2138 16px,#232744 16px,#232744 32px)",
-              }}
-            />
-            <div style={{ position: "absolute", inset: 0 }}>
+          <div className="relative min-h-[540px] overflow-hidden rounded-[22px] bg-[#1a1d30]">
+            <div className="absolute inset-0 [background:repeating-linear-gradient(135deg,#1e2138,#1e2138_16px,#232744_16px,#232744_32px)]" />
+
+            <div className="absolute inset-0">
               {/* 상단 좌 */}
-              <div style={{ position: "absolute", left: 18, top: 18, display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="absolute left-[18px] top-[18px] flex items-center gap-2.5">
                 {step < 3 ? (
                   <>
-                    <span style={{ background: color.primary, color: "#fff", fontWeight: 800, fontSize: 12.5, padding: "5px 11px", borderRadius: 9 }}>
+                    <span className="rounded-[9px] bg-primary px-[11px] py-[5px] text-[12.5px] font-extrabold text-white">
                       {step} / 2
                     </span>
-                    <span style={{ color: "#fff", fontWeight: 800, fontSize: 14, textShadow: "0 1px 6px #0007" }}>
+                    <span className="text-sm font-extrabold text-white [text-shadow:0_1px_6px_#0007]">
                       {step === 1 ? "얼굴 위치 맞추기" : "움직임 확인"}
                     </span>
                   </>
                 ) : (
                   <>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#ebf8f3", color: "#19c986", fontWeight: 800, fontSize: 12.5, padding: "5px 11px", borderRadius: 9 }}>
+                    <span className="z-pill bg-primary-mint px-[11px] py-[5px] text-[12.5px] text-primary-dark">
                       ✓ 완료
                     </span>
-                    <span style={{ color: "#fff", fontWeight: 800, fontSize: 14, textShadow: "0 1px 6px #0007" }}>점검 완료</span>
+                    <span className="text-sm font-extrabold text-white [text-shadow:0_1px_6px_#0007]">
+                      점검 완료
+                    </span>
                   </>
                 )}
               </div>
+
               {/* 상단 우 */}
-              <div style={{ position: "absolute", right: 18, top: 18 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#0009", color: "#e7e9fb", fontWeight: 800, fontSize: 12.5, padding: "7px 13px", borderRadius: 10, backdropFilter: "blur(6px)" }}>
+              <div className="absolute right-[18px] top-[18px]">
+                <span className="z-stage-chip">
                   {step === 1 ? "⧉ 인식 준비 중" : step === 2 ? "◌ 움직임 분석 중" : "✓ 확인 완료"}
                 </span>
               </div>
+
               {/* 중앙 */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  padding: "0 30px",
-                }}
-              >
+              <div className="absolute inset-0 flex flex-col items-center justify-center px-[30px] text-center">
                 {step === 3 ? (
                   <>
-                    <div
-                      style={{
-                        width: 96,
-                        height: 96,
-                        borderRadius: "50%",
-                        background: "#41cb96",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#fff",
-                        fontSize: 46,
-                        boxShadow: "0 0 0 10px #2fb57238,0 0 40px #2fb57266",
-                        marginBottom: 20,
-                      }}
-                    >
+                    <div className="mb-5 flex size-24 items-center justify-center rounded-full bg-[#41cb96] text-[46px] text-white shadow-[0_0_0_10px_#2fb57238,0_0_40px_#2fb57266]">
                       ✓
                     </div>
-                    <div style={{ color: "#fff", fontSize: 26, fontWeight: 800, textShadow: "0 2px 10px #0008" }}>
+                    <div className="text-[26px] font-extrabold text-white [text-shadow:0_2px_10px_#0008]">
                       점검이 완료되었어요
                     </div>
                   </>
                 ) : (
                   <>
                     <FaceFrame moving={step === 2} />
-                    <div style={{ color: "#fff", fontSize: 24, fontWeight: 800, textShadow: "0 2px 10px #0008", marginBottom: 8 }}>
-                      {step === 1 ? "얼굴을 프레임 안에 맞춰 주세요" : "고개를 천천히 좌우로 움직여 주세요"}
+                    <div className="mb-2 text-2xl font-extrabold text-white [text-shadow:0_2px_10px_#0008]">
+                      {step === 1
+                        ? "얼굴을 프레임 안에 맞춰 주세요"
+                        : "고개를 천천히 좌우로 움직여 주세요"}
                     </div>
-                    <div style={{ color: "#ffffffdd", fontSize: 14.5, lineHeight: 1.55, textShadow: "0 1px 8px #0009" }}>
+                    <div className="text-[14.5px] leading-[1.55] text-white/85 [text-shadow:0_1px_8px_#0009]">
                       {step === 1
                         ? "얼굴과 어깨가 프레임 안에 보이도록 위치를 조정해 주세요"
                         : "얼굴 각도와 움직임이 잘 인식되는지 확인하고 있어요"}
@@ -128,67 +99,81 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
                   </>
                 )}
               </div>
-              {/* 카메라 칩 */}
-              <div style={{ position: "absolute", left: 18, bottom: 18, display: "inline-flex", alignItems: "center", gap: 7, background: "#0009", color: "#e7e9fb", fontSize: 12.5, fontWeight: 700, padding: "8px 13px", borderRadius: 10, backdropFilter: "blur(6px)" }}>
+
+              <div className="absolute bottom-[18px] left-[18px] z-stage-chip font-bold">
                 🎥 카메라 · 720p
               </div>
             </div>
           </div>
 
           {/* 우측 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={cardBox}>
-              <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 15 }}>장치 확인</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+          <div className="flex flex-col gap-4">
+            <div className="z-card-lg px-[22px] py-5">
+              <div className="mb-[15px] text-base font-extrabold">장치 확인</div>
+              <div className="flex flex-col gap-[13px]">
                 {["브라우저 · Chrome", "카메라 · 720p 로지텍", "마이크 입력 레벨"].map((t) => (
-                  <div key={t} style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <span style={checkMark}>✓</span>
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{t}</span>
+                  <div key={t} className="flex items-center gap-[11px]">
+                    <span className="z-check">✓</span>
+                    <span className="flex-1 text-sm font-semibold">{t}</span>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 26, paddingLeft: 35 }}>
+                <div className="flex h-[26px] items-end gap-[3px] pl-[35px]">
                   {MIC_BARS.map((b, i) => (
                     <span
                       key={i}
-                      style={{ width: 6, borderRadius: 3, background: color.primary, animation: `zLevel ${b.duration}s ease-in-out ${b.delay}s infinite` }}
+                      className="w-1.5 rounded-[3px] bg-primary"
+                      style={{ animation: `zLevel ${b.duration}s ease-in-out ${b.delay}s infinite` }}
                     />
                   ))}
                 </div>
                 {step === 3 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <span style={checkMark}>✓</span>
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>얼굴 인식 및 움직임 확인 완료</span>
+                  <div className="flex items-center gap-[11px]">
+                    <span className="z-check">✓</span>
+                    <span className="flex-1 text-sm font-semibold">
+                      얼굴 인식 및 움직임 확인 완료
+                    </span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div style={{ ...cardBox, display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 13, color: color.textFaint, fontWeight: 700 }}>카메라</div>
-              <div style={deviceRow}>Logitech C920 HD</div>
-              <div style={{ fontSize: 13, color: color.textFaint, fontWeight: 700, marginTop: 4 }}>마이크</div>
-              <div style={deviceRow}>기본 - 내장 마이크</div>
+            <div className="z-card-lg flex flex-col gap-2 px-[22px] py-[18px]">
+              <div className="text-[13px] font-bold text-ink-faint">카메라</div>
+              <div className="flex items-center justify-between rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm">
+                Logitech C920 HD
+              </div>
+              <div className="mt-1 text-[13px] font-bold text-ink-faint">마이크</div>
+              <div className="flex items-center justify-between rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm">
+                기본 - 내장 마이크
+              </div>
             </div>
 
-            <div style={{ background: color.bg, border: `1px solid ${color.borderMint}`, borderRadius: 20, padding: "18px 20px", display: "flex", gap: 13 }}>
-              <span style={{ flexShrink: 0, color: color.primary, fontSize: 20 }}>⧉</span>
+            <div className="flex gap-[13px] rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px]">
+              <span className="shrink-0 text-xl text-primary">⧉</span>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 13.5, marginBottom: 5 }}>이렇게 활용돼요</div>
-                <p style={{ margin: 0, color: color.textFaint, fontSize: 12.5, lineHeight: 1.6 }}>
-                  카메라는 수업 중 표정, 시선, 고개 움직임 등을 분석해 이해도와 참여도를 파악하는 데 사용돼요. 분석 결과는{" "}
-                  <span style={{ color: color.primary, fontWeight: 700 }}>본인에게만</span> 제공되며 안전하게 보호됩니다.
+                <div className="mb-[5px] text-[13.5px] font-extrabold">이렇게 활용돼요</div>
+                <p className="text-[12.5px] leading-[1.6] text-ink-faint">
+                  카메라는 수업 중 표정, 시선, 고개 움직임 등을 분석해 이해도와 참여도를 파악하는 데
+                  사용돼요. 분석 결과는 <span className="font-bold text-primary">본인에게만</span>{" "}
+                  제공되며 안전하게 보호됩니다.
                 </p>
               </div>
             </div>
 
-            <div style={{ flex: 1 }} />
-            <div style={{ display: "flex", gap: 12 }}>
+            <div className="flex-1" />
+            <div className="flex gap-3">
               {step < 3 ? (
-                <button onClick={next} style={enterBtn}>
+                <button
+                  onClick={() => setStep((s) => (s < 3 ? ((s + 1) as 2 | 3) : s))}
+                  className="z-btn z-btn-primary z-btn-block"
+                >
                   다음 단계
                 </button>
               ) : (
-                <button onClick={() => router.push(`/room/${inviteCode}`)} style={enterBtn}>
+                <button
+                  onClick={() => router.push(`/room/${inviteCode}`)}
+                  className="z-btn z-btn-primary z-btn-block"
+                >
                   수업 입장하기
                 </button>
               )}
@@ -200,81 +185,20 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
   );
 }
 
+/** 얼굴 정렬 가이드 프레임 (모서리 4개 + 좌우 화살표) */
 function FaceFrame({ moving }: { moving: boolean }) {
-  const corner = { position: "absolute" as const, width: 40, height: 40 };
   return (
-    <div style={{ position: "relative", width: 230, height: 270, marginBottom: 22 }}>
-      <span style={{ ...corner, top: 0, left: 0, borderTop: "3px solid #fff", borderLeft: "3px solid #fff", borderTopLeftRadius: 16 }} />
-      <span style={{ ...corner, top: 0, right: 0, borderTop: "3px solid #fff", borderRight: "3px solid #fff", borderTopRightRadius: 16 }} />
-      <span style={{ ...corner, bottom: 0, left: 0, borderBottom: "3px solid #fff", borderLeft: "3px solid #fff", borderBottomLeftRadius: 16 }} />
-      <span style={{ ...corner, bottom: 0, right: 0, borderBottom: "3px solid #fff", borderRight: "3px solid #fff", borderBottomRightRadius: 16 }} />
+    <div className="relative mb-[22px] h-[270px] w-[230px]">
+      <span className="absolute left-0 top-0 size-10 rounded-tl-2xl border-l-[3px] border-t-[3px] border-white" />
+      <span className="absolute right-0 top-0 size-10 rounded-tr-2xl border-r-[3px] border-t-[3px] border-white" />
+      <span className="absolute bottom-0 left-0 size-10 rounded-bl-2xl border-b-[3px] border-l-[3px] border-white" />
+      <span className="absolute bottom-0 right-0 size-10 rounded-br-2xl border-b-[3px] border-r-[3px] border-white" />
       {moving && (
         <>
-          <span style={{ position: "absolute", left: -64, top: "50%", transform: "translateY(-50%)", color: "#ffffffbb", fontSize: 30 }}>‹</span>
-          <span style={{ position: "absolute", right: -64, top: "50%", transform: "translateY(-50%)", color: "#ffffffbb", fontSize: 30 }}>›</span>
+          <span className="absolute -left-16 top-1/2 -translate-y-1/2 text-3xl text-white/70">‹</span>
+          <span className="absolute -right-16 top-1/2 -translate-y-1/2 text-3xl text-white/70">›</span>
         </>
       )}
     </div>
   );
 }
-
-const backBtn = {
-  width: 44,
-  height: 44,
-  borderRadius: 13,
-  border: `1px solid ${color.borderMuted}`,
-  background: "#fff",
-  cursor: "pointer",
-  fontSize: 17,
-  color: color.textSub,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  boxShadow: "0 2px 8px rgba(24,74,62,.05)",
-} as const;
-
-const cardBox = {
-  background: "#fff",
-  border: `1px solid ${color.border}`,
-  borderRadius: 20,
-  padding: "20px 22px",
-  boxShadow: "0 4px 22px rgba(24,74,62,.05)",
-} as const;
-
-const checkMark = {
-  width: 26,
-  height: 26,
-  borderRadius: 8,
-  background: color.primarySoft,
-  color: color.primary,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 900,
-  fontSize: 14,
-} as const;
-
-const deviceRow = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "12px 15px",
-  border: `1px solid #e3eeea`,
-  borderRadius: 12,
-  fontSize: 14,
-  background: color.surfaceFaint,
-} as const;
-
-const enterBtn = {
-  flex: 1,
-  padding: 15,
-  borderRadius: 14,
-  border: "none",
-  background: color.primary,
-  color: "#fff",
-  fontWeight: 800,
-  fontSize: 15,
-  cursor: "pointer",
-  fontFamily: "inherit",
-} as const;

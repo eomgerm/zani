@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { color } from "@/shared/lib/theme";
 import { lectures } from "./fixtures";
 
 const TOTAL_SECONDS = 2 * 3600 + 5 * 60 + 30; // 2:05:30
@@ -15,6 +14,9 @@ function pctToTime(p: number) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
 }
+
+const darkBtnCls =
+  "z-btn size-[38px] shrink-0 rounded-[11px] border border-panel-line-soft bg-panel-btn text-base text-panel-text-faint";
 
 /**
  * 영상 편집기 · 구간 컷. 타임라인에서 구간을 선택해 잘라낸다.
@@ -31,91 +33,105 @@ export function VideoEditorScreen({ lectureId }: { lectureId: string }) {
   const removed = cuts.reduce((sum, c) => sum + (c.e - c.s), 0);
   const remainPct = Math.max(0, 100 - removed);
 
-  const applyCut = () => {
-    if (hi - lo <= 0) return;
-    setCuts((prev) => [...prev, { s: lo, e: hi }]);
-  };
-
   return (
-    <div style={{ minHeight: "100vh", background: color.inkPanel, color: color.inkText, display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 24px", borderBottom: `1px solid ${color.inkBorder}` }}>
-        <Link href={`/my-lectures/${lecture.id}/report`} style={darkBtn}>
+    <div className="flex min-h-screen flex-col bg-panel text-panel-text">
+      <div className="flex items-center gap-3.5 border-b border-panel-line px-6 py-4">
+        <Link href={`/my-lectures/${lecture.id}/report`} className={darkBtnCls}>
           ←
         </Link>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 17 }}>영상 편집기 · 구간 컷</div>
-          <div style={{ color: color.inkTextMuted, fontSize: 12.5 }}>{lecture.title} · 2:05:30</div>
+        <div className="flex-1">
+          <div className="text-[17px] font-extrabold">영상 편집기 · 구간 컷</div>
+          <div className="text-[12.5px] text-panel-text-muted">{lecture.title} · 2:05:30</div>
         </div>
-        <Link href={`/my-lectures/${lecture.id}/report`} style={{ ...darkBtn, width: "auto", padding: "11px 18px", fontSize: 13.5, fontWeight: 800 }}>
+        <Link
+          href={`/my-lectures/${lecture.id}/report`}
+          className="z-btn rounded-[11px] border border-panel-line-soft bg-panel-btn px-[18px] py-[11px] text-[13.5px] text-panel-text-faint"
+        >
           취소
         </Link>
-        <button
-          style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: color.primary, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 13.5, fontFamily: "inherit" }}
-        >
+        <button className="z-btn z-btn-primary rounded-[11px] px-5 py-[11px] text-[13.5px]">
           저장
         </button>
       </div>
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", maxWidth: 1200, width: "100%", margin: "0 auto", padding: "26px 24px", gap: 22, boxSizing: "border-box" }}>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-[22px] px-6 py-[26px]">
         {/* 미리보기 */}
-        <div style={{ background: "#161a2e", border: `1px solid ${color.inkBorder}`, borderRadius: 16, aspectRatio: "16/7", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
-          <div style={{ fontFamily: "var(--font-space-mono), monospace", color: "#54eab0", fontSize: 30, fontWeight: 800 }}>
-            {lecture.title}
-          </div>
-          <span style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", width: 54, height: 54, borderRadius: "50%", background: "#ffffff22", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 20, cursor: "pointer" }}>
+        <div className="relative flex aspect-[16/7] items-center justify-center overflow-hidden rounded-2xl border border-panel-line bg-panel-video">
+          <div className="font-mono text-[30px] font-extrabold text-primary-bright">{lecture.title}</div>
+          <span className="absolute bottom-4 left-1/2 flex size-[54px] -translate-x-1/2 cursor-pointer items-center justify-center rounded-full bg-white/[.13] text-xl text-white">
             ▶
           </span>
         </div>
 
         {/* 타임라인 */}
-        <div style={{ background: color.inkPanel2, border: `1px solid ${color.inkBorder}`, borderRadius: 16, padding: "20px 22px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: 14.5 }}>
-              타임라인 · 자를 구간을 선택하세요{" "}
-              <span style={{ color: color.inkTextMuted, fontWeight: 600, fontSize: 12.5, marginLeft: 6 }}>
+        <div className="rounded-2xl border border-panel-line bg-panel-2 px-[22px] py-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5">
+            <div className="text-[14.5px] font-extrabold">
+              타임라인 · 자를 구간을 선택하세요
+              <span className="ml-1.5 text-[12.5px] font-semibold text-panel-text-muted">
                 선택 {pctToTime(lo)} – {pctToTime(hi)}
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 12, color: color.inkTextMuted }}>
-                남은 길이 <b style={{ color: "#54eab0" }}>{pctToTime(remainPct)}</b>
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-panel-text-muted">
+                남은 길이 <b className="text-primary-bright">{pctToTime(remainPct)}</b>
               </span>
               <button
-                onClick={applyCut}
-                style={{ padding: "8px 14px", borderRadius: 9, border: "none", background: color.red, color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 12.5, fontFamily: "inherit" }}
+                onClick={() => hi - lo > 0 && setCuts((prev) => [...prev, { s: lo, e: hi }])}
+                className="z-btn z-btn-danger rounded-[9px] px-3.5 py-2 text-[12.5px]"
               >
                 ✂ 선택 구간 자르기
               </button>
             </div>
           </div>
 
-          <div style={{ position: "relative", height: 64, background: color.inkPanel, borderRadius: 10, overflow: "hidden", border: `1px solid ${color.inkBorder}` }}>
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", gap: 2, padding: "0 4px" }}>
-              <div style={{ flex: 1, height: 38, background: "repeating-linear-gradient(90deg,#2a2f4e,#2a2f4e 3px,#232744 3px,#232744 6px)", borderRadius: 4 }} />
+          <div className="relative h-16 overflow-hidden rounded-[10px] border border-panel-line bg-panel">
+            <div className="absolute inset-0 flex items-center gap-0.5 px-1">
+              <div className="h-[38px] flex-1 rounded [background:repeating-linear-gradient(90deg,#2a2f4e,#2a2f4e_3px,#232744_3px,#232744_6px)]" />
             </div>
             {cuts.map((c, i) => (
               <div
                 key={i}
-                style={{ position: "absolute", top: 0, bottom: 0, left: `${c.s}%`, width: `${c.e - c.s}%`, background: "#e0455f55", borderLeft: `2px solid ${color.red}`, borderRight: `2px solid ${color.red}` }}
+                className="absolute inset-y-0 border-x-2 border-danger bg-danger/35"
+                style={{ left: `${c.s}%`, width: `${c.e - c.s}%` }}
               />
             ))}
             <div
-              style={{ position: "absolute", top: 0, bottom: 0, left: `${lo}%`, width: `${hi - lo}%`, background: "#7c6bf033", border: `2px solid ${color.purple}`, borderRadius: 6 }}
+              className="absolute inset-y-0 rounded-md border-2 border-violet bg-violet/20"
+              style={{ left: `${lo}%`, width: `${hi - lo}%` }}
             />
           </div>
 
-          <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11.5, color: color.inkTextMuted, width: 60, flexShrink: 0 }}>시작 {start}%</span>
-              <input type="range" min={0} max={100} value={start} onChange={(e) => setStart(+e.target.value)} style={{ flex: 1, accentColor: color.purple, cursor: "pointer" }} />
+          <div className="mt-3.5 flex flex-col gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="w-[60px] shrink-0 text-[11.5px] text-panel-text-muted">
+                시작 {start}%
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={start}
+                onChange={(e) => setStart(+e.target.value)}
+                className="flex-1 cursor-pointer accent-violet"
+              />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11.5, color: color.inkTextMuted, width: 60, flexShrink: 0 }}>끝 {end}%</span>
-              <input type="range" min={0} max={100} value={end} onChange={(e) => setEnd(+e.target.value)} style={{ flex: 1, accentColor: color.purple, cursor: "pointer" }} />
+            <div className="flex items-center gap-2.5">
+              <span className="w-[60px] shrink-0 text-[11.5px] text-panel-text-muted">
+                끝 {end}%
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={end}
+                onChange={(e) => setEnd(+e.target.value)}
+                className="flex-1 cursor-pointer accent-violet"
+              />
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: color.inkTextMuted, marginTop: 8, fontFamily: "var(--font-space-mono), monospace" }}>
+          <div className="mt-2 flex justify-between font-mono text-[11px] text-panel-text-muted">
             <span>00:00</span>
             <span>30:00</span>
             <span>1:00:00</span>
@@ -124,17 +140,20 @@ export function VideoEditorScreen({ lectureId }: { lectureId: string }) {
           </div>
 
           {cuts.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 12, color: color.inkTextMuted, marginBottom: 8 }}>잘라낸 구간</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="mt-4">
+              <div className="mb-2 text-xs text-panel-text-muted">잘라낸 구간</div>
+              <div className="flex flex-wrap gap-2.5">
                 {cuts.map((c, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "#2a1e2c", border: "1px solid #5a3040", borderRadius: 9, padding: "8px 12px", fontSize: 12.5 }}>
-                    <span style={{ color: "#ff8a9f", fontWeight: 800, fontFamily: "var(--font-space-mono), monospace" }}>
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 rounded-[9px] border border-[#5a3040] bg-[#2a1e2c] px-3 py-2 text-[12.5px]"
+                  >
+                    <span className="font-mono font-extrabold text-danger-light">
                       {pctToTime(c.s)} – {pctToTime(c.e)}
                     </span>
                     <button
                       onClick={() => setCuts((prev) => prev.filter((_, j) => j !== i))}
-                      style={{ border: "none", background: "none", color: "#ff8a9f", cursor: "pointer" }}
+                      className="cursor-pointer border-0 bg-transparent text-danger-light"
                     >
                       ✕
                     </button>
@@ -148,19 +167,3 @@ export function VideoEditorScreen({ lectureId }: { lectureId: string }) {
     </div>
   );
 }
-
-const darkBtn = {
-  width: 38,
-  height: 38,
-  borderRadius: 11,
-  border: `1px solid ${color.inkBorderSoft}`,
-  background: "#1c2036",
-  cursor: "pointer",
-  color: color.inkTextFaint,
-  fontSize: 16,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-  flexShrink: 0,
-} as const;

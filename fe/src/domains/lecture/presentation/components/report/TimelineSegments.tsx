@@ -1,4 +1,3 @@
-import { color } from "@/shared/lib/theme";
 import { focusColor, focusBg, type LearnSegment } from "../../fixtures";
 
 interface TimelineSegmentsProps {
@@ -11,7 +10,7 @@ interface TimelineSegmentsProps {
 /** 리포트 타임라인 구간 카드 가로 스크롤. 구간을 누르면 상세 모달을 연다. */
 export function TimelineSegments({ segments, role, activeSeg, onSelect }: TimelineSegmentsProps) {
   return (
-    <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
+    <div className="flex gap-2.5 overflow-x-auto pb-1.5">
       {segments.map((s, i) => {
         const score = role === "instructor" ? s.fAll : s.fMine;
         const active = i === activeSeg;
@@ -20,39 +19,22 @@ export function TimelineSegments({ segments, role, activeSeg, onSelect }: Timeli
           <div
             key={i}
             onClick={() => onSelect(i)}
-            style={{
-              flexShrink: 0,
-              width: 168,
-              border: `1px solid ${active ? "#c6eedf" : color.borderLight}`,
-              background: active ? color.primarySofter : "#fff",
-              borderRadius: 13,
-              padding: "13px 14px",
-              cursor: "pointer",
-            }}
+            className={`w-[168px] shrink-0 cursor-pointer rounded-[13px] border px-3.5 py-[13px] ${
+              active ? "border-line-primary bg-primary-softer" : "border-line-light bg-surface"
+            }`}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
-              <span style={{ fontFamily: "var(--font-space-mono), monospace", fontSize: 11, color: color.textFainter, fontWeight: 700 }}>
-                {s.range}
-              </span>
+            <div className="mb-[9px] flex items-center justify-between">
+              <span className="font-mono text-[11px] font-bold text-ink-fainter">{s.range}</span>
               <span
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  color: c,
-                  background: focusBg(score),
-                  border: `1.5px solid ${c}`,
-                }}
+                className="flex size-[26px] items-center justify-center rounded-full border-[1.5px] text-xs font-black"
+                style={{ color: c, background: focusBg(score), borderColor: c }}
               >
                 {score}
               </span>
             </div>
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#3a3f5c", lineHeight: 1.4 }}>{s.title}</div>
+            <div className="text-[12.5px] font-extrabold leading-[1.4] text-[#3a3f5c]">
+              {s.title}
+            </div>
           </div>
         );
       })}

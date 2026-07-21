@@ -2,26 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { color, shadow } from "@/shared/lib/theme";
 import { TERMS, type TermDef } from "./fixtures";
 
 type TermKey = TermDef["key"];
 
-function checkboxStyle(on: boolean) {
-  return {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 14,
-    fontWeight: 900,
-    color: "#fff",
-    background: on ? color.primary : "#fff",
-    border: `1.5px solid ${on ? color.primary : "#d3d7ea"}`,
-  } as const;
+/** 체크박스 사각형. 체크 여부에 따라 채움/테두리가 바뀐다. */
+function CheckBox({ on }: { on: boolean }) {
+  return (
+    <span
+      className={`flex size-6 shrink-0 items-center justify-center rounded-lg border-[1.5px] text-sm font-black text-white ${
+        on ? "border-primary bg-primary" : "border-[#d3d7ea] bg-surface"
+      }`}
+    >
+      {on ? "✓" : ""}
+    </span>
+  );
 }
 
 /**
@@ -39,123 +34,56 @@ export function TermsScreen() {
     setChecks(allOn ? { a: false, b: false, c: false } : { a: true, b: true, c: true });
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        background: "#f1f5f4",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          background: "#fff",
-          border: `1px solid ${color.border}`,
-          borderRadius: 24,
-          padding: "34px 32px",
-          boxShadow: shadow.soft,
-        }}
-      >
-        <h1 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 20px" }}>
-          ZANI 필수 약관 및 개인정보 처리 동의
-        </h1>
+    <div className="flex min-h-screen items-center justify-center bg-[#f1f5f4] p-6">
+      <div className="w-full max-w-[520px] rounded-3xl border border-line bg-surface px-8 py-[34px] shadow-soft">
+        <h1 className="mb-5 text-[22px] font-extrabold">ZANI 필수 약관 및 개인정보 처리 동의</h1>
 
         <label
           onClick={toggleAll}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "15px 16px",
-            border: `1.5px solid ${color.borderMuted}`,
-            borderRadius: 14,
-            cursor: "pointer",
-            marginBottom: 14,
-            background: "#fff",
-          }}
+          className="mb-3.5 flex cursor-pointer items-center gap-3 rounded-[14px] border-[1.5px] border-line-muted bg-surface px-4 py-[15px]"
         >
-          <span style={checkboxStyle(allOn)}>{allOn ? "✓" : ""}</span>
-          <span style={{ fontWeight: 800, fontSize: 15 }}>모든 필수 약관에 동의합니다</span>
+          <CheckBox on={allOn} />
+          <span className="text-[15px] font-extrabold">모든 필수 약관에 동의합니다</span>
         </label>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {TERMS.map((t) => {
-            const on = checks[t.key];
-            return (
-              <label
-                key={t.key}
-                onClick={() => toggle(t.key)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "13px 16px",
-                  border: `1px solid ${color.borderMint}`,
-                  borderRadius: 12,
-                  cursor: "pointer",
+        <div className="flex flex-col gap-2.5">
+          {TERMS.map((t) => (
+            <label
+              key={t.key}
+              onClick={() => toggle(t.key)}
+              className="flex cursor-pointer items-center gap-3 rounded-xl border border-line-mint px-4 py-[13px]"
+            >
+              <CheckBox on={checks[t.key]} />
+              <span className="flex-1">
+                <span className="mr-1.5 text-[13px] font-bold text-pink">필수</span>
+                {t.label}
+              </span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDetail(t);
                 }}
+                className="cursor-pointer text-[13px] font-bold text-primary underline"
               >
-                <span style={checkboxStyle(on)}>{on ? "✓" : ""}</span>
-                <span style={{ flex: 1 }}>
-                  <span style={{ color: color.pink, fontWeight: 700, fontSize: 13, marginRight: 6 }}>필수</span>
-                  {t.label}
-                </span>
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDetail(t);
-                  }}
-                  style={{
-                    color: color.primary,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    textDecoration: "underline",
-                    cursor: "pointer",
-                  }}
-                >
-                  보기
-                </span>
-              </label>
-            );
-          })}
+                보기
+              </span>
+            </label>
+          ))}
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginTop: 26 }}>
+        <div className="mt-[26px] flex gap-3">
           <button
             onClick={() => router.push("/login")}
-            style={{
-              flex: 1,
-              padding: 14,
-              border: `1px solid ${color.borderMuted}`,
-              borderRadius: 14,
-              background: "#fff",
-              color: color.textMuted,
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
+            className="z-btn z-btn-outline flex-1 rounded-[14px] py-3.5 font-bold"
           >
             돌아가기
           </button>
           <button
             onClick={() => allOn && router.push("/home")}
             disabled={!allOn}
-            style={{
-              flex: 1,
-              padding: 14,
-              borderRadius: 14,
-              border: "none",
-              cursor: allOn ? "pointer" : "not-allowed",
-              fontWeight: 800,
-              fontFamily: "inherit",
-              fontSize: 15,
-              background: allOn ? color.primary : "#c7cbe6",
-              color: "#fff",
-            }}
+            className={`z-btn flex-[1.4] rounded-[14px] py-3.5 text-[15px] text-white ${
+              allOn ? "z-btn-primary" : "cursor-not-allowed bg-disabled"
+            }`}
           >
             시작하기
           </button>
@@ -163,87 +91,27 @@ export function TermsScreen() {
       </div>
 
       {detail && (
-        <div
-          onClick={() => setDetail(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(28,32,58,.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-            zIndex: 120,
-          }}
-        >
+        <div onClick={() => setDetail(null)} className="z-backdrop z-[120] bg-[rgba(28,32,58,.5)]">
           <div
             onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 640,
-              maxHeight: "82vh",
-              background: "#fff",
-              borderRadius: 20,
-              boxShadow: "0 24px 60px rgba(28,32,58,.4)",
-              display: "flex",
-              flexDirection: "column",
-              animation: "zPop .18s",
-            }}
+            className="flex max-h-[82vh] w-full max-w-[640px] animate-[zPop_.18s] flex-col rounded-[20px] bg-surface shadow-[0_24px_60px_rgba(28,32,58,.4)]"
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                padding: "22px 26px",
-                borderBottom: `1px solid ${color.borderLight}`,
-              }}
-            >
-              <div style={{ fontWeight: 800, fontSize: 17 }}>{detail.label}</div>
+            <div className="flex items-center justify-between gap-3 border-b border-line-light px-[26px] py-[22px]">
+              <div className="text-[17px] font-extrabold">{detail.label}</div>
               <button
                 onClick={() => setDetail(null)}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  border: `1px solid ${color.borderMuted}`,
-                  background: "#fff",
-                  cursor: "pointer",
-                  color: color.textFaint,
-                  flexShrink: 0,
-                }}
+                className="size-[34px] shrink-0 cursor-pointer rounded-[10px] border border-line-muted bg-surface text-ink-faint"
               >
                 ✕
               </button>
             </div>
-            <div
-              style={{
-                padding: "22px 26px",
-                overflowY: "auto",
-                fontSize: 13.5,
-                color: color.textLabel,
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.7,
-              }}
-            >
+            <div className="overflow-y-auto whitespace-pre-wrap px-[26px] py-[22px] text-[13.5px] leading-[1.7] text-ink-label">
               {detail.body}
             </div>
-            <div style={{ padding: "16px 26px", borderTop: `1px solid ${color.borderLight}` }}>
+            <div className="border-t border-line-light px-[26px] py-4">
               <button
                 onClick={() => setDetail(null)}
-                style={{
-                  width: "100%",
-                  padding: 13,
-                  borderRadius: 13,
-                  border: "none",
-                  background: color.primary,
-                  color: "#fff",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  fontSize: 14.5,
-                }}
+                className="z-btn z-btn-primary w-full rounded-[13px] py-[13px] text-[14.5px]"
               >
                 확인
               </button>

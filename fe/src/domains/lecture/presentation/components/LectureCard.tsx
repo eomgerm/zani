@@ -1,12 +1,10 @@
 import Link from "next/link";
-import { color, shadow } from "@/shared/lib/theme";
 import { thumbPalette, type Lecture } from "../fixtures";
 import { statusInfo } from "../status";
 
 /** 상태에 따라 카드 클릭 시 이동할 경로 (LIVE→강의실, 그 외→리포트) */
 function hrefFor(l: Lecture) {
-  if (l.status === "LIVE") return `/room/${l.id}`;
-  return `/my-lectures/${l.id}/report`;
+  return l.status === "LIVE" ? `/room/${l.id}` : `/my-lectures/${l.id}/report`;
 }
 
 export function LectureCard({ lecture, index }: { lecture: Lecture; index: number }) {
@@ -15,101 +13,44 @@ export function LectureCard({ lecture, index }: { lecture: Lecture; index: numbe
   const dateDot = lecture.date.replace(/-/g, ".").slice(2);
 
   return (
-    <Link
-      href={hrefFor(lecture)}
-      style={{
-        display: "block",
-        background: "#fff",
-        border: `1px solid ${color.border}`,
-        borderRadius: 18,
-        padding: 14,
-        boxShadow: shadow.card,
-        textDecoration: "none",
-        color: color.text,
-      }}
-    >
+    <Link href={hrefFor(lecture)} className="z-card block p-3.5 text-ink no-underline">
       <div
-        style={{
-          position: "relative",
-          aspectRatio: "16/9",
-          borderRadius: 12,
-          background: palette.bg,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-        }}
+        className="relative flex aspect-video items-center justify-center overflow-hidden rounded-xl"
+        style={{ background: palette.bg }}
       >
         <span
-          style={{
-            fontFamily: "var(--font-space-mono), monospace",
-            fontWeight: 700,
-            fontSize: 15,
-            color: palette.fg,
-            padding: "0 16px",
-            textAlign: "center",
-            opacity: 0.85,
-          }}
+          className="px-4 text-center font-mono text-[15px] font-bold opacity-85"
+          style={{ color: palette.fg }}
         >
           {lecture.title}
         </span>
-        <div style={{ position: "absolute", left: 14, top: 14 }}>
+        <div className="absolute left-3.5 top-3.5">
           <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 5,
-              background: si.bg,
-              color: si.fg,
-              fontSize: 11,
-              fontWeight: 800,
-              padding: "4px 9px",
-              borderRadius: 7,
-            }}
+            className="z-pill px-[9px] py-1 text-[11px]"
+            style={{ background: si.bg, color: si.fg }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: si.dot }} />
+            <span className="size-1.5 rounded-full" style={{ background: si.dot }} />
             {si.label}
           </span>
         </div>
         {lecture.status === "LIVE" && (
-          <div style={{ position: "absolute", right: 14, top: 14 }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                background: color.red,
-                color: "#fff",
-                fontSize: 11,
-                fontWeight: 800,
-                padding: "4px 9px",
-                borderRadius: 7,
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />
+          <div className="absolute right-3.5 top-3.5">
+            <span className="z-pill bg-danger px-[9px] py-1 text-[11px] text-white">
+              <span className="size-1.5 rounded-full bg-white" />
               LIVE
             </span>
           </div>
         )}
       </div>
-      <div
-        style={{
-          fontWeight: 800,
-          fontSize: 17,
-          lineHeight: 1.4,
-          padding: "16px 6px 0",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
+
+      <div className="truncate px-1.5 pt-4 text-[17px] font-extrabold leading-[1.4]">
         {lecture.title}
       </div>
-      <div style={{ height: 1, background: color.borderLight, margin: "14px 6px" }} />
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 6px", color: color.textFainter, fontSize: 13 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>🕐 {lecture.dur}</span>
-        <span style={{ width: 1, height: 12, background: color.borderMuted }} />
-        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>📅 {dateDot}</span>
+      <div className="mx-1.5 my-3.5 h-px bg-line-light" />
+      <div className="flex items-center gap-3.5 px-1.5 text-[13px] text-ink-fainter">
+        <span className="flex items-center gap-1.5">🕐 {lecture.dur}</span>
+        <span className="h-3 w-px bg-line-muted" />
+        <span className="flex items-center gap-1.5">📅 {dateDot}</span>
       </div>
     </Link>
   );

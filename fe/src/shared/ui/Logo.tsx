@@ -1,5 +1,7 @@
 import Image from "next/image";
-import { LOGO_SRC } from "@/shared/lib/theme";
+
+/** 브랜드 로고 이미지 경로 (public/brand) */
+export const LOGO_SRC = "/brand/zani-logo.png";
 
 interface LogoProps {
   /** 로고 높이(px). 너비는 비율에 맞춰 자동 */
@@ -18,7 +20,8 @@ export function Logo({ height = 44 }: LogoProps) {
       height={height}
       width={Math.round(height * (1745 / 900))}
       priority
-      style={{ height, width: "auto", display: "block", mixBlendMode: "multiply" }}
+      className="block w-auto mix-blend-multiply"
+      style={{ height }}
     />
   );
 }

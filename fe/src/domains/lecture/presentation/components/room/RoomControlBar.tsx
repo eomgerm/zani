@@ -1,4 +1,3 @@
-import { color } from "@/shared/lib/theme";
 import { reactionEmojis } from "../../fixtures";
 
 interface MeState {
@@ -20,23 +19,11 @@ interface RoomControlBarProps {
   onPreview: () => void;
 }
 
-/** 밝은 배경의 컨트롤 버튼. 활성(끔/공유 등)이면 강조색, 아니면 옅은 회색. */
-function ctlStyle(active: boolean, activeBg: string, activeFg: string) {
-  return {
-    display: "flex",
-    flexDirection: "column" as const,
-    alignItems: "center",
-    gap: 3,
-    padding: "8px 14px",
-    borderRadius: 12,
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontSize: 11.5,
-    fontWeight: 700,
-    background: active ? activeBg : color.bg,
-    color: active ? activeFg : color.textSub,
-  };
+/** 컨트롤 버튼 스타일. 활성(끔/공유 등)이면 강조색, 아니면 옅은 배경. */
+function ctlCls(active: boolean, activeCls: string) {
+  return `flex cursor-pointer flex-col items-center gap-[3px] rounded-xl border-0 px-3.5 py-2 font-sans text-[11.5px] font-bold ${
+    active ? activeCls : "bg-canvas text-ink-sub"
+  }`;
 }
 
 /** 강의실 하단 컨트롤 바(밝은 테마). */
@@ -53,61 +40,39 @@ export function RoomControlBar({
   onPreview,
 }: RoomControlBarProps) {
   return (
-    <div
-      style={{
-        flexShrink: 0,
-        position: "relative",
-        background: "#fff",
-        border: `1px solid ${color.border}`,
-        borderRadius: 16,
-        padding: "11px 18px",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        boxShadow: "0 4px 18px rgba(24,74,62,.05)",
-      }}
-    >
-      <button onClick={onToggleMic} style={ctlStyle(!me.mic, "#fdeeee", color.red)}>
-        <span style={{ fontSize: 19 }}>{me.mic ? "🎤" : "🔇"}</span>
+    <div className="relative flex shrink-0 items-center gap-1.5 rounded-2xl border border-line bg-surface px-[18px] py-[11px] shadow-[0_4px_18px_rgba(24,74,62,.05)]">
+      <button onClick={onToggleMic} className={ctlCls(!me.mic, "bg-danger-softer text-danger")}>
+        <span className="text-[19px]">{me.mic ? "🎤" : "🔇"}</span>
         {me.mic ? "마이크" : "음소거"}
       </button>
-      <button onClick={onToggleCam} style={ctlStyle(!me.cam, "#fdeeee", color.red)}>
-        <span style={{ fontSize: 19 }}>{me.cam ? "🎥" : "📷"}</span>
+      <button onClick={onToggleCam} className={ctlCls(!me.cam, "bg-danger-softer text-danger")}>
+        <span className="text-[19px]">{me.cam ? "🎥" : "📷"}</span>
         {me.cam ? "카메라" : "끔"}
       </button>
-      <button onClick={onToggleShare} style={ctlStyle(sharing, color.primarySoft, color.primaryDeep)}>
-        <span style={{ fontSize: 19 }}>🖥️</span>
+      <button onClick={onToggleShare} className={ctlCls(sharing, "bg-primary-soft text-primary-deep")}>
+        <span className="text-[19px]">🖥️</span>
         {sharing ? "공유 중" : "화면 공유"}
       </button>
-      <button onClick={onToggleHand} style={ctlStyle(me.hand, "#fdf6df", color.amberText)}>
-        <span style={{ fontSize: 19 }}>✋</span>
+      <button onClick={onToggleHand} className={ctlCls(me.hand, "bg-warn-soft text-warn-text")}>
+        <span className="text-[19px]">✋</span>
         손들기
       </button>
-      <div style={{ position: "relative" }}>
-        <button onClick={onToggleReactMenu} style={ctlStyle(reactMenuOpen, color.primarySoft, color.primaryDeep)}>
-          <span style={{ fontSize: 19 }}>😊</span>
+
+      <div className="relative">
+        <button
+          onClick={onToggleReactMenu}
+          className={ctlCls(reactMenuOpen, "bg-primary-soft text-primary-deep")}
+        >
+          <span className="text-[19px]">😊</span>
           반응
         </button>
         {reactMenuOpen && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 64,
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "#fff",
-              border: `1px solid ${color.borderMint}`,
-              borderRadius: 16,
-              padding: "8px 10px",
-              display: "flex",
-              gap: 4,
-              boxShadow: "0 12px 32px rgba(24,74,62,.18)",
-              animation: "zPop .15s",
-              zIndex: 10,
-            }}
-          >
+          <div className="absolute bottom-16 left-1/2 z-10 flex -translate-x-1/2 animate-[zPop_.15s] gap-1 rounded-2xl border border-line-mint bg-surface px-2.5 py-2 shadow-[0_12px_32px_rgba(24,74,62,.18)]">
             {reactionEmojis.map((e) => (
-              <button key={e} style={{ width: 42, height: 42, border: "none", background: "none", borderRadius: 12, fontSize: 22, cursor: "pointer" }}>
+              <button
+                key={e}
+                className="size-[42px] cursor-pointer rounded-xl border-0 bg-transparent text-[22px] hover:bg-primary-soft"
+              >
                 {e}
               </button>
             ))}
@@ -117,23 +82,12 @@ export function RoomControlBar({
 
       <button
         onClick={onPreview}
-        style={{
-          marginLeft: 6,
-          padding: "9px 14px",
-          borderRadius: 11,
-          border: `1px solid ${color.borderMuted}`,
-          background: "#fff",
-          color: color.textFaint,
-          cursor: "pointer",
-          fontSize: 12,
-          fontWeight: 700,
-          fontFamily: "inherit",
-        }}
+        className="z-btn ml-1.5 rounded-[11px] border border-line-muted bg-surface px-3.5 py-[9px] text-xs text-ink-faint"
       >
         {isInstructor ? "집단 알림 미리보기" : "확인 프롬프트 미리보기"}
       </button>
 
-      <div style={{ flex: 1 }} />
+      <div className="flex-1" />
     </div>
   );
 }

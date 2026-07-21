@@ -1,11 +1,9 @@
-import { color } from "@/shared/lib/theme";
-
 interface DistributionBarProps {
   /** 좌측 라벨(예: 이해함/헷갈림/놓침) */
   label: string;
   /** 채움 비율(0~100) */
   percent: number;
-  /** 채움 색 */
+  /** 채움 색 (항목별 런타임 값) */
   fill: string;
   /** 우측 값 텍스트(예: "58%", "4회") */
   value: string;
@@ -25,39 +23,17 @@ export function DistributionBar({
   labelWidth = 52,
 }: DistributionBarProps) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-      <span style={{ width: labelWidth, fontSize: 12, color: color.textMuted }}>
+    <div className="flex items-center gap-[9px]">
+      <span className="text-xs text-ink-muted" style={{ width: labelWidth }}>
         {label}
       </span>
-      <span
-        style={{
-          flex: 1,
-          height: 8,
-          background: "#eef0f7",
-          borderRadius: 6,
-          overflow: "hidden",
-        }}
-      >
+      <span className="h-2 flex-1 overflow-hidden rounded-md bg-[#eef0f7]">
         <span
-          style={{
-            display: "block",
-            height: "100%",
-            width: `${percent}%`,
-            background: fill,
-            borderRadius: 6,
-          }}
+          className="block h-full rounded-md"
+          style={{ width: `${percent}%`, background: fill }}
         />
       </span>
-      <span
-        style={{
-          width: 34,
-          textAlign: "right",
-          fontSize: 12,
-          fontWeight: 700,
-        }}
-      >
-        {value}
-      </span>
+      <span className="w-[34px] text-right text-xs font-bold">{value}</span>
     </div>
   );
 }

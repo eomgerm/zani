@@ -3,26 +3,25 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { color, shadow } from "@/shared/lib/theme";
 import { MOCK_USER } from "@/shared/lib/user";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
 
 type IconName = "home" | "cards" | "gear";
 
-const NAV_ITEMS: { label: string; href: string; icon: IconName; match: string[] }[] = [
-  { label: "홈", href: "/home", icon: "home", match: ["/home"] },
-  { label: "내 강의실", href: "/my-lectures", icon: "cards", match: ["/my-lectures"] },
-  { label: "계정 설정", href: "/settings", icon: "gear", match: ["/settings"] },
+const NAV_ITEMS: { label: string; href: string; icon: IconName }[] = [
+  { label: "홈", href: "/home", icon: "home" },
+  { label: "내 강의실", href: "/my-lectures", icon: "cards" },
+  { label: "계정 설정", href: "/settings", icon: "gear" },
 ];
 
-function NavIcon({ name, stroke }: { name: IconName; stroke: string }) {
+function NavIcon({ name }: { name: IconName }) {
   const common = {
     width: 18,
     height: 18,
     viewBox: "0 0 24 24",
     fill: "none",
-    stroke,
+    stroke: "currentColor",
     strokeWidth: 2,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
@@ -60,91 +59,40 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [popOpen, setPopOpen] = useState(false);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: color.surface }}>
-      <aside
-        style={{
-          width: 246,
-          flexShrink: 0,
-          background: color.surface,
-          borderRight: `1px solid ${color.border}`,
-          display: "flex",
-          flexDirection: "column",
-          padding: "22px 16px",
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-        }}
-      >
-        <div style={{ padding: "0 8px 22px" }}>
+    <div className="flex min-h-screen bg-surface">
+      <aside className="sticky top-0 flex h-screen w-[246px] shrink-0 flex-col border-r border-line px-4 py-[22px]">
+        <div className="px-2 pb-[22px]">
           <Logo height={44} />
         </div>
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <nav className="flex flex-col gap-1">
           {NAV_ITEMS.map((item) => {
-            const active = item.match.some((m) => pathname.startsWith(m));
-            const c = active ? color.primary : "#8388a6";
+            const active = pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 11,
-                  padding: "11px 12px",
-                  borderRadius: 12,
-                  width: "100%",
-                  textDecoration: "none",
-                  fontSize: 14.5,
-                  whiteSpace: "nowrap",
-                  fontWeight: active ? 800 : 600,
-                  background: active ? color.primarySoft : "transparent",
-                  color: c,
-                }}
+                className={`flex w-full items-center gap-[11px] whitespace-nowrap rounded-xl px-3 py-[11px] text-[14.5px] no-underline ${
+                  active
+                    ? "bg-primary-soft font-extrabold text-primary"
+                    : "font-semibold text-[#8388a6]"
+                }`}
               >
-                <NavIcon name={item.icon} stroke={c} />
+                <NavIcon name={item.icon} />
                 {item.label}
               </Link>
             );
           })}
         </nav>
 
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
 
-        <div style={{ position: "relative" }}>
+        <div className="relative">
           {popOpen && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: 60,
-                left: 0,
-                right: 0,
-                background: "#fff",
-                border: `1px solid ${color.border}`,
-                borderRadius: 14,
-                padding: 6,
-                boxShadow: shadow.pop,
-                animation: "zPop .15s",
-              }}
-            >
+            <div className="absolute bottom-[60px] left-0 right-0 animate-[zPop_.15s] rounded-[14px] border border-line bg-surface p-1.5 shadow-pop">
               <button
                 onClick={() => router.push("/login")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "11px 12px",
-                  border: "none",
-                  background: "none",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: color.red,
-                }}
+                className="flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] border-0 bg-transparent px-3 py-[11px] text-left font-sans text-sm font-bold text-danger hover:bg-[#fff0f2]"
               >
                 ↩ 로그아웃
               </button>
@@ -152,54 +100,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
           <button
             onClick={() => setPopOpen((v) => !v)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: 8,
-              border: `1px solid ${color.borderMint}`,
-              background: "#fff",
-              cursor: "pointer",
-              borderRadius: 12,
-              width: "100%",
-              textAlign: "left",
-              fontFamily: "inherit",
-            }}
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-line-mint bg-surface p-2 text-left font-sans"
           >
             <Avatar initial={MOCK_USER.initial} size={36} />
-            <span style={{ minWidth: 0, flex: 1 }}>
-              <span
-                style={{
-                  display: "block",
-                  fontWeight: 700,
-                  fontSize: 13.5,
-                  color: color.text,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px] font-bold text-ink">
                 {MOCK_USER.name}
               </span>
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 11.5,
-                  color: color.textFainter,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
+              <span className="block truncate text-[11.5px] text-ink-fainter">
                 {MOCK_USER.email}
               </span>
             </span>
-            <span style={{ color: "#b7bcd8", fontSize: 12, flexShrink: 0 }}>⋯</span>
+            <span className="shrink-0 text-xs text-ink-quiet">⋯</span>
           </button>
         </div>
       </aside>
 
-      <main style={{ flex: 1, minWidth: 0, padding: "34px 40px", maxWidth: 1180 }}>{children}</main>
+      <main className="min-w-0 max-w-[1180px] flex-1 px-10 py-[34px]">{children}</main>
     </div>
   );
 }
