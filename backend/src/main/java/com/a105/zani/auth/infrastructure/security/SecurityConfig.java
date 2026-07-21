@@ -28,33 +28,24 @@ public class SecurityConfig {
             CorsProperties corsProperties,
             ApiErrorResponseWriter responseWriter)
             throws Exception {
-        RefreshOriginFilter refreshOriginFilter = new RefreshOriginFilter(
-                corsProperties,
-                responseWriter);
+        RefreshOriginFilter refreshOriginFilter = new RefreshOriginFilter(corsProperties, responseWriter);
 
-        http
-                .csrf(csrf -> csrf.disable())
+        http.csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .formLogin(formLogin -> formLogin.disable())
                 .httpBasic(httpBasic -> httpBasic.disable())
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
-                        .requestMatchers(
-                                "/swagger-ui.html",
-                                "/swagger-ui/**",
-                                "/v3/api-docs/**",
-                                "/error")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh")
+                        .permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
-                .addFilterBefore(
-                        refreshOriginFilter,
-                        BearerTokenAuthenticationFilter.class)
+                .addFilterBefore(refreshOriginFilter, BearerTokenAuthenticationFilter.class)
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .jwt(jwt -> jwt.decoder(accessTokenJwtDecoder))
                         .authenticationEntryPoint(authenticationEntryPoint)

@@ -1,11 +1,10 @@
 package com.a105.zani.auth.presentation.cookie;
 
 import java.util.Set;
+import jakarta.validation.constraints.NotBlank;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
-
-import jakarta.validation.constraints.NotBlank;
 
 @Validated
 @ConfigurationProperties(prefix = "auth.cookie")
@@ -15,8 +14,7 @@ public record RefreshTokenCookieProperties(
         boolean secure,
         @NotBlank String sameSite) {
 
-    private static final Set<String> ALLOWED_SAME_SITE_VALUES =
-            Set.of("Strict", "Lax", "None");
+    private static final Set<String> ALLOWED_SAME_SITE_VALUES = Set.of("Strict", "Lax", "None");
 
     public RefreshTokenCookieProperties {
         if (sameSite != null && !ALLOWED_SAME_SITE_VALUES.contains(sameSite)) {

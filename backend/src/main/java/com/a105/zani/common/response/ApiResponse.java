@@ -2,10 +2,11 @@ package com.a105.zani.common.response;
 
 import java.time.Instant;
 
-import com.a105.zani.common.error.ErrorCode;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
+
+import com.a105.zani.common.error.ErrorCode;
 
 @JsonPropertyOrder({"isSuccess", "code", "message", "timestamp", "path", "data"})
 @JsonInclude(JsonInclude.Include.NON_NULL)

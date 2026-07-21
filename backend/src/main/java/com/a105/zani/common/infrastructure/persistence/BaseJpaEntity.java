@@ -1,7 +1,6 @@
 package com.a105.zani.common.infrastructure.persistence;
 
 import java.time.Instant;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.MappedSuperclass;

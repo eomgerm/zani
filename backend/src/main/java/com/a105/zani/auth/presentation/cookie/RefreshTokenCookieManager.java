@@ -4,16 +4,15 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Optional;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
 import com.a105.zani.auth.application.port.IssuedToken;
-
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
 @Component
 public class RefreshTokenCookieManager {
@@ -38,8 +37,7 @@ public class RefreshTokenCookieManager {
 
     public void write(HttpServletResponse response, IssuedToken refreshToken) {
         Duration maxAge = Duration.between(Instant.now(), refreshToken.expiresAt());
-        ResponseCookie cookie = ResponseCookie
-                .from(properties.refreshTokenName(), refreshToken.value())
+        ResponseCookie cookie = ResponseCookie.from(properties.refreshTokenName(), refreshToken.value())
                 .httpOnly(true)
                 .secure(properties.secure())
                 .sameSite(properties.sameSite())
