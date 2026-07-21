@@ -1,0 +1,32 @@
+{
+  "frontend": {
+    "root": "fe/src",
+    "domainRoot": "fe/src/domains",
+    "layers": ["domain", "application", "infrastructure", "presentation"],
+    "domainForbiddenModules": [
+      "react",
+      "next",
+      "axios",
+      "@tanstack/react-query",
+      "zustand"
+    ],
+    "domainForbiddenGlobals": ["localStorage", "sessionStorage", "document.cookie"]
+  },
+  "backend": {
+    "mainRoot": "backend/src/main/java/com/a105/zani",
+    "layers": ["presentation", "application", "domain", "infrastructure"],
+    "applicationTechnicalPackages": ["command", "query", "service"],
+    "domainForbiddenImports": [
+      "org.springframework",
+      "jakarta.persistence",
+      "jakarta.servlet",
+      "feign",
+      "com.querydsl"
+    ],
+    "applicationForbiddenImports": [
+      "jakarta.persistence",
+      "org.springframework.data",
+      "org.springframework.web"
+    ]
+  }
+}

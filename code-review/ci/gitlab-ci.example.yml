@@ -1,0 +1,12 @@
+# Copy this job into .gitlab-ci.yml only after a project runner is available.
+claude_code_review:
+  stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  script:
+    - npm ci
+    - npm run test:code-review
+    - node code-review/bin/review.cjs --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --mr "$CI_MERGE_REQUEST_IID" --publish
+
+# Required protected/masked CI variable:
+# GITLAB_TOKEN: Personal Access Token with api scope
