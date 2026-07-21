@@ -16,6 +16,8 @@ vision = [
     "numpy>=2.0,<3",
 ]
 train = [
+    "onnx>=1.17,<2",
+    "onnxruntime>=1.20,<2",
     "scikit-learn>=1.7,<2",
     "torch>=2.7,<3",
 ]
