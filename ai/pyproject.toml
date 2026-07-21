@@ -47,7 +47,7 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["cv2", "mediapipe", "mediapipe.*"]
+module = ["cv2", "mediapipe", "mediapipe.*", "sklearn", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
