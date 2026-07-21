@@ -17,8 +17,7 @@ import com.a105.zani.auth.application.port.RefreshSessionPort;
 public class RefreshSessionRedisAdapter implements RefreshSessionPort {
 
     private static final String KEY_PREFIX = "auth:refresh:";
-    private static final DefaultRedisScript<Long> ROTATE_SCRIPT = new DefaultRedisScript<>(
-            """
+    private static final DefaultRedisScript<Long> ROTATE_SCRIPT = new DefaultRedisScript<>("""
             local currentSubject = redis.call('GET', KEYS[1])
             if not currentSubject or currentSubject ~= ARGV[1] then
                 return 0
@@ -26,8 +25,7 @@ public class RefreshSessionRedisAdapter implements RefreshSessionPort {
             redis.call('DEL', KEYS[1])
             redis.call('SET', KEYS[2], ARGV[1], 'PX', ARGV[2])
             return 1
-            """,
-            Long.class);
+            """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
 
@@ -36,12 +34,9 @@ public class RefreshSessionRedisAdapter implements RefreshSessionPort {
     }
 
     @Override
-    public boolean rotate(
-            String currentTokenId,
-            String subject,
-            RefreshSession replacement) {
-        long timeToLiveMillis = Duration.between(
-                Instant.now(), replacement.expiresAt()).toMillis();
+    public boolean rotate(String currentTokenId, String subject, RefreshSession replacement) {
+        long timeToLiveMillis =
+                Duration.between(Instant.now(), replacement.expiresAt()).toMillis();
         if (timeToLiveMillis <= 0) {
             return false;
         }

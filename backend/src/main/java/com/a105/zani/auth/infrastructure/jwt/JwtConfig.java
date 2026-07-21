@@ -1,7 +1,6 @@
 package com.a105.zani.auth.infrastructure.jwt;
 
 import java.nio.charset.StandardCharsets;
-
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -26,9 +25,7 @@ public class JwtConfig {
 
     @Bean
     public SecretKey jwtSecretKey(JwtProperties properties) {
-        return new SecretKeySpec(
-                properties.secret().getBytes(StandardCharsets.UTF_8),
-                "HmacSHA256");
+        return new SecretKeySpec(properties.secret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     }
 
     @Bean
@@ -44,27 +41,19 @@ public class JwtConfig {
     }
 
     @Bean
-    public JwtDecoder accessTokenJwtDecoder(
-            SecretKey secretKey,
-            JwtProperties properties) {
+    public JwtDecoder accessTokenJwtDecoder(SecretKey secretKey, JwtProperties properties) {
         return createDecoder(secretKey, properties, true);
     }
 
-    private JwtDecoder createDecoder(
-            SecretKey secretKey,
-            JwtProperties properties,
-            boolean accessTokenOnly) {
+    private JwtDecoder createDecoder(SecretKey secretKey, JwtProperties properties, boolean accessTokenOnly) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
         OAuth2TokenValidator<Jwt> standardValidator = new DelegatingOAuth2TokenValidator<>(
-                new JwtTimestampValidator(),
-                new JwtIssuerValidator(properties.issuer()));
+                new JwtTimestampValidator(), new JwtIssuerValidator(properties.issuer()));
         if (accessTokenOnly) {
-            OAuth2TokenValidator<Jwt> accessTokenValidator = new JwtClaimValidator<>(
-                    "token_type", "ACCESS"::equals);
-            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                    standardValidator, accessTokenValidator));
+            OAuth2TokenValidator<Jwt> accessTokenValidator = new JwtClaimValidator<>("token_type", "ACCESS"::equals);
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(standardValidator, accessTokenValidator));
         } else {
             decoder.setJwtValidator(standardValidator);
         }

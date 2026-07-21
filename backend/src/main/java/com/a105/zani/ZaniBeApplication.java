@@ -9,5 +9,4 @@ public class ZaniBeApplication {
     public static void main(String[] args) {
         SpringApplication.run(ZaniBeApplication.class, args);
     }
-
 }

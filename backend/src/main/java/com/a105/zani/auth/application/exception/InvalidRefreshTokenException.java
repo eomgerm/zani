@@ -2,7 +2,6 @@ package com.a105.zani.auth.application.exception;
 
 import com.a105.zani.common.error.BusinessException;
 
-
 public class InvalidRefreshTokenException extends BusinessException {
 
     public InvalidRefreshTokenException() {
