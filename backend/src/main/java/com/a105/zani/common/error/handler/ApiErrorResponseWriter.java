@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.a105.zani.common.error.ErrorCode;
 import com.a105.zani.common.response.ApiResponse;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class ApiErrorResponseWriter {
