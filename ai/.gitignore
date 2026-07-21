@@ -20,3 +20,4 @@ wandb/
 *.pth
 *.ckpt
 *.onnx
+*.task
