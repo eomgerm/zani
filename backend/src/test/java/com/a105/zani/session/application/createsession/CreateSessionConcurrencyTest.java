@@ -3,6 +3,7 @@ package com.a105.zani.session.application.createsession;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.a105.zani.session.application.exception.ActiveSessionExistsException;
+import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
 import com.a105.zani.session.infrastructure.redis.SessionActivationLockRedisAdapter;
@@ -41,7 +42,8 @@ class CreateSessionConcurrencyTest {
 
         SessionActivationLockRedisAdapter lockPort = new SessionActivationLockRedisAdapter(redisTemplate);
         SessionRepository sessionRepository = new InMemorySessionRepository();
-        createSessionService = new CreateSessionService(sessionRepository, lockPort);
+        createSessionService = new CreateSessionService(
+                sessionRepository, lockPort, new InviteCodeGenerator());
 
         redisTemplate.delete("session:active-lock:" + INSTRUCTOR_ID);
     }

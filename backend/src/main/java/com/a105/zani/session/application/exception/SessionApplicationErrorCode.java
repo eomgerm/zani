@@ -8,7 +8,12 @@ public enum SessionApplicationErrorCode implements ErrorCode {
     ACTIVATION_LOCK_UNAVAILABLE(
             ErrorType.SERVICE_UNAVAILABLE,
             "SESSION_APP_002",
-            "Session activation lock store is unavailable");
+            "Session activation lock store is unavailable"),
+    DUPLICATE_INVITE_CODE(ErrorType.CONFLICT, "SESSION_APP_003", "Invite code already in use"),
+    INVITE_CODE_GENERATION_FAILED(
+            ErrorType.INTERNAL_SERVER_ERROR,
+            "SESSION_APP_004",
+            "Failed to generate a unique invite code");
 
     private final ErrorType type;
     private final String code;

@@ -2,10 +2,12 @@ package com.a105.zani.session.application.createsession;
 
 import com.a105.zani.common.infrastructure.persistence.TsidGenerator;
 import com.a105.zani.session.application.exception.ActiveSessionExistsException;
+import com.a105.zani.session.application.exception.DuplicateInviteCodeException;
+import com.a105.zani.session.application.exception.InviteCodeGenerationFailedException;
 import com.a105.zani.session.application.port.SessionActivationLockPort;
+import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.stereotype.Service;
@@ -15,18 +17,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class CreateSessionService implements CreateSessionUseCase {
 
     private static final Duration ACTIVATION_TTL = Duration.ofHours(3);
-    private static final int INVITE_CODE_LENGTH = 8;
-    private static final String INVITE_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    private static final int MAX_INVITE_CODE_ATTEMPTS = 5;
 
     private final SessionRepository sessionRepository;
     private final SessionActivationLockPort activationLockPort;
-    private final SecureRandom random = new SecureRandom();
+    private final InviteCodeGenerator inviteCodeGenerator;
 
     public CreateSessionService(
             SessionRepository sessionRepository,
-            SessionActivationLockPort activationLockPort) {
+            SessionActivationLockPort activationLockPort,
+            InviteCodeGenerator inviteCodeGenerator) {
         this.sessionRepository = sessionRepository;
         this.activationLockPort = activationLockPort;
+        this.inviteCodeGenerator = inviteCodeGenerator;
     }
 
     @Override
@@ -37,13 +40,7 @@ public class CreateSessionService implements CreateSessionUseCase {
         }
 
         try {
-            Session session = Session.start(
-                    TsidGenerator.generate(),
-                    command.instructorId(),
-                    command.title(),
-                    generateInviteCode(),
-                    Instant.now());
-            Session saved = sessionRepository.save(session);
+            Session saved = saveWithInviteCodeRetry(command);
             return new CreateSessionResult(
                     saved.id(), saved.inviteCode(), saved.status(), saved.expiresAt());
         } catch (RuntimeException exception) {
@@ -52,11 +49,18 @@ public class CreateSessionService implements CreateSessionUseCase {
         }
     }
 
-    private String generateInviteCode() {
-        StringBuilder builder = new StringBuilder(INVITE_CODE_LENGTH);
-        for (int i = 0; i < INVITE_CODE_LENGTH; i++) {
-            builder.append(INVITE_CODE_ALPHABET.charAt(random.nextInt(INVITE_CODE_ALPHABET.length())));
+    private Session saveWithInviteCodeRetry(CreateSessionCommand command) {
+        long id = TsidGenerator.generate();
+        Instant startedAt = Instant.now();
+        for (int attempt = 0; attempt < MAX_INVITE_CODE_ATTEMPTS; attempt++) {
+            Session session = Session.start(
+                    id, command.instructorId(), command.title(), inviteCodeGenerator.generate(), startedAt);
+            try {
+                return sessionRepository.save(session);
+            } catch (DuplicateInviteCodeException collision) {
+                // 초대 코드가 충돌한 경우에만 새 코드로 재시도한다.
+            }
         }
-        return builder.toString();
+        throw new InviteCodeGenerationFailedException();
     }
 }
