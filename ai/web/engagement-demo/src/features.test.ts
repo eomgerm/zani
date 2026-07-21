@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { BLENDSHAPE_NAMES, extractFrameFeatures } from "./features";
+import { columnMajorTransformToRowMajor } from "./matrix";
 
 function knownLandmarks(): Array<{ x: number; y: number; z: number }> {
   const points = Array.from({ length: 478 }, () => ({ x: 0, y: 0, z: 0 }));
@@ -16,6 +17,22 @@ function knownLandmarks(): Array<{ x: number; y: number; z: number }> {
 }
 
 describe("mediapipe_98_v1 frame features", () => {
+  it("converts MediaPipe's column-major transform into row-major order", () => {
+    const columnMajor = [
+      0, 1, 0, 0,
+      -1, 0, 0, 0,
+      0, 0, 1, 0,
+      10, 20, 30, 1,
+    ];
+
+    expect(columnMajorTransformToRowMajor(columnMajor)).toEqual([
+      0, -1, 0, 10,
+      1, 0, 0, 20,
+      0, 0, 1, 30,
+      0, 0, 0, 1,
+    ]);
+  });
+
   it("matches the fixed 49-value feature order", () => {
     const blendshapes = new Map(BLENDSHAPE_NAMES.map((name, index) => [name, index / 100]));
     const values = extractFrameFeatures({

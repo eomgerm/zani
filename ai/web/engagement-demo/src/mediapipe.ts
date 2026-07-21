@@ -6,6 +6,7 @@ import {
 } from "@mediapipe/tasks-vision";
 
 import type { FrameLandmarkerValues } from "./contracts";
+import { columnMajorTransformToRowMajor } from "./matrix";
 
 const VERSION = "0.10.35";
 const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm`;
@@ -53,7 +54,7 @@ export async function createBrowserFaceLandmarker(): Promise<BrowserFaceLandmark
       const categories = lastResult.faceBlendshapes[0]?.categories ?? [];
       return {
         landmarks,
-        transform: matrix.data,
+        transform: columnMajorTransformToRowMajor(matrix.data),
         blendshapes: new Map(categories.map((category) => [category.categoryName, category.score])),
       };
     },
