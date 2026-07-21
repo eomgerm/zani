@@ -67,6 +67,21 @@ uv run python -m zani_ai engagement export `
 샘플 영상, 합성 학습 데이터나 가짜 모델을 자동 생성하지 않습니다. 실제 정확도와 F1은
 공식 데이터로 학습한 뒤 `metrics.json`에서 확인합니다.
 
+## 브라우저 실시간 추론
+
+ONNX export를 완료한 뒤 웹 앱을 실행합니다.
+
+```powershell
+cd web/engagement-demo
+npm ci
+npm run dev
+```
+
+표시된 localhost 주소를 열고 `카메라 시작`을 누릅니다. MediaPipe Face Landmarker는
+10FPS로 특징을 계산하고, ONNX Runtime Web은 최근 10초 창을 1초마다 갱신합니다.
+카메라 권한은 버튼을 누른 뒤에만 요청하며 영상과 특징은 서버로 전송하지 않습니다.
+운영 배포에서는 카메라 API를 사용할 수 있도록 HTTPS가 필요합니다.
+
 ## 실행
 
 ```powershell
@@ -84,7 +99,7 @@ uv run mypy src
 ## 의존성 그룹
 
 - `vision`: MediaPipe(OpenCV 포함), NumPy
-- `train`: PyTorch, scikit-learn
+- `train`: PyTorch, scikit-learn, ONNX, ONNX Runtime
 - `dev`: pytest, coverage, Ruff, mypy
 
 ## 저장소 정책

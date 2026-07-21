@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="MediaPipe와 ONNX를 사용한 브라우저 참여도 추론 데모" />
+    <title>ZANI · Engagement Lab</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow"><span></span> ON-DEVICE INFERENCE</p>
+          <h1>Engagement <em>Lab</em></h1>
+          <p class="intro">최근 10초의 시선, 머리 자세, 표정 변화를 기기 안에서만 분석합니다.</p>
+        </div>
+        <div class="privacy"><strong>LOCAL</strong><span>영상 전송 없음</span></div>
+      </header>
+
+      <section class="workspace">
+        <article class="camera-card">
+          <div class="camera-stage">
+            <video id="camera" playsinline muted></video>
+            <canvas id="overlay"></canvas>
+            <div class="camera-grid"></div>
+            <div class="live-badge"><i></i> LIVE</div>
+            <div class="corner corner-a"></div><div class="corner corner-b"></div>
+            <div class="corner corner-c"></div><div class="corner corner-d"></div>
+            <p id="camera-placeholder" class="camera-placeholder">카메라를 시작하면 얼굴 mesh가 여기에 표시됩니다.</p>
+          </div>
+          <div class="camera-controls">
+            <button id="start" class="primary" type="button">카메라 시작</button>
+            <button id="stop" class="secondary" type="button">중지</button>
+            <div class="status-wrap"><span>STATUS</span><p id="status" data-tone="neutral">초기화 중</p></div>
+          </div>
+          <div class="collection">
+            <div><span>10초 분석 창</span><strong id="progress-text">0%</strong></div>
+            <progress id="progress" max="1" value="0"></progress>
+          </div>
+        </article>
+
+        <aside class="results-card">
+          <p class="panel-label">CURRENT SIGNAL</p>
+          <div class="result-heading">
+            <span>현재 참여도</span>
+            <h2 id="current-label">분석 대기</h2>
+          </div>
+          <div id="probabilities" class="probabilities">
+            <p class="empty-copy">유효한 10초 창이 모이면 클래스별 확률을 표시합니다.</p>
+          </div>
+          <div class="history-block">
+            <div><span>최근 예측</span><small>낮음 → 높음</small></div>
+            <div id="history" class="history"></div>
+          </div>
+          <div class="model-note">
+            <span>MODEL</span>
+            <p>MediaPipe 98D · 20-token Transformer · ONNX Runtime Web</p>
+          </div>
+        </aside>
+      </section>
+
+      <footer>
+        <p>이 결과는 행동 신호 기반의 실험적 추정치이며 학습 성과나 개인을 평가하는 용도가 아닙니다.</p>
+        <span>mediapipe_98_v1</span>
+      </footer>
+    </main>
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>
