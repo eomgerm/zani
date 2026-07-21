@@ -5,3 +5,4 @@ export { ReportScreen } from "./presentation/ReportScreen";
 export { PrejoinScreen } from "./presentation/PrejoinScreen";
 export { RoomScreen } from "./presentation/RoomScreen";
 export { CreateSetupScreen } from "./presentation/CreateSetupScreen";
+export { NoteScreen } from "./presentation/NoteScreen";
