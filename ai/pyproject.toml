@@ -18,6 +18,7 @@ vision = [
 train = [
     "onnx>=1.17,<2",
     "onnxruntime>=1.20,<2",
+    "onnxscript>=0.5,<1",
     "scikit-learn>=1.7,<2",
     "torch>=2.7,<3",
 ]
@@ -47,7 +48,16 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["cv2", "mediapipe", "mediapipe.*", "sklearn", "sklearn.*"]
+module = [
+    "cv2",
+    "mediapipe",
+    "mediapipe.*",
+    "onnx",
+    "onnxruntime",
+    "onnxscript",
+    "sklearn",
+    "sklearn.*",
+]
 ignore_missing_imports = true
 
 [tool.ruff]
