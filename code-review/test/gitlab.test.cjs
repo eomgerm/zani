@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { discussionMarker, publishReport, resolveMrTarget } = require('../lib/gitlab.cjs');
+const { publishReport, resolveMrTarget } = require('../lib/gitlab.cjs');
 
 const report = {
   passed: false,
@@ -82,7 +82,7 @@ test('publishReport refuses to publish a stale reviewed SHA', async () => {
   );
 });
 
-test('publishReport posts a summary note and positioned discussions', async () => {
+test('publishReport posts one summary note without inline discussions', async () => {
   const requests = [];
   const result = await publishReport({
     mr: '17',
@@ -92,27 +92,22 @@ test('publishReport posts a summary note and positioned discussions', async () =
   }, {
     async fetchImpl(url, options = {}) {
       requests.push({ url, options });
-      if (url.endsWith('/notes?per_page=100') || url.endsWith('/discussions?per_page=100')) return response([]);
+      if (url.endsWith('/notes?per_page=100')) return response([]);
+      if (url.endsWith('/discussions')) return response('inline discussions are disabled', 400);
       if (!options.method || options.method === 'GET') return response(mrResponse);
       return response({ id: requests.length, body: JSON.parse(options.body).body }, 201);
     },
   });
 
   assert.equal(result.summaryPosted, true);
-  assert.equal(result.discussionsPosted, 1);
+  assert.equal(result.discussionsPosted, 0);
   assert.equal(requests[0].options.headers['PRIVATE-TOKEN'], 'secret');
   assert.match(requests[1].url, /\/notes\?per_page=100$/);
-  assert.match(requests[2].url, /\/discussions\?per_page=100$/);
-  assert.match(requests[3].url, /\/discussions$/);
-  assert.match(requests[4].url, /\/notes$/);
+  assert.match(requests[2].url, /\/notes$/);
+  assert.equal(requests.filter((request) => request.url.includes('/discussions')).length, 0);
 
-  const discussionBody = JSON.parse(requests[3].options.body);
-  assert.equal(discussionBody.position.new_line, 4);
-  assert.equal(discussionBody.position.head_sha, 'head-sha');
-  assert.equal(
-    discussionBody.position.new_path,
-    'backend/src/main/java/com/a105/zani/room/domain/model/Room.java',
-  );
+  const noteBody = JSON.parse(requests[2].options.body).body;
+  assert.match(noteBody, /Room\.java:4/);
 });
 
 test('publishReport skips a commit that already has this reviewer comment', async () => {
@@ -135,53 +130,6 @@ test('publishReport skips a commit that already has this reviewer comment', asyn
   assert.equal(result.skipped, true);
   assert.equal(result.summaryPosted, false);
   assert.equal(requests.length, 2);
-});
-
-test('publishReport does not leave the idempotency marker when an inline discussion fails', async () => {
-  const requests = [];
-  await assert.rejects(
-    () => publishReport({
-      mr: '17',
-      remoteUrl: 'https://lab.ssafy.com/group/project.git',
-      token: 'secret',
-      report,
-    }, {
-      async fetchImpl(url, options = {}) {
-        requests.push({ url, options });
-        if (url.endsWith('/notes?per_page=100')) return response([]);
-        if (url.endsWith('/discussions')) return response('discussion failed', 500);
-        return response(mrResponse);
-      },
-    }),
-    /discussion failed/,
-  );
-
-  assert.ok(!requests.some((request) => request.url.endsWith('/notes') && request.options.method === 'POST'));
-});
-
-test('publishReport does not duplicate an inline discussion during a partial-run retry', async () => {
-  const requests = [];
-  const marker = discussionMarker(report, report.findings[0]);
-  const result = await publishReport({
-    mr: '17',
-    remoteUrl: 'https://lab.ssafy.com/group/project.git',
-    token: 'secret',
-    report,
-  }, {
-    async fetchImpl(url, options = {}) {
-      requests.push({ url, options });
-      if (url.endsWith('/notes?per_page=100')) return response([]);
-      if (url.endsWith('/discussions?per_page=100')) {
-        return response([{ notes: [{ body: `existing comment\n${marker}` }] }]);
-      }
-      if (!options.method || options.method === 'GET') return response(mrResponse);
-      return response({ id: requests.length }, 201);
-    },
-  });
-
-  assert.equal(result.discussionsPosted, 0);
-  assert.ok(!requests.some((request) => request.url.endsWith('/discussions') && request.options.method === 'POST'));
-  assert.ok(requests.some((request) => request.url.endsWith('/notes') && request.options.method === 'POST'));
 });
 
 test('publishReport skips draft and closed merge requests', async () => {

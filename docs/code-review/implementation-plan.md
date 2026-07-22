@@ -23,7 +23,7 @@ npm run test:code-review
 node code-review/bin/review.cjs --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --mr "$CI_MERGE_REQUEST_IID" --publish
 ```
 
-5. 테스트용 MR을 한 개 열어 요약 note와 줄별 discussion이 한 번씩만 달리는지 확인한다.
+5. 테스트용 MR을 한 개 열어 파일·줄 정보가 포함된 요약 note가 한 번만 달리는지 확인한다.
 
 현재 GitLab 프로젝트에는 Runner가 없으므로, 이 예시는 `.gitlab-ci.yml`에 자동 적용하지 않는다. Runner를 만든 뒤 팀에서 활성화 시점을 정하면 그때 실제 CI 설정을 추가한다.
 

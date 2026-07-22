@@ -1,5 +1,4 @@
 const { renderMarkdown } = require('./report.cjs');
-const { createHash } = require('node:crypto');
 
 function remoteProject(remoteUrl) {
   const scpStyle = remoteUrl.match(/^git@([^:]+):(.+)$/u);
@@ -67,36 +66,8 @@ async function requestJson(fetchImpl, url, { token, method = 'GET', body } = {})
   return response.json();
 }
 
-function discussionBody(finding, marker) {
-  const lines = [
-    `**${finding.severity.toUpperCase()} / ${finding.type}**`,
-    '',
-    finding.message,
-  ];
-  if (finding.suggestion) lines.push('', `제안: ${finding.suggestion}`);
-  lines.push('', marker);
-  return lines.join('\n');
-}
-
 function reviewMarker(report) {
   return `<!-- zani-code-review:${report.headSha} -->`;
-}
-
-function discussionMarker(report, finding) {
-  const identifier = [
-    report.headSha,
-    finding.file || '',
-    finding.line || '',
-    finding.type || '',
-    finding.message || '',
-  ].join('\n');
-  const hash = createHash('sha256').update(identifier).digest('hex').slice(0, 16);
-  return `<!-- zani-code-review-discussion:${hash} -->`;
-}
-
-function discussionBodies(discussions) {
-  if (!Array.isArray(discussions)) return [];
-  return discussions.flatMap((discussion) => (discussion.notes || []).map((note) => String(note.body || '')));
 }
 
 async function publishReport({
@@ -142,35 +113,6 @@ async function publishReport({
     };
   }
 
-  const postedDiscussionBodies = discussionBodies(await requestJson(
-    fetchImpl,
-    `${mrBaseUrl}/discussions?per_page=100`,
-    { token },
-  ));
-
-  let discussionsPosted = 0;
-  for (const finding of report.findings) {
-    if (!finding.file || !finding.line) continue;
-    const findingMarker = discussionMarker(report, finding);
-    if (postedDiscussionBodies.some((body) => body.includes(findingMarker))) continue;
-    await requestJson(fetchImpl, `${mrBaseUrl}/discussions`, {
-      token,
-      method: 'POST',
-      body: {
-        body: discussionBody(finding, findingMarker),
-        position: {
-          position_type: 'text',
-          base_sha: mrData.diff_refs.base_sha,
-          start_sha: mrData.diff_refs.start_sha,
-          head_sha: mrData.diff_refs.head_sha,
-          new_path: finding.file,
-          new_line: finding.line,
-        },
-      },
-    });
-    discussionsPosted += 1;
-  }
-
   await requestJson(fetchImpl, `${mrBaseUrl}/notes`, {
     token,
     method: 'POST',
@@ -180,13 +122,12 @@ async function publishReport({
   return {
     skipped: false,
     summaryPosted: true,
-    discussionsPosted,
+    discussionsPosted: 0,
     webUrl: mrData.web_url,
   };
 }
 
 module.exports = {
-  discussionMarker,
   publishReport,
   remoteProject,
   requestJson,

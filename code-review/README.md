@@ -1,6 +1,6 @@
 # Claude Code GitLab MR Reviewer
 
-이 폴더는 MR의 변경 코드를 검토하는 팀 도구입니다. 사람이 리뷰하기 전에 Git 규칙, DDD 구조, 재사용 가능한 컴포넌트, 중복 구현 가능성을 확인하고 결과를 JSON으로 만듭니다. `--publish`를 붙이면 그 결과를 GitLab MR의 요약 댓글과 코드 줄별 댓글로 게시합니다.
+이 폴더는 MR의 변경 코드를 검토하는 팀 도구입니다. 사람이 리뷰하기 전에 Git 규칙, DDD 구조, 재사용 가능한 컴포넌트, 중복 구현 가능성을 확인하고 결과를 JSON으로 만듭니다. `--publish`를 붙이면 그 결과를 파일·줄 번호가 포함된 GitLab MR 요약 댓글 하나로 게시합니다.
 
 ## 누가, 어디서 실행하나요?
 
@@ -21,7 +21,7 @@ MR 변경 → code-review 실행 → Claude Code 검토 → GitLab 댓글 게시
 claude auth status
 ```
 
-`Logged in` 상태여야 합니다. Claude OAuth 토큰을 저장소, `.env`, GitLab 변수에 복사하지 않습니다.
+`Logged in` 상태여야 합니다. CI나 자동 실행 환경에서는 로컬 `.env` 또는 비밀 변수에 `CLAUDE_CODE_OAUTH_TOKEN`을 설정해 로그인 대신 인증할 수 있습니다. 토큰은 Git에 커밋하지 않습니다.
 
 ## 로컬 검토
 
@@ -75,7 +75,7 @@ blocker 1개, warning 2개, info 0개
 - **WARNING / component-reuse** · `fe/.../LoginForm.tsx:18` · 신뢰도 91/100: 공통 Button 컴포넌트를 재사용할 수 있습니다.
 ```
 
-파일과 줄 번호가 있는 항목은 해당 줄에 discussion 댓글도 하나씩 달립니다.
+파일과 줄 번호가 있는 항목도 줄별 discussion을 만들지 않고, 위 요약 댓글에 `파일경로:줄번호`로 표시합니다. 이 방식은 변경되지 않은 줄을 지적해도 GitLab diff 위치 오류 없이 결과를 남길 수 있습니다.
 
 ## 재사용·중복 코드 검토는 어떻게 동작하나요?
 

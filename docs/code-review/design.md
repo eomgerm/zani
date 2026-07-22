@@ -38,7 +38,7 @@ Git diff 수집
   └─ Claude Code 의미 검토
        └─ 80점 이상 결과만 반영
             └─ JSON 보고서 생성
-                 └─ 선택 시 GitLab 요약·인라인 댓글 게시
+                 └─ 선택 시 GitLab 요약 댓글 게시
 ```
 
 Claude는 변경 diff, 결정적 검사 결과, 그리고 아래 제한 안에서 수집한 재사용 후보 파일만 받는다.
@@ -76,7 +76,7 @@ Claude 결과에는 0~100 신뢰도 점수가 필수다. 80점 미만은 결과�
 - 검토 SHA와 현재 MR SHA가 같을 때만 게시
 - draft, 닫힌 MR은 건너뜀
 - `<!-- zani-code-review:<sha> -->` 표시로 같은 SHA 중복 게시 방지
-- 요약은 MR note, 파일·줄이 있는 항목은 GitLab discussion으로 게시
+- 모든 결과는 MR note 하나에 게시하고, 파일·줄이 있는 항목도 `파일경로:줄번호`로 표기
 - 토큰은 로컬 환경변수, Jenkins Credential, GitLab CI 변수 중 하나로만 전달
 
 자동 머지는 포함하지 않는다. 코드리뷰 결과는 팀원 Approve를 보조하는 자료다.
