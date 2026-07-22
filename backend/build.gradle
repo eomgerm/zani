@@ -39,6 +39,16 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation('io.swagger.parser.v3:swagger-parser:2.1.27') {
+        exclude group: 'io.swagger.core.v3', module: 'swagger-core'
+        exclude group: 'io.swagger.core.v3', module: 'swagger-models'
+        exclude group: 'io.swagger.core.v3', module: 'swagger-annotations'
+    }
+    testImplementation('com.atlassian.oai:swagger-request-validator-mockmvc:2.44.9') {
+        exclude group: 'io.swagger.core.v3', module: 'swagger-core'
+        exclude group: 'io.swagger.core.v3', module: 'swagger-models'
+        exclude group: 'io.swagger.core.v3', module: 'swagger-annotations'
+    }
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
