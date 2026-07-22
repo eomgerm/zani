@@ -1,1 +1,5 @@
 node_modules/
+code-review/output/
+.env
+.env.*
+!.env.example
