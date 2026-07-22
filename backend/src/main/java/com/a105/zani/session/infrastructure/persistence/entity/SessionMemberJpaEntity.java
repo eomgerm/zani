@@ -1,7 +1,6 @@
 package com.a105.zani.session.infrastructure.persistence.entity;
 
-import com.a105.zani.common.infrastructure.persistence.BaseJpaEntity;
-import com.a105.zani.session.domain.model.MemberRole;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,16 +9,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
+
+import com.a105.zani.common.persistence.BaseJpaEntity;
+import com.a105.zani.session.domain.model.MemberRole;
 
 @Entity
 @Table(
         name = "session_members",
-        indexes = {
-            @Index(name = "idx_session_members_user_role", columnList = "user_id, role")
-        },
+        indexes = {@Index(name = "idx_session_members_user_role", columnList = "user_id, role")},
         uniqueConstraints = {
-            @UniqueConstraint(name = "uq_session_members_session_user", columnNames = {"session_id", "user_id"})
+            @UniqueConstraint(
+                    name = "uq_session_members_session_user",
+                    columnNames = {"session_id", "user_id"})
         })
 public class SessionMemberJpaEntity extends BaseJpaEntity {
 
@@ -42,16 +43,10 @@ public class SessionMemberJpaEntity extends BaseJpaEntity {
     @Column(name = "last_accessed_at")
     private Instant lastAccessedAt;
 
-    protected SessionMemberJpaEntity() {
-    }
+    protected SessionMemberJpaEntity() {}
 
     public SessionMemberJpaEntity(
-            Long id,
-            Long sessionId,
-            Long userId,
-            MemberRole role,
-            Instant firstJoinedAt,
-            Instant lastAccessedAt) {
+            Long id, Long sessionId, Long userId, MemberRole role, Instant firstJoinedAt, Instant lastAccessedAt) {
         this.id = id;
         this.sessionId = sessionId;
         this.userId = userId;

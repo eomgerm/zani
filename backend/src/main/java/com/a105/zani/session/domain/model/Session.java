@@ -1,13 +1,14 @@
 package com.a105.zani.session.domain.model;
 
-import com.a105.zani.session.domain.exception.InvalidSessionTitleException;
 import java.time.Duration;
 import java.time.Instant;
 
+import com.a105.zani.session.domain.exception.InvalidSessionTitleException;
+
 public class Session {
 
+    public static final Duration ACTIVE_DURATION = Duration.ofHours(3);
     private static final int TITLE_MAX_LENGTH = 100;
-    private static final Duration ACTIVE_DURATION = Duration.ofHours(3);
 
     private final Long id;
     private final Long instructorId;
@@ -34,12 +35,7 @@ public class Session {
         this.status = status;
     }
 
-    public static Session start(
-            Long id,
-            Long instructorId,
-            String title,
-            String inviteCode,
-            Instant startedAt) {
+    public static Session start(Long id, Long instructorId, String title, String inviteCode, Instant startedAt) {
         String trimmedTitle = title == null ? null : title.trim();
         if (trimmedTitle == null || trimmedTitle.isEmpty() || trimmedTitle.length() > TITLE_MAX_LENGTH) {
             throw new InvalidSessionTitleException();

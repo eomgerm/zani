@@ -1,7 +1,6 @@
 package com.a105.zani.session.infrastructure.persistence.entity;
 
-import com.a105.zani.common.infrastructure.persistence.BaseJpaEntity;
-import com.a105.zani.session.domain.model.SessionStatus;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,17 +9,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
+
+import com.a105.zani.common.persistence.BaseJpaEntity;
+import com.a105.zani.session.domain.model.SessionStatus;
 
 @Entity
 @Table(
         name = "sessions",
-        indexes = {
-            @Index(name = "idx_sessions_instructor_status", columnList = "instructor_id, status")
-        },
-        uniqueConstraints = {
-            @UniqueConstraint(name = "uq_sessions_invite_code", columnNames = "invite_code")
-        })
+        indexes = {@Index(name = "idx_sessions_instructor_status", columnList = "instructor_id, status")},
+        uniqueConstraints = {@UniqueConstraint(name = "uq_sessions_invite_code", columnNames = "invite_code")})
 public class SessionJpaEntity extends BaseJpaEntity {
 
     @Id
@@ -51,8 +48,7 @@ public class SessionJpaEntity extends BaseJpaEntity {
     @Column(name = "note_due_at")
     private Instant noteDueAt;
 
-    protected SessionJpaEntity() {
-    }
+    protected SessionJpaEntity() {}
 
     public SessionJpaEntity(
             Long id,
