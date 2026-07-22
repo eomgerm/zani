@@ -5,10 +5,10 @@
 const { execSync } = require('child_process');
 const TYPES = require('./commit-types.cjs');
 
-const PROTECTED_BRANCHES = ['main', 'master', 'develop', 'dev'];
+const PROTECTED_BRANCHES = ['main', 'master', 'develop', 'dev', 'dev-be', 'dev-fe', 'dev-ai'];
 const PLATFORMS = ['fe', 'be', 'ai'];
 
-const branch = execSync('git symbolic-ref --short HEAD', { encoding: 'utf8' }).trim();
+const branch = process.argv[2] || execSync('git symbolic-ref --short HEAD', { encoding: 'utf8' }).trim();
 
 if (PROTECTED_BRANCHES.includes(branch) || branch.startsWith('release/')) {
   process.exit(0);

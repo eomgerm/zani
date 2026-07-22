@@ -19,12 +19,16 @@ function baseContext(overrides = {}) {
 
 function harness({ context = baseContext(), gitFindings = [], dddFindings = [], claudeReview } = {}) {
   const state = {
-    claudeCalls: 0, environmentLoads: [], repositoryContextCalls: 0, claudeInputs: [], reports: [], publications: [], logs: [], errors: [],
+    claudeCalls: 0, environmentLoads: [], repositoryContextCalls: 0, claudeInputs: [], reports: [], publications: [], logs: [], errors: [], mrMetadataCalls: [], fetchedMrRefs: [], contextOptions: [],
   };
   return {
     state,
     adapters: {
-      collectContext: () => context,
+      collectContext(baseRef, options) {
+        state.contextOptions.push({ baseRef, options });
+        return context;
+      },
+      getRepositoryRoot: () => context.repositoryRoot,
       loadEnv(filePath) { state.environmentLoads.push(filePath); },
       checkGit: () => gitFindings,
       checkDdd: () => dddFindings,
@@ -41,6 +45,14 @@ function harness({ context = baseContext(), gitFindings = [], dddFindings = [], 
         state.reports.push({ output, report, repositoryRoot });
       },
       getRemoteUrl: () => 'https://lab.ssafy.com/group/project.git',
+      async getMrMetadata(input) {
+        state.mrMetadataCalls.push(input);
+        return { iid: '17', sourceBranch: 'be/feat/example-S15P11A105-17', sha: 'head-sha' };
+      },
+      fetchMrHead(input) {
+        state.fetchedMrRefs.push(input);
+        return 'refs/zani-review/mr/17';
+      },
       async publish(options) { state.publications.push(options); },
       log: (message) => state.logs.push(message),
       error: (message) => state.errors.push(message),
@@ -100,6 +112,23 @@ test('main publishes only when explicitly requested', async () => {
   assert.equal(fixture.state.publications.length, 1);
   assert.equal(fixture.state.publications[0].mr, '17');
   assert.equal(fixture.state.publications[0].remoteUrl, 'https://lab.ssafy.com/group/project.git');
+});
+
+test('main fetches and reviews the MR head ref when an MR is specified', async () => {
+  const fixture = harness();
+
+  const exitCode = await main(['--mr', '17', '--publish'], fixture.adapters);
+
+  assert.equal(exitCode, 0);
+  assert.equal(fixture.state.mrMetadataCalls.length, 1);
+  assert.deepEqual(fixture.state.fetchedMrRefs[0], {
+    iid: '17', repositoryRoot: 'C:/repo', expectedSha: 'head-sha',
+  });
+  assert.deepEqual(fixture.state.contextOptions[0].options, {
+    headRef: 'refs/zani-review/mr/17',
+    branch: 'be/feat/example-S15P11A105-17',
+    includeWorkingTree: false,
+  });
 });
 
 test('main preserves the written local report when publication fails', async () => {

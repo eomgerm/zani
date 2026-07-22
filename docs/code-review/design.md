@@ -32,6 +32,7 @@ Anthropic의 공식 Code Review 플러그인이 `plugins/code-review`라는 기�
 
 ```text
 Git diff 수집
+  ├─ MR 지정 시 최신 MR head ref 가져오기
   ├─ Git 브랜치·커밋 컨벤션 검사
   ├─ 프론트·백엔드 DDD 규칙 검사
   ├─ 제한된 읽기 전용 후보 문맥 수집
@@ -74,6 +75,8 @@ Claude 결과에는 0~100 신뢰도 점수가 필수다. 80점 미만은 결과�
 ## GitLab 댓글 안전장치
 
 `--publish`는 `GITLAB_TOKEN`의 `api` 권한으로 GitLab REST API를 호출한다.
+
+`--mr <IID 또는 URL>`을 지정하면 GitLab API로 실제 소스 브랜치명과 최신 SHA를 확인하고, `refs/merge-requests/<IID>/head`를 로컬 임시 ref로 가져와 검토한다. 현재 체크아웃 브랜치, staged 변경, untracked 파일은 MR 검토에 포함하지 않는다.
 
 - 검토 SHA와 현재 MR SHA가 같을 때만 게시
 - draft, 닫힌 MR은 건너뜀

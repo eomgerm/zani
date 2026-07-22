@@ -53,6 +53,8 @@ GITLAB_TOKEN=발급받은-토큰
 npm.cmd run review:mr -- --mr 17 --publish
 ```
 
+`--mr`를 지정하면 현재 체크아웃 브랜치를 사용하지 않습니다. GitLab에서 해당 MR의 최신 소스 커밋과 브랜치명을 가져와 임시 ref에서 검토하므로, 다른 팀원의 MR도 브랜치를 직접 바꾸지 않고 검토할 수 있습니다.
+
 MR 전체 URL도 사용할 수 있습니다.
 
 ```powershell

@@ -70,6 +70,30 @@ function reviewMarker(report) {
   return `<!-- zani-code-review:${report.headSha} -->`;
 }
 
+async function getMergeRequestMetadata({
+  mr,
+  remoteUrl,
+  token = process.env.GITLAB_TOKEN,
+}, {
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  if (!token) throw new Error('MR 검토에는 GITLAB_TOKEN 환경 변수가 필요합니다.');
+  const target = resolveMrTarget(mr, remoteUrl);
+  const mrData = await requestJson(
+    fetchImpl,
+    `${target.apiBase}/projects/${target.projectId}/merge_requests/${target.iid}`,
+    { token },
+  );
+  if (!mrData.source_branch || !mrData.sha) {
+    throw new Error('MR 소스 브랜치 또는 최신 커밋을 확인할 수 없습니다.');
+  }
+  return {
+    iid: target.iid,
+    sourceBranch: mrData.source_branch,
+    sha: mrData.sha,
+  };
+}
+
 async function publishReport({
   mr,
   remoteUrl,
@@ -128,6 +152,7 @@ async function publishReport({
 }
 
 module.exports = {
+  getMergeRequestMetadata,
   publishReport,
   remoteProject,
   requestJson,
