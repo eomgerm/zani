@@ -1,0 +1,148 @@
+name: zani-application
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    container_name: zani-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: zani
+      MYSQL_USER: zani
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_app_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      TZ: Asia/Seoul
+    secrets:
+      - mysql_app_password
+      - mysql_root_password
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - application-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mysqladmin ping -h 127.0.0.1 -u root
+          --password="$$(cat /run/secrets/mysql_root_password)" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  redis-app:
+    image: redis@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7
+    container_name: zani-redis-app
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - >-
+        exec /usr/bin/setpriv --reuid redis --regid redis --clear-groups
+        redis-server --appendonly yes
+        --requirepass "$$(cat /run/secrets/redis_app_password)"
+    secrets:
+      - redis_app_password
+    volumes:
+      - redis-app-data:/data
+    networks:
+      - application-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          redis-cli --no-auth-warning
+          -a "$$(cat /run/secrets/redis_app_password)" ping | grep -qx PONG
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    image: zani/backend:dev
+    container_name: zani-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL: jdbc:mysql://mysql:3306/zani?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      DB_USERNAME: zani
+      REDIS_HOST: redis-app
+      REDIS_PORT: "6379"
+      REDIS_SSL_ENABLED: "false"
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?FRONTEND_ORIGIN is required}
+      AUTH_COOKIE_SAME_SITE: None
+    secrets:
+      - mysql_app_password
+      - redis_app_password
+      - jwt_secret
+    ports:
+      - 127.0.0.1:18080:8080
+    networks:
+      - application-internal
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis-app:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent --show-error http://127.0.0.1:8080/actuator/health >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  application-internal:
+    name: zani-application-internal
+
+volumes:
+  mysql-data:
+    name: zani-mysql-data
+  redis-app-data:
+    name: zani-redis-app-data
+
+secrets:
+  mysql_root_password:
+    file: /etc/zani/application/secrets/mysql_root_password
+  mysql_app_password:
+    file: /etc/zani/application/secrets/mysql_app_password
+  redis_app_password:
+    file: /etc/zani/application/secrets/redis_app_password
+  jwt_secret:
+    file: /etc/zani/application/secrets/jwt_secret
