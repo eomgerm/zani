@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run test:code-review",
+    "test:code-review": "node --test code-review/test/*.test.cjs",
+    "review:mr": "node code-review/bin/review.cjs",
     "prepare": "husky"
   },
   "repository": {
