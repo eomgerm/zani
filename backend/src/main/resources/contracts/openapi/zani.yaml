@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: ZANI Session API
+  description: 세션(강의방) 생성·입장·목록 조회 계약
+  version: "1.0.0"
+servers:
+  - url: /api/v1
+
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: 세션(강의방) 생성
+      description: |
+        진행 중인 방이 없는 강사가 제목과 함께 세션을 생성한다.
+        LIVE 상태로 즉시 시작되며, 고유 초대 코드가 함께 발급된다.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: 세션 생성 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSessionApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: 이미 진행 중인 세션이 있음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                isSuccess: false
+                code: SESSION_APP_001
+                message: An active session already exists
+
+    get:
+      operationId: listSessions
+      summary: 내가 참여 중인 세션 목록 조회
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 세션 목록 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /sessions/join:
+    post:
+      operationId: joinSession
+      summary: 초대 코드로 세션 입장
+      description: |
+        유효한 초대 코드로 입장하면 STUDENT 멤버십을 즉시 얻는다.
+        이미 참여 중인 세션이면 멱등하게 기존 멤버십을 반환한다.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JoinSessionRequest"
+      responses:
+        "200":
+          description: 세션 입장 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JoinSessionApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 유효하지 않은 초대 코드
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                isSuccess: false
+                code: SESSION_APP_005
+                message: No session found for the given invite code
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: 인증되지 않음
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+          example:
+            isSuccess: false
+            code: COMM_401
+            message: Authentication is required
+
+  schemas:
+    SessionStatus:
+      type: string
+      enum:
+        - LIVE
+        - NOTE_PENDING
+        - PROCESSING
+        - COMPLETED
+        - FAILED
+        - DELETED
+
+    SessionRole:
+      type: string
+      enum:
+        - INSTRUCTOR
+        - STUDENT
+
+    # 공통 응답 봉투. data 형태가 없는 에러 응답 등 범용으로 쓴다.
+    ApiResponse:
+      type: object
+      properties:
+        isSuccess:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        data:
+          nullable: true
+      required:
+        - isSuccess
+
+    CreateSessionRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 100
+      required:
+        - title
+
+    CreateSessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        inviteCode:
+          type: string
+          minLength: 8
+          maxLength: 8
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        role:
+          $ref: "#/components/schemas/SessionRole"
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateSessionApiResponse:
+      type: object
+      properties:
+        isSuccess:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        data:
+          $ref: "#/components/schemas/CreateSessionResponse"
+      required:
+        - isSuccess
+
+    JoinSessionRequest:
+      type: object
+      properties:
+        inviteCode:
+          type: string
+          minLength: 8
+          maxLength: 8
+      required:
+        - inviteCode
+
+    JoinSessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        inviteCode:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        role:
+          $ref: "#/components/schemas/SessionRole"
+
+    JoinSessionApiResponse:
+      type: object
+      properties:
+        isSuccess:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        data:
+          $ref: "#/components/schemas/JoinSessionResponse"
+      required:
+        - isSuccess
+
+    SessionSummary:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        inviteCode:
+          type: string
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        role:
+          $ref: "#/components/schemas/SessionRole"
+
+    SessionListApiResponse:
+      type: object
+      properties:
+        isSuccess:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionSummary"
+      required:
+        - isSuccess

@@ -38,3 +38,8 @@ out/
 
 .superpowers
 docs/superpowers
+
+### Env / secrets ###
+.env
+.env.*
+!.env.example
