@@ -1,3 +1,5 @@
+import { LoginScreen } from "@/domains/auth";
+
 export default function Page() {
-  return <p>로그인</p>;
+  return <LoginScreen />;
 }
