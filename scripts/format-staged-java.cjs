@@ -45,7 +45,8 @@ function runSpotless(backendDir, spotlessFiles) {
   };
 
   if (process.platform === 'win32') {
-    run('cmd.exe', ['/d', '/s', '/c', 'gradlew.bat spotlessApply spotlessCheck'], {
+    const gradlewBat = path.join(backendDir, 'gradlew.bat');
+    run('cmd.exe', ['/d', '/s', '/c', gradlewBat, 'spotlessApply', 'spotlessCheck'], {
       cwd: backendDir,
       env,
       stdio: 'inherit',

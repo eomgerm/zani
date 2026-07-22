@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate:types": "openapi-typescript ../backend/src/main/resources/contracts/openapi/zani.yaml -o src/shared/types/api.d.ts"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.23",
@@ -31,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"

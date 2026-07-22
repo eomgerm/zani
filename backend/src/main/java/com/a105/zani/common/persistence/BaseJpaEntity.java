@@ -1,4 +1,4 @@
-package com.a105.zani.common.infrastructure.persistence;
+package com.a105.zani.common.persistence;
 
 import java.time.Instant;
 import jakarta.persistence.Column;
