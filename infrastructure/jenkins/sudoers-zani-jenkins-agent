@@ -1,0 +1,2 @@
+Cmnd_Alias ZANI_BACKEND_CI = /opt/zani/deploy/deploy-application verify *, /opt/zani/deploy/deploy-application deploy *
+zani-jenkins-agent ALL=(root) NOPASSWD: ZANI_BACKEND_CI

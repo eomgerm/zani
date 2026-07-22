@@ -1,0 +1,53 @@
+jenkins:
+  systemMessage: "ZANI backend CI/CD controller. Builds run only on the dedicated agent."
+  numExecutors: 0
+  mode: EXCLUSIVE
+  disableRememberMe: true
+  slaveAgentPort: -1
+  updateCenter:
+    sites:
+      - id: "default"
+        url: "https://raw.githubusercontent.com/lework/jenkins-update-center/master/updates/huawei/update-center.json"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "zani-admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  crumbIssuer:
+    standard: {}
+  nodes:
+    - permanent:
+        name: "zani-backend"
+        remoteFS: "/var/lib/zani-jenkins-agent"
+        numExecutors: 1
+        mode: EXCLUSIVE
+        labelString: "zani-backend"
+        launcher:
+          inbound:
+            webSocket: true
+            workDirSettings:
+              disabled: false
+              internalDir: "remoting"
+              failIfWorkDirIsMissing: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "gitlab-zani-read"
+              username: "${GITLAB_USERNAME}"
+              password: "${GITLAB_TOKEN}"
+              description: "Read-only GitLab credential for S15P11A105"
+
+jobs:
+  - file: /var/jenkins_home/jobs.groovy
+
+unclassified:
+  location:
+    url: "https://i15a105.p.ssafy.io/"
