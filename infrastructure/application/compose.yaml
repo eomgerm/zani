@@ -81,7 +81,7 @@ services:
     build:
       context: ../../backend
       dockerfile: Dockerfile
-    image: zani/backend:dev
+    image: ${BACKEND_IMAGE:-zani/backend:dev}
     container_name: zani-backend
     restart: unless-stopped
     environment:

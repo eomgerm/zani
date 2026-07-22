@@ -1,0 +1,8 @@
+configuration-as-code:2100.vb_fd699d2a_09c
+credentials-binding:728.v902a_273b_8947
+git:5.10.1
+gitlab-plugin:1.9.16
+job-dsl:3654.vdf58f53e2d15
+pipeline-model-definition:2.2291.v2934911987b_6
+scm-api:728.vc30dcf7a_0df5
+timestamper:1.30

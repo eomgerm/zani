@@ -36,3 +36,9 @@ The stack preserves the `dev` profile's `spring.jpa.hibernate.ddl-auto=validate`
 4. Start the backend and wait for `/actuator/health` to report healthy.
 5. Add the Nginx API locations and run `nginx -t` before reload.
 6. Verify HTTPS API, Vercel CORS, LiveKit signaling, media, Egress, Gerrit, and SSH regression checks.
+
+## Immutable deployment and rollback
+
+Jenkins uses `deploy-application.sh` through a root-owned copy at `/opt/zani/deploy/deploy-application`. The wrapper validates the exact clean Git SHA, tests the backend with disposable MySQL and Redis containers, creates an immutable release and image, recreates only `zani-backend`, and switches `current` only after the health checks pass.
+
+The wrapper never changes Nginx, UFW, SSH, MySQL volumes, Application Redis volumes, or media services. Automatic release deletion is intentionally disabled. See `../jenkins/README.md` for the complete CI/CD boundary and rollback procedure.
