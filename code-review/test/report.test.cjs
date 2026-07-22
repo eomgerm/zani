@@ -39,10 +39,10 @@ test('buildReport normalizes finding fields and sorts by severity', () => {
   ]);
   assert.equal(report.findings[0].line, 12);
   assert.equal(report.findings[1].type, 'code-quality');
-  assert.equal(report.summary, 'blocker 1개, warning 1개, info 1개');
+  assert.equal(report.summary, '차단 1 · 경고 1 · 정보 1');
 });
 
-test('renderMarkdown includes status and positioned findings', () => {
+test('renderMarkdown uses concise Korean labels for positioned findings', () => {
   const markdown = renderMarkdown(buildReport({
     baseRef: 'origin/dev',
     headSha: 'abcdef123456',
@@ -58,10 +58,14 @@ test('renderMarkdown includes status and positioned findings', () => {
     }],
   }));
 
-  assert.match(markdown, /차단/);
+  assert.match(markdown, /## 코드 리뷰: 차단/);
+  assert.match(markdown, /차단 1 · 경고 0 · 정보 0/);
   assert.match(markdown, /fe\/src\/domains\/room\/domain\/room\.ts:3/);
+  assert.match(markdown, /프론트엔드 DDD/);
   assert.match(markdown, /application으로 이동/);
-  assert.match(markdown, /90\/100/);
+  assert.match(markdown, /AI 90%/);
+  assert.ok(!markdown.includes('frontend-ddd'));
+  assert.ok(!markdown.includes('기준 브랜치'));
 });
 
 test('buildReport keeps Claude confidence in normalized findings', () => {

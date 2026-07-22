@@ -32,6 +32,15 @@ test('checked-in schema avoids a draft declaration unsupported by Claude Code', 
   assert.equal(loadSchema().$schema, undefined);
 });
 
+test('checked-in schema keeps review text concise', () => {
+  const schema = loadSchema();
+  const finding = schema.properties.findings.items.properties;
+
+  assert.equal(schema.properties.summary.maxLength, 100);
+  assert.equal(finding.message.maxLength, 160);
+  assert.equal(finding.suggestion.maxLength, 100);
+});
+
 test('buildPrompt includes the diff, DDD boundaries, and deterministic results', () => {
   const prompt = buildPrompt(input);
 
@@ -55,6 +64,8 @@ test('buildPrompt includes bounded read-only repository context and confidence r
   assert.match(prompt, /80/);
   assert.match(prompt, /Do not suggest a reusable component unless the supplied context proves it exists/);
   assert.match(prompt, /Do not report cross-platform or external CLI compatibility concerns without supplied failure evidence or official documentation/);
+  assert.match(prompt, /summary, message, suggestion의 자연어는 모두 한국어로 작성/);
+  assert.match(prompt, /짧고 쉬운 단어를 사용/);
 });
 
 test('runClaudeReview invokes Claude without tools and parses structured_output', async () => {

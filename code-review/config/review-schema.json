@@ -2,7 +2,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "summary": { "type": "string" },
+    "summary": { "type": "string", "maxLength": 100 },
     "findings": {
       "type": "array",
       "items": {
@@ -11,10 +11,10 @@
         "properties": {
           "severity": { "type": "string", "enum": ["blocker", "warning", "info"] },
           "type": { "type": "string" },
-          "message": { "type": "string" },
+          "message": { "type": "string", "maxLength": 160 },
           "file": { "type": "string" },
           "line": { "type": "integer", "minimum": 1 },
-          "suggestion": { "type": "string" },
+          "suggestion": { "type": "string", "maxLength": 100 },
           "confidence": { "type": "integer", "minimum": 0, "maximum": 100 }
         },
         "required": ["severity", "type", "message", "confidence"]

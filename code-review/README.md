@@ -64,18 +64,20 @@ npm.cmd run review:mr -- --mr https://lab.ssafy.com/group/project/-/merge_reques
 게시되는 요약 댓글 예시는 아래와 같습니다.
 
 ```md
-## Claude Code MR 리뷰: 차단
+## 코드 리뷰: 차단
 
-blocker 1개, warning 2개, info 0개
+차단 1 · 경고 2 · 정보 0
+요약: 도메인 계층에서 JPA를 직접 사용합니다.
 
-### 지적 사항
+### 확인할 내용
 
-- **BLOCKER / backend-ddd** · `backend/.../domain/User.java:24`: domain에서 JPA를 직접 참조합니다.
-  - 제안: Port는 domain에 두고 JPA 구현은 infrastructure로 옮기세요.
-- **WARNING / component-reuse** · `fe/.../LoginForm.tsx:18` · 신뢰도 91/100: 공통 Button 컴포넌트를 재사용할 수 있습니다.
+- **차단 · 백엔드 DDD** · `backend/.../domain/User.java:24`: domain에서 JPA를 사용합니다. → 수정: JPA 구현을 infrastructure로 옮기세요.
+- **경고 · 컴포넌트 재사용** · `fe/.../LoginForm.tsx:18` · AI 91%: 공통 Button을 쓸 수 있습니다. → 수정: 공통 Button을 사용하세요.
 ```
 
 파일과 줄 번호가 있는 항목도 줄별 discussion을 만들지 않고, 위 요약 댓글에 `파일경로:줄번호`로 표시합니다. 이 방식은 변경되지 않은 줄을 지적해도 GitLab diff 위치 오류 없이 결과를 남길 수 있습니다.
+
+댓글의 자연어는 모두 한국어로 작성합니다. Claude 응답은 요약 100자, 문제 160자, 수정 제안 100자로 제한해 불필요하게 긴 댓글과 토큰 사용을 줄입니다.
 
 ## 재사용·중복 코드 검토는 어떻게 동작하나요?
 

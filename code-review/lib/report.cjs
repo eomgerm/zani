@@ -1,4 +1,20 @@
 const SEVERITY_ORDER = Object.freeze({ blocker: 0, warning: 1, info: 2 });
+const SEVERITY_LABELS = Object.freeze({ blocker: '차단', warning: '경고', info: '정보' });
+const TYPE_LABELS = Object.freeze({
+  'backend-ddd': '백엔드 DDD',
+  'frontend-ddd': '프론트엔드 DDD',
+  'git-convention': 'Git 규칙',
+  'branch-convention': '브랜치 규칙',
+  'commit-convention': '커밋 규칙',
+  'component-reuse': '컴포넌트 재사용',
+  'duplicate-code': '중복 코드',
+  'scope-creep': '작업 범위',
+  'error-handling': '오류 처리',
+  security: '보안',
+  test: '테스트',
+  quality: '코드 품질',
+  'code-quality': '코드 품질',
+});
 
 function normalizeSeverity(value) {
   const severity = String(value || '').toLowerCase();
@@ -26,7 +42,7 @@ function normalizeFinding(finding = {}) {
 function countSummary(findings) {
   const counts = { blocker: 0, warning: 0, info: 0 };
   for (const finding of findings) counts[finding.severity] += 1;
-  return `blocker ${counts.blocker}개, warning ${counts.warning}개, info ${counts.info}개`;
+  return `차단 ${counts.blocker} · 경고 ${counts.warning} · 정보 ${counts.info}`;
 }
 
 function buildReport({
@@ -51,29 +67,30 @@ function buildReport({
 }
 
 function renderMarkdown(report) {
-  const status = report.passed ? '✅ 통과' : '⛔ 차단';
+  const status = report.passed ? '통과' : '차단';
+  const counts = countSummary(report.findings);
   const lines = [
-    `## Claude Code MR 리뷰: ${status}`,
+    `## 코드 리뷰: ${status}`,
     '',
-    report.summary,
-    '',
-    `- 기준 브랜치: \`${report.baseRef}\``,
-    `- 검토 커밋: \`${report.headSha || '확인 불가'}\``,
+    counts,
   ];
 
+  if (report.summary && report.summary !== counts) lines.push(`요약: ${report.summary}`);
+
   if (report.findings.length === 0) {
-    lines.push('', '지적 사항이 없습니다.');
+    lines.push('', '확인할 내용이 없습니다.');
     return lines.join('\n');
   }
 
-  lines.push('', '### 지적 사항', '');
+  lines.push('', '### 확인할 내용', '');
   for (const finding of report.findings) {
     const position = finding.file
-      ? ` — \`${finding.file}${finding.line ? `:${finding.line}` : ''}\``
+      ? ` · \`${finding.file}${finding.line ? `:${finding.line}` : ''}\``
       : '';
-    const confidence = finding.confidence === undefined ? '' : ` · 신뢰도 ${finding.confidence}/100`;
-    lines.push(`- **${finding.severity.toUpperCase()} / ${finding.type}**${position}${confidence}: ${finding.message}`);
-    if (finding.suggestion) lines.push(`  - 제안: ${finding.suggestion}`);
+    const confidence = finding.confidence === undefined ? '' : ` · AI ${finding.confidence}%`;
+    const type = TYPE_LABELS[finding.type] || '기타';
+    const suggestion = finding.suggestion ? ` → 수정: ${finding.suggestion}` : '';
+    lines.push(`- **${SEVERITY_LABELS[finding.severity]} · ${type}**${position}${confidence}: ${finding.message}${suggestion}`);
   }
 
   return lines.join('\n');
