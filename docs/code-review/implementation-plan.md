@@ -6,7 +6,7 @@
 2. `claude auth status`로 Claude Code 로그인 확인
 3. 작업 브랜치에서 `npm.cmd run review:mr`
 4. JSON 결과의 blocker를 먼저 해결
-5. MR을 올린 뒤 `GITLAB_TOKEN`을 설정하고 `--mr <IID> --publish` 실행
+5. MR을 올린 뒤 `GITLAB_TOKEN`을 설정하고 `--mr <IID>` 실행. 이 명령은 MR 최신 코드를 자동으로 가져와 댓글까지 게시하므로 다른 MR을 검토할 때 브랜치를 바꿀 필요가 없다.
 
 이 단계에서는 MR 작성자의 노트북이 실행 위치다. 댓글이 달리면 사람이 결과를 확인하고 팀 규칙대로 Approve와 머지를 진행한다.
 

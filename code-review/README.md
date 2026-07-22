@@ -50,13 +50,15 @@ GITLAB_TOKEN=발급받은-토큰
 이미 PowerShell·Jenkins·GitLab CI에 `GITLAB_TOKEN`이 설정되어 있으면 그 값이 `.env`보다 우선합니다. 토큰은 채팅, 코드, 커밋 메시지에 넣지 않습니다.
 
 ```powershell
-npm.cmd run review:mr -- --mr 17 --publish
+npm.cmd run review:mr -- --mr 17
 ```
+
+`--mr`를 지정하면 현재 체크아웃 브랜치를 사용하지 않습니다. GitLab에서 해당 MR의 최신 소스 커밋과 브랜치명을 가져와 임시 ref에서 검토하므로, 다른 팀원의 MR도 브랜치를 직접 바꾸지 않고 검토할 수 있습니다.
 
 MR 전체 URL도 사용할 수 있습니다.
 
 ```powershell
-npm.cmd run review:mr -- --mr https://lab.ssafy.com/group/project/-/merge_requests/17 --publish
+npm.cmd run review:mr -- --mr https://lab.ssafy.com/group/project/-/merge_requests/17
 ```
 
 게시 전에는 MR의 최신 SHA와 검토한 SHA가 같은지 확인합니다. 다르면 오래된 결과를 게시하지 않습니다. 같은 SHA에 이 도구가 이미 댓글을 달았다면 중복 댓글을 건너뜁니다. Draft 또는 닫힌 MR도 게시하지 않습니다.

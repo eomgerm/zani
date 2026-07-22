@@ -48,41 +48,63 @@ function untrackedDiff(repositoryRoot, files, readFile) {
 }
 
 function collectGitContext(baseRef = 'origin/dev', {
+  headRef = 'HEAD',
+  branch,
+  includeWorkingTree = headRef === 'HEAD',
   runGit = defaultRunGit,
   readFile = fs.readFileSync,
   cwd = process.cwd(),
 } = {}) {
   const repositoryRoot = runGit(['rev-parse', '--show-toplevel'], { cwd }).trim();
   runGit(['rev-parse', '--verify', baseRef], { cwd: repositoryRoot });
+  runGit(['rev-parse', '--verify', headRef], { cwd: repositoryRoot });
 
   const committedFiles = nonEmptyLines(
-    runGit(['diff', '--name-only', `${baseRef}...HEAD`], { cwd: repositoryRoot }),
+    runGit(['diff', '--name-only', `${baseRef}...${headRef}`], { cwd: repositoryRoot }),
   );
-  const workingFiles = nonEmptyLines(
+  const workingFiles = includeWorkingTree ? nonEmptyLines(
     runGit(['diff', '--name-only', 'HEAD', '--'], { cwd: repositoryRoot }),
-  );
-  const untrackedFiles = nonEmptyLines(
+  ) : [];
+  const untrackedFiles = includeWorkingTree ? nonEmptyLines(
     runGit(['ls-files', '--others', '--exclude-standard'], { cwd: repositoryRoot }),
-  );
+  ) : [];
   const changedFiles = [...new Set([...committedFiles, ...workingFiles, ...untrackedFiles])]
     .map((file) => file.replaceAll('\\', '/'));
   const diffParts = [
-    runGit(['diff', '--unified=80', `${baseRef}...HEAD`, '--'], { cwd: repositoryRoot }),
-    runGit(['diff', '--unified=80', 'HEAD', '--'], { cwd: repositoryRoot }),
-    untrackedDiff(repositoryRoot, untrackedFiles, readFile),
+    runGit(['diff', '--unified=80', `${baseRef}...${headRef}`, '--'], { cwd: repositoryRoot }),
+    includeWorkingTree ? runGit(['diff', '--unified=80', 'HEAD', '--'], { cwd: repositoryRoot }) : '',
+    includeWorkingTree ? untrackedDiff(repositoryRoot, untrackedFiles, readFile) : '',
   ].filter((part) => part.trim());
 
   return {
     repositoryRoot,
     baseRef,
-    branch: runGit(['symbolic-ref', '--short', 'HEAD'], { cwd: repositoryRoot }).trim(),
-    headSha: runGit(['rev-parse', 'HEAD'], { cwd: repositoryRoot }).trim(),
+    branch: branch || runGit(['symbolic-ref', '--short', 'HEAD'], { cwd: repositoryRoot }).trim(),
+    headSha: runGit(['rev-parse', headRef], { cwd: repositoryRoot }).trim(),
     changedFiles,
     diff: diffParts.join('\n\n'),
     commitMessages: nonEmptyLines(
-      runGit(['log', '--format=%s', `${baseRef}..HEAD`], { cwd: repositoryRoot }),
+      runGit(['log', '--format=%s', `${baseRef}..${headRef}`], { cwd: repositoryRoot }),
     ),
   };
+}
+
+function fetchMergeRequestHead({
+  iid,
+  repositoryRoot,
+  expectedSha,
+}, {
+  runGit = defaultRunGit,
+} = {}) {
+  const headRef = `refs/zani-review/mr/${iid}`;
+  runGit([
+    'fetch', '--no-tags', 'origin', `refs/merge-requests/${iid}/head:${headRef}`,
+  ], { cwd: repositoryRoot });
+  const headSha = runGit(['rev-parse', headRef], { cwd: repositoryRoot }).trim();
+  if (expectedSha && headSha !== expectedSha) {
+    throw new Error(`MR 최신 커밋(${expectedSha})과 가져온 커밋(${headSha})이 다릅니다.`);
+  }
+  return headRef;
 }
 
 function scriptFailureMessage(result, fallback) {
@@ -101,7 +123,7 @@ function checkGitConventions(context, { runScript = defaultRunScript } = {}) {
   const findings = [];
   const branchScript = path.join(context.repositoryRoot, 'scripts', 'validate-branch-name.cjs');
   const commitScript = path.join(context.repositoryRoot, 'scripts', 'verify-commit-msg.cjs');
-  const branchResult = runScript(branchScript, [], { cwd: context.repositoryRoot });
+  const branchResult = runScript(branchScript, [context.branch], { cwd: context.repositoryRoot });
 
   if (branchResult.status !== 0) {
     findings.push(conventionFinding(
@@ -133,4 +155,5 @@ module.exports = {
   collectGitContext,
   defaultRunGit,
   defaultRunScript,
+  fetchMergeRequestHead,
 };

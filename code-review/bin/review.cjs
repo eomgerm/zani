@@ -8,8 +8,8 @@ const { parseArgs } = require('../lib/args.cjs');
 const { runClaudeReview } = require('../lib/claude.cjs');
 const { checkDddRules } = require('../lib/ddd-rules.cjs');
 const { loadEnvFile } = require('../lib/env.cjs');
-const { checkGitConventions, collectGitContext } = require('../lib/git.cjs');
-const { publishReport } = require('../lib/gitlab.cjs');
+const { checkGitConventions, collectGitContext, fetchMergeRequestHead } = require('../lib/git.cjs');
+const { getMergeRequestMetadata, publishReport } = require('../lib/gitlab.cjs');
 const { collectReviewContext } = require('../lib/repository-context.cjs');
 const { buildReport } = require('../lib/report.cjs');
 
@@ -20,8 +20,8 @@ Usage:
 
 Options:
   --base <ref>       비교 기준 브랜치 (기본값: origin/dev)
-  --mr <url|iid>     GitLab MR URL 또는 IID
-  --publish          GitLab에 파일·줄 정보를 포함한 요약 댓글 게시 (GITLAB_TOKEN 필요)
+  --mr <url|iid>     최신 MR 코드 검토 및 GitLab 요약 댓글 게시
+  --publish          이전 명령과의 호환용 옵션 (--mr 사용 시 자동 적용)
   --output <path>    JSON 결과 경로 (기본값: code-review/output/review.json)
   --help, -h         도움말 출력
 `;
@@ -41,6 +41,13 @@ function getOriginRemote(repositoryRoot) {
   }).trim();
 }
 
+function getRepositoryRoot() {
+  return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
 async function main(argv, adapters = {}) {
   const collectContext = adapters.collectContext || collectGitContext;
   const checkGit = adapters.checkGit || checkGitConventions;
@@ -50,6 +57,9 @@ async function main(argv, adapters = {}) {
   const reviewWithClaude = adapters.reviewWithClaude || runClaudeReview;
   const writeReport = adapters.writeReport || writeJsonReport;
   const getRemoteUrl = adapters.getRemoteUrl || getOriginRemote;
+  const getRepository = adapters.getRepositoryRoot || getRepositoryRoot;
+  const getMrMetadata = adapters.getMrMetadata || getMergeRequestMetadata;
+  const fetchMrHead = adapters.fetchMrHead || fetchMergeRequestHead;
   const publish = adapters.publish || publishReport;
   const log = adapters.log || console.log;
   const error = adapters.error || console.error;
@@ -61,8 +71,26 @@ async function main(argv, adapters = {}) {
       return 0;
     }
 
-    const context = collectContext(options.baseRef);
-    loadEnvironment(path.join(context.repositoryRoot, '.env'));
+    const repositoryRoot = getRepository();
+    loadEnvironment(path.join(repositoryRoot, '.env'));
+    let remoteUrl;
+    let contextOptions;
+    if (options.mr) {
+      remoteUrl = getRemoteUrl(repositoryRoot);
+      const mrMetadata = await getMrMetadata({ mr: options.mr, remoteUrl });
+      const headRef = fetchMrHead({
+        iid: mrMetadata.iid,
+        repositoryRoot,
+        expectedSha: mrMetadata.sha,
+      });
+      contextOptions = {
+        headRef,
+        branch: mrMetadata.sourceBranch,
+        includeWorkingTree: false,
+      };
+    }
+
+    const context = collectContext(options.baseRef, contextOptions);
     let report;
     if (context.changedFiles.length === 0) {
       report = buildReport({
@@ -102,7 +130,7 @@ async function main(argv, adapters = {}) {
     log(`리뷰 JSON 저장: ${outputPath || options.output}`);
 
     if (options.publish) {
-      const remoteUrl = getRemoteUrl(context.repositoryRoot);
+      remoteUrl = remoteUrl || getRemoteUrl(context.repositoryRoot);
       await publish({
         mr: options.mr,
         remoteUrl,

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { publishReport, resolveMrTarget } = require('../lib/gitlab.cjs');
+const { getMergeRequestMetadata, publishReport, resolveMrTarget } = require('../lib/gitlab.cjs');
 
 const report = {
   passed: false,
@@ -66,6 +66,25 @@ test('resolveMrTarget accepts a full MR URL and a numeric IID', () => {
       iid: '17',
     },
   );
+});
+
+test('getMergeRequestMetadata returns the source branch and latest SHA', async () => {
+  const metadata = await getMergeRequestMetadata({
+    mr: '17',
+    remoteUrl: 'https://lab.ssafy.com/group/project.git',
+    token: 'secret',
+  }, {
+    fetchImpl: async () => response({
+      ...mrResponse,
+      source_branch: 'be/feat/example-S15P11A105-17',
+    }),
+  });
+
+  assert.deepEqual(metadata, {
+    iid: '17',
+    sourceBranch: 'be/feat/example-S15P11A105-17',
+    sha: 'head-sha',
+  });
 });
 
 test('publishReport refuses to publish a stale reviewed SHA', async () => {
