@@ -20,8 +20,8 @@ Usage:
 
 Options:
   --base <ref>       비교 기준 브랜치 (기본값: origin/dev)
-  --mr <url|iid>     GitLab MR URL 또는 IID (최신 MR 코드 자동 검토)
-  --publish          GitLab에 파일·줄 정보를 포함한 요약 댓글 게시 (GITLAB_TOKEN 필요)
+  --mr <url|iid>     최신 MR 코드 검토 및 GitLab 요약 댓글 게시
+  --publish          이전 명령과의 호환용 옵션 (--mr 사용 시 자동 적용)
   --output <path>    JSON 결과 경로 (기본값: code-review/output/review.json)
   --help, -h         도움말 출력
 `;

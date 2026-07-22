@@ -40,6 +40,8 @@ function parseArgs(argv) {
     throw new Error(`알 수 없는 옵션입니다: ${option}`);
   }
 
+  if (options.mr) options.publish = true;
+
   if (options.publish && !options.mr) {
     throw new Error('--publish 사용 시 --mr <URL 또는 IID>가 필요합니다.');
   }

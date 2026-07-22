@@ -103,10 +103,10 @@ test('main loads the repository .env before reviewing or publishing', async () =
   assert.deepEqual(fixture.state.environmentLoads, [path.join('C:/repo', '.env')]);
 });
 
-test('main publishes only when explicitly requested', async () => {
+test('main publishes when an MR is specified without --publish', async () => {
   const fixture = harness();
 
-  const exitCode = await main(['--mr', '17', '--publish'], fixture.adapters);
+  const exitCode = await main(['--mr', '17'], fixture.adapters);
 
   assert.equal(exitCode, 0);
   assert.equal(fixture.state.publications.length, 1);
@@ -117,7 +117,7 @@ test('main publishes only when explicitly requested', async () => {
 test('main fetches and reviews the MR head ref when an MR is specified', async () => {
   const fixture = harness();
 
-  const exitCode = await main(['--mr', '17', '--publish'], fixture.adapters);
+  const exitCode = await main(['--mr', '17'], fixture.adapters);
 
   assert.equal(exitCode, 0);
   assert.equal(fixture.state.mrMetadataCalls.length, 1);

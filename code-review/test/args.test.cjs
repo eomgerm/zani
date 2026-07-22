@@ -31,6 +31,13 @@ test('parseArgs reads every supported option', () => {
   );
 });
 
+test('parseArgs publishes automatically when an MR is specified', () => {
+  const options = parseArgs(['--mr', '13']);
+
+  assert.equal(options.mr, '13');
+  assert.equal(options.publish, true);
+});
+
 test('parseArgs requires an MR target when publishing', () => {
   assert.throws(() => parseArgs(['--publish']), /--mr/);
 });
