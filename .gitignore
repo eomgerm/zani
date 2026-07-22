@@ -3,3 +3,4 @@ code-review/output/
 .env
 .env.*
 !.env.example
+.idea/

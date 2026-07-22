@@ -1,11 +1,10 @@
-package com.a105.zani.common.infrastructure.persistence;
+package com.a105.zani.common.persistence;
 
 import io.hypersistence.tsid.TSID;
 
 public final class TsidGenerator {
 
-    private TsidGenerator() {
-    }
+    private TsidGenerator() {}
 
     public static long generate() {
         return TSID.Factory.getTsid().toLong();
