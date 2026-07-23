@@ -2,7 +2,7 @@
 
 ## 1. 범위
 
-이 문서는 Next.js 프론트엔드가 Spring Boot와 LiveKit을 연결하는 방법을 정의한다. 전체 구조는 [overview.md](./overview.md)를 먼저 읽는다.
+이 문서는 Next.js 프론트엔드가 Spring Boot와 LiveKit을 연결하는 방법을 정의한다. 전체 구조는 [livekit-overview.md](./livekit-overview.md)를 먼저 읽는다.
 
 현재 `fe/package.json`에는 다음 의존성이 이미 있다.
 

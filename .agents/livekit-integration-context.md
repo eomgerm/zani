@@ -7,16 +7,16 @@
 이 문서는 ZANI의 프론트엔드·백엔드·LiveKit·Egress 연동을 작업하는 에이전트가 먼저 읽어야 하는 최신 제품·기술 기준이다.
 
 - EC2, UFW, SSH, 인증서, 권한 변경에는 기존 인프라 안전 규칙을 계속 적용한다.
-- 백엔드 코드를 변경할 때는 `S15P11A105/backend/AGENTS.md`와 DDD 가이드를 함께 따른다.
+- 백엔드 코드를 변경할 때는 루트 [`AGENTS.md`](../AGENTS.md)와 [`ddd-development-guide.md`](./ddd-development-guide.md)를 함께 따른다.
 - 이 문서와 과거 Phase 문서의 LiveKit 애플리케이션 정책이 충돌하면 이 문서를 우선한다.
 - 사용자의 별도 요청 없이 EC2, UFW, SSH, 인증서, 권한, Media Stack을 변경하지 않는다.
 - 사용자의 사전 확인 없이 commit 또는 Merge Request를 생성하지 않는다.
 
 팀 구현 문서는 다음 세 파일이다.
 
-- [`../docs/livekit/overview.md`](../docs/livekit/overview.md)
-- [`../docs/livekit/frontend-guide.md`](../docs/livekit/frontend-guide.md)
-- [`../docs/livekit/backend-guide.md`](../docs/livekit/backend-guide.md)
+- [`livekit-overview.md`](./livekit-overview.md)
+- [`livekit-frontend-guide.md`](./livekit-frontend-guide.md)
+- [`livekit-backend-guide.md`](./livekit-backend-guide.md)
 
 ## 2. 고정된 시스템 경계
 
