@@ -84,7 +84,10 @@ uv run python -m zani_ai engagement validate `
 uv run python -m zani_ai engagement extract `
   --data-root datasets/raw/engagenet `
   --face-landmarker-model models/face_landmarker.task `
-  --output datasets/processed/engagenet
+  --output datasets/processed/engagenet `
+  --workers 2 `
+  --progress-every 25 `
+  --max-excluded-fraction 0.05
 
 uv run python -m zani_ai engagement train `
   --features datasets/processed/engagenet `
@@ -94,6 +97,15 @@ uv run python -m zani_ai engagement export `
   --checkpoint artifacts/engagement/run-001/best.pt `
   --output web/engagement-demo/public/models
 ```
+
+위 명령은 각 worker process에 독립적인 Face Landmarker를 만들며, 32GB RAM과
+i7-13700H 노트북을 위한 보수적인 기본값도 worker 2개입니다. 중단 후 같은 명령을 다시
+실행하면 원본 영상과 추출 프로토콜 fingerprint가 일치하는 clip별 원자적 `.npz` cache를
+재사용합니다. `manifest.json`은 진행 중에도 원자적으로 갱신되고 `processed/total`, cache,
+포함·제외 수, 처리 속도와 ETA를 출력합니다. 최종 manifest에는 MediaPipe/OpenCV 버전,
+Face Landmarker 모델 SHA-256과 크기, sampling/segment/feature schema, worker 수와 실제 제외
+임계값이 기록됩니다. 완료되지 않았거나 제외 임계값을 넘은 manifest로는 학습을 시작하지
+않습니다.
 
 ### E0 5-seed 재현
 

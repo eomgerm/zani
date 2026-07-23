@@ -76,6 +76,11 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
         raise ValueError("feature manifest must be a JSON object")
     if payload.get("schema") != SCHEMA_NAME:
         raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
+    status = payload.get("status")
+    if status is not None and (status != "complete" or payload.get("complete") is not True):
+        raise ValueError(
+            f"feature manifest is incomplete (status={status!r}); finish extraction first"
+        )
     included = payload.get("included")
     excluded = payload.get("excluded")
     if not isinstance(included, list) or not isinstance(excluded, list):

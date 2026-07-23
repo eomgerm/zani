@@ -123,6 +123,11 @@ def _load_feature_datasets(root: Path, *, include_test: bool = True) -> FeatureD
     payload = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
     if payload.get("schema") != SCHEMA_NAME:
         raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
+    status = payload.get("status")
+    if status is not None and (status != "complete" or payload.get("complete") is not True):
+        raise ValueError(
+            f"feature manifest is incomplete (status={status!r}); finish extraction first"
+        )
     grouped: dict[str, list[FeatureEntry]] = {"train": [], "valid": [], "test": []}
     for item_value in cast(list[dict[str, Any]], payload.get("included", [])):
         split = cast(SplitName, item_value["split"])

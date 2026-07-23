@@ -43,16 +43,17 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _extract(args: argparse.Namespace) -> int:
-    from zani_ai.engagement.extraction import MediaPipeFaceLandmarker, extract_contract
+    from zani_ai.engagement.extraction import extract_contract_parallel
 
     contract = _load_contract(args)
-    with MediaPipeFaceLandmarker(args.face_landmarker_model) as landmarker:
-        manifest = extract_contract(
-            contract,
-            landmarker,
-            args.output,
-            max_excluded_fraction=args.max_excluded_fraction,
-        )
+    manifest = extract_contract_parallel(
+        contract,
+        args.face_landmarker_model,
+        args.output,
+        workers=args.workers,
+        progress_every=args.progress_every,
+        max_excluded_fraction=args.max_excluded_fraction,
+    )
     print(
         f"Features extracted | included={len(manifest.included)} "
         f"excluded={len(manifest.excluded)} | {args.output / 'manifest.json'}"
@@ -133,6 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--face-landmarker-model", type=Path, required=True)
     extract.add_argument("--output", type=Path, required=True)
     extract.add_argument("--max-excluded-fraction", type=float, default=0.05)
+    extract.add_argument("--workers", type=int, default=2)
+    extract.add_argument("--progress-every", type=int, default=25)
     extract.set_defaults(handler=_extract)
 
     train = commands.add_parser("train", help="train and evaluate the Transformer")
