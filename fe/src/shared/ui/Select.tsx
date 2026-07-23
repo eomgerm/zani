@@ -1,10 +1,28 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export interface SelectOption {
   readonly value: string;
   readonly label: string;
+}
+
+/** 드롭다운 화살표 아이콘. Select 기본 트리거와 커스텀 트리거에서 함께 쓴다. */
+export function ChevronDownIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`shrink-0 ${className}`}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
 }
 
 interface SelectProps {
@@ -18,6 +36,15 @@ interface SelectProps {
   disabled?: boolean;
   className?: string;
   "data-testid"?: string;
+  "aria-label"?: string;
+  /** 트리거 내용을 직접 그린다(아이콘·칩 트리거 등). 지정하면 기본 라벨+화살표 대신 사용된다. */
+  trigger?: (state: { open: boolean; selected: SelectOption | null }) => ReactNode;
+  /** trigger 지정 시 트리거 버튼 스타일을 통째로 대체한다. */
+  triggerClassName?: string;
+  /** 목록이 열리는 방향. 기본은 아래(bottom). */
+  placement?: "bottom" | "top";
+  /** 목록의 폭·정렬을 커스터마이징한다 (기본은 트리거와 같은 폭). */
+  listClassName?: string;
 }
 
 /**
@@ -34,6 +61,11 @@ export function Select({
   disabled = false,
   className = "",
   "data-testid": testId,
+  "aria-label": ariaLabel,
+  trigger,
+  triggerClassName,
+  placement = "bottom",
+  listClassName = "inset-x-0",
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
@@ -114,28 +146,37 @@ export function Select({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-activedescendant={open ? `${listboxId}-${highlightIndex}` : undefined}
+        aria-label={ariaLabel}
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={handleKeyDown}
-        className={`flex w-full items-center justify-between gap-2 rounded-xl border bg-surface px-[15px] py-3 text-left text-sm font-semibold transition-colors ${
-          open ? "border-line-primary" : "border-line-muted"
-        } ${disabled ? "cursor-not-allowed bg-muted-surface text-ink-disabled" : "cursor-pointer hover:border-line-primary"} ${
-          selected ? "text-ink" : "text-ink-faint"
-        }`}
+        className={
+          triggerClassName ??
+          `flex w-full items-center justify-between gap-2 rounded-xl border bg-surface px-[15px] py-3 text-left text-sm font-semibold transition-colors ${
+            open ? "border-line-primary" : "border-line-muted"
+          } ${disabled ? "cursor-not-allowed bg-muted-surface text-ink-disabled" : "cursor-pointer hover:border-line-primary"} ${
+            selected ? "text-ink" : "text-ink-faint"
+          }`
+        }
       >
-        <span className="truncate">{selected ? selected.label : placeholder}</span>
-        <span
-          aria-hidden
-          className={`shrink-0 text-[11px] text-ink-faint transition-transform ${open ? "rotate-180" : ""}`}
-        >
-          ▼
-        </span>
+        {trigger ? (
+          trigger({ open, selected })
+        ) : (
+          <>
+            <span className="truncate">{selected ? selected.label : placeholder}</span>
+            <ChevronDownIcon
+              className={`size-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`}
+            />
+          </>
+        )}
       </button>
 
       {open && (
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-56 overflow-y-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-pop animate-[zPop_.18s]"
+          className={`absolute z-30 max-h-56 overflow-y-auto rounded-[14px] border border-line bg-surface p-1.5 shadow-pop animate-[zPop_.18s] ${
+            placement === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]"
+          } ${listClassName}`}
         >
           {options.map((option, index) => {
             const isSelected = option.value === value;

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Select, type SelectOption } from "@/shared/ui";
+import { ChevronDownIcon, Select, type SelectOption } from "@/shared/ui";
 import {
   evaluateDeviceTest,
   MICROPHONE_LEVEL_THRESHOLD,
@@ -351,70 +351,78 @@ export function DevicePreview({
             </div>
           </div>
         )}
-        <div className="absolute bottom-[18px] left-[18px] z-stage-chip font-bold">
-          🎥 카메라 미리보기
+        <div className="absolute top-[18px] left-[18px] z-stage-chip font-bold">
+          카메라 미리보기
         </div>
 
-        {/* 카메라·마이크 온오프 토글 */}
+        {/* 카메라·마이크 컨트롤: [아이콘+라벨 토글 | 장치 선택 화살표] 분할 알약 */}
         <div className="absolute bottom-[14px] left-1/2 flex -translate-x-1/2 gap-2.5">
-          <button
-            type="button"
-            data-testid="camera-toggle"
-            aria-pressed={cameraEnabled}
-            aria-label={cameraEnabled ? "카메라 끄기" : "카메라 켜기"}
-            onClick={handleToggleCamera}
-            className={`flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-[19px] backdrop-blur-[6px] transition-colors ${
-              cameraEnabled ? "bg-[#0e1020cc] text-white hover:bg-[#1c2036cc]" : "bg-danger text-white"
-            }`}
-          >
-            {cameraEnabled ? "🎥" : "📷"}
-          </button>
-          <button
-            type="button"
-            data-testid="microphone-toggle"
-            aria-pressed={microphoneEnabled}
-            aria-label={microphoneEnabled ? "마이크 끄기" : "마이크 켜기"}
-            onClick={handleToggleMicrophone}
-            className={`flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-[19px] backdrop-blur-[6px] transition-colors ${
-              microphoneEnabled ? "bg-[#0e1020cc] text-white hover:bg-[#1c2036cc]" : "bg-danger text-white"
-            }`}
-          >
-            {microphoneEnabled ? "🎤" : "🔇"}
-          </button>
+          <div className="flex items-center rounded-full border border-white/40 bg-[#0e1020cc] backdrop-blur-[6px]">
+            <button
+              type="button"
+              data-testid="microphone-toggle"
+              aria-pressed={microphoneEnabled}
+              onClick={handleToggleMicrophone}
+              className="flex cursor-pointer items-center gap-2 rounded-l-full border-0 bg-transparent py-2.5 pl-4 pr-2.5 text-[13px] font-extrabold text-white transition-colors hover:bg-white/10"
+            >
+              <MicIcon off={!microphoneEnabled} />
+              {microphoneEnabled ? "음소거" : "음소거 해제"}
+            </button>
+            <span aria-hidden className="h-[18px] w-px bg-white/25" />
+            <Select
+              data-testid="microphone-select"
+              aria-label="마이크 선택"
+              options={microphones}
+              value={selectedMicrophoneId ?? activeMicrophoneId}
+              onChange={setSelectedMicrophoneId}
+              disabled={microphones.length === 0}
+              placement="top"
+              trigger={({ open }) => (
+                <ChevronDownIcon
+                  className={`size-[15px] text-white transition-transform ${open ? "rotate-180" : ""}`}
+                />
+              )}
+              triggerClassName="flex cursor-pointer items-center rounded-r-full border-0 bg-transparent py-[13px] pl-2 pr-3.5 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              listClassName="left-auto right-0 w-60"
+            />
+          </div>
+
+          <div className="flex items-center rounded-full border border-white/40 bg-[#0e1020cc] backdrop-blur-[6px]">
+            <button
+              type="button"
+              data-testid="camera-toggle"
+              aria-pressed={cameraEnabled}
+              onClick={handleToggleCamera}
+              className="flex cursor-pointer items-center gap-2 rounded-l-full border-0 bg-transparent py-2.5 pl-4 pr-2.5 text-[13px] font-extrabold text-white transition-colors hover:bg-white/10"
+            >
+              <CameraIcon off={!cameraEnabled} />
+              {cameraEnabled ? "비디오 중지" : "비디오 시작"}
+            </button>
+            <span aria-hidden className="h-[18px] w-px bg-white/25" />
+            <Select
+              data-testid="camera-select"
+              aria-label="카메라 선택"
+              options={cameras}
+              value={selectedCameraId ?? activeCameraId}
+              onChange={setSelectedCameraId}
+              disabled={cameras.length === 0}
+              placement="top"
+              trigger={({ open }) => (
+                <ChevronDownIcon
+                  className={`size-[15px] text-white transition-transform ${open ? "rotate-180" : ""}`}
+                />
+              )}
+              triggerClassName="flex cursor-pointer items-center rounded-r-full border-0 bg-transparent py-[13px] pl-2 pr-3.5 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              listClassName="left-auto right-0 w-60"
+            />
+          </div>
         </div>
       </div>
 
-      {/* 장치 선택 */}
+      {/* 마이크 입력 레벨 (장치 선택은 미리보기 하단 알약의 화살표 메뉴에서) */}
       <div className="z-card-lg flex flex-col gap-2 px-[22px] py-[18px]">
-        <label htmlFor="camera-select" className="text-[13px] font-bold text-ink-faint">
-          카메라
-        </label>
-        <Select
-          id="camera-select"
-          data-testid="camera-select"
-          options={cameras}
-          value={selectedCameraId ?? activeCameraId}
-          onChange={setSelectedCameraId}
-          placeholder="카메라 없음"
-          disabled={cameras.length === 0}
-        />
-
-        <label htmlFor="microphone-select" className="mt-1 text-[13px] font-bold text-ink-faint">
-          마이크
-        </label>
-        <Select
-          id="microphone-select"
-          data-testid="microphone-select"
-          options={microphones}
-          value={selectedMicrophoneId ?? activeMicrophoneId}
-          onChange={setSelectedMicrophoneId}
-          placeholder="마이크 없음"
-          disabled={microphones.length === 0}
-        />
-
-        {/* 마이크 입력 레벨 */}
-        <div className="mt-2 flex items-center gap-[11px]">
-          <span className="flex-none text-[13px] font-bold text-ink-faint">입력 레벨</span>
+        <div className="flex items-center gap-[11px]">
+          <span className="flex-none text-[13px] font-bold text-ink-faint">마이크 입력 레벨</span>
           <div
             data-testid="mic-level"
             data-level-passed={levelPassed}
@@ -456,5 +464,46 @@ export function DevicePreview({
         </div>
       )}
     </div>
+  );
+}
+
+/** 마이크 아이콘. off 이면 붉은색 + 사선을 그린다. */
+function MicIcon({ off }: { off: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`size-[17px] shrink-0 ${off ? "text-danger-light" : "text-white"}`}
+    >
+      <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3Z" />
+      <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+      <line x1="12" x2="12" y1="18" y2="21" />
+      {off && <line x1="4" y1="3" x2="20" y2="21" />}
+    </svg>
+  );
+}
+
+/** 카메라 아이콘. off 이면 붉은색 + 사선을 그린다. */
+function CameraIcon({ off }: { off: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`size-[17px] shrink-0 ${off ? "text-danger-light" : "text-white"}`}
+    >
+      <path d="m16 10 6-4v12l-6-4" />
+      <rect x="2" y="6" width="14" height="12" rx="2" />
+      {off && <line x1="4" y1="3" x2="20" y2="21" />}
+    </svg>
   );
 }

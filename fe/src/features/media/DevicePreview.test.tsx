@@ -109,8 +109,14 @@ describe('DevicePreview', () => {
       expect(last?.microphoneDeviceId).toBe('mic-1');
     });
 
-    // 권한 허용 후 장치 목록 라벨이 채워진다.
+    // 권한 허용 후 화살표 메뉴를 열면 장치 목록 라벨이 채워져 있다.
+    const cameraSelect = screen.getByTestId('camera-select');
+    await waitFor(() => expect(cameraSelect).toBeEnabled());
+    fireEvent.click(cameraSelect);
     expect(await screen.findByText('테스트 카메라')).toBeInTheDocument();
+
+    const microphoneSelect = screen.getByTestId('microphone-select');
+    fireEvent.click(microphoneSelect);
     expect(await screen.findByText('테스트 마이크')).toBeInTheDocument();
   });
 
