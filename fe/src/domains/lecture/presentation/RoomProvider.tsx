@@ -31,6 +31,23 @@ export type RoomProviderProps = {
 
 const RoomConnectionContext = createContext<RoomConnectionContextValue | null>(null);
 
+type ConnectionKey = {
+  attempt: number;
+  requestToken: MediaTokenRequester;
+  roomFactory: LiveKitRoomFactory;
+  sessionId: string;
+};
+
+type ConnectionSnapshot = Omit<RoomConnectionContextValue, "retry"> & {
+  key: ConnectionKey | null;
+};
+
+const connectingSnapshot: Omit<RoomConnectionContextValue, "retry"> = {
+  room: null,
+  connectionState: "connecting",
+  error: null,
+};
+
 const connectionErrorMessage = (error: unknown) =>
   error instanceof Error && error.message
     ? error.message
@@ -43,28 +60,32 @@ export function RoomProvider({
   roomFactory = createLiveKitRoom,
 }: RoomProviderProps) {
   const [attempt, setAttempt] = useState(0);
-  const [connection, setConnection] = useState<Omit<RoomConnectionContextValue, "retry">>({
-    room: null,
-    connectionState: "connecting",
-    error: null,
+  const connectionKey = useMemo<ConnectionKey>(
+    () => ({ attempt, requestToken, roomFactory, sessionId }),
+    [attempt, requestToken, roomFactory, sessionId],
+  );
+  const [connection, setConnection] = useState<ConnectionSnapshot>({
+    ...connectingSnapshot,
+    key: null,
   });
 
   useEffect(() => {
     let isCurrent = true;
     const abortController = new AbortController();
-    const room = roomFactory();
-
-    setConnection({ room: null, connectionState: "connecting", error: null });
+    const room = connectionKey.roomFactory();
 
     const connect = async () => {
       try {
-        const mediaToken = await requestToken(sessionId, abortController.signal);
+        const mediaToken = await connectionKey.requestToken(
+          connectionKey.sessionId,
+          abortController.signal,
+        );
         if (!isCurrent) return;
 
         await room.connect(mediaToken.liveKitUrl, mediaToken.accessToken);
         if (!isCurrent) return;
 
-        setConnection({ room, connectionState: "connected", error: null });
+        setConnection({ room, connectionState: "connected", error: null, key: connectionKey });
       } catch (error) {
         if (!isCurrent) return;
 
@@ -72,6 +93,7 @@ export function RoomProvider({
           room: null,
           connectionState: "error",
           error: connectionErrorMessage(error),
+          key: connectionKey,
         });
       }
     };
@@ -83,11 +105,13 @@ export function RoomProvider({
       abortController.abort();
       room.disconnect();
     };
-  }, [attempt, requestToken, roomFactory, sessionId]);
+  }, [connectionKey]);
+
+  const currentConnection = connection.key === connectionKey ? connection : connectingSnapshot;
 
   const value = useMemo<RoomConnectionContextValue>(
-    () => ({ ...connection, retry: () => setAttempt((current) => current + 1) }),
-    [connection],
+    () => ({ ...currentConnection, retry: () => setAttempt((current) => current + 1) }),
+    [currentConnection],
   );
 
   return <RoomConnectionContext.Provider value={value}>{children}</RoomConnectionContext.Provider>;
