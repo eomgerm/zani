@@ -105,6 +105,14 @@ def source_fingerprint(path: Path) -> dict[str, int]:
     return {"device": stat.st_dev, "inode": stat.st_ino, "size": stat.st_size}
 
 
+def is_link_or_reparse_point(path: Path) -> bool:
+    try:
+        stat = path.lstat()
+    except FileNotFoundError:
+        return False
+    return path.is_symlink() or bool(getattr(stat, "st_file_attributes", 0) & 0x400)
+
+
 def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
     clips: list[Clip] = []
     seen_clip_ids: set[str] = set()
@@ -198,6 +206,10 @@ def write_metadata(output_root: Path, clips: list[Clip], manifest: dict[str, Any
 
 
 def verify_existing_hard_link(source: Path, destination: Path) -> None:
+    if is_link_or_reparse_point(destination):
+        raise FileExistsError(
+            f"destination must be an NTFS hard link, not a symlink or reparse point: {destination}"
+        )
     if destination.exists():
         source_identity = source_fingerprint(source)
         destination_identity = source_fingerprint(destination)
@@ -237,6 +249,8 @@ def main() -> int:
     videos_root = output_root / "videos"
     if not inside(output_root, videos_root):
         raise ValueError("videos output path escapes output root")
+    if is_link_or_reparse_point(videos_root):
+        raise ValueError("videos output directory must not be a symlink or reparse point")
     included_counts: dict[str, dict[str, int]] = {}
     for split in ("train", "valid", "test"):
         counts = Counter(clip.label for clip in clips if clip.contract_split == split)
