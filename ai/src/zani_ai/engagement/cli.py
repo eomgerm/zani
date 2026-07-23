@@ -106,6 +106,24 @@ def _reproduce_e0(args: argparse.Namespace) -> int:
     return 0
 
 
+def _finalize_e0(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.report import finalize_e0
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_e0(
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E0 Test evaluation and report complete | {report_path}", flush=True)
+    return 0
+
+
 def _export(args: argparse.Namespace) -> int:
     from zani_ai.engagement.export import DeploymentMetadata, export_onnx
     from zani_ai.engagement.training import load_checkpoint
@@ -157,6 +175,17 @@ def build_parser() -> argparse.ArgumentParser:
     reproduce_e0.add_argument("--output", type=Path, required=True)
     reproduce_e0.add_argument("--device", choices=("cpu", "cuda"))
     reproduce_e0.set_defaults(handler=_reproduce_e0)
+
+    finalize_e0_parser = commands.add_parser(
+        "finalize-e0", help="evaluate frozen E0 checkpoints once and write the HTML report"
+    )
+    finalize_e0_parser.add_argument("--features", type=Path, required=True)
+    finalize_e0_parser.add_argument("--output", type=Path, required=True)
+    finalize_e0_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e0_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e0_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e0_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e0_parser.set_defaults(handler=_finalize_e0)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)
