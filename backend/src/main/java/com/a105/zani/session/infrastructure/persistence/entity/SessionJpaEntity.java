@@ -3,6 +3,8 @@ package com.a105.zani.session.infrastructure.persistence.entity;
 import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -17,6 +19,8 @@ import lombok.NoArgsConstructor;
 
 import com.a105.zani.common.infrastructure.persistence.BaseSoftDeletableJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
+import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionStatus;
 
 @Entity
 @Table(name = "sessions")
@@ -43,8 +47,13 @@ public class SessionJpaEntity extends BaseSoftDeletableJpaEntity {
     @Column(name = "invite_code", nullable = false, columnDefinition = "CHAR(8)")
     private String inviteCode;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private String status;
+    private SessionStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_status", nullable = false, length = 30)
+    private SessionAnalysisStatus analysisStatus;
 
     @Column(name = "started_at", nullable = false, columnDefinition = "DATETIME(6)")
     private Instant startedAt;

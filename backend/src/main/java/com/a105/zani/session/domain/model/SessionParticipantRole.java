@@ -1,6 +1,6 @@
 package com.a105.zani.session.domain.model;
 
-public enum MemberRole {
+public enum SessionParticipantRole {
     INSTRUCTOR,
     STUDENT
 }

@@ -3,6 +3,8 @@ package com.a105.zani.session.infrastructure.persistence.entity;
 import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -17,6 +19,7 @@ import lombok.NoArgsConstructor;
 
 import com.a105.zani.common.infrastructure.persistence.BaseJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
+import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 @Entity
 @Table(name = "session_participants")
@@ -44,8 +47,9 @@ public class SessionParticipantJpaEntity extends BaseJpaEntity {
     @JoinColumn(name = "member_id", referencedColumnName = "id", insertable = false, updatable = false)
     private MemberJpaEntity member;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 20)
-    private String role;
+    private SessionParticipantRole role;
 
     @Column(name = "first_joined_at", nullable = false, columnDefinition = "DATETIME(6)")
     private Instant firstJoinedAt;

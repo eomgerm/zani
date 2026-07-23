@@ -2,20 +2,20 @@ package com.a105.zani.session.domain.model;
 
 import java.time.Instant;
 
-public class SessionMember {
+public class SessionParticipant {
 
     private final Long id;
     private final Long sessionId;
     private final Long userId;
-    private final MemberRole role;
+    private final SessionParticipantRole role;
     private final Instant firstJoinedAt;
     private Instant lastAccessedAt;
 
-    private SessionMember(
+    private SessionParticipant(
             Long id,
             Long sessionId,
             Long userId,
-            MemberRole role,
+            SessionParticipantRole role,
             Instant firstJoinedAt,
             Instant lastAccessedAt) {
         this.id = id;
@@ -26,19 +26,19 @@ public class SessionMember {
         this.lastAccessedAt = lastAccessedAt;
     }
 
-    public static SessionMember join(
-            Long id, Long sessionId, Long userId, MemberRole role, Instant joinedAt) {
-        return new SessionMember(id, sessionId, userId, role, joinedAt, joinedAt);
+    public static SessionParticipant join(
+            Long id, Long sessionId, Long userId, SessionParticipantRole role, Instant joinedAt) {
+        return new SessionParticipant(id, sessionId, userId, role, joinedAt, joinedAt);
     }
 
-    public static SessionMember reconstitute(
+    public static SessionParticipant reconstitute(
             Long id,
             Long sessionId,
             Long userId,
-            MemberRole role,
+            SessionParticipantRole role,
             Instant firstJoinedAt,
             Instant lastAccessedAt) {
-        return new SessionMember(id, sessionId, userId, role, firstJoinedAt, lastAccessedAt);
+        return new SessionParticipant(id, sessionId, userId, role, firstJoinedAt, lastAccessedAt);
     }
 
     public void recordAccess(Instant accessedAt) {
@@ -57,7 +57,7 @@ public class SessionMember {
         return userId;
     }
 
-    public MemberRole role() {
+    public SessionParticipantRole role() {
         return role;
     }
 

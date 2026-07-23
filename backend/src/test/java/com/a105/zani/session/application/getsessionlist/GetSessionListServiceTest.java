@@ -1,21 +1,23 @@
 package com.a105.zani.session.application.getsessionlist;
 
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import com.a105.zani.session.domain.model.SessionParticipantRole;
+import com.a105.zani.session.domain.model.SessionStatus;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
-import com.a105.zani.session.domain.model.MemberRole;
-import com.a105.zani.session.domain.model.SessionStatus;
-import java.util.List;
-import org.junit.jupiter.api.Test;
 
 class GetSessionListServiceTest {
 
     @Test
     void returnsWhateverTheQueryPortProvides() {
         SessionSummaryResult instructorSession =
-                new SessionSummaryResult(1L, "AAAAAAAA", SessionStatus.LIVE, MemberRole.INSTRUCTOR);
+                new SessionSummaryResult(1L, "AAAAAAAA", SessionStatus.LIVE, SessionParticipantRole.INSTRUCTOR);
         SessionSummaryResult studentSession =
-                new SessionSummaryResult(2L, "BBBBBBBB", SessionStatus.LIVE, MemberRole.STUDENT);
+                new SessionSummaryResult(2L, "BBBBBBBB", SessionStatus.LIVE, SessionParticipantRole.STUDENT);
         StubQueryPort queryPort = new StubQueryPort(List.of(instructorSession, studentSession));
         GetSessionListService service = new GetSessionListService(queryPort);
 

@@ -78,7 +78,7 @@ class SessionJoinConcurrencyTest {
     }
 
     @Test
-    void concurrentJoinsForTheSameStudentResultInExactlyOneMembership() throws InterruptedException {
+    void concurrentJoinsForTheSameStudentResultInExactlyOneParticipant() throws InterruptedException {
         String inviteCode = new InviteCodeGenerator().generate();
         Session session = sessionRepository.save(
                 Session.start(TsidGenerator.generate(), INSTRUCTOR_ID, "동시 입장 테스트", inviteCode, Instant.now()));

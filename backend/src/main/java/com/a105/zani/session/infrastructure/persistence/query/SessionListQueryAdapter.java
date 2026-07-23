@@ -10,8 +10,7 @@ import org.springframework.stereotype.Component;
 
 import com.a105.zani.session.application.getsessionlist.GetSessionListQueryPort;
 import com.a105.zani.session.application.getsessionlist.SessionSummaryResult;
-import com.a105.zani.session.domain.model.MemberRole;
-import com.a105.zani.session.domain.model.SessionStatus;
+import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionParticipantJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
@@ -35,29 +34,28 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
         List<SessionSummaryResult> results = new ArrayList<>();
 
         for (SessionJpaEntity owned : sessionJpaRepository.findByHostMemberId(userId)) {
-            results.add(toSummary(owned, MemberRole.INSTRUCTOR));
+            results.add(toSummary(owned, SessionParticipantRole.INSTRUCTOR));
         }
 
-        List<SessionParticipantJpaEntity> memberships = sessionParticipantJpaRepository.findByMemberId(userId);
+        List<SessionParticipantJpaEntity> participants = sessionParticipantJpaRepository.findByMemberId(userId);
         Map<Long, SessionJpaEntity> joinedSessionsById =
                 sessionJpaRepository
-                        .findAllById(memberships.stream()
+                        .findAllById(participants.stream()
                                 .map(SessionParticipantJpaEntity::getSessionId)
                                 .toList())
                         .stream()
                         .collect(Collectors.toMap(SessionJpaEntity::getId, Function.identity()));
-        for (SessionParticipantJpaEntity membership : memberships) {
-            SessionJpaEntity session = joinedSessionsById.get(membership.getSessionId());
+        for (SessionParticipantJpaEntity participant : participants) {
+            SessionJpaEntity session = joinedSessionsById.get(participant.getSessionId());
             if (session != null) {
-                results.add(toSummary(session, MemberRole.valueOf(membership.getRole())));
+                results.add(toSummary(session, participant.getRole()));
             }
         }
 
         return results;
     }
 
-    private SessionSummaryResult toSummary(SessionJpaEntity session, MemberRole role) {
-        return new SessionSummaryResult(
-                session.getId(), session.getInviteCode(), SessionStatus.valueOf(session.getStatus()), role);
+    private SessionSummaryResult toSummary(SessionJpaEntity session, SessionParticipantRole role) {
+        return new SessionSummaryResult(session.getId(), session.getInviteCode(), session.getStatus(), role);
     }
 }

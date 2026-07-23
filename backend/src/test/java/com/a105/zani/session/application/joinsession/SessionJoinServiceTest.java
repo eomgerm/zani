@@ -1,19 +1,21 @@
 package com.a105.zani.session.application.joinsession;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
-import com.a105.zani.session.application.exception.SessionNotFoundException;
-import com.a105.zani.session.domain.model.MemberRole;
-import com.a105.zani.session.domain.model.Session;
-import com.a105.zani.session.domain.model.SessionMember;
-import com.a105.zani.session.domain.repository.SessionMemberRepository;
-import com.a105.zani.session.domain.repository.SessionRepository;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
 import org.junit.jupiter.api.Test;
+
+import com.a105.zani.session.application.exception.SessionNotFoundException;
+import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionParticipant;
+import com.a105.zani.session.domain.model.SessionParticipantRole;
+import com.a105.zani.session.domain.repository.SessionParticipantRepository;
+import com.a105.zani.session.domain.repository.SessionRepository;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class SessionJoinServiceTest {
 
@@ -24,44 +26,41 @@ class SessionJoinServiceTest {
     @Test
     void throwsWhenInviteCodeDoesNotMatchAnySession() {
         InMemorySessionRepository sessionRepository = new InMemorySessionRepository();
-        SessionJoinService service = new SessionJoinService(
-                sessionRepository, new InMemorySessionMemberRepository());
+        SessionJoinService service =
+                new SessionJoinService(sessionRepository, new InMemorySessionParticipantRepository());
 
         assertThrows(
-                SessionNotFoundException.class,
-                () -> service.join(new JoinSessionCommand("NOTFOUND", STUDENT_ID)));
+                SessionNotFoundException.class, () -> service.join(new JoinSessionCommand("NOTFOUND", STUDENT_ID)));
     }
 
     @Test
-    void firstJoinCreatesANewStudentMembership() {
+    void firstJoinCreatesANewStudentParticipant() {
         InMemorySessionRepository sessionRepository = new InMemorySessionRepository();
-        Session session = Session.start(
-                10L, INSTRUCTOR_ID, "테스트 세션", INVITE_CODE, Instant.now());
+        Session session = Session.start(10L, INSTRUCTOR_ID, "테스트 세션", INVITE_CODE, Instant.now());
         sessionRepository.save(session);
-        InMemorySessionMemberRepository memberRepository = new InMemorySessionMemberRepository();
-        SessionJoinService service = new SessionJoinService(sessionRepository, memberRepository);
+        InMemorySessionParticipantRepository participantRepository = new InMemorySessionParticipantRepository();
+        SessionJoinService service = new SessionJoinService(sessionRepository, participantRepository);
 
         JoinSessionResult result = service.join(new JoinSessionCommand(INVITE_CODE, STUDENT_ID));
 
-        assertEquals(MemberRole.STUDENT, result.role());
-        assertEquals(1, memberRepository.saveCount());
+        assertEquals(SessionParticipantRole.STUDENT, result.role());
+        assertEquals(1, participantRepository.saveCount());
     }
 
     @Test
-    void secondJoinIsIdempotentAndDoesNotCreateADuplicateMembership() {
+    void secondJoinIsIdempotentAndDoesNotCreateADuplicateParticipant() {
         InMemorySessionRepository sessionRepository = new InMemorySessionRepository();
-        Session session = Session.start(
-                10L, INSTRUCTOR_ID, "테스트 세션", INVITE_CODE, Instant.now());
+        Session session = Session.start(10L, INSTRUCTOR_ID, "테스트 세션", INVITE_CODE, Instant.now());
         sessionRepository.save(session);
-        InMemorySessionMemberRepository memberRepository = new InMemorySessionMemberRepository();
-        SessionJoinService service = new SessionJoinService(sessionRepository, memberRepository);
+        InMemorySessionParticipantRepository participantRepository = new InMemorySessionParticipantRepository();
+        SessionJoinService service = new SessionJoinService(sessionRepository, participantRepository);
 
         JoinSessionResult first = service.join(new JoinSessionCommand(INVITE_CODE, STUDENT_ID));
         JoinSessionResult second = service.join(new JoinSessionCommand(INVITE_CODE, STUDENT_ID));
 
         assertEquals(first.sessionId(), second.sessionId());
-        assertEquals(1, memberRepository.rowCount());
-        assertEquals(2, memberRepository.saveCount());
+        assertEquals(1, participantRepository.rowCount());
+        assertEquals(2, participantRepository.saveCount());
     }
 
     private static class InMemorySessionRepository implements SessionRepository {
@@ -80,21 +79,21 @@ class SessionJoinServiceTest {
         }
     }
 
-    private static class InMemorySessionMemberRepository implements SessionMemberRepository {
+    private static class InMemorySessionParticipantRepository implements SessionParticipantRepository {
 
-        private final Map<String, SessionMember> store = new HashMap<>();
+        private final Map<String, SessionParticipant> store = new HashMap<>();
         private int saveCount = 0;
 
         @Override
-        public Optional<SessionMember> findBySessionIdAndUserId(Long sessionId, Long userId) {
+        public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(store.get(key(sessionId, userId)));
         }
 
         @Override
-        public SessionMember save(SessionMember sessionMember) {
+        public SessionParticipant save(SessionParticipant sessionParticipant) {
             saveCount++;
-            store.put(key(sessionMember.sessionId(), sessionMember.userId()), sessionMember);
-            return sessionMember;
+            store.put(key(sessionParticipant.sessionId(), sessionParticipant.userId()), sessionParticipant);
+            return sessionParticipant;
         }
 
         int saveCount() {

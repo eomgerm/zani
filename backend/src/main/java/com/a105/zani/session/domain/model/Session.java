@@ -17,6 +17,7 @@ public class Session {
     private final boolean limitedMode;
     private final Instant startedAt;
     private SessionStatus status;
+    private SessionAnalysisStatus analysisStatus;
 
     private Session(
             Long id,
@@ -25,7 +26,8 @@ public class Session {
             String inviteCode,
             boolean limitedMode,
             Instant startedAt,
-            SessionStatus status) {
+            SessionStatus status,
+            SessionAnalysisStatus analysisStatus) {
         this.id = id;
         this.instructorId = instructorId;
         this.title = title;
@@ -33,6 +35,7 @@ public class Session {
         this.limitedMode = limitedMode;
         this.startedAt = startedAt;
         this.status = status;
+        this.analysisStatus = analysisStatus;
     }
 
     public static Session start(Long id, Long instructorId, String title, String inviteCode, Instant startedAt) {
@@ -40,7 +43,15 @@ public class Session {
         if (trimmedTitle == null || trimmedTitle.isEmpty() || trimmedTitle.length() > TITLE_MAX_LENGTH) {
             throw new InvalidSessionTitleException();
         }
-        return new Session(id, instructorId, trimmedTitle, inviteCode, false, startedAt, SessionStatus.LIVE);
+        return new Session(
+                id,
+                instructorId,
+                trimmedTitle,
+                inviteCode,
+                false,
+                startedAt,
+                SessionStatus.LIVE,
+                SessionAnalysisStatus.NOT_STARTED);
     }
 
     public static Session reconstitute(
@@ -50,8 +61,9 @@ public class Session {
             String inviteCode,
             boolean limitedMode,
             Instant startedAt,
-            SessionStatus status) {
-        return new Session(id, instructorId, title, inviteCode, limitedMode, startedAt, status);
+            SessionStatus status,
+            SessionAnalysisStatus analysisStatus) {
+        return new Session(id, instructorId, title, inviteCode, limitedMode, startedAt, status, analysisStatus);
     }
 
     public Instant expiresAt() {
@@ -84,5 +96,9 @@ public class Session {
 
     public SessionStatus status() {
         return status;
+    }
+
+    public SessionAnalysisStatus analysisStatus() {
+        return analysisStatus;
     }
 }
