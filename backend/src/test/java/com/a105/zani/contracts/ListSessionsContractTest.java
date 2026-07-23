@@ -1,13 +1,5 @@
 package com.a105.zani.contracts;
 
-import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
-import com.a105.zani.auth.application.port.TokenProvider;
-import com.a105.zani.session.application.port.SessionActivationLockPort;
-import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,10 +11,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-/**
- * 실제로 뜬 GET /api/v1/sessions 응답이 zani.yaml 계약과 일치하는지 검증한다.
- * 로컬 MySQL, Redis가 떠 있어야 통과한다.
- */
+import com.a105.zani.auth.application.port.TokenProvider;
+import com.a105.zani.session.application.port.SessionActivationLockPort;
+import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
+
+import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/** 실제로 뜬 GET /api/v1/sessions 응답이 zani.yaml 계약과 일치하는지 검증한다. 로컬 MySQL, Redis가 떠 있어야 통과한다. */
 @SpringBootTest
 class ListSessionsContractTest {
 
@@ -53,23 +51,23 @@ class ListSessionsContractTest {
     @AfterEach
     void tearDown() {
         sessionJpaRepository.findAll().stream()
-                .filter(session -> session.getInstructorId().equals(INSTRUCTOR_ID))
+                .filter(session -> session.getHostMemberId().equals(INSTRUCTOR_ID))
                 .forEach(sessionJpaRepository::delete);
         activationLockPort.release(INSTRUCTOR_ID);
     }
 
     @Test
     void listSessionsResponseMatchesTheOpenApiContract() throws Exception {
-        String accessToken = tokenProvider.issueAccessToken(String.valueOf(INSTRUCTOR_ID)).value();
+        String accessToken =
+                tokenProvider.issueAccessToken(String.valueOf(INSTRUCTOR_ID)).value();
 
         mockMvc.perform(post("/api/v1/sessions")
-                .header("Authorization", "Bearer " + accessToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"title\":\"목록 계약 검증용 세션\"}"))
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"목록 계약 검증용 세션\"}"))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(get("/api/v1/sessions")
-                        .header("Authorization", "Bearer " + accessToken))
+        mockMvc.perform(get("/api/v1/sessions").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(openApi().isValid(SPEC_PATH));
     }

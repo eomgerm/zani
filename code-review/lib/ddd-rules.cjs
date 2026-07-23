@@ -141,7 +141,14 @@ function checkBackend(file, source, rules) {
     const importedDomain = internalMatch?.[1];
     const importedLayer = internalMatch?.[2];
 
-    if (domain !== 'common' && importedDomain && importedDomain !== domain && importedLayer === 'infrastructure') {
+    // 완화(S15P11A105-175): infrastructure 계층끼리는 ERD FK 연관(@ManyToOne 등)을 위해
+    // 다른 도메인의 infrastructure(JPA 엔티티 등) 참조를 허용한다.
+    // application/domain/presentation 계층의 타 도메인 infrastructure 의존은 계속 차단한다.
+    if (domain !== 'common'
+        && layer !== 'infrastructure'
+        && importedDomain
+        && importedDomain !== domain
+        && importedLayer === 'infrastructure') {
       findings.push(blocker(
         'backend-ddd',
         `다른 도메인(${importedDomain})의 infrastructure에 직접 의존할 수 없습니다.`,

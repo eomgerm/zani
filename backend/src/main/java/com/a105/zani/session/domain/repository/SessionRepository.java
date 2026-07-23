@@ -1,7 +1,8 @@
 package com.a105.zani.session.domain.repository;
 
-import com.a105.zani.session.domain.model.Session;
 import java.util.Optional;
+
+import com.a105.zani.session.domain.model.Session;
 
 public interface SessionRepository {
 
