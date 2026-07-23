@@ -81,9 +81,26 @@ def _train(args: argparse.Namespace) -> int:
             use_class_weights=args.class_weights,
         )
     )
+    if result.test is None:
+        raise RuntimeError("single-run training did not produce Test metrics")
     print(
         f"Training complete | best_epoch={result.best_epoch} "
         f"test_macro_f1={result.test.macro_f1:.4f} | {result.checkpoint_path}"
+    )
+    return 0
+
+
+def _reproduce_e0(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import reproduce_e0
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_e0(args.features, args.output, device=device)
+    print(
+        f"E0 reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
     )
     return 0
 
@@ -129,6 +146,14 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--device", choices=("cpu", "cuda"))
     train.add_argument("--class-weights", action="store_true")
     train.set_defaults(handler=_train)
+
+    reproduce_e0 = commands.add_parser(
+        "reproduce-e0", help="run the validation-only five-seed E0 protocol"
+    )
+    reproduce_e0.add_argument("--features", type=Path, required=True)
+    reproduce_e0.add_argument("--output", type=Path, required=True)
+    reproduce_e0.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e0.set_defaults(handler=_reproduce_e0)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)

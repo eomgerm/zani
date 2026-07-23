@@ -95,6 +95,37 @@ uv run python -m zani_ai engagement export `
   --output web/engagement-demo/public/models
 ```
 
+### E0 5-seed 재현
+
+E0는 Test 분할을 평가하지 않고 Validation Macro-F1로만 조기 종료와 체크포인트를
+선택합니다. 기본 seed는 `42,43,44,45,46`이며 다음 명령으로 정확한 E0 설정을 실행합니다.
+
+```powershell
+uv run python -m zani_ai engagement reproduce-e0 --features <root> --output <dir> --device cuda
+```
+
+완료된 seed는 동일한 특징 manifest와 설정 및 실행 환경을 확인한 뒤 재사용됩니다.
+각 seed 완료 시 `summary.json`을 원자적으로 갱신하므로 중단된 실행도 다시 시작할 수 있습니다.
+
+```text
+artifacts/engagement/e0/
+├─ summary.json
+├─ seed-42/
+│  ├─ best.pt
+│  ├─ metrics.json              # Validation 결과만 포함
+│  └─ onnx/
+│     ├─ engagement.onnx
+│     └─ engagement.metadata.json
+├─ seed-43/
+├─ seed-44/
+├─ seed-45/
+└─ seed-46/
+```
+
+`summary.json`에는 5개 seed의 Validation Accuracy/Macro-F1 평균과 표본 표준편차가
+기록됩니다. E0 단계의 Test 평가는 프로토콜에 따라 보류되며 summary와 seed별
+`metrics.json`에는 Test metric, label 또는 prediction을 기록하지 않습니다.
+
 데이터가 없으면 `validate`, `extract`, `train`은 필요한 파일을 안내하고 종료합니다.
 샘플 영상, 합성 학습 데이터나 가짜 모델을 자동 생성하지 않습니다. 실제 정확도와 F1은
 공식 데이터로 학습한 뒤 `metrics.json`에서 확인합니다.

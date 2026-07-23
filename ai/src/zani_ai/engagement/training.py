@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -75,6 +75,7 @@ class TrainingConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     use_class_weights: bool = False
     num_workers: int = 0
+    deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
 
 
@@ -95,7 +96,10 @@ class TrainingResult:
     metrics_path: Path
     best_epoch: int
     validation: EvaluationMetrics
-    test: EvaluationMetrics
+    test: EvaluationMetrics | None
+
+
+type EpochProgress = Callable[[int, EvaluationMetrics], None]
 
 
 def compute_feature_statistics(
@@ -142,12 +146,18 @@ def _load_feature_datasets(root: Path) -> FeatureDatasets:
     )
 
 
-def _seed_everything(seed: int) -> None:
+def _seed_everything(seed: int, *, deterministic: bool) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+    if deterministic:
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True, warn_only=False)
+        if not torch.are_deterministic_algorithms_enabled():
+            raise RuntimeError("PyTorch deterministic algorithms could not be enabled")
 
 
 def _loader(
@@ -255,10 +265,15 @@ def load_checkpoint(path: Path, device: str = "cpu") -> EngagementTransformer:
     return model.to(device)
 
 
-def train_model(config: TrainingConfig) -> TrainingResult:
+def train_model(
+    config: TrainingConfig,
+    *,
+    evaluate_test: bool = True,
+    progress: EpochProgress | None = None,
+) -> TrainingResult:
     if config.max_epochs <= 0 or config.patience <= 0:
         raise ValueError("max_epochs and patience must be positive")
-    _seed_everything(config.seed)
+    _seed_everything(config.seed, deterministic=config.deterministic)
     datasets = _load_feature_datasets(config.features_root)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     statistics = compute_feature_statistics(datasets.train.token_arrays())
@@ -279,6 +294,8 @@ def train_model(config: TrainingConfig) -> TrainingResult:
     for epoch in range(config.max_epochs):
         _train_epoch(model, train_loader, optimizer, criterion, device)
         validation = evaluate_model(model, valid_loader, device)
+        if progress is not None:
+            progress(epoch, validation)
         if validation.macro_f1 > best_score:
             best_score = validation.macro_f1
             best_epoch = epoch
@@ -291,8 +308,12 @@ def train_model(config: TrainingConfig) -> TrainingResult:
                 break
     if best_validation is None:
         raise RuntimeError("training completed without a validation checkpoint")
-    best_model = load_checkpoint(checkpoint_path, config.device)
-    test_metrics = evaluate_model(best_model, _loader(datasets.test, config, shuffle=False), device)
+    test_metrics: EvaluationMetrics | None = None
+    if evaluate_test:
+        best_model = load_checkpoint(checkpoint_path, config.device)
+        test_metrics = evaluate_model(
+            best_model, _loader(datasets.test, config, shuffle=False), device
+        )
     metrics_path = config.output_dir / "metrics.json"
     payload = {
         "schema": SCHEMA_NAME,
@@ -300,7 +321,6 @@ def train_model(config: TrainingConfig) -> TrainingResult:
         "selection_metric": "validation_macro_f1",
         "best_epoch": best_epoch,
         "validation": best_validation.to_dict(),
-        "test": test_metrics.to_dict(),
         "training": {
             **asdict(config),
             "features_root": str(config.features_root),
@@ -308,6 +328,13 @@ def train_model(config: TrainingConfig) -> TrainingResult:
             "model": config.model.to_dict(),
         },
     }
+    if test_metrics is None:
+        payload["test_evaluation"] = {
+            "status": "deferred",
+            "reason": "Test evaluation is deferred by protocol.",
+        }
+    else:
+        payload["test"] = test_metrics.to_dict()
     metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return TrainingResult(
         checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics
