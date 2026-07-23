@@ -107,12 +107,27 @@ class MediaPipeFaceLandmarker:
             output_facial_transformation_matrixes=True,
         )
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
+        self._timestamp_offset_ms = 0
+        self._last_detection_timestamp_ms: int | None = None
+
+    def _translate_timestamp(self, timestamp_ms: int) -> int:
+        translated = timestamp_ms + self._timestamp_offset_ms
+        if (
+            self._last_detection_timestamp_ms is not None
+            and translated <= self._last_detection_timestamp_ms
+        ):
+            self._timestamp_offset_ms += self._last_detection_timestamp_ms - translated + 1
+            translated = timestamp_ms + self._timestamp_offset_ms
+        self._last_detection_timestamp_ms = translated
+        return translated
 
     def detect(
         self, rgb_frame: NDArray[np.uint8], timestamp_ms: int
     ) -> FrameResult | None:
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        result = self._landmarker.detect_for_video(image, timestamp_ms)
+        result = self._landmarker.detect_for_video(
+            image, self._translate_timestamp(timestamp_ms)
+        )
         if not result.face_landmarks:
             return None
         landmarks = np.asarray(
