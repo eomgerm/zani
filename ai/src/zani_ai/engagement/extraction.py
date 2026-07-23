@@ -287,7 +287,7 @@ def iter_sampled_frames(
                 if ok:
                     ok, retrieved = capture.retrieve()
                     bgr = cast(NDArray[np.uint8] | None, retrieved)
-            if not ok:
+            if not ok or bgr is None:
                 sequential_ready = False
                 if not capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp_ms)):
                     sequential = False
