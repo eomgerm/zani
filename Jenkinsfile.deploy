@@ -54,7 +54,6 @@ pipeline {
                 sh '''
                     set -eu
                     test "$(git rev-parse HEAD)" = "${GIT_SHA}"
-                    git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
                     git merge-base --is-ancestor "${GIT_SHA}" origin/dev
                 '''
             }

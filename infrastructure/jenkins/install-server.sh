@@ -43,6 +43,19 @@ wait_for_controller() {
   return 1
 }
 
+wait_for_job_configs() {
+  local attempt
+  for attempt in $(seq 1 60); do
+    if [[ -s "${CONTROLLER_DATA}/jobs/zani-dev-dispatch/config.xml" ]] &&
+       [[ -s "${CONTROLLER_DATA}/jobs/zani-backend-dev/config.xml" ]] &&
+       [[ -s "${CONTROLLER_DATA}/jobs/zani-frontend-dev/config.xml" ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 verify_update_mirror() {
   curl --fail --location --silent --show-error --max-time 30 \
     --output /dev/null "${UPDATE_CENTER_URL}" || die "The fixed Jenkins update center is unreachable."
@@ -61,6 +74,17 @@ verify_login_required() {
     die "Anonymous Jenkins API access was not rejected (HTTP ${anonymous_code})."
   [[ "${authenticated_code}" == "200" ]] ||
     die "Authenticated Jenkins API access failed (HTTP ${authenticated_code})."
+}
+
+verify_required_jobs() {
+  local admin_password job response_code
+  admin_password="$(tr -d '\r\n' <"${CONTROLLER_SECRETS}/JENKINS_ADMIN_PASSWORD")"
+  for job in zani-dev-dispatch zani-backend-dev zani-frontend-dev; do
+    response_code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+      --user "zani-admin:${admin_password}" "${JENKINS_URL}/job/${job}/api/json")"
+    [[ "${response_code}" == "200" ]] ||
+      die "Required Jenkins job is not loaded: ${job} (HTTP ${response_code})."
+  done
 }
 
 extract_agent_secret() {
@@ -143,6 +167,14 @@ main() {
   docker compose -f "${CONTROLLER_ROOT}/compose.yaml" up -d --force-recreate controller
   wait_for_controller || die "Jenkins controller did not become ready."
   verify_login_required
+  wait_for_job_configs || die "Required Jenkins job configuration files were not created."
+
+  # Job DSL creates new job configs during the first JCasC boot. Restart once
+  # so a fresh controller loads those new items into the Jenkins model.
+  docker compose -f "${CONTROLLER_ROOT}/compose.yaml" restart controller
+  wait_for_controller || die "Jenkins controller did not become ready after loading new jobs."
+  verify_login_required
+  verify_required_jobs
 
   curl --fail --silent --show-error "${JENKINS_URL}/jnlpJars/agent.jar" \
     -o "${AGENT_INSTALL_ROOT}/agent.jar"
@@ -157,4 +189,6 @@ main() {
   printf '[zani-jenkins-install] Controller and agent are active. UI: %s\n' "${JENKINS_URL}"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
