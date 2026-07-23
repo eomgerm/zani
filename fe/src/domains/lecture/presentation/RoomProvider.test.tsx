@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { RoomEvent } from "livekit-client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MediaToken } from "../infrastructure/mediaTokenApi";
@@ -14,15 +15,41 @@ const token: MediaToken = {
   expiresAt: "2026-07-23T15:00:00Z",
 };
 
+type ObservedRoomEvent =
+  | RoomEvent.Reconnecting
+  | RoomEvent.Reconnected
+  | RoomEvent.Disconnected;
+
 type FakeRoom = {
   connect: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  off: ReturnType<typeof vi.fn>;
+  emit: (event: ObservedRoomEvent) => void;
 };
 
-const createFakeRoom = (): FakeRoom => ({
-  connect: vi.fn().mockResolvedValue(undefined),
-  disconnect: vi.fn(),
-});
+const createFakeRoom = (): FakeRoom => {
+  const listeners = new Map<ObservedRoomEvent, Set<() => void>>();
+  const room = {
+    connect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn(),
+    on: vi.fn((event: ObservedRoomEvent, listener: () => void) => {
+      const eventListeners = listeners.get(event) ?? new Set<() => void>();
+      eventListeners.add(listener);
+      listeners.set(event, eventListeners);
+      return room;
+    }),
+    off: vi.fn((event: ObservedRoomEvent, listener: () => void) => {
+      listeners.get(event)?.delete(listener);
+      return room;
+    }),
+    emit: (event: ObservedRoomEvent) => {
+      listeners.get(event)?.forEach((listener) => listener());
+    },
+  };
+
+  return room as unknown as FakeRoom;
+};
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
@@ -90,6 +117,52 @@ describe("RoomProvider", () => {
     unmount();
 
     expect(room.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows connecting while LiveKit is reconnecting", async () => {
+    const room = createFakeRoom();
+    renderProvider({ roomFactory: vi.fn(() => room) });
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+    act(() => room.emit(RoomEvent.Reconnecting));
+
+    expect(screen.getByTestId("state")).toHaveTextContent("connecting");
+  });
+
+  it("shows connected when LiveKit reconnects", async () => {
+    const room = createFakeRoom();
+    renderProvider({ roomFactory: vi.fn(() => room) });
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+    act(() => room.emit(RoomEvent.Reconnecting));
+    act(() => room.emit(RoomEvent.Reconnected));
+
+    expect(screen.getByTestId("state")).toHaveTextContent("connected");
+  });
+
+  it("shows a safe error when LiveKit disconnects", async () => {
+    const room = createFakeRoom();
+    renderProvider({ roomFactory: vi.fn(() => room) });
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+    act(() => room.emit(RoomEvent.Disconnected));
+
+    expect(screen.getByTestId("state")).toHaveTextContent("error");
+    expect(screen.getByTestId("error")).toHaveTextContent(
+      "실시간 강의 연결에 실패했습니다.",
+    );
+  });
+
+  it("removes LiveKit lifecycle listeners during cleanup", async () => {
+    const room = createFakeRoom();
+    const { unmount } = renderProvider({ roomFactory: vi.fn(() => room) });
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+    unmount();
+
+    expect(room.off).toHaveBeenCalledWith(RoomEvent.Reconnecting, expect.any(Function));
+    expect(room.off).toHaveBeenCalledWith(RoomEvent.Reconnected, expect.any(Function));
+    expect(room.off).toHaveBeenCalledWith(RoomEvent.Disconnected, expect.any(Function));
   });
 
   it("exposes the token request error message", async () => {

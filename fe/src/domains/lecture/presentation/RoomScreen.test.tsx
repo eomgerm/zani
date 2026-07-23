@@ -27,6 +27,7 @@ describe("RoomScreen connection status", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.getByText("연결 중")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   it("shows LIVE after the room connects", () => {
@@ -45,7 +46,7 @@ describe("RoomScreen connection status", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.getByText("연결 실패")).toBeVisible();
-    expect(screen.getByText("실시간 강의 연결에 실패했습니다.")).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("실시간 강의 연결에 실패했습니다.");
     expect(screen.queryByText("Internal token service detail")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "다시 연결" }));

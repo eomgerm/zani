@@ -41,6 +41,34 @@ describe("requestMediaToken", () => {
     );
   });
 
+  it("encodes an opaque session ID used in the request path", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            isSuccess: true,
+            data: {
+              liveKitUrl: "wss://livekit.example.com",
+              accessToken: "signed-token",
+              roomName: "session-55",
+              participantIdentity: "user-42",
+              expiresAt: "2026-07-23T15:00:00Z",
+            },
+          }),
+        ),
+      ),
+    );
+
+    await requestMediaToken("course/55?role=student");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.com/api/v1/sessions/course%2F55%3Frole%3Dstudent/media-token",
+      expect.anything(),
+    );
+  });
+
   it("rejects a forbidden response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 403 })));
 
@@ -54,6 +82,38 @@ describe("requestMediaToken", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ isSuccess: true, data: { roomName: "session-55" } })),
+      ),
+    );
+
+    await expect(requestMediaToken("55")).rejects.toBeInstanceOf(
+      MediaTokenRequestError,
+    );
+  });
+
+  it.each([
+    ["liveKitUrl", ""],
+    ["liveKitUrl", "  "],
+    ["accessToken", ""],
+    ["accessToken", "  "],
+    ["roomName", ""],
+    ["roomName", "  "],
+    ["participantIdentity", ""],
+    ["participantIdentity", "  "],
+    ["expiresAt", ""],
+    ["expiresAt", "  "],
+  ])("rejects a success envelope with blank %s %j", async (field, blankValue) => {
+    const data = {
+      liveKitUrl: "wss://livekit.example.com",
+      accessToken: "signed-token",
+      roomName: "session-55",
+      participantIdentity: "user-42",
+      expiresAt: "2026-07-23T15:00:00Z",
+      [field]: blankValue,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ isSuccess: true, data })),
       ),
     );
 

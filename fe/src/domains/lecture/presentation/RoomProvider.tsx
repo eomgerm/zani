@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { RoomEvent } from "livekit-client";
 import type { Room } from "livekit-client";
 
 import {
@@ -48,10 +49,12 @@ const connectingSnapshot: Omit<RoomConnectionContextValue, "retry"> = {
   error: null,
 };
 
+const connectionFailureMessage = "실시간 강의 연결에 실패했습니다.";
+
 const connectionErrorMessage = (error: unknown) =>
   error instanceof Error && error.message
     ? error.message
-    : "실시간 강의 연결에 실패했습니다.";
+    : connectionFailureMessage;
 
 export function RoomProvider({
   sessionId,
@@ -73,6 +76,26 @@ export function RoomProvider({
     let isCurrent = true;
     const abortController = new AbortController();
     const room = connectionKey.roomFactory();
+    const handleReconnecting = () => {
+      if (!isCurrent) return;
+
+      setConnection({ room, connectionState: "connecting", error: null, key: connectionKey });
+    };
+    const handleReconnected = () => {
+      if (!isCurrent) return;
+
+      setConnection({ room, connectionState: "connected", error: null, key: connectionKey });
+    };
+    const handleDisconnected = () => {
+      if (!isCurrent) return;
+
+      setConnection({
+        room: null,
+        connectionState: "error",
+        error: connectionFailureMessage,
+        key: connectionKey,
+      });
+    };
 
     const connect = async () => {
       try {
@@ -85,6 +108,9 @@ export function RoomProvider({
         await room.connect(mediaToken.liveKitUrl, mediaToken.accessToken);
         if (!isCurrent) return;
 
+        room.on(RoomEvent.Reconnecting, handleReconnecting);
+        room.on(RoomEvent.Reconnected, handleReconnected);
+        room.on(RoomEvent.Disconnected, handleDisconnected);
         setConnection({ room, connectionState: "connected", error: null, key: connectionKey });
       } catch (error) {
         if (!isCurrent) return;
@@ -103,6 +129,9 @@ export function RoomProvider({
     return () => {
       isCurrent = false;
       abortController.abort();
+      room.off(RoomEvent.Reconnecting, handleReconnecting);
+      room.off(RoomEvent.Reconnected, handleReconnected);
+      room.off(RoomEvent.Disconnected, handleDisconnected);
       room.disconnect();
     };
   }, [connectionKey]);

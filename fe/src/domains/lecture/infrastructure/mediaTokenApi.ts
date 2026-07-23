@@ -24,19 +24,21 @@ const isMediaToken = (value: unknown): value is MediaToken => {
   }
 
   const token = value as Record<string, unknown>;
+  const isNonBlankString = (field: unknown) =>
+    typeof field === "string" && field.trim().length > 0;
   return (
-    typeof token.liveKitUrl === "string" &&
-    typeof token.accessToken === "string" &&
-    typeof token.roomName === "string" &&
-    typeof token.participantIdentity === "string" &&
-    typeof token.expiresAt === "string"
+    isNonBlankString(token.liveKitUrl) &&
+    isNonBlankString(token.accessToken) &&
+    isNonBlankString(token.roomName) &&
+    isNonBlankString(token.participantIdentity) &&
+    isNonBlankString(token.expiresAt)
   );
 };
 
 export const requestMediaToken: MediaTokenRequester = async (sessionId, signal) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
   const response = await fetch(
-    `${apiBaseUrl}/api/v1/sessions/${sessionId}/media-token`,
+    `${apiBaseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/media-token`,
     {
       method: "POST",
       headers: { Accept: "application/json" },
