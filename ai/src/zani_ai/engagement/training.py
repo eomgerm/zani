@@ -60,7 +60,7 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
 class FeatureDatasets:
     train: CachedFeatureDataset
     valid: CachedFeatureDataset
-    test: CachedFeatureDataset
+    test: CachedFeatureDataset | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +116,7 @@ def compute_feature_statistics(
     )
 
 
-def _load_feature_datasets(root: Path) -> FeatureDatasets:
+def _load_feature_datasets(root: Path, *, include_test: bool = True) -> FeatureDatasets:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"feature manifest not found: {manifest_path}")
@@ -131,6 +131,8 @@ def _load_feature_datasets(root: Path) -> FeatureDatasets:
         path = root / str(item_value["feature_path"])
         if not path.is_file():
             raise FileNotFoundError(f"cached feature not found: {path}")
+        if split == "test" and not include_test:
+            continue
         grouped[split].append(
             FeatureEntry(
                 clip_id=str(item_value["clip_id"]),
@@ -142,7 +144,7 @@ def _load_feature_datasets(root: Path) -> FeatureDatasets:
     return FeatureDatasets(
         CachedFeatureDataset(tuple(grouped["train"])),
         CachedFeatureDataset(tuple(grouped["valid"])),
-        CachedFeatureDataset(tuple(grouped["test"])),
+        CachedFeatureDataset(tuple(grouped["test"])) if include_test else None,
     )
 
 
@@ -274,7 +276,7 @@ def train_model(
     if config.max_epochs <= 0 or config.patience <= 0:
         raise ValueError("max_epochs and patience must be positive")
     _seed_everything(config.seed, deterministic=config.deterministic)
-    datasets = _load_feature_datasets(config.features_root)
+    datasets = _load_feature_datasets(config.features_root, include_test=evaluate_test)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     statistics = compute_feature_statistics(datasets.train.token_arrays())
     device = torch.device(config.device)
@@ -310,6 +312,8 @@ def train_model(
         raise RuntimeError("training completed without a validation checkpoint")
     test_metrics: EvaluationMetrics | None = None
     if evaluate_test:
+        if datasets.test is None:
+            raise RuntimeError("Test dataset was not loaded for Test evaluation")
         best_model = load_checkpoint(checkpoint_path, config.device)
         test_metrics = evaluate_model(
             best_model, _loader(datasets.test, config, shuffle=False), device

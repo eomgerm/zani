@@ -68,7 +68,8 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
     if not manifest_path.is_file():
         raise FileNotFoundError(f"feature manifest not found: {manifest_path}")
     try:
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_bytes = manifest_path.read_bytes()
+        payload = json.loads(manifest_bytes.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"invalid feature manifest JSON: {manifest_path}") from error
     if not isinstance(payload, dict):
@@ -88,11 +89,14 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
             raise ValueError(f"unknown feature split: {split}")
         if not isinstance(item.get("clip_id"), str) or not item["clip_id"]:
             raise ValueError(f"invalid clip_id in included entry at index {index}")
-        label_index = item.get("label_index")
-        if not isinstance(label_index, int) or isinstance(label_index, bool):
-            raise ValueError(f"invalid label_index in included entry at index {index}")
-        if label_index not in range(4):
-            raise ValueError(f"label_index out of range in included entry at index {index}")
+        if split != "test":
+            label_index = item.get("label_index")
+            if not isinstance(label_index, int) or isinstance(label_index, bool):
+                raise ValueError(f"invalid label_index in included entry at index {index}")
+            if label_index not in range(4):
+                raise ValueError(
+                    f"label_index out of range in included entry at index {index}"
+                )
         feature_path_value = item.get("feature_path")
         if not isinstance(feature_path_value, str) or not feature_path_value:
             raise ValueError(f"invalid feature_path in included entry at index {index}")
@@ -123,7 +127,7 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
     if splits != _SPLITS:
         missing = ", ".join(sorted(_SPLITS - splits))
         raise ValueError(f"feature manifest is missing non-empty split(s): {missing}")
-    return manifest_path, _sha256(manifest_path)
+    return manifest_path, hashlib.sha256(manifest_bytes).hexdigest()
 
 
 def _e0_configuration(device: str) -> dict[str, object]:
@@ -274,8 +278,33 @@ def _seed_paths(output_dir: Path, seed: int) -> dict[str, Path]:
     }
 
 
-def _relative_paths(output_dir: Path, paths: dict[str, Path]) -> dict[str, str]:
-    return {name: path.relative_to(output_dir).as_posix() for name, path in paths.items()}
+def _artifact_records(
+    output_dir: Path, paths: dict[str, Path]
+) -> dict[str, dict[str, object]]:
+    records: dict[str, dict[str, object]] = {}
+    for name, path in paths.items():
+        if not path.is_file():
+            raise FileNotFoundError(f"seed artifact not found: {path}")
+        size_bytes = path.stat().st_size
+        if size_bytes <= 0:
+            raise RuntimeError(f"seed artifact is empty: {path}")
+        records[name] = {
+            "path": path.relative_to(output_dir).as_posix(),
+            "sha256": _sha256(path),
+            "size_bytes": size_bytes,
+        }
+    return records
+
+
+def _assert_manifest_unchanged(path: Path, expected_sha256: str, boundary: str) -> None:
+    try:
+        actual_sha256 = _sha256(path)
+    except OSError as error:
+        raise RuntimeError(f"feature manifest unavailable {boundary}: {path}") from error
+    if actual_sha256 != expected_sha256:
+        raise RuntimeError(
+            f"feature manifest changed {boundary}; refusing to complete an incompatible E0 seed"
+        )
 
 
 def _seed_record(summary: dict[str, object], seed: int) -> dict[str, object] | None:
@@ -296,18 +325,36 @@ def _seed_is_complete(
 ) -> tuple[bool, str]:
     if record is None:
         return False, "not recorded in summary"
-    expected_paths = _relative_paths(output_dir, _seed_paths(output_dir, seed))
+    paths = _seed_paths(output_dir, seed)
     if record.get("status") != "complete":
         return False, "summary status is not complete"
     if record.get("feature_manifest_sha256") != manifest_sha256:
         return False, "feature manifest fingerprint does not match"
     if record.get("configuration_sha256") != _canonical_hash(configuration):
         return False, "configuration fingerprint does not match"
-    if record.get("artifacts") != expected_paths:
-        return False, "artifact paths do not match"
-    paths = _seed_paths(output_dir, seed)
-    if any(not path.is_file() or path.stat().st_size == 0 for path in paths.values()):
-        return False, "one or more seed artifacts are missing or empty"
+    artifacts = record.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return False, "artifact integrity records are missing"
+    for name, path in paths.items():
+        artifact = artifacts.get(name)
+        if not isinstance(artifact, dict):
+            return False, f"{name} integrity record is missing"
+        if artifact.get("path") != path.relative_to(output_dir).as_posix():
+            return False, f"{name} path does not match"
+        expected_hash = artifact.get("sha256")
+        expected_size = artifact.get("size_bytes")
+        if (
+            not isinstance(expected_hash, str)
+            or len(expected_hash) != 64
+            or not isinstance(expected_size, int)
+            or isinstance(expected_size, bool)
+            or expected_size <= 0
+        ):
+            return False, f"{name} integrity record is invalid"
+        if not path.is_file():
+            return False, f"{name} is missing"
+        if path.stat().st_size != expected_size or _sha256(path) != expected_hash:
+            return False, f"{name} integrity check failed"
     try:
         metrics = json.loads(paths["metrics"].read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError, OSError):
@@ -432,23 +479,30 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
                 flush=True,
             )
 
+        training_config = TrainingConfig(
+            features_root=features_root,
+            output_dir=seed_dir,
+            max_epochs=200,
+            batch_size=32,
+            learning_rate=1e-4,
+            patience=20,
+            seed=seed,
+            device=device,
+            use_class_weights=False,
+            num_workers=0,
+            deterministic=True,
+            model=ModelConfig(),
+        )
+        _assert_manifest_unchanged(
+            manifest_path, manifest_sha256, f"before seed {seed} training"
+        )
         result = train_model(
-            TrainingConfig(
-                features_root=features_root,
-                output_dir=seed_dir,
-                max_epochs=200,
-                batch_size=32,
-                learning_rate=1e-4,
-                patience=20,
-                seed=seed,
-                device=device,
-                use_class_weights=False,
-                num_workers=0,
-                deterministic=True,
-                model=ModelConfig(),
-            ),
+            training_config,
             evaluate_test=False,
             progress=report_progress,
+        )
+        _assert_manifest_unchanged(
+            manifest_path, manifest_sha256, f"after seed {seed} training"
         )
         metrics_payload = _load_summary(result.metrics_path)
         metrics_payload["experiment"] = {
@@ -466,12 +520,22 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
         _write_json_atomic(result.metrics_path, metrics_payload)
 
         model = load_checkpoint(result.checkpoint_path)
+        _assert_manifest_unchanged(
+            manifest_path, manifest_sha256, f"before seed {seed} ONNX export"
+        )
         exported = export_onnx(model, DeploymentMetadata.default(), seed_dir / "onnx")
+        _assert_manifest_unchanged(
+            manifest_path, manifest_sha256, f"after seed {seed} ONNX export"
+        )
         expected_paths = _seed_paths(output_dir, seed)
         if exported.model_path != expected_paths["onnx_model"]:
             raise RuntimeError("ONNX exporter returned an unexpected model path")
         if exported.metadata_path != expected_paths["onnx_metadata"]:
             raise RuntimeError("ONNX exporter returned an unexpected metadata path")
+        artifacts = _artifact_records(output_dir, expected_paths)
+        _assert_manifest_unchanged(
+            manifest_path, manifest_sha256, f"before recording seed {seed} completion"
+        )
         record: dict[str, object] = {
             "seed": seed,
             "status": "complete",
@@ -482,7 +546,7 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
                 "accuracy": result.validation.accuracy,
                 "macro_f1": result.validation.macro_f1,
             },
-            "artifacts": _relative_paths(output_dir, expected_paths),
+            "artifacts": artifacts,
         }
         cast(list[object], summary["seeds"]).append(record)
         _update_summary(summary)
