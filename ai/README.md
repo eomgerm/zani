@@ -38,6 +38,20 @@ Windows에서 CUDA build는 필요한 CUDA runtime을 wheel에 포함하므로 �
 ## EngageNet 데이터 준비
 
 데이터셋은 저자에게 요청해 별도로 받아야 하며 저장소에는 포함되지 않습니다.
+사용자가 보유한 원본의 `Train/`, `Validation/`, `Test/` 폴더와 라벨 파일은 다음 명령으로
+기존 계약으로 준비합니다. 이 작업은 MP4를 복사하지 않고 Windows NTFS hard link만 만듭니다.
+
+```powershell
+uv run --extra eda python scripts/prepare_engagenet_contract.py `
+  --source-root <EngageNet-원본-루트> `
+  --output-root datasets/raw/engagenet
+```
+
+SNP(Subject Not Present)는 학습 대상이 아니므로 제외됩니다. 기대되는 4-class clip 수는
+Train 7,879개, Validation 1,071개, Test 2,256개입니다. 준비 결과에는 원본 라벨 파일
+SHA-256, 분할·라벨별 원본/포함 수, 제외 SNP 목록, subject 수, link 전략을 담은
+`preparation_manifest.json`이 생성됩니다.
+
 다음 공식 베이스라인 구조로 배치합니다.
 
 ```text
