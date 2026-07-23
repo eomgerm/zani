@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -185,16 +186,18 @@ def atomic_write(path: Path, content: str) -> None:
 
 
 def write_metadata(output_root: Path, clips: list[Clip], manifest: dict[str, Any]) -> None:
-    labels = ["clip_id,label,subject_id\n"]
-    labels.extend(f"{clip.clip_id},{clip.label},{clip.subject_id}\n" for clip in clips)
-    atomic_write(output_root / "final_labels.csv", "".join(labels))
+    labels_file = io.StringIO(newline="")
+    writer = csv.writer(labels_file, lineterminator="\n")
+    writer.writerow(("clip_id", "label", "subject_id"))
+    writer.writerows((clip.clip_id, clip.label, clip.subject_id) for clip in clips)
+    atomic_write(output_root / "final_labels.csv", labels_file.getvalue())
     for split in ("train", "valid", "test"):
         clip_ids = [clip.clip_id for clip in clips if clip.contract_split == split]
         atomic_write(output_root / f"{split}.txt" if split != "valid" else output_root / "valid.txt", "\n".join(clip_ids) + "\n")
     atomic_write(output_root / "preparation_manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
 
 
-def ensure_hard_link(source: Path, destination: Path) -> None:
+def verify_existing_hard_link(source: Path, destination: Path) -> None:
     if destination.exists():
         source_identity = source_fingerprint(source)
         destination_identity = source_fingerprint(destination)
@@ -206,6 +209,11 @@ def ensure_hard_link(source: Path, destination: Path) -> None:
             raise FileExistsError(
                 f"existing destination is not the same hard-linked source (size/fingerprint mismatch): {destination}"
             )
+
+
+def ensure_hard_link(source: Path, destination: Path) -> None:
+    if destination.exists():
+        verify_existing_hard_link(source, destination)
         return
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -245,15 +253,24 @@ def main() -> int:
         "subject_counts_by_split": collected["subject_counts_by_split"],
         "link_strategy": {"type": "ntfs_hard_link", "copy_fallback": False, "symlink_fallback": False},
     }
-    write_metadata(output_root, clips, manifest)
-    total = len(clips)
-    for index, clip in enumerate(clips, start=1):
+    link_targets: list[tuple[Clip, Path]] = []
+    for clip in clips:
         destination = videos_root / f"{clip.clip_id}.mp4"
         if not inside(output_root, destination):
             raise ValueError(f"video output path escapes output root: {destination}")
+        link_targets.append((clip, destination))
+
+    # Do not replace a previously valid metadata contract until every existing
+    # destination has been proven to be the expected hard link.
+    for clip, destination in link_targets:
+        verify_existing_hard_link(clip.source_video, destination)
+
+    total = len(clips)
+    for index, (clip, destination) in enumerate(link_targets, start=1):
         ensure_hard_link(clip.source_video, destination)
         if index == total or index % 500 == 0:
             print(f"Linked {index:,}/{total:,} videos", flush=True)
+    write_metadata(output_root, clips, manifest)
     load_dataset_contract(output_root)
     print(f"Prepared valid contract: {output_root}", flush=True)
     return 0
