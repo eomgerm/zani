@@ -83,6 +83,8 @@ FRONTEND_ORIGIN=https://i15a105.p.ssafy.io
 
 The installer retrieves the generated inbound-agent secret from the loopback Jenkins API and stores it in the separate agent-readable directory. It never prints the secret.
 
+On a fresh Jenkins home, Job DSL writes the three job configurations during the first JCasC boot. The installer performs one controlled controller restart, then requires authenticated HTTP 200 responses from `zani-dev-dispatch`, `zani-backend-dev`, and `zani-frontend-dev` before it continues.
+
 ## Backend deployment flow
 
 1. Checkout the `dev` commit.
