@@ -34,7 +34,7 @@ const RoomConnectionContext = createContext<RoomConnectionContextValue | null>(n
 const connectionErrorMessage = (error: unknown) =>
   error instanceof Error && error.message
     ? error.message
-    : "실시간 강의에 연결할 수 없습니다.";
+    : "실시간 강의 연결에 실패했습니다.";
 
 export function RoomProvider({
   sessionId,

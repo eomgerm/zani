@@ -100,6 +100,14 @@ describe("RoomProvider", () => {
     expect(screen.getByTestId("error")).toHaveTextContent("Token expired");
   });
 
+  it("uses the safe fallback message for a non-Error token failure", async () => {
+    renderProvider({ requestToken: vi.fn().mockRejectedValue("token failure") });
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+
+    expect(screen.getByTestId("error")).toHaveTextContent("실시간 강의 연결에 실패했습니다.");
+  });
+
   it("replaces a failed room when retrying and connects the new room", async () => {
     const failedRoom = createFakeRoom();
     failedRoom.connect.mockRejectedValueOnce(new Error("Room unavailable"));
