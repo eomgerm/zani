@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import inspect
 import json
 import multiprocessing
@@ -15,7 +16,7 @@ from importlib import metadata
 from multiprocessing.util import Finalize
 from pathlib import Path
 from types import ModuleType
-from typing import Protocol, cast
+from typing import BinaryIO, Protocol, cast
 from uuid import uuid4
 
 import cv2
@@ -251,6 +252,85 @@ class ExtractionThresholdError(RuntimeError):
             f"excluded {fraction:.1%} of clips; maximum allowed is {maximum_fraction:.1%}; "
             "final manifest and completed clip caches were retained"
         )
+
+
+class ActiveExtractionError(RuntimeError):
+    """Raised when another process owns the extraction output lock."""
+
+
+def _lock_output_file(handle: BinaryIO) -> None:
+    handle.seek(0)
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_output_file(handle: BinaryIO) -> None:
+    handle.seek(0)
+    if sys.platform == "win32":
+        import msvcrt
+
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+class _ExtractionOutputLock:
+    def __init__(self, output_root: Path) -> None:
+        self.path = output_root / ".extraction.lock"
+        self._handle: BinaryIO | None = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self.path.open("a+b")
+        try:
+            handle.seek(0, 2)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            try:
+                _lock_output_file(handle)
+            except OSError as error:
+                if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                    raise
+                raise ActiveExtractionError(
+                    "another extraction is already active for output "
+                    f"{self.path.parent}; stop it or choose another --output"
+                ) from error
+        except BaseException:
+            with suppress(BaseException):
+                handle.close()
+            raise
+        self._handle = handle
+
+    def release(self, *, suppress_errors: bool) -> None:
+        handle = self._handle
+        if handle is None:
+            return
+        self._handle = None
+        release_error: BaseException | None = None
+        try:
+            _unlock_output_file(handle)
+        except BaseException as error:
+            release_error = error
+        finally:
+            try:
+                handle.close()
+            except BaseException as error:
+                if release_error is None:
+                    release_error = error
+        if release_error is not None:
+            if suppress_errors:
+                _warn_best_effort(f"Extraction output lock release failed: {release_error}")
+            else:
+                raise RuntimeError("failed to release extraction output lock") from release_error
 
 
 def iter_sampled_frames(
@@ -764,101 +844,115 @@ def extract_contract_parallel(
             last_reported_extract = fresh_processed
         return manifest
 
-    executor: ProcessPoolExecutor | None = None
-    failed = False
-    phase = "cache_scan"
-    try:
-        _write_manifest(output_root, snapshot("in_progress"))
-        for record in records:
-            key = (record.split, record.clip_id)
-            source_fingerprint = _source_fingerprint(record.video_path)
-            cached = _cached_clip(
-                output_root,
-                record,
-                source_fingerprint,
-                provenance.extraction_fingerprint,
-            )
-            if cached is not None:
-                included[key] = cached
-                cached_count += 1
-            else:
-                pending.append(
-                    _WorkerTask(
-                        record,
-                        output_root,
-                        source_fingerprint,
-                        provenance.extraction_fingerprint,
-                    )
-                )
-            scanned_count += 1
-            report("cache_scan")
-
-        report("cache_scan", force=True)
-        pending_total = len(pending)
-        extraction_started = time.monotonic()
-        phase = "extract"
-        if pending:
-            executor = ProcessPoolExecutor(
-                max_workers=workers,
-                mp_context=multiprocessing.get_context("spawn"),
-                initializer=_initialize_worker,
-                initargs=(
-                    str(model_asset_path),
-                    provenance.face_landmarker_model_sha256,
-                    provenance.face_landmarker_model_size_bytes,
-                ),
-            )
-            futures: dict[Future[IncludedClip | ExcludedClip], _WorkerTask] = {
-                executor.submit(_extract_worker, task): task for task in pending
-            }
-            for future in as_completed(futures):
-                result = future.result()
-                key = (result.split, result.clip_id)
-                if isinstance(result, IncludedClip):
-                    included[key] = result
-                else:
-                    excluded[key] = result
-                fresh_processed += 1
-                report("extract")
-    except BaseException:
-        failed = True
+    def run_locked() -> ExtractionManifest:
+        nonlocal cached_count, extraction_started, fresh_processed, pending_total, scanned_count
+        executor: ProcessPoolExecutor | None = None
+        failed = False
+        phase = "cache_scan"
         try:
-            report(phase, force=True)
-        except BaseException as report_error:
-            _warn_best_effort(
-                f"Emergency extraction manifest update failed: {report_error}"
-            )
-        raise
-    finally:
-        if executor is not None:
-            try:
-                executor.shutdown(wait=True, cancel_futures=failed)
-            except BaseException as shutdown_error:
-                with suppress(BaseException):
-                    executor.shutdown(wait=False, cancel_futures=True)
-                if failed:
-                    _warn_best_effort(
-                        f"Extraction worker shutdown also failed: {shutdown_error}"
-                    )
+            _write_manifest(output_root, snapshot("in_progress"))
+            for record in records:
+                key = (record.split, record.clip_id)
+                source_fingerprint = _source_fingerprint(record.video_path)
+                cached = _cached_clip(
+                    output_root,
+                    record,
+                    source_fingerprint,
+                    provenance.extraction_fingerprint,
+                )
+                if cached is not None:
+                    included[key] = cached
+                    cached_count += 1
                 else:
-                    try:
-                        report(phase, force=True)
-                    except BaseException as report_error:
-                        _warn_best_effort(
-                            "Emergency extraction manifest update failed after worker "
-                            f"shutdown error: {report_error}"
+                    pending.append(
+                        _WorkerTask(
+                            record,
+                            output_root,
+                            source_fingerprint,
+                            provenance.extraction_fingerprint,
                         )
-                    raise
+                    )
+                scanned_count += 1
+                report("cache_scan")
 
-    fraction = len(excluded) / total if total else 0.0
-    status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
-    manifest = report("complete", status, force=True)
-    if fraction > max_excluded_fraction:
-        raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)
-    return manifest
+            report("cache_scan", force=True)
+            pending_total = len(pending)
+            extraction_started = time.monotonic()
+            phase = "extract"
+            if pending:
+                executor = ProcessPoolExecutor(
+                    max_workers=workers,
+                    mp_context=multiprocessing.get_context("spawn"),
+                    initializer=_initialize_worker,
+                    initargs=(
+                        str(model_asset_path),
+                        provenance.face_landmarker_model_sha256,
+                        provenance.face_landmarker_model_size_bytes,
+                    ),
+                )
+                futures: dict[Future[IncludedClip | ExcludedClip], _WorkerTask] = {
+                    executor.submit(_extract_worker, task): task for task in pending
+                }
+                for future in as_completed(futures):
+                    result = future.result()
+                    key = (result.split, result.clip_id)
+                    if isinstance(result, IncludedClip):
+                        included[key] = result
+                    else:
+                        excluded[key] = result
+                    fresh_processed += 1
+                    report("extract")
+        except BaseException:
+            failed = True
+            try:
+                report(phase, force=True)
+            except BaseException as report_error:
+                _warn_best_effort(
+                    f"Emergency extraction manifest update failed: {report_error}"
+                )
+            raise
+        finally:
+            if executor is not None:
+                try:
+                    executor.shutdown(wait=True, cancel_futures=failed)
+                except BaseException as shutdown_error:
+                    with suppress(BaseException):
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    if failed:
+                        _warn_best_effort(
+                            f"Extraction worker shutdown also failed: {shutdown_error}"
+                        )
+                    else:
+                        try:
+                            report(phase, force=True)
+                        except BaseException as report_error:
+                            _warn_best_effort(
+                                "Emergency extraction manifest update failed after worker "
+                                f"shutdown error: {report_error}"
+                            )
+                        raise
+
+        fraction = len(excluded) / total if total else 0.0
+        status = (
+            "complete"
+            if fraction <= max_excluded_fraction
+            else "exclusion_threshold_exceeded"
+        )
+        manifest = report("complete", status, force=True)
+        if fraction > max_excluded_fraction:
+            raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)
+        return manifest
+
+    output_lock = _ExtractionOutputLock(output_root)
+    output_lock.acquire()
+    try:
+        return run_locked()
+    finally:
+        output_lock.release(suppress_errors=sys.exception() is not None)
 
 
 __all__ = [
+    "ActiveExtractionError",
     "ExcludedClip",
     "ExtractionManifest",
     "ExtractionProvenance",
