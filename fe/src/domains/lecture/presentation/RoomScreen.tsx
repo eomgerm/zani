@@ -33,7 +33,7 @@ export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
 }
 
 function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<RoomScreenProps, "roomTitle">) {
-  const { connectionState, error, retry } = useRoomConnection();
+  const { connectionState, retry } = useRoomConnection();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
@@ -73,7 +73,7 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
           </span>
           {connectionState === "error" && (
             <div className="absolute left-1/2 top-full z-10 mt-2 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-danger bg-surface px-4 py-2 text-[13px] text-ink shadow-lg">
-              <span>{error ?? "실시간 강의 연결에 실패했습니다."}</span>
+              <span>실시간 강의 연결에 실패했습니다.</span>
               <button
                 type="button"
                 onClick={retry}
