@@ -34,6 +34,14 @@ test('카메라·마이크가 모두 유효하면 입장이 활성화되고 장�
 
   const enterButton = page.getByTestId('prejoin-enter-button');
   await expect(enterButton).toBeEnabled({ timeout: 20_000 });
+
+  // 카메라를 끄면 입장이 막히고, 다시 켜면 복구된다.
+  await page.getByTestId('camera-toggle').click();
+  await expect(page.getByTestId('device-failure-CAMERA_DISABLED')).toBeVisible();
+  await expect(enterButton).toBeDisabled();
+  await page.getByTestId('camera-toggle').click();
+  await expect(enterButton).toBeEnabled({ timeout: 10_000 });
+
   await enterButton.click();
 
   await page.waitForURL(`**/room/${INVITE_CODE}`);

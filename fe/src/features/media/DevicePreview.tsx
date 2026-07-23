@@ -29,6 +29,8 @@ export const DEVICE_FAILURE_MESSAGES: Record<DeviceTestFailure, string> = {
     "사용할 수 있는 카메라를 찾지 못했어요. 카메라 연결 상태를 확인하고 다시 시도해 주세요.",
   MICROPHONE_NOT_SELECTED:
     "사용할 수 있는 마이크를 찾지 못했어요. 마이크 연결 상태를 확인하고 다시 시도해 주세요.",
+  CAMERA_DISABLED: "카메라가 꺼져 있어요. 입장하려면 카메라를 켜 주세요.",
+  MICROPHONE_DISABLED: "마이크가 꺼져 있어요. 입장하려면 마이크를 켜 주세요.",
   CAMERA_STREAM_INVALID:
     "카메라 영상이 나오지 않아요. 다른 카메라를 선택하거나 다시 시도해 주세요.",
   MICROPHONE_LEVEL_TOO_LOW:
@@ -86,6 +88,14 @@ export function DevicePreview({
   const [activeCameraId, setActiveCameraId] = useState<string | null>(null);
   const [activeMicrophoneId, setActiveMicrophoneId] = useState<string | null>(null);
 
+  // 미리보기 온오프 토글. 꺼 두면 입장할 수 없고 원인 안내를 보여준다.
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(true);
+  // 새 스트림을 열 때 현재 토글 상태를 트랙에 적용하기 위한 미러 ref.
+  const enabledRef = useRef({ camera: true, microphone: true });
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const audioTrackRef = useRef<MediaStreamTrack | null>(null);
+
   const [cameraPermission, setCameraPermission] = useState<DevicePermissionState>("prompt");
   const [microphonePermission, setMicrophonePermission] =
     useState<DevicePermissionState>("prompt");
@@ -99,6 +109,28 @@ export function DevicePreview({
 
   const handleRetry = useCallback(() => {
     setRetryToken((token) => token + 1);
+  }, []);
+
+  const handleToggleCamera = useCallback(() => {
+    setCameraEnabled((enabled) => {
+      const next = !enabled;
+      enabledRef.current.camera = next;
+      if (videoTrackRef.current) {
+        videoTrackRef.current.enabled = next;
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleMicrophone = useCallback(() => {
+    setMicrophoneEnabled((enabled) => {
+      const next = !enabled;
+      enabledRef.current.microphone = next;
+      if (audioTrackRef.current) {
+        audioTrackRef.current.enabled = next;
+      }
+      return next;
+    });
   }, []);
 
   // 장치 스트림 열기: 카메라·마이크를 독립 요청해 한쪽 실패가 다른 쪽을 막지 않게 한다.
@@ -142,6 +174,10 @@ export function DevicePreview({
         setCameraPermission("granted");
 
         const track = stream.getVideoTracks()[0] ?? null;
+        videoTrackRef.current = track;
+        if (track) {
+          track.enabled = enabledRef.current.camera;
+        }
         setActiveCameraId(track?.getSettings().deviceId ?? null);
         setCameraHasVideoFrame(track ? trackHasVideoFrame(track) : false);
         track?.addEventListener("ended", () => setCameraHasVideoFrame(false));
@@ -169,6 +205,10 @@ export function DevicePreview({
         setMicrophonePermission("granted");
 
         const track = stream.getAudioTracks()[0] ?? null;
+        audioTrackRef.current = track;
+        if (track) {
+          track.enabled = enabledRef.current.microphone;
+        }
         setActiveMicrophoneId(track?.getSettings().deviceId ?? null);
 
         const AudioContextCtor =
@@ -236,6 +276,8 @@ export function DevicePreview({
       }
       void audioContext?.close().catch(() => {});
       streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+      videoTrackRef.current = null;
+      audioTrackRef.current = null;
       if (video) {
         try {
           video.srcObject = null;
@@ -251,6 +293,8 @@ export function DevicePreview({
     microphoneDeviceId: activeMicrophoneId,
     cameraPermission,
     microphonePermission,
+    cameraEnabled,
+    microphoneEnabled,
     cameraHasVideoFrame,
     microphoneLevel,
   });
@@ -298,8 +342,45 @@ export function DevicePreview({
             </div>
           </div>
         )}
+        {cameraHasVideoFrame && !cameraEnabled && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#1a1d30] px-[30px] text-center">
+            <span className="text-4xl">📷</span>
+            <div className="text-lg font-extrabold text-white">카메라가 꺼져 있어요</div>
+            <div className="text-[13.5px] leading-[1.55] text-white/80">
+              입장하려면 아래 버튼으로 카메라를 켜 주세요
+            </div>
+          </div>
+        )}
         <div className="absolute bottom-[18px] left-[18px] z-stage-chip font-bold">
           🎥 카메라 미리보기
+        </div>
+
+        {/* 카메라·마이크 온오프 토글 */}
+        <div className="absolute bottom-[14px] left-1/2 flex -translate-x-1/2 gap-2.5">
+          <button
+            type="button"
+            data-testid="camera-toggle"
+            aria-pressed={cameraEnabled}
+            aria-label={cameraEnabled ? "카메라 끄기" : "카메라 켜기"}
+            onClick={handleToggleCamera}
+            className={`flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-[19px] backdrop-blur-[6px] transition-colors ${
+              cameraEnabled ? "bg-[#0e1020cc] text-white hover:bg-[#1c2036cc]" : "bg-danger text-white"
+            }`}
+          >
+            {cameraEnabled ? "🎥" : "📷"}
+          </button>
+          <button
+            type="button"
+            data-testid="microphone-toggle"
+            aria-pressed={microphoneEnabled}
+            aria-label={microphoneEnabled ? "마이크 끄기" : "마이크 켜기"}
+            onClick={handleToggleMicrophone}
+            className={`flex size-11 cursor-pointer items-center justify-center rounded-full border-0 text-[19px] backdrop-blur-[6px] transition-colors ${
+              microphoneEnabled ? "bg-[#0e1020cc] text-white hover:bg-[#1c2036cc]" : "bg-danger text-white"
+            }`}
+          >
+            {microphoneEnabled ? "🎤" : "🔇"}
+          </button>
         </div>
       </div>
 

@@ -13,6 +13,8 @@ export type DeviceTestFailure =
   | 'MICROPHONE_PERMISSION_DENIED'
   | 'CAMERA_NOT_SELECTED'
   | 'MICROPHONE_NOT_SELECTED'
+  | 'CAMERA_DISABLED'
+  | 'MICROPHONE_DISABLED'
   | 'CAMERA_STREAM_INVALID'
   | 'MICROPHONE_LEVEL_TOO_LOW';
 
@@ -21,6 +23,10 @@ export interface DeviceTestInput {
   readonly microphoneDeviceId: string | null;
   readonly cameraPermission: DevicePermissionState;
   readonly microphonePermission: DevicePermissionState;
+  /** 사용자가 카메라를 켜 둔 상태인지 (미리보기 토글). */
+  readonly cameraEnabled: boolean;
+  /** 사용자가 마이크를 켜 둔 상태인지 (미리보기 토글). */
+  readonly microphoneEnabled: boolean;
   /** 카메라가 유효한 영상 프레임을 내보내는지 (예: 트랙 활성 + 해상도 > 0). */
   readonly cameraHasVideoFrame: boolean;
   /** 측정된 마이크 입력 레벨 (0~1 로 정규화된 피크). */
@@ -38,7 +44,8 @@ export const MICROPHONE_LEVEL_THRESHOLD = 0.02;
 /**
  * 장치 테스트 결과를 판정한다.
  *
- * 권한이 거부된 경우에는 스트림/레벨 실패를 중복으로 보고하지 않는다(근본 원인은 권한).
+ * 권한이 거부된 경우에는 스트림/레벨 실패를 중복으로 보고하지 않고(근본 원인은 권한),
+ * 사용자가 장치를 꺼 둔 경우에도 스트림/레벨 실패 대신 꺼짐만 보고한다(근본 원인은 토글).
  */
 export function evaluateDeviceTest(input: DeviceTestInput): DeviceTestResult {
   const failures: DeviceTestFailure[] = [];
@@ -60,13 +67,26 @@ export function evaluateDeviceTest(input: DeviceTestInput): DeviceTestResult {
     failures.push('MICROPHONE_NOT_SELECTED');
   }
 
-  if (!cameraDenied && input.cameraDeviceId && !input.cameraHasVideoFrame) {
+  if (!cameraDenied && input.cameraDeviceId && !input.cameraEnabled) {
+    failures.push('CAMERA_DISABLED');
+  }
+  if (!microphoneDenied && input.microphoneDeviceId && !input.microphoneEnabled) {
+    failures.push('MICROPHONE_DISABLED');
+  }
+
+  if (
+    !cameraDenied &&
+    input.cameraDeviceId &&
+    input.cameraEnabled &&
+    !input.cameraHasVideoFrame
+  ) {
     failures.push('CAMERA_STREAM_INVALID');
   }
 
   if (
     !microphoneDenied &&
     input.microphoneDeviceId &&
+    input.microphoneEnabled &&
     input.microphoneLevel < MICROPHONE_LEVEL_THRESHOLD
   ) {
     failures.push('MICROPHONE_LEVEL_TOO_LOW');

@@ -13,6 +13,8 @@ function validInput(overrides: Partial<DeviceTestInput> = {}): DeviceTestInput {
     microphoneDeviceId: 'mic-1',
     cameraPermission: 'granted',
     microphonePermission: 'granted',
+    cameraEnabled: true,
+    microphoneEnabled: true,
     cameraHasVideoFrame: true,
     microphoneLevel: 0.5,
     ...overrides,
@@ -45,6 +47,32 @@ describe('evaluateDeviceTest', () => {
   it('마이크 미선택을 감지한다', () => {
     const result = evaluateDeviceTest(validInput({ microphoneDeviceId: null }));
     expect(result.failures).toContain('MICROPHONE_NOT_SELECTED');
+  });
+
+  it('카메라를 꺼 두면 CAMERA_DISABLED 만 보고한다(스트림 실패 중복 없음)', () => {
+    const result = evaluateDeviceTest(
+      validInput({ cameraEnabled: false, cameraHasVideoFrame: false }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain('CAMERA_DISABLED');
+    expect(result.failures).not.toContain('CAMERA_STREAM_INVALID');
+  });
+
+  it('마이크를 꺼 두면 MICROPHONE_DISABLED 만 보고한다(레벨 실패 중복 없음)', () => {
+    const result = evaluateDeviceTest(
+      validInput({ microphoneEnabled: false, microphoneLevel: 0 }),
+    );
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain('MICROPHONE_DISABLED');
+    expect(result.failures).not.toContain('MICROPHONE_LEVEL_TOO_LOW');
+  });
+
+  it('권한이 거부되면 꺼짐 실패는 중복 보고하지 않는다', () => {
+    const result = evaluateDeviceTest(
+      validInput({ cameraPermission: 'denied', cameraEnabled: false }),
+    );
+    expect(result.failures).toContain('CAMERA_PERMISSION_DENIED');
+    expect(result.failures).not.toContain('CAMERA_DISABLED');
   });
 
   it('권한·장치가 정상인데 카메라 영상이 없으면 STREAM_INVALID', () => {

@@ -169,6 +169,30 @@ describe('DevicePreview', () => {
     expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(false);
   });
 
+  it('카메라·마이크 토글을 끄면 꺼짐 안내가 보이고 통과가 깨진다', async () => {
+    analyserByte = 200;
+    stubMediaDevices({
+      video: () => Promise.resolve(fakeStream([fakeTrack('video', 'cam-1')])),
+      audio: () => Promise.resolve(fakeStream([fakeTrack('audio', 'mic-1')])),
+    });
+
+    const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
+    render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
+    await waitFor(() => expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true));
+
+    fireEvent.click(screen.getByTestId('camera-toggle'));
+    expect(await screen.findByTestId('device-failure-CAMERA_DISABLED')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('microphone-toggle'));
+    expect(await screen.findByTestId('device-failure-MICROPHONE_DISABLED')).toBeInTheDocument();
+    expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(false);
+
+    // 다시 켜면 통과 상태로 복구된다.
+    fireEvent.click(screen.getByTestId('camera-toggle'));
+    fireEvent.click(screen.getByTestId('microphone-toggle'));
+    await waitFor(() => expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true));
+  });
+
   it('다시 시도를 누르면 장치 요청을 다시 수행한다', async () => {
     stubMediaDevices({
       video: () => Promise.reject(notAllowedError()),
