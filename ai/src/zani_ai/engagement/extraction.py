@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+import inspect
 import json
 import multiprocessing
+import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import metadata
 from multiprocessing.util import Finalize
 from pathlib import Path
+from types import ModuleType
 from typing import Protocol, cast
+from uuid import uuid4
 
 import cv2
 import mediapipe as mp
@@ -20,6 +25,8 @@ from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
 from numpy.typing import NDArray
 
+from zani_ai.engagement import features as feature_algorithms
+from zani_ai.engagement import segments as segment_algorithms
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract, SplitName
 from zani_ai.engagement.features import (
     BLENDSHAPE_NAMES,
@@ -40,8 +47,27 @@ type FrameSource = Callable[[Path], Iterator["VideoFrame"]]
 SAMPLE_FPS = 10.0
 WINDOW_SECONDS = 10.0
 SEGMENT_COUNT = 20
+MINIMUM_VALID_FRAMES = 3
 DEFAULT_WORKERS = 2
 DEFAULT_PROGRESS_EVERY = 25
+
+GAZE_PROXY_DEFINITION = (
+    "right_iris_xy=mean(landmarks[468:473,:2])",
+    "left_iris_xy=mean(landmarks[473:478,:2])",
+    "right_xy=axis_positions(right_iris_xy,horizontal=33->133,vertical=159->145)",
+    "left_xy=axis_positions(left_iris_xy,horizontal=263->362,vertical=386->374)",
+    "axis_position=dot(point-start,end-start)/max(dot(end-start,end-start),1e-6)",
+    "mean_xy=(right_xy+left_xy)/2",
+    "difference_xy=right_xy-left_xy",
+    "order=(right_x,right_y,left_x,left_y,mean_x,mean_y,right_minus_left_x,"
+    "right_minus_left_y)",
+)
+HEAD_POSE_DEFINITION = (
+    "yaw_pitch_roll=XYZ_Euler_radians(facial_transformation_matrix[:3,:3])",
+    "nose_xy=(landmarks[1,0],landmarks[1,1])",
+    "inverse_interocular=1/max(norm(landmarks[33,:2]-landmarks[263,:2]),1e-6)",
+    "order=(yaw,pitch,roll,nose_x,nose_y,inverse_interocular)",
+)
 
 
 class VideoDecodeError(RuntimeError):
@@ -136,15 +162,19 @@ class ExtractionProvenance:
     sample_fps: float
     window_seconds: float
     segment_count: int
+    minimum_valid_frames: int
     raw_feature_dimension: int
     token_feature_dimension: int
     feature_schema: str
     gaze_proxy_dimension: int
+    gaze_proxy_definition: tuple[str, ...]
     head_pose_dimension: int
+    head_pose_definition: tuple[str, ...]
     blendshape_names: tuple[str, ...]
     aggregation: tuple[str, ...]
     worker_count: int
     max_excluded_fraction: float
+    algorithm_source_sha256: dict[str, str]
     extraction_fingerprint: str
 
 
@@ -157,6 +187,7 @@ class ExtractionManifest:
     total_count: int | None = None
     cached_count: int = 0
     provenance: ExtractionProvenance | None = None
+    scanned_count: int | None = None
 
     def to_json_dict(self, root: Path) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -170,6 +201,11 @@ class ExtractionManifest:
                 else len(self.included) + len(self.excluded)
             ),
             "cached_count": self.cached_count,
+            "scanned_count": (
+                self.scanned_count
+                if self.scanned_count is not None
+                else len(self.included) + len(self.excluded)
+            ),
             "excluded_fraction": (
                 len(self.excluded) / self.total_count
                 if self.total_count
@@ -243,7 +279,12 @@ def extract_clip(
             else extract_frame_features(result.landmarks, result.transform, result.blendshapes)
         )
         timed.append(TimedFeatures(frame.timestamp_ms / 1000, values))
-    return aggregate_segments(timed)
+    return aggregate_segments(
+        timed,
+        window_seconds=WINDOW_SECONDS,
+        segment_count=SEGMENT_COUNT,
+        minimum_valid_frames=MINIMUM_VALID_FRAMES,
+    )
 
 
 def _source_fingerprint(path: Path) -> str:
@@ -295,7 +336,7 @@ def _save_tokens(
     directory = output_root / SCHEMA_NAME / record.split
     directory.mkdir(parents=True, exist_ok=True)
     feature_path = directory / f"{record.clip_id}.npz"
-    temporary = directory / f".{record.clip_id}.npz.tmp"
+    temporary = _unique_temporary_path(feature_path)
     try:
         with temporary.open("wb") as file:
             if extraction_fingerprint is None:
@@ -326,7 +367,7 @@ def _save_tokens(
 def _write_manifest(output_root: Path, manifest: ExtractionManifest) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     path = output_root / "manifest.json"
-    temporary = output_root / ".manifest.json.tmp"
+    temporary = _unique_temporary_path(path)
     try:
         temporary.write_text(
             json.dumps(manifest.to_json_dict(output_root), ensure_ascii=False, indent=2) + "\n",
@@ -335,6 +376,14 @@ def _write_manifest(output_root: Path, manifest: ExtractionManifest) -> None:
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _unique_temporary_path(path: Path) -> Path:
+    return path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+
+
+def _expected_exclusion(record: ClipRecord, error: Exception) -> ExcludedClip:
+    return ExcludedClip(record.clip_id, record.split, f"{type(error).__name__}: {error}")
 
 
 def extract_contract(
@@ -349,6 +398,7 @@ def extract_contract(
     included: list[IncludedClip] = []
     excluded: list[ExcludedClip] = []
     records = tuple(record for split in contract.splits.values() for record in split)
+    _validate_unique_records(records)
     for record in records:
         fingerprint = _source_fingerprint(record.video_path)
         cached = _cached_clip(output_root, record, fingerprint)
@@ -357,14 +407,15 @@ def extract_contract(
             continue
         try:
             tokens = extract_clip(record.video_path, landmarker, frame_source=frame_source)
-            included.append(_save_tokens(output_root, record, tokens, fingerprint))
         except (
             InvalidFrameFeaturesError,
             InsufficientFaceCoverageError,
             VideoDecodeError,
-            OSError,
+            cv2.error,
         ) as error:
-            excluded.append(ExcludedClip(record.clip_id, record.split, str(error)))
+            excluded.append(_expected_exclusion(record, error))
+            continue
+        included.append(_save_tokens(output_root, record, tokens, fingerprint))
 
     fraction = len(excluded) / len(records) if records else 0.0
     status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
@@ -410,25 +461,26 @@ def _extract_worker(task: _WorkerTask) -> IncludedClip | ExcludedClip:
     if _worker_landmarker is None:
         raise RuntimeError("Face Landmarker worker was not initialized")
     record = task.record
+    if _source_fingerprint(record.video_path) != task.source_fingerprint:
+        raise OSError("source video changed before extraction started")
     try:
-        if _source_fingerprint(record.video_path) != task.source_fingerprint:
-            raise OSError("source video changed before extraction started")
         tokens = extract_clip(record.video_path, _worker_landmarker)
-        if _source_fingerprint(record.video_path) != task.source_fingerprint:
-            raise OSError("source video changed during extraction")
-        return _save_tokens(
-            task.output_root,
-            record,
-            tokens,
-            task.source_fingerprint,
-            task.extraction_fingerprint,
-        )
-    except Exception as error:
-        return ExcludedClip(
-            record.clip_id,
-            record.split,
-            f"{type(error).__name__}: {error}",
-        )
+    except (
+        InvalidFrameFeaturesError,
+        InsufficientFaceCoverageError,
+        VideoDecodeError,
+        cv2.error,
+    ) as error:
+        return _expected_exclusion(record, error)
+    if _source_fingerprint(record.video_path) != task.source_fingerprint:
+        raise OSError("source video changed during extraction")
+    return _save_tokens(
+        task.output_root,
+        record,
+        tokens,
+        task.source_fingerprint,
+        task.extraction_fingerprint,
+    )
 
 
 def _file_sha256(path: Path) -> str:
@@ -449,6 +501,16 @@ def _package_version(distribution: str, module: object) -> str:
         return version
 
 
+def _source_sha256(
+    value: ModuleType | type[object] | Callable[..., object], name: str
+) -> str:
+    try:
+        source = inspect.getsource(value)
+    except (OSError, TypeError) as error:
+        raise RuntimeError(f"could not read {name} source for extraction provenance") from error
+    return sha256(source.encode("utf-8")).hexdigest()
+
+
 def _build_provenance(
     model_asset_path: Path,
     *,
@@ -461,6 +523,21 @@ def _build_provenance(
     opencv_version = str(cv2.__version__)
     if not opencv_version:
         raise RuntimeError("could not determine OpenCV package version")
+    algorithm_source_sha256 = {
+        "face_landmarker_adapter": _source_sha256(
+            MediaPipeFaceLandmarker, "Face Landmarker adapter"
+        ),
+        "timestamp_sampler": _source_sha256(iter_sampled_frames, "timestamp sampler"),
+        "clip_extraction_pipeline": _source_sha256(
+            extract_clip, "clip extraction pipeline"
+        ),
+        "frame_features_module": _source_sha256(
+            feature_algorithms, "frame feature module"
+        ),
+        "segment_aggregation_module": _source_sha256(
+            segment_algorithms, "segment aggregation module"
+        ),
+    }
     fingerprint_payload = {
         "mediapipe_version": mediapipe_version,
         "opencv_version": opencv_version,
@@ -469,11 +546,23 @@ def _build_provenance(
         "sample_fps": SAMPLE_FPS,
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
+        "minimum_valid_frames": MINIMUM_VALID_FRAMES,
         "raw_feature_dimension": RAW_FEATURE_COUNT,
         "token_feature_dimension": TOKEN_FEATURE_COUNT,
         "feature_schema": SCHEMA_NAME,
+        "gaze_proxy_dimension": 8,
+        "head_pose_dimension": 6,
+        "landmarker_options": {
+            "running_mode": "VIDEO",
+            "num_faces": 1,
+            "output_face_blendshapes": True,
+            "output_facial_transformation_matrixes": True,
+        },
+        "gaze_proxy_definition": list(GAZE_PROXY_DEFINITION),
+        "head_pose_definition": list(HEAD_POSE_DEFINITION),
         "blendshape_names": list(BLENDSHAPE_NAMES),
         "aggregation": ["mean", "population_standard_deviation"],
+        "algorithm_source_sha256": algorithm_source_sha256,
     }
     encoded = json.dumps(
         fingerprint_payload, sort_keys=True, separators=(",", ":")
@@ -487,15 +576,19 @@ def _build_provenance(
         sample_fps=SAMPLE_FPS,
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
+        minimum_valid_frames=MINIMUM_VALID_FRAMES,
         raw_feature_dimension=RAW_FEATURE_COUNT,
         token_feature_dimension=TOKEN_FEATURE_COUNT,
         feature_schema=SCHEMA_NAME,
         gaze_proxy_dimension=8,
+        gaze_proxy_definition=GAZE_PROXY_DEFINITION,
         head_pose_dimension=6,
+        head_pose_definition=HEAD_POSE_DEFINITION,
         blendshape_names=BLENDSHAPE_NAMES,
         aggregation=("mean", "population_standard_deviation"),
         worker_count=workers,
         max_excluded_fraction=max_excluded_fraction,
+        algorithm_source_sha256=algorithm_source_sha256,
         extraction_fingerprint=sha256(encoded).hexdigest(),
     )
 
@@ -507,6 +600,22 @@ def _format_duration(seconds: float | None) -> str:
     hours, remainder = divmod(rounded, 3600)
     minutes, secs = divmod(remainder, 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _warn_best_effort(message: str) -> None:
+    with suppress(BaseException):
+        print(message, file=sys.stderr, flush=True)
+
+
+def _validate_unique_records(records: tuple[ClipRecord, ...]) -> None:
+    seen: set[tuple[SplitName, str]] = set()
+    for record in records:
+        identity = (record.split, record.clip_id)
+        if identity in seen:
+            raise ValueError(
+                f"duplicate extraction clip identity: {record.split}/{record.clip_id}"
+            )
+        seen.add(identity)
 
 
 def extract_contract_parallel(
@@ -528,19 +637,25 @@ def extract_contract_parallel(
     if not model_asset_path.is_file():
         raise FileNotFoundError(f"Face Landmarker model not found: {model_asset_path}")
 
+    records = tuple(record for split in contract.splits.values() for record in split)
+    _validate_unique_records(records)
     provenance = _build_provenance(
         model_asset_path,
         workers=workers,
         max_excluded_fraction=max_excluded_fraction,
     )
-    records = tuple(record for split in contract.splits.values() for record in split)
     total = len(records)
     included: dict[tuple[SplitName, str], IncludedClip] = {}
     excluded: dict[tuple[SplitName, str], ExcludedClip] = {}
     pending: list[_WorkerTask] = []
     cached_count = 0
     started = time.monotonic()
-    last_reported = 0
+    scanned_count = 0
+    fresh_processed = 0
+    pending_total = 0
+    extraction_started: float | None = None
+    last_reported_scan = 0
+    last_reported_extract = 0
 
     def ordered_values(
         values: Mapping[tuple[SplitName, str], IncludedClip | ExcludedClip],
@@ -562,65 +677,86 @@ def extract_contract_parallel(
             total_count=total,
             cached_count=cached_count,
             provenance=provenance,
+            scanned_count=scanned_count,
         )
 
-    def report(status: str = "in_progress", *, force: bool = False) -> ExtractionManifest:
-        nonlocal last_reported
+    def report(
+        phase: str,
+        status: str = "in_progress",
+        *,
+        force: bool = False,
+    ) -> ExtractionManifest:
+        nonlocal last_reported_extract, last_reported_scan
         manifest = snapshot(status)
         processed = len(manifest.included) + len(manifest.excluded)
-        if not force and processed - last_reported < progress_every:
-            return manifest
+        if not force:
+            if phase == "cache_scan":
+                if scanned_count - last_reported_scan < progress_every:
+                    return manifest
+            elif fresh_processed - last_reported_extract < progress_every:
+                return manifest
         _write_manifest(output_root, manifest)
         elapsed = time.monotonic() - started
-        rate = processed / elapsed if elapsed > 0 else 0.0
-        eta = (total - processed) / rate if rate > 0 else None
+        extraction_elapsed = (
+            time.monotonic() - extraction_started
+            if extraction_started is not None
+            else 0.0
+        )
+        rate = fresh_processed / extraction_elapsed if extraction_elapsed > 0 else 0.0
+        if phase == "cache_scan":
+            eta = None
+        elif pending_total == fresh_processed:
+            eta = 0.0
+        else:
+            eta = (pending_total - fresh_processed) / rate if rate > 0 else None
         print(
             "Extraction progress | "
+            f"phase={phase} scanned={scanned_count}/{total} "
             f"processed={processed}/{total} cached={cached_count} "
             f"included={len(manifest.included)} excluded={len(manifest.excluded)} "
             f"elapsed={_format_duration(elapsed)} clips/sec={rate:.3f} "
             f"ETA={_format_duration(eta)} status={status}",
             flush=True,
         )
-        last_reported = processed
+        if phase == "cache_scan":
+            last_reported_scan = scanned_count
+        else:
+            last_reported_extract = fresh_processed
         return manifest
 
-    _write_manifest(output_root, snapshot("in_progress"))
-    for record in records:
-        key = (record.split, record.clip_id)
-        try:
-            source_fingerprint = _source_fingerprint(record.video_path)
-        except OSError as error:
-            excluded[key] = ExcludedClip(
-                record.clip_id,
-                record.split,
-                f"{type(error).__name__}: {error}",
-            )
-            continue
-        cached = _cached_clip(
-            output_root,
-            record,
-            source_fingerprint,
-            provenance.extraction_fingerprint,
-        )
-        if cached is not None:
-            included[key] = cached
-            cached_count += 1
-        else:
-            pending.append(
-                _WorkerTask(
-                    record,
-                    output_root,
-                    source_fingerprint,
-                    provenance.extraction_fingerprint,
-                )
-            )
-
-    if included or excluded:
-        report(force=True)
-
     executor: ProcessPoolExecutor | None = None
+    failed = False
+    phase = "cache_scan"
     try:
+        _write_manifest(output_root, snapshot("in_progress"))
+        for record in records:
+            key = (record.split, record.clip_id)
+            source_fingerprint = _source_fingerprint(record.video_path)
+            cached = _cached_clip(
+                output_root,
+                record,
+                source_fingerprint,
+                provenance.extraction_fingerprint,
+            )
+            if cached is not None:
+                included[key] = cached
+                cached_count += 1
+            else:
+                pending.append(
+                    _WorkerTask(
+                        record,
+                        output_root,
+                        source_fingerprint,
+                        provenance.extraction_fingerprint,
+                    )
+                )
+            scanned_count += 1
+            report("cache_scan")
+
+        report("cache_scan", force=True)
+        pending_total = len(pending)
+        extraction_started = time.monotonic()
+        phase = "extract"
         if pending:
             executor = ProcessPoolExecutor(
                 max_workers=workers,
@@ -642,18 +778,41 @@ def extract_contract_parallel(
                     included[key] = result
                 else:
                     excluded[key] = result
-                report()
-            executor.shutdown(wait=True)
-            executor = None
+                fresh_processed += 1
+                report("extract")
     except BaseException:
-        report(force=True)
-        if executor is not None:
-            executor.shutdown(wait=False, cancel_futures=True)
+        failed = True
+        try:
+            report(phase, force=True)
+        except BaseException as report_error:
+            _warn_best_effort(
+                f"Emergency extraction manifest update failed: {report_error}"
+            )
         raise
+    finally:
+        if executor is not None:
+            try:
+                executor.shutdown(wait=True, cancel_futures=failed)
+            except BaseException as shutdown_error:
+                with suppress(BaseException):
+                    executor.shutdown(wait=False, cancel_futures=True)
+                if failed:
+                    _warn_best_effort(
+                        f"Extraction worker shutdown also failed: {shutdown_error}"
+                    )
+                else:
+                    try:
+                        report(phase, force=True)
+                    except BaseException as report_error:
+                        _warn_best_effort(
+                            "Emergency extraction manifest update failed after worker "
+                            f"shutdown error: {report_error}"
+                        )
+                    raise
 
     fraction = len(excluded) / total if total else 0.0
     status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
-    manifest = report(status, force=True)
+    manifest = report("complete", status, force=True)
     if fraction > max_excluded_fraction:
         raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)
     return manifest

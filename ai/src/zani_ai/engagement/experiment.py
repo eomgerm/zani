@@ -23,6 +23,7 @@ from zani_ai.engagement.training import (
     TrainingConfig,
     load_checkpoint,
     train_model,
+    validate_manifest_completion,
 )
 
 E0_SEEDS = (42, 43, 44, 45, 46)
@@ -76,15 +77,7 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
         raise ValueError("feature manifest must be a JSON object")
     if payload.get("schema") != SCHEMA_NAME:
         raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
-    status = payload.get("status")
-    if status is not None and (status != "complete" or payload.get("complete") is not True):
-        raise ValueError(
-            f"feature manifest is incomplete (status={status!r}); finish extraction first"
-        )
-    included = payload.get("included")
-    excluded = payload.get("excluded")
-    if not isinstance(included, list) or not isinstance(excluded, list):
-        raise ValueError("feature manifest must contain included and excluded lists")
+    included, excluded = validate_manifest_completion(payload)
     splits: set[str] = set()
     for index, item in enumerate(included):
         if not isinstance(item, dict) or not isinstance(item.get("split"), str):

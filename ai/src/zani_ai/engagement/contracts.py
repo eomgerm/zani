@@ -117,7 +117,9 @@ def _validate_split_ids(
             if not (videos_dir / f"{clip_id}{video_extension}").is_file():
                 problems.append(f"missing video: videos/{clip_id}{video_extension}")
     for clip_id, splits in clip_splits.items():
-        if len(set(splits)) > 1:
+        if len(splits) > 1 and len(set(splits)) == 1:
+            problems.append(f"clip {clip_id} appears more than once in {splits[0]}.txt")
+        elif len(set(splits)) > 1:
             problems.append(f"clip {clip_id} is present in multiple splits: {', '.join(splits)}")
     for subject_id, subject_split_names in subject_splits.items():
         if len(subject_split_names) > 1:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 import random
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -102,6 +103,77 @@ class TrainingResult:
 type EpochProgress = Callable[[int, EvaluationMetrics], None]
 
 
+def validate_manifest_completion(
+    payload: Mapping[str, Any],
+) -> tuple[list[Any], list[Any]]:
+    included = payload.get("included")
+    excluded = payload.get("excluded")
+    if not isinstance(included, list) or not isinstance(excluded, list):
+        raise ValueError("feature manifest must contain included and excluded lists")
+
+    has_status = "status" in payload
+    has_complete = "complete" in payload
+    if not has_status and not has_complete:
+        return included, excluded
+    if payload.get("status") != "complete" or payload.get("complete") is not True:
+        raise ValueError(
+            f"feature manifest is incomplete (status={payload.get('status')!r}); "
+            "finish extraction first"
+        )
+
+    counts: dict[str, int] = {}
+    for name in ("processed_count", "total_count"):
+        value = payload.get(name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"feature manifest {name} must be a non-negative integer")
+        counts[name] = value
+    listed_count = len(included) + len(excluded)
+    if counts["processed_count"] != listed_count:
+        raise ValueError("feature manifest processed_count does not match its clip lists")
+    if counts["processed_count"] != counts["total_count"]:
+        raise ValueError("feature manifest is incomplete (processed_count != total_count)")
+    cached_count = payload.get("cached_count")
+    if cached_count is not None and (
+        not isinstance(cached_count, int)
+        or isinstance(cached_count, bool)
+        or not 0 <= cached_count <= len(included)
+    ):
+        raise ValueError("feature manifest cached_count is inconsistent")
+    scanned_count = payload.get("scanned_count")
+    if scanned_count is not None and (
+        not isinstance(scanned_count, int)
+        or isinstance(scanned_count, bool)
+        or scanned_count != counts["total_count"]
+    ):
+        raise ValueError("feature manifest scanned_count is inconsistent")
+    excluded_fraction = payload.get("excluded_fraction")
+    expected_fraction = len(excluded) / counts["total_count"] if counts["total_count"] else 0.0
+    if excluded_fraction is not None and (
+        not isinstance(excluded_fraction, int | float)
+        or isinstance(excluded_fraction, bool)
+        or not math.isfinite(excluded_fraction)
+        or not math.isclose(
+            excluded_fraction, expected_fraction, rel_tol=0, abs_tol=1e-12
+        )
+    ):
+        raise ValueError("feature manifest excluded_fraction does not match its clip lists")
+
+    identities: set[tuple[str, str]] = set()
+    for kind, items in (("included", included), ("excluded", excluded)):
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"invalid {kind} entry at index {index}")
+            split = item.get("split")
+            clip_id = item.get("clip_id")
+            if not isinstance(split, str) or not isinstance(clip_id, str) or not clip_id:
+                raise ValueError(f"invalid {kind} identity at index {index}")
+            identity = (split, clip_id)
+            if identity in identities:
+                raise ValueError(f"duplicate feature manifest clip identity: {split}/{clip_id}")
+            identities.add(identity)
+    return included, excluded
+
+
 def compute_feature_statistics(
     arrays: Iterable[NDArray[np.float32]],
 ) -> FeatureStatistics:
@@ -123,13 +195,9 @@ def _load_feature_datasets(root: Path, *, include_test: bool = True) -> FeatureD
     payload = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
     if payload.get("schema") != SCHEMA_NAME:
         raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
-    status = payload.get("status")
-    if status is not None and (status != "complete" or payload.get("complete") is not True):
-        raise ValueError(
-            f"feature manifest is incomplete (status={status!r}); finish extraction first"
-        )
+    included, _ = validate_manifest_completion(payload)
     grouped: dict[str, list[FeatureEntry]] = {"train": [], "valid": [], "test": []}
-    for item_value in cast(list[dict[str, Any]], payload.get("included", [])):
+    for item_value in cast(list[dict[str, Any]], included):
         split = cast(SplitName, item_value["split"])
         if split not in grouped:
             raise ValueError(f"unknown feature split: {split}")
@@ -359,4 +427,5 @@ __all__ = [
     "evaluate_model",
     "load_checkpoint",
     "train_model",
+    "validate_manifest_completion",
 ]
