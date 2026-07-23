@@ -1,1 +1,3 @@
 /infrastructure/frontend/*.sh text eol=lf
+/infrastructure/jenkins/*.sh text eol=lf
+/infrastructure/jenkins/tests/*.sh text eol=lf

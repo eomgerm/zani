@@ -1,0 +1,85 @@
+pipeline {
+    agent { label 'zani-application' }
+
+    options {
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+        timeout(time: 45, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+        stage('Validate request') {
+            steps {
+                script {
+                    if (!(params.GIT_SHA ==~ /[0-9a-f]{40}/)) {
+                        error('GIT_SHA must be exactly 40 lowercase hexadecimal characters.')
+                    }
+
+                    def expectedComponentByJob = [
+                        'zani-backend-dev': 'backend',
+                        'zani-frontend-dev': 'frontend'
+                    ]
+                    def expectedComponent = expectedComponentByJob[env.JOB_NAME]
+                    if (expectedComponent == null || params.COMPONENT != expectedComponent) {
+                        error("Job ${env.JOB_NAME} may not deploy component ${params.COMPONENT}.")
+                    }
+
+                    def wrapperByComponent = [
+                        backend: '/opt/zani/deploy/deploy-application',
+                        frontend: '/opt/zani/deploy/deploy-frontend'
+                    ]
+                    env.GIT_SHA = params.GIT_SHA
+                    env.COMPONENT = expectedComponent
+                    env.DEPLOY_WRAPPER = wrapperByComponent[expectedComponent]
+                    currentBuild.description = "${env.GIT_SHA} ${env.COMPONENT}"
+                }
+            }
+        }
+
+        stage('Checkout requested dev commit') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${env.GIT_SHA}"]],
+                    extensions: [
+                        [$class: 'CleanBeforeCheckout'],
+                        [$class: 'CloneOption', noTags: true, shallow: false, timeout: 10]
+                    ],
+                    userRemoteConfigs: [[
+                        credentialsId: 'gitlab-zani-read',
+                        url: 'https://lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git'
+                    ]]
+                ])
+                sh '''
+                    set -eu
+                    test "$(git rev-parse HEAD)" = "${GIT_SHA}"
+                    git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
+                    git merge-base --is-ancestor "${GIT_SHA}" origin/dev
+                '''
+            }
+        }
+
+        stage('Verify component') {
+            steps {
+                sh '''
+                    sudo "${DEPLOY_WRAPPER}" verify "${WORKSPACE}" "${GIT_SHA}"
+                '''
+            }
+        }
+
+        stage('Deploy component') {
+            steps {
+                sh '''
+                    sudo "${DEPLOY_WRAPPER}" deploy "${WORKSPACE}" "${GIT_SHA}"
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            deleteDir()
+        }
+    }
+}

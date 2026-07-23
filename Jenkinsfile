@@ -1,106 +1,113 @@
 pipeline {
-    agent { label 'zani-backend' }
+    agent { label 'zani-dispatch' }
 
     options {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 10, unit: 'MINUTES')
         timestamps()
     }
 
-    environment {
-        DEPLOY_WRAPPER = '/opt/zani/deploy/deploy-application'
-    }
-
     stages {
-        stage('Checkout dev') {
-            steps {
-                checkout scm
-                script {
-                    env.GIT_SHA = sh(
-                        script: 'git rev-parse HEAD',
-                        returnStdout: true
-                    ).trim()
-                }
-            }
-        }
-
-        stage('Detect backend changes') {
+        stage('Validate webhook') {
             steps {
                 script {
-                    env.BACKEND_RELEVANT = sh(
-                        script: '''
-                            set -eu
-
-                            previous_sha="${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-${GIT_PREVIOUS_COMMIT:-}}"
-
-                            if [ -z "${previous_sha}" ] || \
-                               ! git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-                                # The first controlled run must verify and deploy the current dev state.
-                                printf 'true'
-                            elif git diff --quiet "${previous_sha}" "${GIT_SHA}" -- \
-                                backend/ \
-                                infrastructure/application/ \
-                                Jenkinsfile; then
-                                printf 'false'
-                            else
-                                printf 'true'
-                            fi
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (env.BACKEND_RELEVANT != 'true' && env.BACKEND_RELEVANT != 'false') {
-                        error("Unexpected backend change result: ${env.BACKEND_RELEVANT}")
+                    def webhookAfter = env.gitlabAfter?.trim()
+                    def webhookBefore = env.gitlabBefore?.trim()
+                    if (!(webhookAfter ==~ /[0-9a-f]{40}/)) {
+                        error('Authenticated GitLab push webhook did not provide a valid gitlabAfter SHA.')
                     }
-
-                    currentBuild.description = "${env.GIT_SHA} backend=${env.BACKEND_RELEVANT}"
-                    echo "Backend-relevant changes: ${env.BACKEND_RELEVANT}"
+                    if (env.gitlabBranch?.trim() != 'dev') {
+                        error("Only dev push webhooks may be dispatched; received ${env.gitlabBranch}.")
+                    }
+                    env.GIT_SHA = webhookAfter
+                    env.WEBHOOK_BEFORE = webhookBefore ?: ''
                 }
             }
         }
 
-        stage('Backend verify') {
-            when {
-                expression {
-                    env.BACKEND_RELEVANT == 'true'
-                }
-            }
+        stage('Checkout webhook commit') {
             steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${env.GIT_SHA}"]],
+                    extensions: [
+                        [$class: 'CleanBeforeCheckout'],
+                        [$class: 'CloneOption', noTags: true, shallow: false, timeout: 10]
+                    ],
+                    userRemoteConfigs: [[
+                        credentialsId: 'gitlab-zani-read',
+                        url: 'https://lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git'
+                    ]]
+                ])
                 sh '''
-                    sudo "${DEPLOY_WRAPPER}" verify "${WORKSPACE}" "${GIT_SHA}"
+                    set -eu
+                    test "$(git rev-parse HEAD)" = "${GIT_SHA}"
+                    git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
+                    git merge-base --is-ancestor "${GIT_SHA}" origin/dev
                 '''
             }
         }
 
-        stage('Deploy dev') {
-            when {
-                allOf {
-                    expression {
-                        env.BACKEND_RELEVANT == 'true'
-                    }
-                    expression {
-                        env.GIT_BRANCH == 'origin/dev' ||
-                            env.GIT_BRANCH == 'dev' ||
-                            env.BRANCH_NAME == 'dev'
-                    }
-                }
-            }
+        stage('Classify changed paths') {
             steps {
-                sh '''
-                    sudo "${DEPLOY_WRAPPER}" deploy "${WORKSPACE}" "${GIT_SHA}"
-                '''
+                script {
+                    def classification = sh(
+                        script: './infrastructure/jenkins/classify-changes.sh "$WEBHOOK_BEFORE" "$GIT_SHA"',
+                        returnStdout: true
+                    ).trim()
+
+                    def values = [:]
+                    classification.readLines().each { line ->
+                        def pair = line.split('=', 2)
+                        if (pair.size() == 2) {
+                            values[pair[0]] = pair[1]
+                        }
+                    }
+
+                    if (!(values.backend in ['true', 'false']) || !(values.frontend in ['true', 'false'])) {
+                        error("Invalid change classification: ${classification}")
+                    }
+
+                    env.BACKEND_RELEVANT = values.backend
+                    env.FRONTEND_RELEVANT = values.frontend
+                    currentBuild.description = "${env.GIT_SHA} backend=${values.backend} frontend=${values.frontend}"
+                    echo classification
+                }
             }
         }
 
-        stage('Skip non-backend change') {
-            when {
-                expression {
-                    env.BACKEND_RELEVANT == 'false'
-                }
-            }
+        stage('Dispatch component jobs') {
             steps {
-                echo 'No backend or application deployment files changed; verification and deployment were skipped.'
+                script {
+                    if (env.BACKEND_RELEVANT == 'true') {
+                        build(
+                            job: 'zani-backend-dev',
+                            parameters: [
+                                string(name: 'GIT_SHA', value: env.GIT_SHA),
+                                string(name: 'COMPONENT', value: 'backend')
+                            ],
+                            wait: false,
+                            quietPeriod: 0
+                        )
+                    }
+
+                    if (env.FRONTEND_RELEVANT == 'true') {
+                        build(
+                            job: 'zani-frontend-dev',
+                            parameters: [
+                                string(name: 'GIT_SHA', value: env.GIT_SHA),
+                                string(name: 'COMPONENT', value: 'frontend')
+                            ],
+                            wait: false,
+                            quietPeriod: 0
+                        )
+                    }
+
+                    if (env.BACKEND_RELEVANT == 'false' && env.FRONTEND_RELEVANT == 'false') {
+                        echo 'No application component changed; no deployment job was queued.'
+                    }
+                }
             }
         }
     }

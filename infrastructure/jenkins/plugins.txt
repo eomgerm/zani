@@ -4,5 +4,6 @@ git:5.10.1
 gitlab-plugin:1.9.16
 job-dsl:3654.vdf58f53e2d15
 pipeline-model-definition:2.2291.v2934911987b_6
+pipeline-build-step:599.v4b_67ea_11b_152
 scm-api:728.vc30dcf7a_0df5
 timestamper:1.30
