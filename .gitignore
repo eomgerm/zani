@@ -4,3 +4,5 @@ code-review/output/
 .env.*
 !.env.example
 .idea/
+.superpowers/
+docs/superpowers/

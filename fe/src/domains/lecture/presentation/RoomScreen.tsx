@@ -12,13 +12,27 @@ import {
 import { RoomTile } from "./components/room/RoomTile";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
+import { RoomProvider, useRoomConnection } from "./RoomProvider";
 
 /**
- * SC-09 실시간 강의실 (밝은 테마). 갤러리/발표자 보기 · 컨트롤 바 · 사이드 패널 ·
- * 확인 프롬프트/집단 알림 모달을 구성한다. 미디어·실시간 연결은 붙이지 않았고
- * 역할·보기·패널·모달 등 화면 상태만 로컬로 동작한다.
+ * SC-09 실시간 강의실 (밝은 테마). LiveKit room connection is attached here;
+ * media track publishing remains out of scope.
  */
-export function RoomScreen({ roomTitle = "React 상태관리 심화" }: { roomTitle?: string }) {
+type RoomScreenProps = {
+  sessionId: string;
+  roomTitle?: string;
+};
+
+export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
+  return (
+    <RoomProvider sessionId={sessionId}>
+      <RoomScreenContent roomTitle={roomTitle} />
+    </RoomProvider>
+  );
+}
+
+function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<RoomScreenProps, "roomTitle">) {
+  const { connectionState, retry } = useRoomConnection();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
@@ -36,6 +50,12 @@ export function RoomScreen({ roomTitle = "React 상태관리 심화" }: { roomTi
   const messages = chatTab === "public" ? publicMessages : dmMessages;
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
+  const connectionLabel =
+    connectionState === "connecting"
+      ? "연결 중"
+      : connectionState === "connected"
+        ? "LIVE"
+        : "연결 실패";
 
   const toggleMe = (k: "mic" | "cam" | "hand") => setMe((p) => ({ ...p, [k]: !p[k] }));
 
@@ -46,10 +66,29 @@ export function RoomScreen({ roomTitle = "React 상태관리 심화" }: { roomTi
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
         <div className="flex items-center gap-[9px] border-l border-line-soft pl-1.5">
-          <span className="inline-flex items-center gap-[5px] text-[12.5px] font-extrabold text-danger">
+          <span
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-[5px] text-[12.5px] font-extrabold text-danger"
+          >
             <span className="size-[7px] animate-[zPulse_1.4s_infinite] rounded-full bg-danger" />
-            LIVE
+            {connectionLabel}
           </span>
+          {connectionState === "error" && (
+            <div
+              role="alert"
+              className="absolute left-1/2 top-full z-10 mt-2 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-danger bg-surface px-4 py-2 text-[13px] text-ink shadow-lg"
+            >
+              <span>실시간 강의 연결에 실패했습니다.</span>
+              <button
+                type="button"
+                onClick={retry}
+                className="cursor-pointer rounded-lg bg-danger px-3 py-1 font-bold text-surface"
+              >
+                다시 연결
+              </button>
+            </div>
+          )}
           <span className="font-mono text-[13px] text-ink-muted">00:12:04</span>
         </div>
 
