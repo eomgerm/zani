@@ -1,6 +1,6 @@
-# Jenkins Backend CI/CD
+# Jenkins Application CI/CD
 
-This directory implements Jira `S15P11A105-33` for the EC2 application stack. It intentionally deploys only `backend/`; the Vercel frontend and the media stack are outside this pipeline.
+This directory implements Jira `S15P11A105-33` and fixes `S15P11A105-183`. One authenticated `dev` webhook reaches a dispatcher, which queues independent backend and frontend jobs only when their tracked paths changed. The media stack remains outside this pipeline.
 
 ## Safety boundaries
 
@@ -10,9 +10,10 @@ This directory implements Jira `S15P11A105-33` for the EC2 application stack. It
 - A dedicated OS user runs one inbound WebSocket agent and has no SSH login.
 - Agent state and workspaces live in `/var/lib/zani-jenkins-agent`; no access permission is added to the existing root-only `/srv/zani` tree.
 - The inbound-agent secret remains `root:root 0600`; systemd `LoadCredential` exposes an ephemeral read-only copy only to the running Agent service.
-- The agent can invoke only the root-owned `verify` and `deploy` wrapper commands.
+- The agent can invoke only the root-owned backend and frontend `verify` and `deploy` wrapper commands.
 - CI verification uses disposable MySQL and Redis containers. It never runs tests against the application databases.
-- Deployment recreates only `zani-backend`. It does not recreate MySQL, Application Redis, Nginx, LiveKit, Media Redis, Egress, or TURN.
+- Backend deployment recreates only `zani-backend`; frontend deployment recreates only `zani-frontend`.
+- Neither deployment recreates MySQL, Application Redis, Nginx, Jenkins, LiveKit, Media Redis, Egress, or TURN.
 - Releases and images are immutable and keyed by the full Git SHA. No automatic release deletion is performed.
 
 ## Fixed update mirror
@@ -26,21 +27,30 @@ https://mirrors.huaweicloud.com/jenkins
 
 The guide's former `update-center/update-center.json` path now returns HTTP 404 and is not used. From the EC2 host, metadata and an actual ranged plugin download were verified for Tencent, Huawei, Tsinghua, USTC and Aliyun; BIT was unreachable. A full Tencent build did not finish within ten minutes, while the full Huawei build completed in 24 seconds. Huawei was therefore selected. The guide's update-center CA is included in the image, and all explicitly requested plugins are version-pinned.
 
-The first broad plugin build revealed that the unused `workflow-aggregator` and `ws-cleanup` plugins added unnecessary transitive plugins, so they were removed. The eight explicitly required plugins are version-pinned. The GitLab webhook plugin necessarily adds `junit`, `matrix-project`, and their dependencies; the resulting image contains 70 resolved plugins. Plugin-version metadata is fixed to the official archive URL, and the Jenkins base-image digest and custom update-center CA SHA-256 are pinned as additional supply-chain checks.
+The first broad plugin build revealed that the unused `workflow-aggregator` and `ws-cleanup` plugins added unnecessary transitive plugins, so they were removed. Explicit plugins are version-pinned. `pipeline-build-step` is included so that the dispatcher can queue component jobs without granting the controller an executor. Plugin-version metadata is fixed to the official archive URL, and the Jenkins base-image digest and custom update-center CA SHA-256 are pinned as additional supply-chain checks.
 
 `install-server.sh` checks both the fixed metadata URL and a real plugin artifact before creating or starting Jenkins. A failure stops installation instead of silently falling back to a random mirror.
 
 ## Trigger model
 
-GitLab push webhooks trigger only the configured `dev` job. Polling is disabled. The public URL is limited to the exact plugin endpoint below; Jenkins UI and API paths remain loopback-only:
+GitLab push webhooks trigger only `zani-dev-dispatch`. Polling is disabled. The public URL is limited to the exact plugin endpoint below; Jenkins UI, API, and component jobs remain loopback-only:
 
 ```text
-https://i15a105.p.ssafy.io/project/zani-backend-dev
+https://i15a105.p.ssafy.io/project/zani-dev-dispatch
 ```
 
 The GitLab plugin validates the `X-Gitlab-Token` value against a per-job secret loaded from a Docker secret. In GitLab, enable only `Push events`, keep SSL verification enabled, and enter the same value in `Secret token`. The Nginx location template is stored in `nginx-webhook-location.conf.example`; it must be reviewed and inserted inside the existing TLS `server` block before enabling the webhook.
 
-Every `dev` push can wake the job, but the `Jenkinsfile` verifies and deploys only when the compared commits change `backend/`, `infrastructure/application/`, or the `Jenkinsfile` itself. The first controlled run always verifies and deploys because no previous Jenkins commit exists. Frontend-only, AI-only, and media-only changes complete without invoking the privileged verification or deployment wrapper.
+The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticated push payload. `Jenkinsfile.dispatcher` checks out the exact `gitlabAfter` commit and `classify-changes.sh` compares the webhook range. If `gitlabBefore` is unavailable, it safely falls back to the after commit's first parent instead of assuming every component changed.
+
+| Changed paths | Queued job |
+| --- | --- |
+| `backend/**`, `infrastructure/application/**` | `zani-backend-dev` |
+| `fe/**`, `infrastructure/frontend/**` | `zani-frontend-dev` |
+| Both groups | Both jobs, serialized by the single agent executor |
+| Documentation, AI, media, or unrelated paths only | No deployment job |
+
+The backend and frontend jobs have no webhook trigger. They require a 40-character `GIT_SHA` selected by the dispatcher, verify that it is an ancestor of `origin/dev`, and then invoke only their own privileged wrapper.
 
 For local administration, use SSH port forwarding without changing any SSH server configuration:
 
@@ -68,12 +78,12 @@ The following files are required and must not be committed:
 The controller secret directory is `root:root 0700`. Its four file-backed Docker secrets are `root:1000 0640`, where numeric GID `1000` is the Jenkins group in the pinned controller image. The root-only parent directory prevents ordinary host users from traversing to these files, while the non-root Jenkins process can read only the individual read-only bind mounts.
 
 ```dotenv
-FRONTEND_ORIGIN=http://localhost:5173
+FRONTEND_ORIGIN=https://i15a105.p.ssafy.io
 ```
 
 The installer retrieves the generated inbound-agent secret from the loopback Jenkins API and stores it in the separate agent-readable directory. It never prints the secret.
 
-## Deployment flow
+## Backend deployment flow
 
 1. Checkout the `dev` commit.
 2. Verify the exact clean Git SHA.
@@ -91,6 +101,34 @@ sudo /opt/zani/deploy/deploy-application status
 sudo /opt/zani/deploy/deploy-application rollback
 sudo /opt/zani/deploy/deploy-application rollback application-0123456789ab
 ```
+
+## Frontend deployment flow
+
+1. Checkout the dispatcher-selected `dev` commit.
+2. Run `npm ci`, lint, Vitest, and the production build in a disposable non-root Node container.
+3. Export only tracked `fe/`, `infrastructure/frontend/`, and `.gitattributes` files.
+4. Create an immutable release and `zani/frontend:git-<short-sha>` image.
+5. Recreate only `zani-frontend` and wait for Docker health and loopback HTTP 200.
+6. Switch `/opt/zani/frontend/current` only after the new frontend is healthy.
+7. If health fails, restore the previously running release and image.
+
+Manual rollback remains an operator action:
+
+```bash
+sudo /opt/zani/deploy/deploy-frontend status
+sudo /opt/zani/deploy/deploy-frontend rollback
+sudo /opt/zani/deploy/deploy-frontend rollback frontend-0123456789ab
+```
+
+## Change classifier test
+
+Run the path-routing regression test without Jenkins:
+
+```bash
+./infrastructure/jenkins/tests/classify-changes.sh
+```
+
+It covers frontend-only, backend-only, both, unrelated, and missing-before-SHA cases.
 
 ## Installation
 

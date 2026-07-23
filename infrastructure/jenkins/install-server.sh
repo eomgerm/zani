@@ -130,6 +130,8 @@ main() {
   install -o root -g root -m 0644 "${SCRIPT_DIR}/jobs.groovy" "${CONTROLLER_ROOT}/jobs.groovy"
   install -o root -g root -m 0755 "${SCRIPT_DIR}/../application/deploy-application.sh" \
     /opt/zani/deploy/deploy-application
+  install -o root -g root -m 0755 "${SCRIPT_DIR}/../frontend/deploy-frontend-jenkins.sh" \
+    /opt/zani/deploy/deploy-frontend
 
   visudo -cf "${SCRIPT_DIR}/sudoers-zani-jenkins-agent" >/dev/null
   install -o root -g root -m 0440 "${SCRIPT_DIR}/sudoers-zani-jenkins-agent" \

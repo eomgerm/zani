@@ -1,5 +1,5 @@
 pipeline {
-    agent { label 'zani-backend' }
+    agent { label 'zani-frontend' }
 
     parameters {
         string(
@@ -12,12 +12,12 @@ pipeline {
     options {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 45, unit: 'MINUTES')
         timestamps()
     }
 
     environment {
-        DEPLOY_WRAPPER = '/opt/zani/deploy/deploy-application'
+        DEPLOY_WRAPPER = '/opt/zani/deploy/deploy-frontend'
     }
 
     stages {
@@ -53,12 +53,12 @@ pipeline {
                     git merge-base --is-ancestor "${GIT_SHA}" origin/dev
                 '''
                 script {
-                    currentBuild.description = "${env.GIT_SHA} backend"
+                    currentBuild.description = "${env.GIT_SHA} frontend"
                 }
             }
         }
 
-        stage('Backend verify') {
+        stage('Frontend verify') {
             steps {
                 sh '''
                     sudo "${DEPLOY_WRAPPER}" verify "${WORKSPACE}" "${GIT_SHA}"

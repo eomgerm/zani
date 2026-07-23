@@ -1,6 +1,6 @@
 # Insert this exact location inside the existing i15a105.p.ssafy.io TLS server block.
 # Do not expose the Jenkins UI, /job, /api, or any broader prefix.
-location = /project/zani-backend-dev {
+location = /project/zani-dev-dispatch {
     limit_except POST {
         deny all;
     }

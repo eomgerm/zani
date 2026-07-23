@@ -1,5 +1,5 @@
 jenkins:
-  systemMessage: "ZANI backend CI/CD controller. Builds run only on the dedicated agent."
+  systemMessage: "ZANI application CI/CD controller. A dispatcher routes dev changes to independent backend and frontend jobs."
   numExecutors: 0
   mode: EXCLUSIVE
   disableRememberMe: true
@@ -25,7 +25,7 @@ jenkins:
         remoteFS: "/var/lib/zani-jenkins-agent"
         numExecutors: 1
         mode: EXCLUSIVE
-        labelString: "zani-backend"
+        labelString: "zani-dispatch zani-backend zani-frontend"
         launcher:
           inbound:
             webSocket: true
