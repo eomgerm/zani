@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { Select, type SelectOption } from "@/shared/ui";
 import {
   evaluateDeviceTest,
   MICROPHONE_LEVEL_THRESHOLD,
@@ -33,11 +34,6 @@ export const DEVICE_FAILURE_MESSAGES: Record<DeviceTestFailure, string> = {
   MICROPHONE_LEVEL_TOO_LOW:
     "마이크 입력이 감지되지 않아요. 마이크에 가까이에서 소리를 내어 입력 레벨을 확인해 주세요.",
 };
-
-interface DeviceOption {
-  readonly deviceId: string;
-  readonly label: string;
-}
 
 /** permissions API 로 현재 권한 상태를 읽는다. 조회 실패 시 prompt 로 간주한다. */
 async function queryPermission(name: "camera" | "microphone"): Promise<DevicePermissionState> {
@@ -79,8 +75,8 @@ export function DevicePreview({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const [cameras, setCameras] = useState<readonly DeviceOption[]>([]);
-  const [microphones, setMicrophones] = useState<readonly DeviceOption[]>([]);
+  const [cameras, setCameras] = useState<readonly SelectOption[]>([]);
+  const [microphones, setMicrophones] = useState<readonly SelectOption[]>([]);
 
   // 사용자가 고른 장치. null 이면 브라우저 기본 장치를 쓴다.
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
@@ -209,7 +205,7 @@ export function DevicePreview({
             devices
               .filter((device) => device.kind === "videoinput")
               .map((device, index) => ({
-                deviceId: device.deviceId,
+                value: device.deviceId,
                 label: device.label || `카메라 ${index + 1}`,
               })),
           );
@@ -217,7 +213,7 @@ export function DevicePreview({
             devices
               .filter((device) => device.kind === "audioinput")
               .map((device, index) => ({
-                deviceId: device.deviceId,
+                value: device.deviceId,
                 label: device.label || `마이크 ${index + 1}`,
               })),
           );
@@ -312,38 +308,28 @@ export function DevicePreview({
         <label htmlFor="camera-select" className="text-[13px] font-bold text-ink-faint">
           카메라
         </label>
-        <select
+        <Select
           id="camera-select"
           data-testid="camera-select"
-          value={selectedCameraId ?? activeCameraId ?? ""}
-          onChange={(event) => setSelectedCameraId(event.target.value || null)}
-          className="rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm"
-        >
-          {cameras.length === 0 && <option value="">카메라 없음</option>}
-          {cameras.map((camera) => (
-            <option key={camera.deviceId} value={camera.deviceId}>
-              {camera.label}
-            </option>
-          ))}
-        </select>
+          options={cameras}
+          value={selectedCameraId ?? activeCameraId}
+          onChange={setSelectedCameraId}
+          placeholder="카메라 없음"
+          disabled={cameras.length === 0}
+        />
 
         <label htmlFor="microphone-select" className="mt-1 text-[13px] font-bold text-ink-faint">
           마이크
         </label>
-        <select
+        <Select
           id="microphone-select"
           data-testid="microphone-select"
-          value={selectedMicrophoneId ?? activeMicrophoneId ?? ""}
-          onChange={(event) => setSelectedMicrophoneId(event.target.value || null)}
-          className="rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm"
-        >
-          {microphones.length === 0 && <option value="">마이크 없음</option>}
-          {microphones.map((microphone) => (
-            <option key={microphone.deviceId} value={microphone.deviceId}>
-              {microphone.label}
-            </option>
-          ))}
-        </select>
+          options={microphones}
+          value={selectedMicrophoneId ?? activeMicrophoneId}
+          onChange={setSelectedMicrophoneId}
+          placeholder="마이크 없음"
+          disabled={microphones.length === 0}
+        />
 
         {/* 마이크 입력 레벨 */}
         <div className="mt-2 flex items-center gap-[11px]">
