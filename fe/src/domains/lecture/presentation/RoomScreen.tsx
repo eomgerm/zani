@@ -9,7 +9,8 @@ import {
   participants as participantsFixture,
   publicMessages,
 } from "./fixtures";
-import { RoomTile } from "./components/room/RoomTile";
+import { ParticipantGrid } from "./components/room/ParticipantGrid";
+import type { ParticipantTileData } from "./components/room/ParticipantTile";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -46,6 +47,15 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
   const isInstructor = role === "instructor";
   const meId = isInstructor ? "p0" : "p7";
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
+  const tileParticipants: ParticipantTileData[] = list.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    color: participant.color,
+    role: participant.host ? "instructor" : "student",
+    cameraEnabled: participant.cam,
+    microphoneEnabled: participant.mic,
+    handRaised: participant.hand,
+  }));
   const count = list.length;
   const messages = chatTab === "public" ? publicMessages : dmMessages;
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
@@ -134,15 +144,11 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
             </div>
 
             {view === "gallery" ? (
-              <div className="grid h-full auto-rows-min grid-cols-6 gap-2.5 overflow-y-auto px-4 pb-4 pt-[60px]">
-                {list.slice(0, 12).map((p) => (
-                  <RoomTile
-                    key={p.id}
-                    participant={p}
-                    canControl={isInstructor && !p.host && p.id !== meId}
-                  />
-                ))}
-              </div>
+              <ParticipantGrid
+                participants={tileParticipants}
+                currentParticipantId={meId}
+                isInstructor={isInstructor}
+              />
             ) : (
               <>
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 [background:repeating-linear-gradient(135deg,#12142a,#12142a_20px,#171a34_20px,#171a34_40px)]">
