@@ -1,4 +1,3 @@
 package com.a105.zani.session.application.createsession;
 
-public record CreateSessionCommand(long instructorId, String title) {
-}
+public record CreateSessionCommand(long instructorId, String title) {}
