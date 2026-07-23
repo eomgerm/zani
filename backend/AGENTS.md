@@ -28,6 +28,8 @@ Before changing application code, package structure, persistence code, or archit
 2. Read [DDD Development Guide](docs/ddd-development-guide.md).
 3. Inspect the existing files in the affected business domain.
 
+Before creating, changing, or deploying a database migration, also read [Flyway Migration Guide](docs/flyway-migration-guide.md).
+
 Do not infer a project-wide convention from a single file when the guide defines a different rule.
 
 ## Repository Context
@@ -69,6 +71,7 @@ Do not infer a project-wide convention from a single file when the guide defines
 | Document | Purpose | Read when |
 | --- | --- | --- |
 | [`docs/ddd-development-guide.md`](docs/ddd-development-guide.md) | Normative package, dependency, Command/Query, persistence, integration, and testing rules | Before any application or architecture change |
+| [`docs/flyway-migration-guide.md`](docs/flyway-migration-guide.md) | Flyway authoring, versioning, deployment, recovery, and verification rules | Before creating, changing, or deploying a database migration |
 
 ## Adding Agent-Facing Documentation
 
