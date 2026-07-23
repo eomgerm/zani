@@ -24,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * 같은 강사가 동시에 여러 번 세션 생성을 요청해도 오직 하나만 LIVE로 성공해야 한다. Redis 기반 활성화 락(SessionActivationLockRedisAdapter)의 실제 동시성 보장을 검증하므로
- * 로컬(또는 CI) Redis(localhost:6379)가 떠 있어야 통과한다.
+ * 로컬 또는 CI Redis가 떠 있어야 통과한다. Redis 주소는 애플리케이션 로컬 프로필과 동일하게 {@code LOCAL_REDIS_HOST}, {@code LOCAL_REDIS_PORT} 환경 변수를
+ * 사용한다.
  */
 class CreateSessionConcurrencyTest {
 
@@ -36,7 +37,9 @@ class CreateSessionConcurrencyTest {
 
     @BeforeEach
     void setUp() {
-        connectionFactory = new LettuceConnectionFactory("localhost", 6379);
+        String redisHost = System.getenv().getOrDefault("LOCAL_REDIS_HOST", "localhost");
+        int redisPort = Integer.parseInt(System.getenv().getOrDefault("LOCAL_REDIS_PORT", "6379"));
+        connectionFactory = new LettuceConnectionFactory(redisHost, redisPort);
         connectionFactory.afterPropertiesSet();
         StringRedisTemplate redisTemplate = new StringRedisTemplate(connectionFactory);
         redisTemplate.afterPropertiesSet();
