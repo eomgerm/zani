@@ -31,7 +31,7 @@ pipelineJob('zani-dev-dispatch') {
                     branch('*/dev')
                 }
             }
-            scriptPath('Jenkinsfile.dispatcher')
+            scriptPath('Jenkinsfile')
             lightweight(true)
         }
     }
@@ -42,6 +42,7 @@ pipelineJob('zani-backend-dev') {
     description('Verifies and deploys the backend SHA selected by zani-dev-dispatch. This job has no public webhook trigger.')
     parameters {
         stringParam('GIT_SHA', '', 'Dispatcher-validated 40-character commit SHA from dev')
+        choiceParam('COMPONENT', ['backend'], 'Component fixed for this job')
     }
     definition {
         cpsScm {
@@ -54,7 +55,7 @@ pipelineJob('zani-backend-dev') {
                     branch('*/dev')
                 }
             }
-            scriptPath('Jenkinsfile')
+            scriptPath('Jenkinsfile.deploy')
             lightweight(true)
         }
     }
@@ -65,6 +66,7 @@ pipelineJob('zani-frontend-dev') {
     description('Verifies and deploys the frontend SHA selected by zani-dev-dispatch. This job has no public webhook trigger.')
     parameters {
         stringParam('GIT_SHA', '', 'Dispatcher-validated 40-character commit SHA from dev')
+        choiceParam('COMPONENT', ['frontend'], 'Component fixed for this job')
     }
     definition {
         cpsScm {
@@ -77,7 +79,7 @@ pipelineJob('zani-frontend-dev') {
                     branch('*/dev')
                 }
             }
-            scriptPath('Jenkinsfile.frontend')
+            scriptPath('Jenkinsfile.deploy')
             lightweight(true)
         }
     }

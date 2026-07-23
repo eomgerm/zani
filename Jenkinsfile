@@ -1,38 +1,32 @@
 pipeline {
-    agent { label 'zani-backend' }
-
-    parameters {
-        string(
-            name: 'GIT_SHA',
-            defaultValue: '',
-            description: 'Dispatcher-validated 40-character commit SHA from dev'
-        )
-    }
+    agent { label 'zani-dispatch' }
 
     options {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 10, unit: 'MINUTES')
         timestamps()
     }
 
-    environment {
-        DEPLOY_WRAPPER = '/opt/zani/deploy/deploy-application'
-    }
-
     stages {
-        stage('Validate request') {
+        stage('Validate webhook') {
             steps {
                 script {
-                    if (!(params.GIT_SHA ==~ /[0-9a-f]{40}/)) {
-                        error('GIT_SHA must be exactly 40 lowercase hexadecimal characters.')
+                    def webhookAfter = env.gitlabAfter?.trim()
+                    def webhookBefore = env.gitlabBefore?.trim()
+                    if (!(webhookAfter ==~ /[0-9a-f]{40}/)) {
+                        error('Authenticated GitLab push webhook did not provide a valid gitlabAfter SHA.')
                     }
-                    env.GIT_SHA = params.GIT_SHA
+                    if (env.gitlabBranch?.trim() != 'dev') {
+                        error("Only dev push webhooks may be dispatched; received ${env.gitlabBranch}.")
+                    }
+                    env.GIT_SHA = webhookAfter
+                    env.WEBHOOK_BEFORE = webhookBefore ?: ''
                 }
             }
         }
 
-        stage('Checkout requested dev commit') {
+        stage('Checkout webhook commit') {
             steps {
                 checkout([
                     $class: 'GitSCM',
@@ -52,25 +46,68 @@ pipeline {
                     git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
                     git merge-base --is-ancestor "${GIT_SHA}" origin/dev
                 '''
+            }
+        }
+
+        stage('Classify changed paths') {
+            steps {
                 script {
-                    currentBuild.description = "${env.GIT_SHA} backend"
+                    def classification = sh(
+                        script: './infrastructure/jenkins/classify-changes.sh "$WEBHOOK_BEFORE" "$GIT_SHA"',
+                        returnStdout: true
+                    ).trim()
+
+                    def values = [:]
+                    classification.readLines().each { line ->
+                        def pair = line.split('=', 2)
+                        if (pair.size() == 2) {
+                            values[pair[0]] = pair[1]
+                        }
+                    }
+
+                    if (!(values.backend in ['true', 'false']) || !(values.frontend in ['true', 'false'])) {
+                        error("Invalid change classification: ${classification}")
+                    }
+
+                    env.BACKEND_RELEVANT = values.backend
+                    env.FRONTEND_RELEVANT = values.frontend
+                    currentBuild.description = "${env.GIT_SHA} backend=${values.backend} frontend=${values.frontend}"
+                    echo classification
                 }
             }
         }
 
-        stage('Backend verify') {
+        stage('Dispatch component jobs') {
             steps {
-                sh '''
-                    sudo "${DEPLOY_WRAPPER}" verify "${WORKSPACE}" "${GIT_SHA}"
-                '''
-            }
-        }
+                script {
+                    if (env.BACKEND_RELEVANT == 'true') {
+                        build(
+                            job: 'zani-backend-dev',
+                            parameters: [
+                                string(name: 'GIT_SHA', value: env.GIT_SHA),
+                                string(name: 'COMPONENT', value: 'backend')
+                            ],
+                            wait: false,
+                            quietPeriod: 0
+                        )
+                    }
 
-        stage('Deploy dev') {
-            steps {
-                sh '''
-                    sudo "${DEPLOY_WRAPPER}" deploy "${WORKSPACE}" "${GIT_SHA}"
-                '''
+                    if (env.FRONTEND_RELEVANT == 'true') {
+                        build(
+                            job: 'zani-frontend-dev',
+                            parameters: [
+                                string(name: 'GIT_SHA', value: env.GIT_SHA),
+                                string(name: 'COMPONENT', value: 'frontend')
+                            ],
+                            wait: false,
+                            quietPeriod: 0
+                        )
+                    }
+
+                    if (env.BACKEND_RELEVANT == 'false' && env.FRONTEND_RELEVANT == 'false') {
+                        echo 'No application component changed; no deployment job was queued.'
+                    }
+                }
             }
         }
     }

@@ -41,7 +41,7 @@ https://i15a105.p.ssafy.io/project/zani-dev-dispatch
 
 The GitLab plugin validates the `X-Gitlab-Token` value against a per-job secret loaded from a Docker secret. In GitLab, enable only `Push events`, keep SSL verification enabled, and enter the same value in `Secret token`. The Nginx location template is stored in `nginx-webhook-location.conf.example`; it must be reviewed and inserted inside the existing TLS `server` block before enabling the webhook.
 
-The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticated push payload. `Jenkinsfile.dispatcher` checks out the exact `gitlabAfter` commit and `classify-changes.sh` compares the webhook range. If `gitlabBefore` is unavailable, it safely falls back to the after commit's first parent instead of assuming every component changed.
+The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticated push payload. The root `Jenkinsfile` is the dispatcher: it checks out the exact `gitlabAfter` commit and `classify-changes.sh` compares the webhook range. If `gitlabBefore` is unavailable, it safely falls back to the after commit's first parent instead of assuming every component changed.
 
 | Changed paths | Queued job |
 | --- | --- |
@@ -50,7 +50,7 @@ The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticat
 | Both groups | Both jobs, serialized by the single agent executor |
 | Documentation, AI, media, or unrelated paths only | No deployment job |
 
-The backend and frontend jobs have no webhook trigger. They require a 40-character `GIT_SHA` selected by the dispatcher, verify that it is an ancestor of `origin/dev`, and then invoke only their own privileged wrapper.
+The backend and frontend jobs have no webhook trigger. Both use `Jenkinsfile.deploy`, while each Job DSL definition fixes `COMPONENT` to its own single allowed value. The shared pipeline also checks that the Job name matches the component before selecting a hard-coded privileged wrapper. It requires a 40-character `GIT_SHA` selected by the dispatcher and verifies that it is an ancestor of `origin/dev`.
 
 For local administration, use SSH port forwarding without changing any SSH server configuration:
 

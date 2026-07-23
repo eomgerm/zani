@@ -25,7 +25,7 @@ jenkins:
         remoteFS: "/var/lib/zani-jenkins-agent"
         numExecutors: 1
         mode: EXCLUSIVE
-        labelString: "zani-dispatch zani-backend zani-frontend"
+        labelString: "zani-dispatch zani-application zani-backend zani-frontend"
         launcher:
           inbound:
             webSocket: true

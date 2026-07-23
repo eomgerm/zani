@@ -1,23 +1,11 @@
 pipeline {
-    agent { label 'zani-frontend' }
-
-    parameters {
-        string(
-            name: 'GIT_SHA',
-            defaultValue: '',
-            description: 'Dispatcher-validated 40-character commit SHA from dev'
-        )
-    }
+    agent { label 'zani-application' }
 
     options {
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
         timeout(time: 45, unit: 'MINUTES')
         timestamps()
-    }
-
-    environment {
-        DEPLOY_WRAPPER = '/opt/zani/deploy/deploy-frontend'
     }
 
     stages {
@@ -27,7 +15,24 @@ pipeline {
                     if (!(params.GIT_SHA ==~ /[0-9a-f]{40}/)) {
                         error('GIT_SHA must be exactly 40 lowercase hexadecimal characters.')
                     }
+
+                    def expectedComponentByJob = [
+                        'zani-backend-dev': 'backend',
+                        'zani-frontend-dev': 'frontend'
+                    ]
+                    def expectedComponent = expectedComponentByJob[env.JOB_NAME]
+                    if (expectedComponent == null || params.COMPONENT != expectedComponent) {
+                        error("Job ${env.JOB_NAME} may not deploy component ${params.COMPONENT}.")
+                    }
+
+                    def wrapperByComponent = [
+                        backend: '/opt/zani/deploy/deploy-application',
+                        frontend: '/opt/zani/deploy/deploy-frontend'
+                    ]
                     env.GIT_SHA = params.GIT_SHA
+                    env.COMPONENT = expectedComponent
+                    env.DEPLOY_WRAPPER = wrapperByComponent[expectedComponent]
+                    currentBuild.description = "${env.GIT_SHA} ${env.COMPONENT}"
                 }
             }
         }
@@ -52,13 +57,10 @@ pipeline {
                     git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev
                     git merge-base --is-ancestor "${GIT_SHA}" origin/dev
                 '''
-                script {
-                    currentBuild.description = "${env.GIT_SHA} frontend"
-                }
             }
         }
 
-        stage('Frontend verify') {
+        stage('Verify component') {
             steps {
                 sh '''
                     sudo "${DEPLOY_WRAPPER}" verify "${WORKSPACE}" "${GIT_SHA}"
@@ -66,7 +68,7 @@ pipeline {
             }
         }
 
-        stage('Deploy dev') {
+        stage('Deploy component') {
             steps {
                 sh '''
                     sudo "${DEPLOY_WRAPPER}" deploy "${WORKSPACE}" "${GIT_SHA}"
