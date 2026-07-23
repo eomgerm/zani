@@ -258,7 +258,7 @@ def iter_sampled_frames(
     sample_fps: float = SAMPLE_FPS,
     window_seconds: float = WINDOW_SECONDS,
 ) -> Iterator[VideoFrame]:
-    """Seek to deterministic timestamps instead of depending on source FPS."""
+    """Sample deterministic timestamps, decoding sequentially only when frame-exact."""
     capture = cv2.VideoCapture(str(video_path))
     try:
         if not capture.isOpened():
@@ -268,11 +268,34 @@ def iter_sampled_frames(
         if source_fps <= 0 or frame_count <= 0:
             raise VideoDecodeError(f"video has invalid FPS or frame count: {video_path}")
         duration_ms = min(frame_count / source_fps * 1000, window_seconds * 1000)
-        for timestamp_ms in np.arange(0.0, duration_ms, 1000 / sample_fps):
-            capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp_ms))
-            ok, bgr = capture.read()
+        timestamps_ms = np.arange(0.0, duration_ms, 1000 / sample_fps)
+        ratio = source_fps / sample_fps
+        frame_step = round(ratio)
+        sequential = frame_step >= 1 and abs(ratio - frame_step) <= 1e-6
+        previous_frame_index = -1
+        sequential_ready = sequential
+        for sample_index, timestamp_ms in enumerate(timestamps_ms):
+            ok = False
+            bgr: NDArray[np.uint8] | None = None
+            target_frame_index = sample_index * frame_step
+            if sequential_ready:
+                ok = True
+                for _ in range(target_frame_index - previous_frame_index):
+                    if not capture.grab():
+                        ok = False
+                        break
+                if ok:
+                    ok, retrieved = capture.retrieve()
+                    bgr = cast(NDArray[np.uint8] | None, retrieved)
             if not ok:
+                sequential_ready = False
+                capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp_ms))
+                ok, decoded = capture.read()
+                bgr = cast(NDArray[np.uint8] | None, decoded)
+            if not ok or bgr is None:
                 continue
+            sequential_ready = sequential
+            previous_frame_index = target_frame_index
             rgb = cast(NDArray[np.uint8], cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
             yield VideoFrame(round(float(timestamp_ms)), rgb)
     finally:
