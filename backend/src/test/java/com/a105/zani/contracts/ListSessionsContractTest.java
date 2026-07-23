@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -39,6 +40,9 @@ class ListSessionsContractTest {
     @Autowired
     private SessionActivationLockPort activationLockPort;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -46,6 +50,7 @@ class ListSessionsContractTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
+        insertInstructorIfAbsent();
     }
 
     @AfterEach
@@ -54,6 +59,17 @@ class ListSessionsContractTest {
                 .filter(session -> session.getHostMemberId().equals(INSTRUCTOR_ID))
                 .forEach(sessionJpaRepository::delete);
         activationLockPort.release(INSTRUCTOR_ID);
+        jdbcTemplate.update("DELETE FROM members WHERE id = ?", INSTRUCTOR_ID);
+    }
+
+    private void insertInstructorIfAbsent() {
+        jdbcTemplate.update(
+                "INSERT IGNORE INTO members (id, google_subject, email, display_name, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, NOW(6), NOW(6))",
+                INSTRUCTOR_ID,
+                "list-sessions-contract-test-subject",
+                "list-sessions-contract-test@zani.local",
+                "세션 목록 계약 테스트 강사");
     }
 
     @Test
