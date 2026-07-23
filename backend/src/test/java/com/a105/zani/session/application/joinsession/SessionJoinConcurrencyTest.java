@@ -17,7 +17,7 @@ import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
 import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
-import com.a105.zani.session.infrastructure.persistence.repository.SessionMemberJpaRepository;
+import com.a105.zani.session.infrastructure.persistence.repository.SessionParticipantJpaRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -36,7 +36,7 @@ class SessionJoinConcurrencyTest {
     private SessionRepository sessionRepository;
 
     @Autowired
-    private SessionMemberJpaRepository sessionMemberJpaRepository;
+    private SessionParticipantJpaRepository sessionParticipantJpaRepository;
 
     @Autowired
     private SessionJpaRepository sessionJpaRepository;
@@ -46,9 +46,9 @@ class SessionJoinConcurrencyTest {
     @AfterEach
     void tearDown() {
         if (sessionId != null) {
-            sessionMemberJpaRepository
-                    .findBySessionIdAndUserId(sessionId, STUDENT_ID)
-                    .ifPresent(sessionMemberJpaRepository::delete);
+            sessionParticipantJpaRepository
+                    .findBySessionIdAndMemberId(sessionId, STUDENT_ID)
+                    .ifPresent(sessionParticipantJpaRepository::delete);
             sessionJpaRepository.deleteById(sessionId);
         }
     }
@@ -87,7 +87,7 @@ class SessionJoinConcurrencyTest {
         executor.shutdown();
 
         assertEquals(CONCURRENT_REQUESTS, successCount.get());
-        long memberRowCount = sessionMemberJpaRepository.findBySessionIdAndUserId(sessionId, STUDENT_ID).stream()
+        long memberRowCount = sessionParticipantJpaRepository.findBySessionIdAndMemberId(sessionId, STUDENT_ID).stream()
                 .count();
         assertEquals(1, memberRowCount);
     }

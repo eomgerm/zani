@@ -31,7 +31,7 @@ These invariants take priority over examples elsewhere in this document.
 | ARCH-003 | Domain code MUST remain pure Java and MUST NOT depend on Spring, JPA, HTTP, Feign, QueryDSL, or outer layers. |
 | ARCH-004 | Every business state change that enforces an invariant or transition MUST pass through Aggregate behavior. Pure technical state MUST NOT require an artificial Domain Model. |
 | ARCH-005 | Domain models and JPA entities MUST be separate types. |
-| ARCH-006 | A domain MUST NOT directly access another domain's JPA entities or infrastructure repositories. |
+| ARCH-006 | A domain's presentation, application, and domain layers MUST NOT access another domain's infrastructure. Infrastructure persistence entities MAY reference another domain's JPA entities for ERD foreign-key associations (S15P11A105-175). |
 | ARCH-007 | State-changing and read-only UseCase code MUST be logically separated without assuming full CQRS infrastructure. |
 | ARCH-008 | Packages and abstractions MUST NOT be created without a current use case. |
 | ARCH-009 | `common` MUST contain shared technical contracts only, never business ownership. |
@@ -152,7 +152,7 @@ presentation -> application -> domain
 - Application MUST NOT import JPA entities, Spring Data repositories, external client DTOs, or infrastructure adapters.
 - Presentation MUST NOT call a concrete Application Service when a UseCase contract is the public boundary.
 - Infrastructure types MUST NOT leak through Application or Domain method signatures.
-- One domain MUST NOT import another domain's `infrastructure` package.
+- One domain's presentation, application, or domain layer MUST NOT import another domain's `infrastructure` package. Infrastructure-to-infrastructure JPA entity references for ERD foreign-key associations (for example `@ManyToOne`) are allowed (S15P11A105-175).
 - Domain and Application error contracts MUST NOT import Spring Web, `HttpStatus`, `ResponseEntity`, or vendor exception types.
 - Authentication behavior MUST NOT move into `common` merely because multiple endpoints use it.
 - Application MUST NOT use global technical `command`, `query`, or `service` packages. Place each UseCase in a business-named package.
