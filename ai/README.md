@@ -24,6 +24,17 @@ uv sync --extra train --group dev
 uv sync --extra vision --extra train --group dev
 ```
 
+Windows에서 NVIDIA GPU로 E0를 실행할 때는 공식 PyTorch CUDA 13.0 인덱스가
+`pyproject.toml`에 고정되어 있으므로 다음 명령으로 필요한 환경을 한 번에 구성합니다.
+
+```powershell
+uv sync --extra vision --extra train --extra eda --no-dev
+uv run python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Windows에서 CUDA build는 필요한 CUDA runtime을 wheel에 포함하므로 별도 CUDA Toolkit 설치는
+필수가 아니지만, 호환되는 NVIDIA 드라이버가 설치되어 있어야 합니다.
+
 ## EngageNet 데이터 준비
 
 데이터셋은 저자에게 요청해 별도로 받아야 하며 저장소에는 포함되지 않습니다.
@@ -42,6 +53,13 @@ datasets/raw/engagenet/
 MediaPipe의 공식 Face Landmarker 모델 번들도 별도로 내려받아
 `models/face_landmarker.task`에 둡니다. `.task`, 데이터셋, 추출 특징, 체크포인트와
 ONNX 모델은 Git에 포함되지 않습니다.
+
+```powershell
+New-Item -ItemType Directory -Force models | Out-Null
+Invoke-WebRequest `
+  'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task' `
+  -OutFile 'models/face_landmarker.task'
+```
 
 ## 재현 파이프라인
 
