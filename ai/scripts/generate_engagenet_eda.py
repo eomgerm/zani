@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
+import json
+import platform
 import re
+import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
+from importlib import metadata
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,6 +34,56 @@ LABEL_FILES = {
 LABEL_ORDER = ("Not-Engaged", "Barely-engaged", "Engaged", "Highly-Engaged")
 SNP_LABEL = "SNP(Subject Not Present)"
 ALL_LABELS = (*LABEL_ORDER, SNP_LABEL)
+OFFICIAL_CLIP_COUNTS = {"Train": 7983, "Validation": 1071, "Test": 2257}
+OFFICIAL_SUBJECT_COUNTS = {"Train": 90, "Validation": 11, "Test": 26}
+OFFICIAL_TOTAL_CLIPS = 11311
+OFFICIAL_TOTAL_SUBJECTS = 127
+EXPECTED_FEATURE_SCHEMA = "mediapipe_98_v1"
+EXPECTED_TOKEN_SHAPE = (20, 98)
+OFFICIAL_TEST_ACCURACY = 67.61
+REQUIRED_RECORD_COLUMNS = {
+    "split",
+    "chunk",
+    "label",
+    "subject",
+    "video_missing",
+    "video_opened",
+    "feature_missing",
+    "feature_loaded",
+    "feature_dim",
+    "feature_finite",
+    "video_bytes",
+    "feature_bytes",
+    "review_flags",
+}
+BOOLEAN_RECORD_COLUMNS = (
+    "label_missing",
+    "filename_valid",
+    "video_missing",
+    "video_opened",
+    "feature_missing",
+    "feature_loaded",
+    "feature_finite",
+    "video_open_failed",
+    "feature_load_failed",
+    "unexpected_feature_dim",
+    "nonfinite_feature",
+    "duration_review",
+    "fps_review",
+    "rare_time_length",
+)
+NUMERIC_RECORD_COLUMNS = (
+    "fps",
+    "frame_count",
+    "duration_s",
+    "width",
+    "height",
+    "video_bytes",
+    "feature_bytes",
+    "feature_rank",
+    "time_tokens",
+    "feature_dim",
+)
 SPLIT_COLORS = {"Train": "#2563EB", "Validation": "#F59E0B", "Test": "#10B981"}
 LABEL_COLORS = {
     "Not-Engaged": "#DC2626",
@@ -42,9 +98,32 @@ CHUNK_PATTERN = re.compile(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class ManifestAssessment:
+    status: str
+    summary: str
+    table: pd.DataFrame
+    error: str = ""
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate an EngageNet HTML EDA report")
     parser.add_argument("--data-root", type=Path, default=Path("datasets"))
+    parser.add_argument(
+        "--records-csv",
+        type=Path,
+        help="Reuse a previously generated records CSV instead of scanning the dataset",
+    )
+    parser.add_argument(
+        "--extraction-manifest",
+        type=Path,
+        help="Optional MediaPipe extraction manifest.json",
+    )
+    parser.add_argument(
+        "--face-landmarker-model",
+        type=Path,
+        help="Optional Face Landmarker .task file for provenance hashing",
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -56,6 +135,37 @@ def parse_args() -> argparse.Namespace:
         default=Path("artifacts/eda/engagenet_eda_records.csv"),
     )
     return parser.parse_args()
+
+
+def _normalize_boolean(series: pd.Series) -> pd.Series:
+    if pd.api.types.is_bool_dtype(series):
+        return series.fillna(False).astype(bool)
+    normalized = series.astype("string").str.strip().str.casefold()
+    return normalized.map(
+        {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
+    ).fillna(False).astype(bool)
+
+
+def normalize_record_types(records: pd.DataFrame) -> pd.DataFrame:
+    records = records.copy()
+    for column in BOOLEAN_RECORD_COLUMNS:
+        if column in records:
+            records[column] = _normalize_boolean(records[column])
+    for column in NUMERIC_RECORD_COLUMNS:
+        if column in records:
+            records[column] = pd.to_numeric(records[column], errors="coerce")
+    records["review_flags"] = records["review_flags"].fillna("").astype(str)
+    return records
+
+
+def load_records_csv(path: Path) -> pd.DataFrame:
+    if not path.is_file():
+        raise FileNotFoundError(f"records CSV does not exist: {path}")
+    records = pd.read_csv(path, encoding="utf-8-sig", low_memory=False)
+    missing = sorted(REQUIRED_RECORD_COLUMNS - set(records.columns))
+    if missing:
+        raise ValueError(f"records CSV is missing required columns: {', '.join(missing)}")
+    return normalize_record_types(records)
 
 
 def load_labels(root: Path) -> pd.DataFrame:
@@ -625,8 +735,389 @@ def build_findings(records: pd.DataFrame) -> list[tuple[str, str, str]]:
     ]
 
 
-def render_report(records: pd.DataFrame, output: Path) -> None:
+def _comparison_row(
+    item: str,
+    expected: int | str,
+    observed: int | str,
+    *,
+    explanation: str,
+    informational: bool = False,
+) -> dict[str, object]:
+    if informational:
+        status = "확인"
+    else:
+        status = "통과" if expected == observed else "차단"
+    return {
+        "항목": item,
+        "기준": f"{expected:,}" if isinstance(expected, int) else expected,
+        "관측": f"{observed:,}" if isinstance(observed, int) else observed,
+        "상태": status,
+        "설명": explanation,
+    }
+
+
+def build_protocol_table(records: pd.DataFrame) -> pd.DataFrame:
+    rows = [
+        _comparison_row(
+            "전체 클립",
+            OFFICIAL_TOTAL_CLIPS,
+            len(records),
+            explanation="SNP를 포함한 공개 원본 기준",
+        )
+    ]
+    for split in SPLITS:
+        group = records[records["split"] == split]
+        rows.append(
+            _comparison_row(
+                f"{split} 클립",
+                OFFICIAL_CLIP_COUNTS[split],
+                len(group),
+                explanation="공식 subject-independent split 원본 수",
+            )
+        )
+    rows.append(
+        _comparison_row(
+            "전체 Subject",
+            OFFICIAL_TOTAL_SUBJECTS,
+            int(records["subject"].nunique()),
+            explanation="파일명에서 파싱한 subject ID 기준",
+        )
+    )
+    for split in SPLITS:
+        group = records[records["split"] == split]
+        rows.append(
+            _comparison_row(
+                f"{split} Subject",
+                OFFICIAL_SUBJECT_COUNTS[split],
+                int(group["subject"].nunique()),
+                explanation="파일명에서 파싱한 subject ID 기준",
+            )
+        )
+    training_records = records[records["label"].isin(LABEL_ORDER)]
+    rows.extend(
+        [
+            _comparison_row(
+                "4-class 학습 대상",
+                "SNP 제외",
+                len(training_records),
+                explanation="네 참여도 라벨만 포함한 파생 학습 대상",
+                informational=True,
+            ),
+            _comparison_row(
+                "SNP 품질 범주",
+                "학습 제외",
+                int(records["label"].eq(SNP_LABEL).sum()),
+                explanation="공식 베이스라인처럼 분류 target에서 제외해야 함",
+                informational=True,
+            ),
+        ]
+    )
+    return pd.DataFrame(rows)
+
+
+def build_training_distribution(records: pd.DataFrame) -> pd.DataFrame:
+    training = records[records["label"].isin(LABEL_ORDER)].copy()
+    counts = (
+        training.groupby(["split", "label"], observed=False)
+        .size()
+        .rename("클립")
+        .reset_index()
+    )
+    split_totals = training.groupby("split").size()
+    counts["Split 내 비율"] = counts.apply(
+        lambda row: percent(row["클립"] / split_totals.get(row["split"], 1)), axis=1
+    )
+    counts["공식 분류 target"] = "포함"
+    counts["split"] = pd.Categorical(counts["split"], categories=SPLITS, ordered=True)
+    counts["label"] = pd.Categorical(counts["label"], categories=LABEL_ORDER, ordered=True)
+    counts = counts.sort_values(["split", "label"])
+    counts = counts.rename(columns={"split": "Split", "label": "라벨"})
+    return counts.reset_index(drop=True)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _normalize_clip_id(value: object) -> str:
+    return Path(str(value).strip()).stem
+
+
+def _display_split(value: object) -> str:
+    normalized = str(value).strip().casefold()
+    return {"train": "Train", "valid": "Validation", "validation": "Validation", "test": "Test"}.get(
+        normalized, str(value)
+    )
+
+
+def _exclusion_category(reason: object) -> str:
+    text = str(reason).strip()
+    if text.startswith("segment ") and "valid frames" in text:
+        return "구간별 얼굴 검출 부족"
+    if "invalid FPS or frame count" in text:
+        return "영상 FPS/프레임 수 오류"
+    if "did not return a face transform" in text:
+        return "얼굴 변환 행렬 누락"
+    return text[:100] or "사유 미기록"
+
+
+def inspect_extraction_manifest(
+    path: Path | None, records: pd.DataFrame
+) -> ManifestAssessment:
+    if path is None:
+        table = pd.DataFrame(
+            [
+                ("추출 manifest", "제공", "미지정", "미실행"),
+                ("특징 schema", EXPECTED_FEATURE_SCHEMA, "미확인", "미검증"),
+                ("token shape", str(list(EXPECTED_TOKEN_SHAPE)), "미확인", "미검증"),
+            ],
+            columns=["항목", "기준", "관측", "상태"],
+        )
+        return ManifestAssessment(
+            "미실행",
+            "MediaPipe 추출 manifest가 없어 실제 [20, 98] 모델 입력은 아직 검증되지 않았습니다.",
+            table,
+        )
+
+    resolved = path.resolve()
+    try:
+        if not resolved.is_file():
+            raise FileNotFoundError(f"manifest does not exist: {resolved}")
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("manifest root must be a JSON object")
+        included = payload.get("included")
+        excluded = payload.get("excluded")
+        if not isinstance(included, list) or not isinstance(excluded, list):
+            raise ValueError("manifest requires 'included' and 'excluded' arrays")
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        table = pd.DataFrame(
+            [("추출 manifest", "유효한 JSON", str(resolved), "검증 실패")],
+            columns=["항목", "기준", "관측", "상태"],
+        )
+        return ManifestAssessment("검증 실패", "MediaPipe manifest를 해석하지 못했습니다.", table, str(error))
+
+    schema = str(payload.get("schema", ""))
+    rows: list[dict[str, object]] = [
+        {
+            "항목": "특징 schema",
+            "기준": EXPECTED_FEATURE_SCHEMA,
+            "관측": schema or "미기록",
+            "상태": "통과" if schema == EXPECTED_FEATURE_SCHEMA else "검증 실패",
+        }
+    ]
+    shape_value = payload.get("token_shape", payload.get("feature_shape"))
+    observed_shape: tuple[int, ...] | None = None
+    if isinstance(shape_value, list):
+        try:
+            observed_shape = tuple(int(value) for value in shape_value)
+        except (TypeError, ValueError):
+            observed_shape = None
+    rows.append(
+        {
+            "항목": "token shape",
+            "기준": str(list(EXPECTED_TOKEN_SHAPE)),
+            "관측": str(list(observed_shape)) if observed_shape else "manifest에 미기록",
+            "상태": (
+                "통과"
+                if observed_shape == EXPECTED_TOKEN_SHAPE
+                else "검증 실패"
+                if observed_shape is not None
+                else "미검증"
+            ),
+        }
+    )
+
+    manifest_rows: list[dict[str, object]] = []
+    for entry in included:
+        if isinstance(entry, dict):
+            manifest_rows.append(
+                {
+                    "clip_id": _normalize_clip_id(entry.get("clip_id", "")),
+                    "split": _display_split(entry.get("split", "")),
+                    "result": "포함",
+                    "reason": "",
+                    "feature_path": str(entry.get("feature_path", "")),
+                }
+            )
+    for entry in excluded:
+        if isinstance(entry, dict):
+            manifest_rows.append(
+                {
+                    "clip_id": _normalize_clip_id(entry.get("clip_id", "")),
+                    "split": _display_split(entry.get("split", "")),
+                    "result": "제외",
+                    "reason": _exclusion_category(entry.get("reason", "")),
+                    "feature_path": "",
+                }
+            )
+    manifest_frame = pd.DataFrame(
+        manifest_rows, columns=["clip_id", "split", "result", "reason", "feature_path"]
+    )
+    for split in (*SPLITS, "전체"):
+        group = manifest_frame if split == "전체" else manifest_frame[manifest_frame["split"] == split]
+        included_count = int(group["result"].eq("포함").sum()) if not group.empty else 0
+        excluded_count = int(group["result"].eq("제외").sum()) if not group.empty else 0
+        total = included_count + excluded_count
+        rows.append(
+            {
+                "항목": f"{split} 추출" if split != "전체" else "전체 추출",
+                "기준": "제외율 ≤ 5%" if split == "전체" else "포함/제외 기록",
+                "관측": f"포함 {included_count:,} · 제외 {excluded_count:,} ({excluded_count / total:.1%})" if total else "0개",
+                "상태": "통과" if total and (split != "전체" or excluded_count / total <= 0.05) else "확인",
+            }
+        )
+
+    if not manifest_frame.empty:
+        record_labels = records[["chunk", "label"]].copy()
+        record_labels["clip_id"] = record_labels["chunk"].map(_normalize_clip_id)
+        excluded_frame = manifest_frame[manifest_frame["result"] == "제외"].merge(
+            record_labels[["clip_id", "label"]], on="clip_id", how="left"
+        )
+        for reason, count in excluded_frame["reason"].value_counts().items():
+            rows.append(
+                {"항목": f"제외 사유: {reason}", "기준": "검토", "관측": f"{count:,}개", "상태": "확인"}
+            )
+        for label, count in excluded_frame["label"].fillna("라벨 미매칭").value_counts().items():
+            rows.append(
+                {"항목": f"제외 영향: {label}", "기준": "검토", "관측": f"{count:,}개", "상태": "확인"}
+            )
+
+    table = pd.DataFrame(rows)
+    failed = table["상태"].eq("검증 실패").any()
+    unverified = table["상태"].eq("미검증").any()
+    status = "검증 실패" if failed else "미검증" if unverified else "검증 완료"
+    summary = (
+        "MediaPipe 특징 계약 검증에 실패한 항목이 있습니다."
+        if failed
+        else "manifest에는 token shape가 없어 실제 [20, 98] 배열 검증이 남았습니다."
+        if unverified
+        else "MediaPipe manifest의 schema와 token shape가 학습 계약과 일치합니다."
+    )
+    return ManifestAssessment(status, summary, table)
+
+
+def _package_version(package: str) -> str:
+    try:
+        return metadata.version(package)
+    except metadata.PackageNotFoundError:
+        return "미설치/확인 불가"
+
+
+def _git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "확인 불가"
+
+
+def collect_provenance(
+    *,
+    records_source: Path | None,
+    data_root: Path,
+    manifest_path: Path | None,
+    face_landmarker_model: Path | None,
+) -> pd.DataFrame:
+    rows: list[dict[str, str]] = []
+
+    def add(item: str, value: str, status: str = "확인") -> None:
+        rows.append({"항목": item, "값": value, "상태": status})
+
+    if records_source and records_source.is_file():
+        stat = records_source.stat()
+        add("레코드 CSV", str(records_source))
+        add("레코드 CSV 크기", f"{stat.st_size:,} bytes")
+        add(
+            "레코드 CSV 수정 시각",
+            datetime.fromtimestamp(stat.st_mtime, ZoneInfo("Asia/Seoul")).isoformat(),
+        )
+        add("레코드 CSV SHA-256", sha256_file(records_source))
+    else:
+        add("레코드 CSV", "원본 데이터에서 이번 실행에 수집", "확인")
+    add("데이터 root", str(data_root), "확인" if data_root.is_dir() else "경고")
+    add("Git commit", _git_commit())
+    add("Python", platform.python_version())
+    add("PyTorch", torch.__version__)
+    mediapipe_version = _package_version("mediapipe")
+    add(
+        "MediaPipe",
+        mediapipe_version,
+        "미검증" if mediapipe_version.startswith("미설치") else "확인",
+    )
+    add("특징 schema", EXPECTED_FEATURE_SCHEMA)
+    add("샘플링 FPS", "10")
+    add("분석 window", "10초")
+    add("temporal segments", str(EXPECTED_TOKEN_SHAPE[0]))
+    add("token 차원", str(EXPECTED_TOKEN_SHAPE[1]))
+    add("구간당 최소 유효 프레임", "3")
+    add("논문 비교 정확도", f"{OFFICIAL_TEST_ACCURACY:.2f}% (OpenFace Gaze+HP+AU Transformer)")
+
+    if manifest_path and manifest_path.resolve().is_file():
+        resolved_manifest = manifest_path.resolve()
+        add("추출 manifest", str(resolved_manifest))
+        add("추출 manifest SHA-256", sha256_file(resolved_manifest))
+    else:
+        add("추출 manifest", "미지정", "미검증")
+
+    if face_landmarker_model and face_landmarker_model.resolve().is_file():
+        resolved_model = face_landmarker_model.resolve()
+        add("Face Landmarker 모델", str(resolved_model))
+        add("Face Landmarker SHA-256", sha256_file(resolved_model))
+    else:
+        add("Face Landmarker 모델", "미지정", "미검증")
+
+    metadata_files = [data_root / filename for filename in LABEL_FILES.values()]
+    metadata_files.extend(data_root / name for name in ("final_labels.csv", "train.txt", "valid.txt", "test.txt"))
+    for path in metadata_files:
+        if path.is_file():
+            add(f"메타데이터 SHA-256 · {path.name}", sha256_file(path))
+    return pd.DataFrame(rows)
+
+
+def readiness_verdict(
+    protocol_table: pd.DataFrame, manifest: ManifestAssessment
+) -> tuple[str, str, str]:
+    if protocol_table["상태"].eq("차단").any():
+        return "차단", "공식 subject protocol 불일치를 해결해야 합니다.", "blocked"
+    if manifest.status == "검증 실패":
+        return "차단", "MediaPipe 추출 manifest 검증에 실패했습니다.", "blocked"
+    if manifest.status in {"미실행", "미검증"}:
+        return "조건부 준비", "원본은 준비됐지만 MediaPipe 모델 입력은 미검증입니다.", "unverified"
+    return "준비 완료", "공식 데이터 조건과 MediaPipe 입력 조건을 충족했습니다.", "pass"
+
+
+def render_report(
+    records: pd.DataFrame,
+    output: Path,
+    *,
+    source_mode: str,
+    records_source: Path | None,
+    data_root: Path,
+    manifest: ManifestAssessment,
+    manifest_path: Path | None,
+    face_landmarker_model: Path | None,
+) -> None:
     split_summary, class_summary, qa_summary = build_summary_tables(records)
+    protocol_table = build_protocol_table(records)
+    training_distribution = build_training_distribution(records)
+    provenance = collect_provenance(
+        records_source=records_source,
+        data_root=data_root,
+        manifest_path=manifest_path,
+        face_landmarker_model=face_landmarker_model,
+    )
+    verdict, verdict_detail, verdict_tone = readiness_verdict(protocol_table, manifest)
     leakage = subject_leakage(records)
     figures = make_figures(records)
     findings = build_findings(records)
@@ -681,6 +1172,21 @@ def render_report(records: pd.DataFrame, output: Path) -> None:
         if not flagged_view.empty
         else "<p class='ok-callout'>검토 플래그가 지정된 클립이 없습니다.</p>"
     )
+    manifest_error_html = (
+        f"<p class='error-callout'>{html.escape(manifest.error)}</p>" if manifest.error else ""
+    )
+    manifest_tone = {
+        "검증 완료": "verified",
+        "검증 실패": "failed",
+        "미실행": "unverified",
+        "미검증": "unverified",
+    }.get(manifest.status, "informational")
+    manifest_html = (
+        f"<p class='status-line'><span class='status-chip {manifest_tone}'>"
+        f"{html.escape(manifest.status)}</span>{html.escape(manifest.summary)}</p>"
+        f"{manifest_error_html}{dataframe_html(manifest.table)}"
+    )
+    records_source_text = str(records_source) if records_source else "이번 실행에서 원본 수집"
 
     css = """
 :root{--ink:#14213d;--muted:#62708a;--line:#dfe5ee;--blue:#2563eb;--bg:#f5f7fb;--card:#fff;--good:#0f9f6e;--warn:#d97706;--bad:#dc2626}
@@ -693,15 +1199,21 @@ h2{font-size:23px;margin:38px 0 14px;letter-spacing:-.02em}h3{font-size:16px;mar
 .finding.warn{border-top-color:var(--warn)}.finding.bad{border-top-color:var(--bad)}.finding span{font-size:12px;color:var(--muted)}.finding strong{display:block;margin-top:4px;font-size:14px}
 .panel{padding:22px;margin-bottom:18px;overflow:auto}.chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.chart-card{padding:18px;min-width:0}.chart-card h3{color:var(--muted);font-weight:600}
 table.data-table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}table.data-table th{background:#eef3fb;color:#35435f;text-align:left;padding:10px 12px;border-bottom:2px solid #cbd5e1}table.data-table td{padding:9px 12px;border-bottom:1px solid #edf0f5}table.data-table tr:hover td{background:#f8faff}
-.ok-callout{padding:14px 16px;border-radius:10px;background:#ecfdf5;color:#047857}.notes{color:var(--muted);font-size:14px}.notes code{background:#edf1f7;color:#1e3a5f;padding:2px 6px;border-radius:5px}.foot{margin-top:32px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.readiness{border-radius:18px;padding:24px 26px;color:#fff;box-shadow:0 10px 28px rgba(20,33,61,.12)}.readiness.pass{background:#087f5b}.readiness.blocked{background:#b91c1c}.readiness.unverified{background:#9a6700}.readiness span{display:block;font-size:13px;opacity:.85}.readiness strong{display:block;font-size:30px;margin:2px 0 4px}.readiness p{margin:0}.status-line{display:flex;align-items:center;gap:10px}.status-chip{display:inline-flex;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#e2e8f0}.status-chip.verified{background:#d1fae5;color:#047857}.status-chip.unverified{background:#fef3c7;color:#92400e}.status-chip.failed{background:#fee2e2;color:#b91c1c}
+.ok-callout{padding:14px 16px;border-radius:10px;background:#ecfdf5;color:#047857}.error-callout{padding:14px 16px;border-radius:10px;background:#fef2f2;color:#b91c1c}.notes{color:var(--muted);font-size:14px}.notes code{background:#edf1f7;color:#1e3a5f;padding:2px 6px;border-radius:5px}.foot{margin-top:32px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 @media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.findings{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}}@media(max-width:600px){main{padding:18px 12px 42px}.hero{padding:25px 22px}.hero h1{font-size:27px}.kpis,.findings{grid-template-columns:1fr}}
 """
     document = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EngageNet 데이터 EDA</title><style>{css}</style><script>{plotly_js}</script></head>
+<title>EngageNet EDA · 모델 재현 준비도</title><style>{css}</style><script>{plotly_js}</script></head>
 <body><main>
-<header class="hero"><h1>EngageNet 데이터 EDA</h1><p>학습 전 데이터 구성, 라벨 균형, 영상 메타데이터, MARLIN 특징 품질을 전수 검사한 리포트입니다.</p><div class="meta">생성: {generated_at} · 원본 프레임 전체 디코딩 없이 컨테이너 헤더와 특징 텐서를 순차 검사</div></header>
+<header class="hero"><h1>EngageNet EDA · 모델 재현 준비도</h1><p>원본 데이터와 MARLIN 인벤토리뿐 아니라 공식 split, 4-class 학습 대상, MediaPipe 입력 검증 상태를 구분해 보여줍니다.</p><div class="meta">생성: {generated_at} · {html.escape(source_mode)} · 레코드: {html.escape(records_source_text)} · 원본 데이터는 수정하지 않음</div></header>
 <section class="kpis"><article class="kpi"><span>전체 클립</span><strong>{total_clips:,}</strong></article><article class="kpi"><span>고유 Subject</span><strong>{total_subjects:,}</strong></article><article class="kpi"><span>원본 영상</span><strong>{video_gib:.2f} GiB</strong></article><article class="kpi"><span>MARLIN 특징</span><strong>{feature_gib:.2f} GiB</strong></article></section>
+<h2>모델 재현 준비도</h2><section class="readiness {verdict_tone}"><span>종합 판정</span><strong>{html.escape(verdict)}</strong><p>{html.escape(verdict_detail)}</p></section>
+<h2>공식 프로토콜 비교</h2><section class="panel"><p class="notes">EngageNet 논문 및 공식 저장소의 원본 clip·subject split 기준과 비교합니다. Subject 불일치는 임의 보정하지 않습니다.</p>{dataframe_html(protocol_table)}</section>
+<h2>SNP 제외 후 학습 대상</h2><section class="panel"><p class="notes"><code>{html.escape(SNP_LABEL)}</code>는 분류 target이 아니므로 제외한 뒤 네 참여도 클래스만 집계했습니다.</p>{dataframe_html(training_distribution)}</section>
+<h2>MediaPipe 특징 준비도</h2><section class="panel">{manifest_html}</section>
+<h2>재현성 Provenance</h2><section class="panel">{dataframe_html(provenance)}</section>
 <h2>핵심 진단</h2><section class="findings">{finding_html}</section>
 <h2>Split 개요</h2><section class="panel">{dataframe_html(split_summary)}</section>
 <h2>클래스 분포</h2><section class="panel">{dataframe_html(class_summary)}</section>
@@ -709,7 +1221,7 @@ table.data-table{border-collapse:collapse;width:100%;font-size:13px;white-space:
 <h2>데이터 품질 검사</h2><section class="panel">{dataframe_html(qa_summary)}</section>
 <h2>Subject split 누수</h2><section class="panel">{leakage_html}</section>
 <h2>검토 대상 샘플</h2><section class="panel"><p class="notes">오류와 검토 신호를 합쳐 최대 100건만 표시합니다. 드문 시간 길이나 8~12초 밖 영상은 삭제 기준이 아니라 원본 확인 대상입니다.</p>{flagged_html}</section>
-<h2>해석 및 재현 방법</h2><section class="panel notes"><ul><li>라벨은 <code>chunk</code> 파일명으로 영상 및 <code>.mp4.pt</code> 특징과 결합했습니다.</li><li>클래스 비율은 각 split 내부 비율입니다. <code>SNP(Subject Not Present)</code>는 참여도 클래스가 아닌 품질/제외 범주로 별도 표시하며 불균형 배율 계산에서 제외했습니다.</li><li>MARLIN 특징은 모든 파일을 CPU에서 한 번씩 로드해 rank, 시간 길이, 특징 차원, dtype, 비유한값을 확인했습니다.</li><li>영상 길이, FPS, 해상도, 코덱은 OpenCV로 컨테이너 헤더만 읽어 수집했습니다.</li><li>재실행: <code>uv run --extra eda python scripts/generate_engagenet_eda.py</code></li></ul></section>
+<h2>해석 및 재현 방법</h2><section class="panel notes"><ul><li>라벨은 <code>chunk</code> 파일명으로 영상 및 <code>.mp4.pt</code> 특징과 결합했습니다.</li><li><code>SNP(Subject Not Present)</code>는 품질 범주이며 공식 베이스라인과 동일하게 4-class 학습 대상에서 제외했습니다.</li><li>MARLIN 정상 여부는 MediaPipe <code>[20, 98]</code> 입력 정상 여부를 대신하지 않습니다. 추출 manifest가 없으면 모델 입력은 미검증입니다.</li><li>기존 CSV 재사용 모드에서는 33GB 원본을 다시 순회하지 않습니다. 영상·MARLIN 품질 수치는 CSV가 생성될 당시의 전수 검사 결과입니다.</li><li>원본 스캔: <code>uv run --extra eda python scripts/generate_engagenet_eda.py</code></li><li>CSV 재사용: <code>uv run --extra eda python scripts/generate_engagenet_eda.py --records-csv &lt;records.csv&gt;</code></li></ul></section>
 <footer class="foot">ZANI AI · 로컬 EngageNet EDA · 원본 데이터는 수정하지 않았습니다.</footer>
 </main></body></html>"""
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -729,14 +1241,40 @@ def reconcile(records: pd.DataFrame) -> list[str]:
 def main() -> int:
     args = parse_args()
     root = args.data_root.resolve()
-    if not root.is_dir():
-        raise FileNotFoundError(f"dataset root does not exist: {root}")
-    print(f"Scanning {root}", flush=True)
-    records = collect_records(root)
+    records_source: Path | None = None
+    if args.records_csv is not None:
+        records_source = args.records_csv.resolve()
+        print(f"Reusing records CSV {records_source}", flush=True)
+        records = load_records_csv(records_source)
+        source_mode = "기존 레코드 CSV 재사용"
+    else:
+        if not root.is_dir():
+            raise FileNotFoundError(f"dataset root does not exist: {root}")
+        print(f"Scanning {root}", flush=True)
+        records = normalize_record_types(collect_records(root))
+        source_mode = "원본 데이터 스캔"
+
+    manifest_path = (
+        args.extraction_manifest.resolve() if args.extraction_manifest is not None else None
+    )
+    face_landmarker_model = (
+        args.face_landmarker_model.resolve() if args.face_landmarker_model is not None else None
+    )
+    manifest = inspect_extraction_manifest(manifest_path, records)
     args.records_output.parent.mkdir(parents=True, exist_ok=True)
     records.to_csv(args.records_output, index=False, encoding="utf-8-sig")
-    render_report(records, args.output)
+    render_report(
+        records,
+        args.output,
+        source_mode=source_mode,
+        records_source=records_source,
+        data_root=root,
+        manifest=manifest,
+        manifest_path=manifest_path,
+        face_landmarker_model=face_landmarker_model,
+    )
     print(" | ".join(reconcile(records)), flush=True)
+    print(f"Readiness manifest: {manifest.status}", flush=True)
     print(f"Records: {args.records_output.resolve()}", flush=True)
     print(f"Report:  {args.output.resolve()}", flush=True)
     return 0
