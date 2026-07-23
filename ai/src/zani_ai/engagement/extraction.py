@@ -289,7 +289,9 @@ def iter_sampled_frames(
                     bgr = cast(NDArray[np.uint8] | None, retrieved)
             if not ok:
                 sequential_ready = False
-                capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp_ms))
+                if not capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp_ms)):
+                    sequential = False
+                    continue
                 ok, decoded = capture.read()
                 bgr = cast(NDArray[np.uint8] | None, decoded)
             if not ok or bgr is None:
