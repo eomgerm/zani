@@ -8,8 +8,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
-import com.a105.zani.session.application.getsessionlist.GetSessionListQueryPort;
-import com.a105.zani.session.application.getsessionlist.SessionSummaryResult;
+import com.a105.zani.session.application.get.GetSessionListQueryPort;
+import com.a105.zani.session.application.get.SessionSummaryResult;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionParticipantJpaEntity;

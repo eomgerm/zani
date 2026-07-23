@@ -1,4 +1,4 @@
-package com.a105.zani.session.application.joinsession;
+package com.a105.zani.session.application.join;
 
 public interface JoinSessionUseCase {
 

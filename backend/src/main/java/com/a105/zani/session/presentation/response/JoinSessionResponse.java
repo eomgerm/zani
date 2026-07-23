@@ -1,6 +1,6 @@
 package com.a105.zani.session.presentation.response;
 
-import com.a105.zani.session.application.joinsession.JoinSessionResult;
+import com.a105.zani.session.application.join.JoinSessionResult;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;
 

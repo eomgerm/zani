@@ -1,4 +1,4 @@
-package com.a105.zani.session.application.createsession;
+package com.a105.zani.session.application.create;
 
 public interface CreateSessionUseCase {
 

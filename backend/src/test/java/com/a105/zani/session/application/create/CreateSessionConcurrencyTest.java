@@ -1,4 +1,4 @@
-package com.a105.zani.session.application.createsession;
+package com.a105.zani.session.application.create;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;

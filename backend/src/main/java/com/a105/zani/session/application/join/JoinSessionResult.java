@@ -1,4 +1,4 @@
-package com.a105.zani.session.application.joinsession;
+package com.a105.zani.session.application.join;
 
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;

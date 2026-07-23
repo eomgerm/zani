@@ -1,4 +1,4 @@
-package com.a105.zani.session.application.getsessionlist;
+package com.a105.zani.session.application.get;
 
 import java.util.List;
 
