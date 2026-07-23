@@ -5,7 +5,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 compose_file="${script_dir}/compose.yaml"
 
-for command_name in docker git curl; do
+for command_name in docker curl; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
     echo "필수 명령을 찾을 수 없습니다: ${command_name}" >&2
     exit 1
@@ -42,14 +42,20 @@ if ! docker_run compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-release_sha="$(git -C "${repo_root}" rev-parse --verify HEAD)"
-if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "유효한 Git SHA를 확인할 수 없습니다." >&2
-  exit 1
+release_sha=""
+if command -v git >/dev/null 2>&1 && git -C "${repo_root}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  release_sha="$(git -C "${repo_root}" rev-parse --verify HEAD)"
+
+  if [[ -n "$(git -C "${repo_root}" status --porcelain -- fe infrastructure/frontend)" ]]; then
+    echo "fe 또는 infrastructure/frontend에 커밋되지 않은 변경이 있습니다." >&2
+    exit 1
+  fi
+else
+  release_sha="${RELEASE_SHA:-}"
 fi
 
-if [[ -n "$(git -C "${repo_root}" status --porcelain -- fe infrastructure/frontend)" ]]; then
-  echo "fe 또는 infrastructure/frontend에 커밋되지 않은 변경이 있습니다." >&2
+if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Git 작업 트리가 아니면 RELEASE_SHA에 40자리 Git SHA를 지정해야 합니다." >&2
   exit 1
 fi
 

@@ -57,6 +57,12 @@ docker compose -f compose.yaml config
 ./infrastructure/frontend/smoke-frontend.sh https://i15a105.p.ssafy.io
 ```
 
+Git 메타데이터를 제외한 릴리스 아카이브에서는 원본 커밋 SHA를 명시한다.
+
+```bash
+RELEASE_SHA=<40자리-git-sha> ./infrastructure/frontend/deploy-frontend.sh
+```
+
 배포 이미지는 기본적으로 `zani/frontend:<40자리 Git SHA>`로 남는다. health check가 실패하면 스크립트가 직전 컨테이너 이미지로 되돌린다.
 
 ## 수동 롤백
