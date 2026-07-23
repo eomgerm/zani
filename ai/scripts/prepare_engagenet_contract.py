@@ -113,6 +113,22 @@ def is_link_or_reparse_point(path: Path) -> bool:
     return path.is_symlink() or bool(getattr(stat, "st_file_attributes", 0) & 0x400)
 
 
+def validate_output_root(source_root: Path, output_root: Path) -> None:
+    if output_root == source_root or inside(output_root, source_root):
+        raise ValueError("output root must not be the source root or one of its ancestors")
+
+    for split_name, (_, label_file) in SPLITS.items():
+        split_dir = (source_root / split_name).resolve()
+        if inside(split_dir, output_root) or inside(output_root, split_dir):
+            raise ValueError(
+                f"output root must not overlap protected source split directory: {split_dir}"
+            )
+
+        labels_path = (source_root / label_file).resolve()
+        if output_root == labels_path or inside(output_root, labels_path):
+            raise ValueError(f"output root must not overlap protected source label file: {labels_path}")
+
+
 def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
     clips: list[Clip] = []
     seen_clip_ids: set[str] = set()
@@ -242,8 +258,7 @@ def main() -> int:
     output_root = args.output_root.resolve()
     if not source_root.is_dir():
         raise FileNotFoundError(f"source root does not exist: {source_root}")
-    if output_root == source_root or inside(source_root, output_root):
-        raise ValueError("output root must not be inside source root; source data must remain untouched")
+    validate_output_root(source_root, output_root)
     clips, collected = collect_clips(source_root)
     clips.sort(key=lambda clip: clip.clip_id)
     videos_root = output_root / "videos"
