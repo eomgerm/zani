@@ -2,12 +2,12 @@
 
 ## 1. 범위와 선행 규칙
 
-이 문서는 Spring Boot가 ZANI 세션과 LiveKit을 연결하는 목표 계약을 정의한다. 전체 흐름은 [overview.md](./overview.md)를 먼저 읽는다.
+이 문서는 Spring Boot가 ZANI 세션과 LiveKit을 연결하는 목표 계약을 정의한다. 전체 흐름은 [livekit-overview.md](./livekit-overview.md)를 먼저 읽는다.
 
 백엔드 구현 시 다음 규칙이 우선한다.
 
-- `backend/AGENTS.md`
-- `backend/docs/ddd-development-guide.md`
+- `../AGENTS.md`
+- `./ddd-development-guide.md`
 - `presentation -> application -> domain`, infrastructure는 inward-facing Port 구현
 - LiveKit SDK·DTO·예외를 application/domain에 노출하지 않음
 

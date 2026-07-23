@@ -4,8 +4,8 @@
 
 이 문서는 팀 전체가 ZANI 세션, LiveKit Room, 실시간 미디어, 녹화의 관계를 같은 방식으로 이해하기 위한 개요다.
 
-- 프론트엔드 세부 구현: [frontend-guide.md](./frontend-guide.md)
-- 백엔드 세부 구현: [backend-guide.md](./backend-guide.md)
+- 프론트엔드 세부 구현: [livekit-frontend-guide.md](./livekit-frontend-guide.md)
+- 백엔드 세부 구현: [livekit-backend-guide.md](./livekit-backend-guide.md)
 
 ## 2. 한 문장으로 이해하기
 
