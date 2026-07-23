@@ -113,6 +113,13 @@ def is_link_or_reparse_point(path: Path) -> bool:
     return path.is_symlink() or bool(getattr(stat, "st_file_attributes", 0) & 0x400)
 
 
+def same_filesystem_entry(left: Path, right: Path) -> bool:
+    try:
+        return left.exists() and right.exists() and os.path.samefile(left, right)
+    except OSError:
+        return False
+
+
 def validate_output_root(source_root: Path, output_root: Path) -> None:
     if output_root == source_root or inside(output_root, source_root):
         raise ValueError("output root must not be the source root or one of its ancestors")
@@ -125,7 +132,11 @@ def validate_output_root(source_root: Path, output_root: Path) -> None:
             )
 
         labels_path = (source_root / label_file).resolve()
-        if output_root == labels_path or inside(output_root, labels_path):
+        if (
+            output_root == labels_path
+            or inside(output_root, labels_path)
+            or same_filesystem_entry(output_root, labels_path)
+        ):
             raise ValueError(f"output root must not overlap protected source label file: {labels_path}")
 
 
