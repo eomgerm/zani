@@ -59,6 +59,27 @@ class ExportResult:
     metadata_path: Path
 
 
+class _CoralClassProbModule(torch.nn.Module):
+    """Wrap a CORAL-head model so it exports [B,4] class probabilities.
+
+    Mirrors ``training.CoralObjective.class_probs`` exactly, using only
+    vectorized tensor ops (no Python loops) so it traces cleanly to ONNX.
+    """
+
+    def __init__(self, model: EngagementTransformer) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        z = self.model(tokens)  # [B, num_classes-1] threshold logits
+        pg = torch.sigmoid(z)  # P(y>k) [B, num_classes-1]
+        first = 1 - pg[:, :1]
+        mid = pg[:, :-1] - pg[:, 1:]
+        last = pg[:, -1:]
+        p = torch.cat([first, mid, last], dim=1).clamp_min(0)
+        return p / p.sum(dim=1, keepdim=True)
+
+
 def export_onnx(
     model: EngagementTransformer,
     metadata: DeploymentMetadata,
@@ -81,6 +102,9 @@ def export_onnx(
     temporary_metadata = output_dir / ".engagement.metadata.json.tmp"
     example = torch.arange(seg * dim, dtype=torch.float32).reshape(1, seg, dim) / 1000
     model = model.cpu().eval()
+    export_module: torch.nn.Module = (
+        _CoralClassProbModule(model).eval() if model.config.head == "coral" else model
+    )
     try:
         batch = torch.export.Dim("batch", min=1)
         with warnings.catch_warnings():
@@ -90,7 +114,7 @@ def export_onnx(
                 category=FutureWarning,
             )
             program = torch.onnx.export(
-                model,
+                export_module,
                 (example,),
                 input_names=[metadata.input_name],
                 output_names=[metadata.output_name],
@@ -104,7 +128,7 @@ def export_onnx(
         program.save(temporary_model, external_data=False)
         exported = onnx.load(temporary_model)
         onnx.checker.check_model(exported)
-        expected = model(example).detach().numpy()
+        expected = export_module(example).detach().numpy()
         session = ort.InferenceSession(
             str(temporary_model), providers=["CPUExecutionProvider"]
         )
