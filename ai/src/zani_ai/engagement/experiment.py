@@ -16,7 +16,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
-from zani_ai.engagement.features import SCHEMA_NAME
+from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
 from zani_ai.engagement.model import ModelConfig
 from zani_ai.engagement.training import (
     EvaluationMetrics,
@@ -35,6 +35,20 @@ _CUBLAS_CONFIGS = {":4096:8", ":16:8"}
 class E0ExperimentResult:
     summary_path: Path
     completed_seeds: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentSpec:
+    """Fully describes a reproducible experiment protocol (e.g. E0, E0-A)."""
+
+    protocol: str
+    schema: FeatureSchema
+    model_config: ModelConfig
+    seeds: tuple[int, ...] = E0_SEEDS
+
+
+E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
+E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
 
 
 def _sha256(path: Path) -> str:
@@ -64,7 +78,7 @@ def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _validate_manifest(features_root: Path) -> tuple[Path, str]:
+def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path, str]:
     manifest_path = features_root / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"feature manifest not found: {manifest_path}")
@@ -75,8 +89,8 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
         raise ValueError(f"invalid feature manifest JSON: {manifest_path}") from error
     if not isinstance(payload, dict):
         raise ValueError("feature manifest must be a JSON object")
-    if payload.get("schema") != SCHEMA_NAME:
-        raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
+    if payload.get("schema") != spec.schema.name:
+        raise ValueError(f"feature manifest schema must be {spec.schema.name}")
     included, excluded = validate_manifest_completion(payload)
     splits: set[str] = set()
     for index, item in enumerate(included):
@@ -128,12 +142,11 @@ def _validate_manifest(features_root: Path) -> tuple[Path, str]:
     return manifest_path, hashlib.sha256(manifest_bytes).hexdigest()
 
 
-def _e0_configuration(device: str) -> dict[str, object]:
-    model = ModelConfig()
+def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
     return {
-        "feature_schema": SCHEMA_NAME,
-        "input_shape": ["batch", 20, 98],
-        "seeds": list(E0_SEEDS),
+        "feature_schema": spec.schema.name,
+        "input_shape": ["batch", 20, spec.schema.token_feature_count],
+        "seeds": list(spec.seeds),
         "optimizer": "Adam",
         "learning_rate": 1e-4,
         "batch_size": 32,
@@ -145,7 +158,7 @@ def _e0_configuration(device: str) -> dict[str, object]:
         },
         "class_weighting": False,
         "model": {
-            **model.to_dict(),
+            **spec.model_config.to_dict(),
             "learned_position_count": 20,
             "pooling": "max",
             "classifier_dimensions": [256, 128, 4],
@@ -156,10 +169,12 @@ def _e0_configuration(device: str) -> dict[str, object]:
     }
 
 
-def _environment(device: str) -> dict[str, object]:
+def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
     cuda_available = torch.cuda.is_available()
     if device == "cuda" and not cuda_available:
-        raise RuntimeError("E0 requested device=cuda, but PyTorch reports CUDA unavailable")
+        raise RuntimeError(
+            f"{spec.protocol} requested device=cuda, but PyTorch reports CUDA unavailable"
+        )
     cuda_device: dict[str, object] | None = None
     if device == "cuda":
         index = torch.cuda.current_device()
@@ -200,13 +215,14 @@ def _empty_summary(
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
+    spec: ExperimentSpec,
 ) -> dict[str, object]:
     return {
-        "protocol": "E0",
+        "protocol": spec.protocol,
         "status": "in_progress",
         "feature_manifest": {
             "path": str(manifest_path.resolve()),
-            "schema": SCHEMA_NAME,
+            "schema": spec.schema.name,
             "sha256": manifest_sha256,
         },
         "configuration": configuration,
@@ -214,20 +230,20 @@ def _empty_summary(
         "environment": environment,
         "test_evaluation": {
             "status": "deferred",
-            "reason": "Test evaluation is deferred by the E0 protocol.",
+            "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
         },
         "seeds": [],
         "aggregate": _aggregate([]),
     }
 
 
-def _load_summary(path: Path) -> dict[str, object]:
+def _load_summary(path: Path, spec: ExperimentSpec) -> dict[str, object]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
-        raise ValueError(f"invalid E0 summary JSON: {path}") from error
+        raise ValueError(f"invalid {spec.protocol} summary JSON: {path}") from error
     if not isinstance(payload, dict):
-        raise ValueError(f"E0 summary must be a JSON object: {path}")
+        raise ValueError(f"{spec.protocol} summary must be a JSON object: {path}")
     return cast(dict[str, object], payload)
 
 
@@ -236,34 +252,39 @@ def _validate_summary_identity(
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
+    spec: ExperimentSpec,
 ) -> None:
     manifest = summary.get("feature_manifest")
     actual_manifest_hash = manifest.get("sha256") if isinstance(manifest, dict) else None
     if actual_manifest_hash != manifest_sha256:
         raise ValueError(
-            "existing E0 summary uses a different feature manifest; choose a new output directory"
+            f"existing {spec.protocol} summary uses a different feature manifest; "
+            "choose a new output directory"
         )
     if summary.get("configuration") != configuration:
         raise ValueError(
-            "existing E0 summary uses a different configuration; choose a new output directory"
+            f"existing {spec.protocol} summary uses a different configuration; "
+            "choose a new output directory"
         )
     if summary.get("configuration_sha256") != _canonical_hash(configuration):
-        raise ValueError("existing E0 summary has an invalid configuration fingerprint")
+        raise ValueError(
+            f"existing {spec.protocol} summary has an invalid configuration fingerprint"
+        )
     if summary.get("environment") != environment:
         raise ValueError(
-            "existing E0 summary was created in a different runtime environment; "
+            f"existing {spec.protocol} summary was created in a different runtime environment; "
             "choose a new output directory"
         )
     seeds = summary.get("seeds")
     if not isinstance(seeds, list):
-        raise ValueError("existing E0 summary has an invalid seeds list")
+        raise ValueError(f"existing {spec.protocol} summary has an invalid seeds list")
     recorded_seeds: list[int] = []
     for item in seeds:
-        if not isinstance(item, dict) or item.get("seed") not in E0_SEEDS:
-            raise ValueError("existing E0 summary contains an invalid seed record")
+        if not isinstance(item, dict) or item.get("seed") not in spec.seeds:
+            raise ValueError(f"existing {spec.protocol} summary contains an invalid seed record")
         recorded_seeds.append(cast(int, item["seed"]))
     if len(recorded_seeds) != len(set(recorded_seeds)):
-        raise ValueError("existing E0 summary contains duplicate seed records")
+        raise ValueError(f"existing {spec.protocol} summary contains duplicate seed records")
 
 
 def _seed_paths(output_dir: Path, seed: int) -> dict[str, Path]:
@@ -294,14 +315,17 @@ def _artifact_records(
     return records
 
 
-def _assert_manifest_unchanged(path: Path, expected_sha256: str, boundary: str) -> None:
+def _assert_manifest_unchanged(
+    path: Path, expected_sha256: str, boundary: str, spec: ExperimentSpec
+) -> None:
     try:
         actual_sha256 = _sha256(path)
     except OSError as error:
         raise RuntimeError(f"feature manifest unavailable {boundary}: {path}") from error
     if actual_sha256 != expected_sha256:
         raise RuntimeError(
-            f"feature manifest changed {boundary}; refusing to complete an incompatible E0 seed"
+            f"feature manifest changed {boundary}; "
+            f"refusing to complete an incompatible {spec.protocol} seed"
         )
 
 
@@ -320,6 +344,7 @@ def _seed_is_complete(
     output_dir: Path,
     manifest_sha256: str,
     configuration: dict[str, object],
+    spec: ExperimentSpec,
 ) -> tuple[bool, str]:
     if record is None:
         return False, "not recorded in summary"
@@ -364,15 +389,15 @@ def _seed_is_complete(
         return False, "metrics.json does not defer Test evaluation"
     experiment = metrics.get("experiment")
     if not isinstance(experiment, dict):
-        return False, "metrics.json has no E0 identity"
+        return False, f"metrics.json has no {spec.protocol} identity"
     if (
-        experiment.get("protocol") != "E0"
+        experiment.get("protocol") != spec.protocol
         or experiment.get("seed") != seed
         or experiment.get("feature_manifest_sha256") != manifest_sha256
         or experiment.get("configuration") != configuration
         or experiment.get("configuration_sha256") != _canonical_hash(configuration)
     ):
-        return False, "metrics.json E0 identity does not match"
+        return False, f"metrics.json {spec.protocol} identity does not match"
     validation = metrics.get("validation")
     recorded_validation = record.get("validation")
     if not isinstance(validation, dict) or not isinstance(recorded_validation, dict):
@@ -408,7 +433,7 @@ def _aggregate(seed_records: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def _update_summary(summary: dict[str, object]) -> None:
+def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
     records = [
         cast(dict[str, object], item)
         for item in cast(list[object], summary["seeds"])
@@ -419,31 +444,33 @@ def _update_summary(summary: dict[str, object]) -> None:
     summary["aggregate"] = _aggregate(records)
     summary["status"] = (
         "complete"
-        if [item["seed"] for item in records] == list(E0_SEEDS)
+        if [item["seed"] for item in records] == list(spec.seeds)
         else "in_progress"
     )
 
 
-def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0ExperimentResult:
+def reproduce_experiment(
+    spec: ExperimentSpec, features_root: Path, output_dir: Path, *, device: str
+) -> E0ExperimentResult:
     if device not in {"cpu", "cuda"}:
-        raise ValueError("E0 device must be 'cpu' or 'cuda'")
-    manifest_path, manifest_sha256 = _validate_manifest(features_root)
-    configuration = _e0_configuration(device)
-    environment = _environment(device)
+        raise ValueError(f"{spec.protocol} device must be 'cpu' or 'cuda'")
+    manifest_path, manifest_sha256 = _validate_manifest(features_root, spec)
+    configuration = _build_configuration(spec, device)
+    environment = _environment(device, spec)
     _enable_strict_determinism(device)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "summary.json"
     if summary_path.is_file():
-        summary = _load_summary(summary_path)
-        _validate_summary_identity(summary, manifest_sha256, configuration, environment)
+        summary = _load_summary(summary_path, spec)
+        _validate_summary_identity(summary, manifest_sha256, configuration, environment, spec)
     else:
         summary = _empty_summary(
-            manifest_path, manifest_sha256, configuration, environment
+            manifest_path, manifest_sha256, configuration, environment, spec
         )
         _write_json_atomic(summary_path, summary)
 
-    for seed in E0_SEEDS:
+    for seed in spec.seeds:
         existing = _seed_record(summary, seed)
         complete, reason = _seed_is_complete(
             existing,
@@ -451,18 +478,19 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             output_dir=output_dir,
             manifest_sha256=manifest_sha256,
             configuration=configuration,
+            spec=spec,
         )
         if complete:
-            print(f"E0 seed={seed} resume=complete", flush=True)
+            print(f"{spec.protocol} seed={seed} resume=complete", flush=True)
             continue
         if existing is not None:
-            print(f"E0 seed={seed} resume=rerun reason={reason}", flush=True)
+            print(f"{spec.protocol} seed={seed} resume=rerun reason={reason}", flush=True)
             summary["seeds"] = [
                 item
                 for item in cast(list[object], summary["seeds"])
                 if not isinstance(item, dict) or item.get("seed") != seed
             ]
-            _update_summary(summary)
+            _update_summary(summary, spec)
             _write_json_atomic(summary_path, summary)
 
         seed_dir = output_dir / f"seed-{seed}"
@@ -471,7 +499,7 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             epoch: int, metrics: EvaluationMetrics, _seed: int = seed
         ) -> None:
             print(
-                f"E0 seed={_seed} epoch={epoch + 1}/200 "
+                f"{spec.protocol} seed={_seed} epoch={epoch + 1}/200 "
                 f"validation_accuracy={metrics.accuracy:.6f} "
                 f"validation_macro_f1={metrics.macro_f1:.6f}",
                 flush=True,
@@ -489,10 +517,10 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             use_class_weights=False,
             num_workers=0,
             deterministic=True,
-            model=ModelConfig(),
+            model=spec.model_config,
         )
         _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} training"
+            manifest_path, manifest_sha256, f"before seed {seed} training", spec
         )
         result = train_model(
             training_config,
@@ -500,11 +528,11 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             progress=report_progress,
         )
         _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} training"
+            manifest_path, manifest_sha256, f"after seed {seed} training", spec
         )
-        metrics_payload = _load_summary(result.metrics_path)
+        metrics_payload = _load_summary(result.metrics_path, spec)
         metrics_payload["experiment"] = {
-            "protocol": "E0",
+            "protocol": spec.protocol,
             "seed": seed,
             "feature_manifest_sha256": manifest_sha256,
             "configuration": configuration,
@@ -512,18 +540,18 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
         }
         metrics_payload["test_evaluation"] = {
             "status": "deferred",
-            "reason": "Test evaluation is deferred by the E0 protocol.",
+            "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
         }
         metrics_payload.pop("test", None)
         _write_json_atomic(result.metrics_path, metrics_payload)
 
         model = load_checkpoint(result.checkpoint_path)
         _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} ONNX export"
+            manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
         )
-        exported = export_onnx(model, DeploymentMetadata.default(), seed_dir / "onnx")
+        exported = export_onnx(model, DeploymentMetadata.for_schema(spec.schema), seed_dir / "onnx")
         _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} ONNX export"
+            manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
         )
         expected_paths = _seed_paths(output_dir, seed)
         if exported.model_path != expected_paths["onnx_model"]:
@@ -532,7 +560,7 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             raise RuntimeError("ONNX exporter returned an unexpected metadata path")
         artifacts = _artifact_records(output_dir, expected_paths)
         _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before recording seed {seed} completion"
+            manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
         )
         record: dict[str, object] = {
             "seed": seed,
@@ -547,15 +575,15 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
             "artifacts": artifacts,
         }
         cast(list[object], summary["seeds"]).append(record)
-        _update_summary(summary)
+        _update_summary(summary, spec)
         _write_json_atomic(summary_path, summary)
         print(
-            f"E0 seed={seed} complete best_epoch={result.best_epoch} "
+            f"{spec.protocol} seed={seed} complete best_epoch={result.best_epoch} "
             f"validation_macro_f1={result.validation.macro_f1:.6f}",
             flush=True,
         )
 
-    _update_summary(summary)
+    _update_summary(summary, spec)
     _write_json_atomic(summary_path, summary)
     completed = tuple(
         int(item["seed"])
@@ -564,4 +592,16 @@ def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0Exp
     return E0ExperimentResult(summary_path, completed)
 
 
-__all__ = ["E0_SEEDS", "E0ExperimentResult", "reproduce_e0"]
+def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0ExperimentResult:
+    return reproduce_experiment(E0_SPEC, features_root, output_dir, device=device)
+
+
+__all__ = [
+    "E0_SEEDS",
+    "E0_SPEC",
+    "E0A_SPEC",
+    "E0ExperimentResult",
+    "ExperimentSpec",
+    "reproduce_e0",
+    "reproduce_experiment",
+]
