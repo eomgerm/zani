@@ -36,6 +36,7 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    SAMPLE_FPS,
     SEGMENT_COUNT,
     ExcludedClip,
     ExtractionManifest,
@@ -49,6 +50,7 @@ from zani_ai.engagement.features import (
     InvalidFrameFeaturesError,
     extract_frame_features,
 )
+from zani_ai.engagement.landmark_graph import LANDMARK_78_INDICES
 from zani_ai.engagement.raw_cache import RAW_SCHEMA_NAME, RawClip
 from zani_ai.engagement.segments import (
     InsufficientFaceCoverageError,
@@ -65,6 +67,8 @@ class Representation(Protocol):
 
     name: str
     output_shape: tuple[int, ...]
+    #: npz key the built tensor is saved under (see `_save_representation_tokens`).
+    array_key: str
 
     def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
         """Derive this representation's feature tensor for one raw clip."""
@@ -91,6 +95,10 @@ class TokenRepresentation:
     @property
     def output_shape(self) -> tuple[int, int]:
         return (SEGMENT_COUNT, self.schema.token_feature_count)
+
+    @property
+    def array_key(self) -> str:
+        return "tokens"
 
     def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
         frame_count = raw_clip.timestamps_ms.shape[0]
@@ -120,20 +128,64 @@ class TokenRepresentation:
 
 @dataclass(frozen=True, slots=True)
 class LandmarkSequenceRepresentation:
-    """Stub for a future raw landmark-sequence representation (E1/E2).
+    """Raw 78-landmark-sequence representation for the E1 ST-GCN pipeline.
 
-    Declares its intended name/shape so callers can register it, but
-    deliberately does not implement `build` -- that work is out of scope for
-    Task 4.
+    Aligns each raw clip to the fixed 100-step, 10 FPS / 10s sampling grid
+    (timestamps 0, 100, 200, ..., 9900 ms -- the same grid `iter_sampled_frames`
+    produces), and for each grid step selects the raw frame whose
+    `timestamps_ms` matches that step and is `valid_mask`-valid, taking its
+    `landmarks[LANDMARK_78_INDICES, :3]` (`[78, 3]`).
+
+    A grid step with no matching valid raw frame (a dropped/undecodable
+    sample, a no-face frame, or a clip shorter than 10s) is forward-filled
+    from the nearest earlier valid step; steps before the first valid step
+    take the first valid step's values. If the clip has no valid frame at
+    all, `build` raises `ValueError` so `build_feature_manifest` excludes the
+    clip, matching how `TokenRepresentation`'s failures (via
+    `aggregate_segments`/`extract_frame_features`) are signalled.
     """
 
     name: str = LANDMARK_SEQUENCE_NAME
     output_shape: tuple[int, int, int] = LANDMARK_SEQUENCE_SHAPE
+    array_key: str = "sequence"
 
     def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
-        raise NotImplementedError(
-            f"{LANDMARK_SEQUENCE_NAME} representation is not implemented (E1/E2)"
-        )
+        _, step_count, node_count = self.output_shape
+        grid_step_ms = round(1000.0 / SAMPLE_FPS)
+        landmark_indices = np.asarray(LANDMARK_78_INDICES, dtype=np.intp)
+
+        # Map each grid step (0..step_count-1) to the raw frame index that
+        # lands on it, considering only valid frames; earliest match wins if
+        # a step is somehow hit more than once.
+        frame_index_by_step: dict[int, int] = {}
+        for frame_index in range(raw_clip.timestamps_ms.shape[0]):
+            if not raw_clip.valid_mask[frame_index]:
+                continue
+            step = round(float(raw_clip.timestamps_ms[frame_index]) / grid_step_ms)
+            if 0 <= step < step_count and step not in frame_index_by_step:
+                frame_index_by_step[step] = frame_index
+
+        if not frame_index_by_step:
+            raise ValueError(
+                f"{self.name}: clip has no valid frame to build a landmark sequence from"
+            )
+
+        sequence = np.zeros((step_count, node_count, 3), dtype=np.float32)
+        first_valid_step = min(frame_index_by_step)
+        last_values = raw_clip.landmarks[frame_index_by_step[first_valid_step]][
+            landmark_indices, :3
+        ].astype(np.float32, copy=False)
+        for step in range(first_valid_step, step_count):
+            frame_index = frame_index_by_step.get(step)
+            if frame_index is not None:
+                last_values = raw_clip.landmarks[frame_index][landmark_indices, :3].astype(
+                    np.float32, copy=False
+                )
+            sequence[step] = last_values
+        # Steps before the first valid step: back-fill with the first valid step's values.
+        sequence[:first_valid_step] = sequence[first_valid_step]
+
+        return np.ascontiguousarray(sequence.transpose(2, 0, 1), dtype=np.float32)
 
 
 def load_raw_clip(feature_path: Path) -> RawClip:
@@ -156,14 +208,18 @@ def _save_representation_tokens(
     label_index: int,
     schema_name: str,
     source_fingerprint: str,
+    array_key: str,
 ) -> Path:
-    """Save one clip's representation tokens in the training-consumed npz shape.
+    """Save one clip's representation tensor in the training-consumed npz shape.
 
-    Mirrors `extraction._save_tokens`'s npz contents (`tokens`, `label_index`
+    Mirrors `extraction._save_tokens`'s npz contents (array, `label_index`
     int64, `schema` str, `source_fingerprint` str) but is parameterized by
-    representation name/directory instead of hard-coding the frozen 98D
-    schema, since a representation cache lives at
-    `output_root/<representation.name>/<split>/<clip_id>.npz`.
+    representation name/directory/array key instead of hard-coding the
+    frozen 98D schema, since a representation cache lives at
+    `output_root/<representation.name>/<split>/<clip_id>.npz`. The array is
+    stored under `array_key` (`"tokens"` for `TokenRepresentation`,
+    `"sequence"` for `LandmarkSequenceRepresentation`) so existing E0/E0-A/
+    E0-B consumers that read the `tokens` key keep working unchanged.
     """
     directory = output_root / schema_name / split
     directory.mkdir(parents=True, exist_ok=True)
@@ -173,10 +229,10 @@ def _save_representation_tokens(
         with temporary.open("wb") as file:
             np.savez_compressed(
                 file,
-                tokens=tokens,
                 label_index=np.int64(label_index),
                 schema=np.asarray(schema_name),
                 source_fingerprint=np.asarray(source_fingerprint),
+                **{array_key: tokens},
             )
         temporary.replace(feature_path)
     finally:
@@ -274,6 +330,7 @@ def build_feature_manifest(
             label_index,
             representation.name,
             source_fingerprint,
+            representation.array_key,
         )
         included.append(
             IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint)
