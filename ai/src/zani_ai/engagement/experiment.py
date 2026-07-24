@@ -49,6 +49,7 @@ class ExperimentSpec:
 
 E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
 E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
+E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
 
 
 def _sha256(path: Path) -> str:
@@ -143,7 +144,7 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
 
 
 def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
-    return {
+    configuration: dict[str, object] = {
         "feature_schema": spec.schema.name,
         "input_shape": ["batch", 20, spec.schema.token_feature_count],
         "seeds": list(spec.seeds),
@@ -167,6 +168,9 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
         "deterministic_algorithms": True,
         "num_workers": 0,
     }
+    if spec.model_config.head == "coral":
+        configuration["loss"] = "coral_bce"
+    return configuration
 
 
 def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
@@ -600,6 +604,7 @@ __all__ = [
     "E0_SEEDS",
     "E0_SPEC",
     "E0A_SPEC",
+    "E0B_SPEC",
     "E0ExperimentResult",
     "ExperimentSpec",
     "reproduce_e0",
