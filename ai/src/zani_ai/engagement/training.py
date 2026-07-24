@@ -226,7 +226,15 @@ def _load_feature_datasets(
         raise ValueError(
             f"feature manifest schema must be {expected_schema!r}, got {manifest_schema!r}"
         )
-    token_feature_count = get_schema(expected_schema).token_feature_count
+    # `get_schema` only knows token FeatureSchemas; when an explicit
+    # `array_shape` is supplied (e.g. E1/ST-GCN's landmark schemas), it fully
+    # determines the cached-array shape and `token_feature_count` is unused,
+    # so skip the FeatureSchema lookup entirely for that path.
+    token_feature_count = (
+        get_schema(expected_schema).token_feature_count
+        if array_shape is None
+        else TOKEN_FEATURE_COUNT
+    )
     included, _ = validate_manifest_completion(payload)
     grouped: dict[str, list[FeatureEntry]] = {"train": [], "valid": [], "test": []}
     for item_value in cast(list[dict[str, Any]], included):
@@ -454,10 +462,6 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     checkpoint_schema = checkpoint.get("schema")
     if not isinstance(checkpoint_schema, str):
         raise ValueError("checkpoint is missing a schema name")
-    try:
-        get_schema(checkpoint_schema)
-    except ValueError as error:
-        raise ValueError(f"checkpoint schema is unknown: {checkpoint_schema!r}") from error
     # Absent `model_family` means a pre-E1 checkpoint (E0/E0-A/E0-B): always Transformer.
     model_family = checkpoint.get("model_family", "transformer")
     cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
@@ -472,6 +476,13 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
         return stgcn_model.to(device)
     if model_family != "transformer":
         raise ValueError(f"checkpoint has unknown model_family: {model_family!r}")
+    # `get_schema` only knows token FeatureSchemas, so this validation only
+    # applies to the Transformer family (the ST-GCN branch above has already
+    # returned for non-token schemas like `landmark_78_v1`).
+    try:
+        get_schema(checkpoint_schema)
+    except ValueError as error:
+        raise ValueError(f"checkpoint schema is unknown: {checkpoint_schema!r}") from error
     cfg_dict.setdefault("head", "softmax")
     config = ModelConfig(**cfg_dict)
     model = EngagementTransformer(
@@ -499,11 +510,15 @@ def train_model(
     manifest_schema_name = manifest_payload.get("schema")
     if not isinstance(manifest_schema_name, str):
         raise ValueError("feature manifest is missing a schema name")
-    schema = get_schema(manifest_schema_name)
+    # `get_schema` only knows token FeatureSchemas (Transformer manifests).
+    # ST-GCN manifests (e.g. `landmark_78_v1`) aren't FeatureSchemas and skip
+    # feature statistics entirely, so only look the schema up when it's
+    # actually needed.
+    schema = get_schema(manifest_schema_name) if config.needs_feature_stats else None
     # This consistency check only makes sense for the default Transformer build
     # path (a custom `build_model` owns its own input-shape validation).
     if (
-        config.needs_feature_stats
+        schema is not None
         and config.build_model is None
         and schema.token_feature_count != config.model.input_dim
     ):
@@ -526,6 +541,7 @@ def train_model(
     device = torch.device(config.device)
     statistics: FeatureStatistics | None
     if config.needs_feature_stats:
+        assert schema is not None  # guaranteed by the `needs_feature_stats` guard above
         statistics = compute_feature_statistics(
             datasets.train.token_arrays(), token_feature_count=schema.token_feature_count
         )
