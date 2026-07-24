@@ -20,4 +20,6 @@ wandb/
 *.pth
 *.ckpt
 *.onnx
+web/engagement-demo/public/models/engagement.metadata.json
+web/engagement-demo/.runtime/
 *.task
