@@ -16,7 +16,7 @@ from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
 from zani_ai.engagement.contracts import LABELS, SplitName
-from zani_ai.engagement.features import SCHEMA_NAME
+from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
 from zani_ai.engagement.model import EngagementTransformer, ModelConfig
 
 
@@ -35,10 +35,16 @@ class FeatureEntry:
 
 
 class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
-    def __init__(self, entries: tuple[FeatureEntry, ...]) -> None:
+    def __init__(
+        self,
+        entries: tuple[FeatureEntry, ...],
+        *,
+        token_feature_count: int = TOKEN_FEATURE_COUNT,
+    ) -> None:
         if not entries:
             raise ValueError("feature split is empty")
         self.entries = entries
+        self.token_feature_count = token_feature_count
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -47,7 +53,7 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
         entry = self.entries[index]
         with np.load(entry.feature_path, allow_pickle=False) as cache:
             tokens = np.asarray(cache["tokens"], dtype=np.float32)
-        if tokens.shape != (20, 98) or not np.isfinite(tokens).all():
+        if tokens.shape != (20, self.token_feature_count) or not np.isfinite(tokens).all():
             raise ValueError(f"invalid cached tokens: {entry.feature_path}")
         return torch.from_numpy(tokens), torch.tensor(entry.label_index, dtype=torch.long)
 
@@ -176,8 +182,12 @@ def validate_manifest_completion(
 
 def compute_feature_statistics(
     arrays: Iterable[NDArray[np.float32]],
+    *,
+    token_feature_count: int = TOKEN_FEATURE_COUNT,
 ) -> FeatureStatistics:
-    materialized = [np.asarray(array, dtype=np.float64).reshape(-1, 98) for array in arrays]
+    materialized = [
+        np.asarray(array, dtype=np.float64).reshape(-1, token_feature_count) for array in arrays
+    ]
     if not materialized:
         raise ValueError("cannot compute statistics from an empty training split")
     values = np.concatenate(materialized, axis=0)
@@ -188,13 +198,19 @@ def compute_feature_statistics(
     )
 
 
-def _load_feature_datasets(root: Path, *, include_test: bool = True) -> FeatureDatasets:
+def _load_feature_datasets(
+    root: Path, *, include_test: bool = True, expected_schema: str = SCHEMA_NAME
+) -> FeatureDatasets:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"feature manifest not found: {manifest_path}")
     payload = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
-    if payload.get("schema") != SCHEMA_NAME:
-        raise ValueError(f"feature manifest schema must be {SCHEMA_NAME}")
+    manifest_schema = payload.get("schema")
+    if manifest_schema != expected_schema:
+        raise ValueError(
+            f"feature manifest schema must be {expected_schema!r}, got {manifest_schema!r}"
+        )
+    token_feature_count = get_schema(expected_schema).token_feature_count
     included, _ = validate_manifest_completion(payload)
     grouped: dict[str, list[FeatureEntry]] = {"train": [], "valid": [], "test": []}
     for item_value in cast(list[dict[str, Any]], included):
@@ -215,9 +231,11 @@ def _load_feature_datasets(root: Path, *, include_test: bool = True) -> FeatureD
             )
         )
     return FeatureDatasets(
-        CachedFeatureDataset(tuple(grouped["train"])),
-        CachedFeatureDataset(tuple(grouped["valid"])),
-        CachedFeatureDataset(tuple(grouped["test"])) if include_test else None,
+        CachedFeatureDataset(tuple(grouped["train"]), token_feature_count=token_feature_count),
+        CachedFeatureDataset(tuple(grouped["valid"]), token_feature_count=token_feature_count),
+        CachedFeatureDataset(tuple(grouped["test"]), token_feature_count=token_feature_count)
+        if include_test
+        else None,
     )
 
 
@@ -310,6 +328,8 @@ def _save_checkpoint(
     statistics: FeatureStatistics,
     epoch: int,
     validation: EvaluationMetrics,
+    *,
+    schema: str = SCHEMA_NAME,
 ) -> None:
     torch.save(
         {
@@ -319,7 +339,7 @@ def _save_checkpoint(
             "feature_std": statistics.std,
             "epoch": epoch,
             "validation": validation.to_dict(),
-            "schema": SCHEMA_NAME,
+            "schema": schema,
             "labels": LABELS,
         },
         path,
@@ -328,8 +348,13 @@ def _save_checkpoint(
 
 def load_checkpoint(path: Path, device: str = "cpu") -> EngagementTransformer:
     checkpoint = cast(dict[str, Any], torch.load(path, map_location=device, weights_only=False))
-    if checkpoint.get("schema") != SCHEMA_NAME:
-        raise ValueError(f"checkpoint schema must be {SCHEMA_NAME}")
+    checkpoint_schema = checkpoint.get("schema")
+    if not isinstance(checkpoint_schema, str):
+        raise ValueError("checkpoint is missing a schema name")
+    try:
+        get_schema(checkpoint_schema)
+    except ValueError as error:
+        raise ValueError(f"checkpoint schema is unknown: {checkpoint_schema!r}") from error
     config = ModelConfig(**cast(dict[str, Any], checkpoint["model_config"]))
     model = EngagementTransformer(
         torch.as_tensor(checkpoint["feature_mean"]),
@@ -349,9 +374,28 @@ def train_model(
     if config.max_epochs <= 0 or config.patience <= 0:
         raise ValueError("max_epochs and patience must be positive")
     _seed_everything(config.seed, deterministic=config.deterministic)
-    datasets = _load_feature_datasets(config.features_root, include_test=evaluate_test)
+    manifest_path = config.features_root / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"feature manifest not found: {manifest_path}")
+    manifest_payload = cast(dict[str, Any], json.loads(manifest_path.read_text(encoding="utf-8")))
+    manifest_schema_name = manifest_payload.get("schema")
+    if not isinstance(manifest_schema_name, str):
+        raise ValueError("feature manifest is missing a schema name")
+    schema = get_schema(manifest_schema_name)
+    if schema.token_feature_count != config.model.input_dim:
+        raise ValueError(
+            "feature manifest token dimension "
+            f"({schema.token_feature_count}) does not match ModelConfig.input_dim "
+            f"({config.model.input_dim}); set ModelConfig.input_dim to match the "
+            f"'{manifest_schema_name}' schema"
+        )
+    datasets = _load_feature_datasets(
+        config.features_root, include_test=evaluate_test, expected_schema=manifest_schema_name
+    )
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    statistics = compute_feature_statistics(datasets.train.token_arrays())
+    statistics = compute_feature_statistics(
+        datasets.train.token_arrays(), token_feature_count=schema.token_feature_count
+    )
     device = torch.device(config.device)
     model = EngagementTransformer(
         torch.from_numpy(statistics.mean), torch.from_numpy(statistics.std), config=config.model
@@ -376,7 +420,15 @@ def train_model(
             best_epoch = epoch
             best_validation = validation
             stale_epochs = 0
-            _save_checkpoint(checkpoint_path, model, config, statistics, epoch, validation)
+            _save_checkpoint(
+                checkpoint_path,
+                model,
+                config,
+                statistics,
+                epoch,
+                validation,
+                schema=manifest_schema_name,
+            )
         else:
             stale_epochs += 1
             if stale_epochs >= config.patience:
@@ -393,7 +445,7 @@ def train_model(
         )
     metrics_path = config.output_dir / "metrics.json"
     payload = {
-        "schema": SCHEMA_NAME,
+        "schema": manifest_schema_name,
         "labels": LABELS,
         "selection_metric": "validation_macro_f1",
         "best_epoch": best_epoch,
