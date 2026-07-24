@@ -129,6 +129,41 @@ def _finalize_e0a(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reproduce_e0b(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import E0B_SPEC, reproduce_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_experiment(E0B_SPEC, args.features, args.output, device=device)
+    print(
+        f"E0-B reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
+    )
+    return 0
+
+
+def _finalize_e0b(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import E0B_SPEC
+    from zani_ai.engagement.report import finalize_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_experiment(
+        E0B_SPEC,
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E0-B Test evaluation and report complete | {report_path}", flush=True)
+    return 0
+
+
 def _train(args: argparse.Namespace) -> int:
     import torch
 
@@ -295,6 +330,25 @@ def build_parser() -> argparse.ArgumentParser:
     finalize_e0a_parser.add_argument("--preparation-manifest", type=Path)
     finalize_e0a_parser.add_argument("--threshold-manifest", type=Path)
     finalize_e0a_parser.set_defaults(handler=_finalize_e0a)
+
+    reproduce_e0b = commands.add_parser(
+        "reproduce-e0b", help="run the validation-only five-seed E0-B protocol"
+    )
+    reproduce_e0b.add_argument("--features", type=Path, required=True)
+    reproduce_e0b.add_argument("--output", type=Path, required=True)
+    reproduce_e0b.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e0b.set_defaults(handler=_reproduce_e0b)
+
+    finalize_e0b_parser = commands.add_parser(
+        "finalize-e0b", help="evaluate frozen E0-B checkpoints once and write the HTML report"
+    )
+    finalize_e0b_parser.add_argument("--features", type=Path, required=True)
+    finalize_e0b_parser.add_argument("--output", type=Path, required=True)
+    finalize_e0b_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e0b_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e0b_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e0b_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e0b_parser.set_defaults(handler=_finalize_e0b)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)
