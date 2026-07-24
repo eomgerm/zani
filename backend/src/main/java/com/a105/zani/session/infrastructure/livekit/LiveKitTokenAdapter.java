@@ -35,8 +35,8 @@ public class LiveKitTokenAdapter implements LiveKitTokenPort {
     public IssuedMediaToken issue(MediaTokenRequest request) {
         // 자격증명 미설정 시 빈 시크릿으로 위조 가능한 토큰이 발급되지 않도록 발급 시점에 막는다.
         // (기동 시 검증하면 자격증명 없는 테스트 컨텍스트가 기동 실패하므로 발급 시점에서 검증한다.)
-        if (isBlank(properties.apiKey()) || isBlank(properties.apiSecret())) {
-            throw new IllegalStateException("LiveKit API key/secret is not configured");
+        if (isBlank(properties.url()) || isBlank(properties.apiKey()) || isBlank(properties.apiSecret())) {
+            throw new IllegalStateException("LiveKit url/api-key/api-secret is not configured");
         }
 
         String roomName = "zani-" + properties.environment() + "-session-" + request.sessionId();

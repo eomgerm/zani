@@ -3,13 +3,13 @@ package com.a105.zani.session.application.issuemediatoken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.a105.zani.member.application.MemberDisplayNameReader;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.port.IssuedMediaToken;
 import com.a105.zani.session.application.port.LiveKitTokenPort;
 import com.a105.zani.session.application.port.MediaTokenRequest;
-import com.a105.zani.session.application.port.MemberDisplayNamePort;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionStatus;
@@ -24,17 +24,17 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
-    private final MemberDisplayNamePort memberDisplayNamePort;
+    private final MemberDisplayNameReader memberDisplayNameReader;
     private final LiveKitTokenPort liveKitTokenPort;
 
     public IssueMediaTokenService(
             SessionRepository sessionRepository,
             SessionParticipantRepository participantRepository,
-            MemberDisplayNamePort memberDisplayNamePort,
+            MemberDisplayNameReader memberDisplayNameReader,
             LiveKitTokenPort liveKitTokenPort) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
-        this.memberDisplayNamePort = memberDisplayNamePort;
+        this.memberDisplayNameReader = memberDisplayNameReader;
         this.liveKitTokenPort = liveKitTokenPort;
     }
 
@@ -53,7 +53,7 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
         }
 
         String displayName =
-                memberDisplayNamePort.findDisplayName(command.userId()).orElse(DEFAULT_DISPLAY_NAME);
+                memberDisplayNameReader.findDisplayName(command.userId()).orElse(DEFAULT_DISPLAY_NAME);
         String identity = "p-" + participant.id();
 
         IssuedMediaToken issued =

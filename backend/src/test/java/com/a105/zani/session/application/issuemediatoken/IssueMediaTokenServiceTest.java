@@ -6,13 +6,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.member.application.MemberDisplayNameReader;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.port.IssuedMediaToken;
 import com.a105.zani.session.application.port.LiveKitTokenPort;
 import com.a105.zani.session.application.port.MediaTokenRequest;
-import com.a105.zani.session.application.port.MemberDisplayNamePort;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -59,7 +59,7 @@ class IssueMediaTokenServiceTest {
         }
     };
 
-    private final MemberDisplayNamePort memberDisplayNamePort = memberId -> Optional.of("홍길동");
+    private final MemberDisplayNameReader memberDisplayNameReader = memberId -> Optional.of("홍길동");
 
     private final LiveKitTokenPort liveKitTokenPort = request -> {
         captured.set(request);
@@ -71,7 +71,7 @@ class IssueMediaTokenServiceTest {
     };
 
     private final IssueMediaTokenService service = new IssueMediaTokenService(
-            sessionRepository, participantRepository, memberDisplayNamePort, liveKitTokenPort);
+            sessionRepository, participantRepository, memberDisplayNameReader, liveKitTokenPort);
 
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
