@@ -134,7 +134,6 @@ class SessionPresenceServiceTest {
         assertTrue(result.sessionEnded());
         assertTrue(sessionRepository.session.isEnded());
         assertEquals(1, sessionRepository.saveCount);
-        assertTrue(presencePort.instructorGraceDeadline(SESSION_ID).isEmpty());
     }
 
     @Test

@@ -32,8 +32,8 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     private static final Duration INSTRUCTOR_GRACE = Duration.ofMinutes(5);
     /** 접속 presence 키 TTL. heartbeat 주기보다 넉넉히 잡아 짧은 지연에도 접속으로 유지한다. */
     private static final Duration PRESENCE_TTL = Duration.ofSeconds(30);
-    /** 유예 키를 마감 이후에도 잠시 유지해 만료 평가가 가능하도록 하는 버퍼. */
-    private static final Duration GRACE_KEY_TTL = INSTRUCTOR_GRACE.plusMinutes(1);
+    /** 유예 마커의 Redis TTL. 세션이 살아있는 동안(최대 활성 시간) 유지해, 늦거나 드문 heartbeat가 유예 만료 이후 도착하더라도 종료 판단 근거(마감 시각)가 소실되지 않도록 한다. */
+    private static final Duration GRACE_KEY_TTL = Session.ACTIVE_DURATION;
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
@@ -59,7 +59,7 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         // 유예 만료 여부는 이번 heartbeat가 presence 상태를 바꾸기 전에 판단한다. 그래야 유예가 이미 지난 뒤
         // 강사가 뒤늦게 접속해도 자신의 heartbeat로 종료를 취소하지 못한다(수용 기준: 5분 미복귀 → 종료).
         if (isInstructorGraceExpired(sessionId)) {
-            endSession(sessionId, session, participantId);
+            endSession(sessionId, session);
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
 
@@ -100,11 +100,12 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                 .orElse(false);
     }
 
-    private void endSession(long sessionId, Session session, long participantId) {
+    private void endSession(long sessionId, Session session) {
+        // DB의 ENDED 상태가 유일한 진실이다. 종료 이후 heartbeat는 위의 isEnded 가드에서 409로 막혀 유예를 다시 평가하지 않으므로,
+        // 남은 유예·presence 키는 그대로 두어도 무해하며 각자의 TTL로 자연 소멸한다. 트랜잭션 안에서 Redis까지 함께 지우면
+        // 커밋 성패와 두 저장소 상태가 어긋날 수 있어(리뷰 지적), 종료 경로에서는 Redis를 건드리지 않는다.
         session.end();
         sessionRepository.save(session);
-        presencePort.clearInstructorGrace(sessionId);
-        presencePort.clearPresence(sessionId, participantId);
         log.info("Session {} ended: instructor did not return within the grace period", sessionId);
     }
 
