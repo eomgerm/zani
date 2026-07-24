@@ -5,10 +5,10 @@ WORKDIR /workspace
 
 COPY gradlew gradlew.bat build.gradle settings.gradle ./
 COPY gradle ./gradle
-RUN ./gradlew dependencies --no-daemon
+RUN bash ./gradlew dependencies --no-daemon
 
 COPY src ./src
-RUN ./gradlew bootJar -x test --no-daemon
+RUN bash ./gradlew bootJar -x test --no-daemon
 
 FROM eclipse-temurin:21.0.11_10-jre-jammy AS runtime
 WORKDIR /app

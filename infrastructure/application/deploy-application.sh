@@ -6,8 +6,12 @@ readonly RELEASES_DIR="${APPLICATION_ROOT}/releases"
 readonly CURRENT_LINK="${APPLICATION_ROOT}/current"
 readonly RUNTIME_ENV="${RUNTIME_ENV:-/etc/zani/application/runtime.env}"
 readonly AGENT_ROOT="${JENKINS_AGENT_ROOT:-/var/lib/zani-jenkins-agent}"
-readonly DEPLOY_LOCK="/run/lock/zani-application-deploy.lock"
-readonly VERIFY_LOCK="/run/lock/zani-application-verify.lock"
+readonly CI_ROOT="/var/lib/zani-ci"
+readonly CI_LOCKS="${CI_ROOT}/locks"
+readonly CI_TMP="${CI_ROOT}/tmp"
+readonly CI_DOCKER="${CI_ROOT}/docker"
+readonly DEPLOY_LOCK="${CI_LOCKS}/zani-application-deploy.lock"
+readonly VERIFY_LOCK="${CI_LOCKS}/zani-application-verify.lock"
 readonly BACKEND_CONTAINER="zani-backend"
 readonly CI_JDK_IMAGE="eclipse-temurin:21.0.11_10-jdk-jammy"
 readonly CI_MYSQL_IMAGE="mysql:8.4.10"
@@ -38,6 +42,14 @@ require_root() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"
+}
+
+require_ci_directory() {
+  local directory="$1"
+  local mode="$2"
+  [[ -d "${directory}" ]] || die "Required CI directory is missing: ${directory}"
+  [[ "$(stat -c '%U:%G:%a' "${directory}")" == "root:root:${mode}" ]] ||
+    die "CI directory must be owned by root:root with mode ${mode}: ${directory}"
 }
 
 validate_sha() {
@@ -109,7 +121,7 @@ verify_backend() {
   flock -n 8 || die "Another backend verification is already running."
 
   short_sha="${sha:0:12}"
-  temp_dir="$(mktemp -d "/var/tmp/zani-ci-${short_sha}.XXXXXX")"
+  temp_dir="$(mktemp -d "${CI_TMP}/zani-ci-${short_sha}.XXXXXX")"
   archive="${temp_dir}/backend.tar"
   network="zani-ci-${short_sha}"
   mysql="zani-ci-mysql-${short_sha}"
@@ -153,7 +165,7 @@ verify_backend() {
     -e LOCAL_REDIS_HOST=redis \
     -e LOCAL_REDIS_PORT=6379 \
     "${CI_JDK_IMAGE}" \
-    ./gradlew clean spotlessCheck test bootJar --no-daemon
+    bash ./gradlew clean spotlessCheck test bootJar --no-daemon
 
   log "Backend verification succeeded for ${sha}."
 }
@@ -172,7 +184,7 @@ compose_for_release() {
   local release_dir="$1"
   shift
   docker compose \
-    --project-directory "${release_dir}" \
+    --project-directory "${release_dir}/infrastructure/application" \
     -f "${release_dir}/infrastructure/application/compose.yaml" \
     "$@"
 }
@@ -355,7 +367,12 @@ main() {
   require_command flock
   require_command git
   require_command realpath
+  require_command stat
   require_command tar
+  require_ci_directory "${CI_DOCKER}" 700
+  require_ci_directory "${CI_LOCKS}" 755
+  require_ci_directory "${CI_TMP}" 755
+  export DOCKER_CONFIG="${CI_DOCKER}"
 
   case "${1:-}" in
     verify)
