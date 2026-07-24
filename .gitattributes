@@ -1,3 +1,8 @@
+/.gitattributes text eol=lf
+/backend/Dockerfile text eol=lf
 /infrastructure/frontend/*.sh text eol=lf
+/infrastructure/application/*.sh text eol=lf
 /infrastructure/jenkins/*.sh text eol=lf
+/infrastructure/jenkins/sudoers-* text eol=lf
 /infrastructure/jenkins/tests/*.sh text eol=lf
+/infrastructure/jenkins/systemd/*.service text eol=lf
