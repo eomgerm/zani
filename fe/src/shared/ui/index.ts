@@ -3,6 +3,8 @@ export { Logo, LOGO_SRC } from "./Logo";
 export { Avatar } from "./Avatar";
 export { Badge } from "./Badge";
 export { Card } from "./Card";
+export { Select, ChevronDownIcon } from "./Select";
+export type { SelectOption } from "./Select";
 export { StatCard } from "./StatCard";
 export { DistributionBar } from "./DistributionBar";
 export { FocusFlowChart } from "./FocusFlowChart";

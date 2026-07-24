@@ -5,8 +5,12 @@ readonly FRONTEND_ROOT="${FRONTEND_ROOT:-/opt/zani/frontend}"
 readonly RELEASES_DIR="${FRONTEND_ROOT}/releases"
 readonly CURRENT_LINK="${FRONTEND_ROOT}/current"
 readonly AGENT_ROOT="${JENKINS_AGENT_ROOT:-/var/lib/zani-jenkins-agent}"
-readonly DEPLOY_LOCK="/run/lock/zani-frontend-deploy.lock"
-readonly VERIFY_LOCK="/run/lock/zani-frontend-verify.lock"
+readonly CI_ROOT="/var/lib/zani-ci"
+readonly CI_LOCKS="${CI_ROOT}/locks"
+readonly CI_TMP="${CI_ROOT}/tmp"
+readonly CI_DOCKER="${CI_ROOT}/docker"
+readonly DEPLOY_LOCK="${CI_LOCKS}/zani-frontend-deploy.lock"
+readonly VERIFY_LOCK="${CI_LOCKS}/zani-frontend-verify.lock"
 readonly FRONTEND_CONTAINER="zani-frontend"
 readonly CI_NODE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 
@@ -35,6 +39,14 @@ require_root() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"
+}
+
+require_ci_directory() {
+  local directory="$1"
+  local mode="$2"
+  [[ -d "${directory}" ]] || die "Required CI directory is missing: ${directory}"
+  [[ "$(stat -c '%U:%G:%a' "${directory}")" == "root:root:${mode}" ]] ||
+    die "CI directory must be owned by root:root with mode ${mode}: ${directory}"
 }
 
 validate_sha() {
@@ -92,7 +104,7 @@ verify_frontend() (
   flock -n 8 || die "Another frontend verification is already running."
 
   short_sha="${sha:0:12}"
-  temp_dir="$(mktemp -d "/var/tmp/zani-frontend-ci-${short_sha}.XXXXXX")"
+  temp_dir="$(mktemp -d "${CI_TMP}/zani-frontend-ci-${short_sha}.XXXXXX")"
   archive="${temp_dir}/frontend.tar"
   trap 'rm -rf -- "${temp_dir}"' EXIT
 
@@ -128,7 +140,7 @@ compose_for_release() {
   shift 2
 
   FRONTEND_IMAGE="${image}" NEXT_PUBLIC_API_BASE_URL="" docker compose \
-    --project-directory "${release_dir}" \
+    --project-directory "${release_dir}/infrastructure/frontend" \
     -f "${release_dir}/infrastructure/frontend/compose.yaml" \
     "$@"
 }
@@ -307,7 +319,12 @@ main() {
   require_command flock
   require_command git
   require_command realpath
+  require_command stat
   require_command tar
+  require_ci_directory "${CI_DOCKER}" 700
+  require_ci_directory "${CI_LOCKS}" 755
+  require_ci_directory "${CI_TMP}" 755
+  export DOCKER_CONFIG="${CI_DOCKER}"
 
   case "${1:-}" in
     verify)

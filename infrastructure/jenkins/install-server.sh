@@ -4,6 +4,7 @@ set -Eeuo pipefail
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly AGENT_USER="zani-jenkins-agent"
 readonly AGENT_ROOT="/var/lib/zani-jenkins-agent"
+readonly CI_ROOT="/var/lib/zani-ci"
 readonly CONTROLLER_DATA="/srv/zani/jenkins/controller"
 readonly INSTALL_ROOT="/opt/zani/jenkins"
 readonly CONTROLLER_ROOT="${INSTALL_ROOT}/controller"
@@ -87,6 +88,21 @@ verify_required_jobs() {
   done
 }
 
+wait_for_agent() {
+  local admin_password attempt agent_json
+  admin_password="$(tr -d '\r\n' <"${CONTROLLER_SECRETS}/JENKINS_ADMIN_PASSWORD")"
+  for attempt in $(seq 1 60); do
+    agent_json="$(curl --fail --silent --show-error \
+      --user "zani-admin:${admin_password}" \
+      "${JENKINS_URL}/computer/zani-backend/api/json" 2>/dev/null || true)"
+    if printf '%s' "${agent_json}" | grep -q '"offline"[[:space:]]*:[[:space:]]*false'; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 extract_agent_secret() {
   local admin_password jnlp secret
   admin_password="$(tr -d '\r\n' <"${CONTROLLER_SECRETS}/JENKINS_ADMIN_PASSWORD")"
@@ -131,7 +147,11 @@ main() {
   install -d -o root -g root -m 0700 "${AGENT_SECRETS}"
   install -d -o 1000 -g 1000 -m 0750 "${CONTROLLER_DATA}"
   install -d -o "${AGENT_USER}" -g "${AGENT_USER}" -m 0750 "${AGENT_ROOT}"
-  install -d -o root -g root -m 0755 "${CONTROLLER_ROOT}" "${AGENT_INSTALL_ROOT}" /opt/zani/deploy
+  install -d -o root -g root -m 0755 \
+    "${CONTROLLER_ROOT}" "${AGENT_INSTALL_ROOT}" /opt/zani/deploy \
+    "${CI_ROOT}" "${CI_ROOT}/locks" "${CI_ROOT}/tmp" \
+    /opt/zani/application /opt/zani/frontend
+  install -d -o root -g root -m 0700 "${CI_ROOT}/docker" "${CI_ROOT}/sudo"
 
   # Docker Compose bind-mounts file-backed secrets without remapping ownership.
   # The host directory remains root-only, while GID 1000 is the Jenkins group
@@ -183,8 +203,12 @@ main() {
   extract_agent_secret
 
   systemctl daemon-reload
-  systemctl enable --now zani-jenkins-agent.service
+  systemctl enable zani-jenkins-agent.service
+  systemctl restart zani-jenkins-agent.service
   systemctl is-active --quiet zani-jenkins-agent.service || die "Jenkins agent service is not active."
+  [[ "$(systemctl show zani-jenkins-agent.service --property=NoNewPrivileges --value)" == "no" ]] ||
+    die "Jenkins agent cannot invoke the reviewed sudo deployment wrappers."
+  wait_for_agent || die "Jenkins agent did not reconnect to the controller."
 
   printf '[zani-jenkins-install] Controller and agent are active. UI: %s\n' "${JENKINS_URL}"
 }

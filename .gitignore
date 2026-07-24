@@ -4,6 +4,7 @@ code-review/output/
 .env.*
 !.env.example
 .idea/
+.claude/launch.json
 .superpowers/
 **/superpowers/
 
