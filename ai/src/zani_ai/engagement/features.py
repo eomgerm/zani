@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import numpy as np
 from numpy.typing import NDArray
 
-SCHEMA_NAME = "mediapipe_98_v1"
-RAW_FEATURE_COUNT = 49
-TOKEN_FEATURE_COUNT = 98
 
-BLENDSHAPE_NAMES = (
+@dataclass(frozen=True, slots=True)
+class FeatureSchema:
+    """Feature vector schema with blendshape names and dimensions."""
+
+    name: str
+    blendshape_names: tuple[str, ...]
+    gaze_dim: int = 8
+    head_dim: int = 6
+
+    @property
+    def raw_feature_count(self) -> int:
+        return self.gaze_dim + self.head_dim + len(self.blendshape_names)
+
+    @property
+    def token_feature_count(self) -> int:
+        return 2 * self.raw_feature_count
+
+
+BLENDSHAPE_NAMES_98 = (
     "browDownLeft",
     "browDownRight",
     "browInnerUp",
@@ -46,6 +62,90 @@ BLENDSHAPE_NAMES = (
     "mouthUpperUpRight",
     "noseSneerLeft",
 )
+
+BLENDSHAPE_NAMES_132 = (
+    "_neutral",
+    "browDownLeft",
+    "browDownRight",
+    "browInnerUp",
+    "browOuterUpLeft",
+    "browOuterUpRight",
+    "cheekPuff",
+    "cheekSquintLeft",
+    "cheekSquintRight",
+    "eyeBlinkLeft",
+    "eyeBlinkRight",
+    "eyeLookDownLeft",
+    "eyeLookDownRight",
+    "eyeLookInLeft",
+    "eyeLookInRight",
+    "eyeLookOutLeft",
+    "eyeLookOutRight",
+    "eyeLookUpLeft",
+    "eyeLookUpRight",
+    "eyeSquintLeft",
+    "eyeSquintRight",
+    "eyeWideLeft",
+    "eyeWideRight",
+    "jawForward",
+    "jawLeft",
+    "jawOpen",
+    "jawRight",
+    "mouthClose",
+    "mouthDimpleLeft",
+    "mouthDimpleRight",
+    "mouthFrownLeft",
+    "mouthFrownRight",
+    "mouthFunnel",
+    "mouthLeft",
+    "mouthLowerDownLeft",
+    "mouthLowerDownRight",
+    "mouthPressLeft",
+    "mouthPressRight",
+    "mouthPucker",
+    "mouthRight",
+    "mouthRollLower",
+    "mouthRollUpper",
+    "mouthShrugLower",
+    "mouthShrugUpper",
+    "mouthSmileLeft",
+    "mouthSmileRight",
+    "mouthStretchLeft",
+    "mouthStretchRight",
+    "mouthUpperUpLeft",
+    "mouthUpperUpRight",
+    "noseSneerLeft",
+    "noseSneerRight",
+)
+
+SCHEMA_98 = FeatureSchema("mediapipe_98_v1", BLENDSHAPE_NAMES_98)
+SCHEMA_132 = FeatureSchema("mediapipe_132_v1", BLENDSHAPE_NAMES_132)
+SCHEMAS = {s.name: s for s in (SCHEMA_98, SCHEMA_132)}
+
+
+def get_schema(name: str) -> FeatureSchema:
+    """Get a feature schema by name.
+
+    Args:
+        name: The schema name (e.g., "mediapipe_98_v1", "mediapipe_132_v1")
+
+    Returns:
+        The FeatureSchema with the given name.
+
+    Raises:
+        ValueError: If the schema name is not found.
+    """
+    try:
+        return SCHEMAS[name]
+    except KeyError:
+        raise ValueError(f"unknown feature schema: {name}") from None
+
+
+# Back-compatibility aliases for existing code
+SCHEMA_NAME = SCHEMA_98.name
+BLENDSHAPE_NAMES = BLENDSHAPE_NAMES_98
+RAW_FEATURE_COUNT = SCHEMA_98.raw_feature_count
+TOKEN_FEATURE_COUNT = SCHEMA_98.token_feature_count
 
 _EPSILON = 1e-6
 
@@ -96,8 +196,23 @@ def extract_frame_features(
     landmarks: NDArray[np.floating],
     transform: NDArray[np.floating],
     blendshapes: Mapping[str, float],
+    *,
+    schema: FeatureSchema = SCHEMA_98,
 ) -> NDArray[np.float32]:
-    """Convert one Face Landmarker result to the 49-value raw feature contract."""
+    """Convert one Face Landmarker result to the raw feature contract.
+
+    Args:
+        landmarks: Face landmarks array of shape (478, 3) with xyz coordinates.
+        transform: 4x4 face transform matrix.
+        blendshapes: Mapping of blendshape names to float values.
+        schema: Feature schema to use (default: SCHEMA_98 for 49-dim features).
+
+    Returns:
+        Feature vector of shape (schema.raw_feature_count,) with dtype float32.
+
+    Raises:
+        InvalidFrameFeaturesError: If inputs are invalid or outputs are non-finite.
+    """
     if landmarks.shape != (478, 3):
         raise InvalidFrameFeaturesError(
             f"expected 478 landmarks with xyz coordinates, got {landmarks.shape}"
@@ -117,18 +232,33 @@ def extract_frame_features(
         (yaw, pitch, roll, landmarks[1, 0], landmarks[1, 1], 1 / interocular),
         dtype=np.float32,
     )
-    face = np.asarray([blendshapes.get(name, 0.0) for name in BLENDSHAPE_NAMES], dtype=np.float32)
+    face = np.asarray(
+        [blendshapes.get(name, 0.0) for name in schema.blendshape_names],
+        dtype=np.float32,
+    )
     result = np.concatenate((gaze, head, face)).astype(np.float32, copy=False)
-    if result.shape != (RAW_FEATURE_COUNT,) or not np.isfinite(result).all():
-        raise InvalidFrameFeaturesError("expected 49 finite MediaPipe features")
+    if result.shape != (schema.raw_feature_count,) or not np.isfinite(result).all():
+        raise InvalidFrameFeaturesError(
+            f"expected {schema.raw_feature_count} finite {schema.name} features"
+        )
     return result
 
 
 __all__ = [
+    # New public API
+    "FeatureSchema",
+    "SCHEMA_98",
+    "SCHEMA_132",
+    "SCHEMAS",
+    "get_schema",
+    "BLENDSHAPE_NAMES_98",
+    "BLENDSHAPE_NAMES_132",
+    # Back-compatibility aliases
+    "SCHEMA_NAME",
     "BLENDSHAPE_NAMES",
     "RAW_FEATURE_COUNT",
-    "SCHEMA_NAME",
     "TOKEN_FEATURE_COUNT",
+    # Functions and exceptions
     "InvalidFrameFeaturesError",
     "extract_frame_features",
 ]
