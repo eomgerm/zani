@@ -25,7 +25,7 @@ jenkins:
         remoteFS: "/var/lib/zani-jenkins-agent"
         numExecutors: 1
         mode: EXCLUSIVE
-        labelString: "zani-dispatch zani-application zani-backend zani-frontend"
+        labelString: "zani-dispatch zani-application zani-backend zani-frontend zani-review"
         launcher:
           inbound:
             webSocket: true
@@ -44,6 +44,16 @@ credentials:
               username: "${GITLAB_USERNAME}"
               password: "${GITLAB_TOKEN}"
               description: "Read-only GitLab credential for S15P11A105"
+          - string:
+              scope: GLOBAL
+              id: "gitlab-zani-review-api"
+              secret: "${GITLAB_REVIEW_TOKEN}"
+              description: "GitLab api-scope token used only by zani-mr-review to fetch the MR head and publish the review comment"
+          - string:
+              scope: GLOBAL
+              id: "claude-code-oauth-token"
+              secret: "${CLAUDE_CODE_OAUTH_TOKEN}"
+              description: "Claude Code OAuth token used only by zani-mr-review to authenticate the code-review bot"
 
 jobs:
   - file: /var/jenkins_home/jobs.groovy
