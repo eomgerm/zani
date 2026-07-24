@@ -162,3 +162,26 @@ sudo /path/to/release/infrastructure/jenkins/install-server.sh
 ```
 
 The script requires Java 21 and the four controller secret files to exist first. It is idempotent for its own user and paths, but it deliberately does not rotate or overwrite controller secret values.
+
+## Controller config deploy
+
+After the initial install, apply later controller config changes (`compose.yaml`, `jenkins.yaml`, `jobs.groovy`, `Dockerfile`, `plugins.txt`) without a full reinstall using the manual deploy script:
+
+```bash
+sudo infrastructure/jenkins/deploy-controller.sh [--build] [--dry-run]
+```
+
+It shallow-clones `dev`, copies the five controller files into `/opt/zani/jenkins/controller/`, recreates the controller with `docker compose up -d --force-recreate`, then waits for `http://127.0.0.1:18081/login` before printing the deployed `dev` SHA. The clone is authenticated with the existing read-only `GITLAB_TOKEN` through a temporary `GIT_ASKPASS` helper, so the token never appears in a URL or the log.
+
+- `--build` rebuilds the image first; needed only when `Dockerfile` or `plugins.txt` changed.
+- `--dry-run` prints the planned actions and changes nothing.
+- Run it manually over SSH. It is deliberately not triggered by a Jenkins job, because recreating the controller mid-build would kill the running agent connection.
+- It does not create the OS user, systemd unit, sudoers rule, or secret values; that remains `install-server.sh`'s job.
+
+Test the script logic without a host or network:
+
+```bash
+./infrastructure/jenkins/tests/deploy-controller.test.sh
+```
+
+It covers missing-token failure, unknown-flag failure, and `--dry-run` (no side effects, with and without `--build`).
