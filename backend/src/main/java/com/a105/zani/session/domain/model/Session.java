@@ -70,6 +70,15 @@ public class Session {
         return startedAt.plus(ACTIVE_DURATION);
     }
 
+    /** 세션을 종료 상태로 전환한다. 강사가 유예 시간 안에 복귀하지 못했을 때 호출된다. */
+    public void end() {
+        this.status = SessionStatus.ENDED;
+    }
+
+    public boolean isEnded() {
+        return status == SessionStatus.ENDED;
+    }
+
     public Long id() {
         return id;
     }
