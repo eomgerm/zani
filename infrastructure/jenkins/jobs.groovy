@@ -92,9 +92,11 @@ pipelineJob('zani-mr-review') {
         gitlab {
             triggerOnPush(false)
             triggerOnMergeRequest(true)
-            branchFilterType('NameBasedFilter')
-            includeBranchesSpec('dev')
-            excludeBranchesSpec('')
+            // For merge request events the GitLab plugin applies NameBasedFilter to the
+            // source branch, so filter on the target branch instead to catch MRs into dev.
+            branchFilterType('RegexBasedFilter')
+            sourceBranchRegex('.*')
+            targetBranchRegex('dev')
             secretToken(webhookToken)
         }
     }
