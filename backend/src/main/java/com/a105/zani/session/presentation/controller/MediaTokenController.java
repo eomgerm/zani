@@ -31,7 +31,7 @@ public class MediaTokenController {
     @Operation(
             summary = "LiveKit 미디어 토큰 발급",
             description =
-                    "인증된 세션 멤버에게 LiveKit room 접속 토큰을 발급한다. identity·표시 이름·역할·grant는 서버가 결정하며 요청 body는 없다. TTL은 10분이다.")
+                    "인증된 세션 멤버에게 LiveKit room 접속 토큰을 발급한다. identity·표시 이름·역할·grant는 서버가 결정하며 요청 body는 없다. TTL은 설정값을 따른다(기본 10분).")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "발급 성공"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "해당 세션의 멤버가 아님"),

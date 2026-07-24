@@ -60,7 +60,27 @@ class IssueMediaTokenServiceTest {
         }
     };
 
-    private final MemberRepository memberRepository = id -> Optional.of(Member.reconstitute(id, "홍길동"));
+    private final MemberRepository memberRepository = memberRepositoryReturning(
+            Optional.of(Member.reconstitute(456L, "google-sub", "user@zani.local", "홍길동", null)));
+
+    private static MemberRepository memberRepositoryReturning(Optional<Member> member) {
+        return new MemberRepository() {
+            @Override
+            public Member save(Member m) {
+                return m;
+            }
+
+            @Override
+            public Optional<Member> findById(Long id) {
+                return member;
+            }
+
+            @Override
+            public Optional<Member> findByGoogleSubject(String googleSubject) {
+                return Optional.empty();
+            }
+        };
+    }
 
     private final LiveKitTokenPort liveKitTokenPort = request -> {
         captured.set(request);
@@ -124,7 +144,10 @@ class IssueMediaTokenServiceTest {
         session = sessionWith(SessionStatus.LIVE);
         participant = SessionParticipant.join(456L, 100L, 7L, SessionParticipantRole.STUDENT, Instant.now());
         IssueMediaTokenService serviceWithoutName = new IssueMediaTokenService(
-                sessionRepository, participantRepository, id -> Optional.empty(), liveKitTokenPort);
+                sessionRepository,
+                participantRepository,
+                memberRepositoryReturning(Optional.empty()),
+                liveKitTokenPort);
 
         serviceWithoutName.issue(new IssueMediaTokenCommand(100L, 7L));
 

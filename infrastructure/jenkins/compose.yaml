@@ -19,6 +19,8 @@ services:
       - GITLAB_USERNAME
       - GITLAB_TOKEN
       - GITLAB_WEBHOOK_TOKEN
+      - GITLAB_REVIEW_TOKEN
+      - CLAUDE_CODE_OAUTH_TOKEN
     volumes:
       - /srv/zani/jenkins/controller:/var/jenkins_home
       - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml:ro
@@ -54,3 +56,7 @@ secrets:
     file: /etc/zani/jenkins/secrets/GITLAB_TOKEN
   GITLAB_WEBHOOK_TOKEN:
     file: /etc/zani/jenkins/secrets/GITLAB_WEBHOOK_TOKEN
+  GITLAB_REVIEW_TOKEN:
+    file: /etc/zani/jenkins/secrets/GITLAB_REVIEW_TOKEN
+  CLAUDE_CODE_OAUTH_TOKEN:
+    file: /etc/zani/jenkins/secrets/CLAUDE_CODE_OAUTH_TOKEN

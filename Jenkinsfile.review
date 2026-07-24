@@ -1,0 +1,69 @@
+pipeline {
+    agent { label 'zani-review' }
+
+    options {
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+        timeout(time: 20, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+        stage('Validate merge request event') {
+            steps {
+                script {
+                    def iid = env.gitlabMergeRequestIid?.trim()
+                    def target = env.gitlabTargetBranch?.trim()
+                    if (!(iid ==~ /[0-9]+/)) {
+                        error('Authenticated GitLab merge request webhook did not provide a numeric gitlabMergeRequestIid.')
+                    }
+                    if (target != 'dev') {
+                        error("Only merge requests targeting dev are reviewed; received ${target}.")
+                    }
+                    env.MR_IID = iid
+                    env.MR_TARGET = target
+                    currentBuild.description = "MR !${iid} -> ${target}"
+                }
+            }
+        }
+
+        stage('Checkout review tooling') {
+            steps {
+                // Load the review engine from the trusted dev branch. The merge request code is
+                // never checked out or executed here; only its diff is fetched and inspected later.
+                checkout scm
+                sh '''
+                    set -eu
+                    git rev-parse --verify "origin/${MR_TARGET}" >/dev/null
+                '''
+            }
+        }
+
+        stage('Review merge request') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'gitlab-zani-review-api', variable: 'GITLAB_TOKEN'),
+                    string(credentialsId: 'claude-code-oauth-token', variable: 'CLAUDE_CODE_OAUTH_TOKEN')
+                ]) {
+                    // The git username comes from the remote URL and the password from a credential
+                    // helper that reads the token from the environment at call time, so the token is
+                    // never written into the remote URL or the build log. Jenkins masks the value.
+                    sh '''
+                        set -eu
+                        git remote set-url origin https://oauth2@lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git
+                        git config --local credential.helper '!f() { echo "password=${GITLAB_TOKEN}"; }; f'
+
+                        # Exit code 1 marks a blocker or an execution failure and fails the build; exit code 0 marks a passing review.
+                        node code-review/bin/review.cjs --base "origin/${MR_TARGET}" --mr "${MR_IID}" --publish
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            deleteDir()
+        }
+    }
+}

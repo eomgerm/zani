@@ -1,14 +1,18 @@
+"use client";
+
 import Link from "next/link";
-import { MOCK_USER } from "@/shared/ui";
+import { useAuth } from "@/domains/auth";
 
 /**
  * SC-03 홈. 진행 중 수업 배너 + 강의실 만들기/참여하기 진입 화면.
  */
 export function HomeScreen() {
+  const { member } = useAuth();
+
   return (
     <>
       <h1 className="mb-2 text-3xl font-extrabold tracking-[-.7px]">
-        안녕하세요, {MOCK_USER.name}님!
+        안녕하세요, {member?.displayName ?? "사용자"}님!
       </h1>
       <p className="mb-[26px] text-[15px] text-ink-faint">
         ZANI에서 수업을 시작하고, 함께 배워보세요.

@@ -12,4 +12,4 @@ export type { FlowSegment } from "./FocusFlowChart";
 export { EvalDonuts } from "./EvalDonuts";
 export type { EvalDatum } from "./EvalDonuts";
 export { AppShell } from "./AppShell";
-export { MOCK_USER } from "@/shared/lib/user";
+export type { AppShellMember } from "./AppShell";
