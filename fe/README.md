@@ -105,3 +105,13 @@ npm run test:watch  # 변경 감지하며 반복 실행
 ```
 
 테스트 파일은 대상 코드 옆에 `*.test.ts(x)`로 둡니다 (예: `src/app/home/page.tsx` → `src/app/home/page.test.tsx`).
+
+## API 타입 생성
+
+백엔드 OpenAPI 계약(`backend/src/main/resources/contracts/openapi/zani.yaml`)이 API 타입의 단일 소스입니다. 백엔드 API가 바뀌면 계약 파일을 먼저 고치고, 아래 명령으로 타입을 다시 생성합니다.
+
+```bash
+npm run generate:types
+```
+
+`src/shared/types/api.d.ts`가 자동 생성되며, 직접 수정하지 않습니다 (파일 상단에 경고 주석이 있습니다).

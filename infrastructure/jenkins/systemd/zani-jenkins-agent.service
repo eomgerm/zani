@@ -1,0 +1,26 @@
+[Unit]
+Description=ZANI Jenkins backend agent
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zani-jenkins-agent
+Group=zani-jenkins-agent
+WorkingDirectory=/var/lib/zani-jenkins-agent
+LoadCredential=jenkins-agent-secret:/etc/zani/jenkins/agent/JENKINS_AGENT_SECRET
+ExecStart=/usr/bin/java -jar /opt/zani/jenkins/agent/agent.jar -url http://127.0.0.1:18081/ -name zani-backend -secret @%d/jenkins-agent-secret -webSocket -workDir /var/lib/zani-jenkins-agent
+Restart=on-failure
+RestartSec=10
+StateDirectory=zani-jenkins-agent
+StateDirectoryMode=0750
+# The agent itself is unprivileged. The reviewed deploy wrappers are the only
+# commands allowed to elevate through /etc/sudoers.d/zani-jenkins-agent.
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/zani-jenkins-agent /var/lib/zani-ci /opt/zani/application /opt/zani/frontend
+
+[Install]
+WantedBy=multi-user.target

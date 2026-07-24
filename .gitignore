@@ -1,4 +1,14 @@
 node_modules/
+code-review/output/
+.env
+.env.*
+!.env.example
+.idea/
+.claude/launch.json
 docs/superpowers/
 ai/docs/superpowers/
 .superpowers/
+**/superpowers/
+
+# 로컬 개발용 인프라(개인이 로컬에서 관리하는 docker compose 등)는 추적하지 않는다.
+infrastructure/local/
