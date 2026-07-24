@@ -1,0 +1,104 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { RoomEvent } from "livekit-client";
+import type { Participant, Room } from "livekit-client";
+
+import { useRoomConnection } from "./RoomProvider";
+import type { ParticipantTileData } from "./components/room/ParticipantTile";
+
+// 타일 배경 그라디언트용 색. identity 기준으로 결정적 배정한다.
+const TILE_COLORS = [
+  "#1cdd93",
+  "#3b82f6",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#14b8a6",
+  "#f97316",
+];
+
+function colorFor(identity: string): string {
+  let hash = 0;
+  for (let i = 0; i < identity.length; i += 1) {
+    hash = (hash * 31 + identity.charCodeAt(i)) >>> 0;
+  }
+  return TILE_COLORS[hash % TILE_COLORS.length];
+}
+
+/**
+ * 백엔드가 토큰에 심은 값만 사용한다(가이드 §2). identity·표시 이름·역할을 프론트가 만들지 않는다.
+ * 손들기는 LiveKit이 아니라 Spring WebSocket(가이드 §10) 소관이라 여기서는 false로 둔다.
+ */
+function toTileData(participant: Participant): ParticipantTileData {
+  return {
+    id: participant.identity,
+    name: participant.name || participant.identity,
+    color: colorFor(participant.identity),
+    role: participant.attributes?.role === "INSTRUCTOR" ? "instructor" : "student",
+    cameraEnabled: participant.isCameraEnabled,
+    microphoneEnabled: participant.isMicrophoneEnabled,
+    handRaised: false,
+  };
+}
+
+function snapshot(room: Room | null): ParticipantTileData[] {
+  if (!room) {
+    return [];
+  }
+  const local = room.localParticipant ? [toTileData(room.localParticipant)] : [];
+  const remotes = Array.from(room.remoteParticipants.values()).map(toTileData);
+  return [...local, ...remotes];
+}
+
+// 참가자 목록·트랙 상태에 영향을 주는 LiveKit 이벤트(가이드 §7).
+const PARTICIPANT_EVENTS: RoomEvent[] = [
+  RoomEvent.ParticipantConnected,
+  RoomEvent.ParticipantDisconnected,
+  RoomEvent.TrackPublished,
+  RoomEvent.TrackUnpublished,
+  RoomEvent.TrackSubscribed,
+  RoomEvent.TrackUnsubscribed,
+  RoomEvent.TrackMuted,
+  RoomEvent.TrackUnmuted,
+  RoomEvent.LocalTrackPublished,
+  RoomEvent.LocalTrackUnpublished,
+  RoomEvent.ParticipantAttributesChanged,
+];
+
+export type UseRoomParticipantsResult = {
+  participants: ParticipantTileData[];
+  localParticipantId: string | null;
+};
+
+/**
+ * RoomProvider가 제공하는 실제 LiveKit room을 구독해 참가자·트랙 상태를
+ * ParticipantTileData 목록으로 노출한다. 관련 이벤트마다 목록을 재계산하고,
+ * 언마운트/room 교체 시 리스너를 모두 해제한다.
+ */
+export function useRoomParticipants(): UseRoomParticipantsResult {
+  const { room } = useRoomConnection();
+  const [participants, setParticipants] = useState<ParticipantTileData[]>([]);
+
+  useEffect(() => {
+    const update = () => setParticipants(snapshot(room));
+    // 초기 동기화를 effect 본문 밖(지연)으로 빼서 렌더-이펙트 동기 setState를 피한다.
+    const initial = setTimeout(update, 0);
+
+    if (!room) {
+      return () => clearTimeout(initial);
+    }
+
+    PARTICIPANT_EVENTS.forEach((event) => room.on(event, update));
+    return () => {
+      clearTimeout(initial);
+      PARTICIPANT_EVENTS.forEach((event) => room.off(event, update));
+    };
+  }, [room]);
+
+  return {
+    participants,
+    localParticipantId: room?.localParticipant?.identity ?? null,
+  };
+}

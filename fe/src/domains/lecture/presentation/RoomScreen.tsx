@@ -10,7 +10,7 @@ import {
   publicMessages,
 } from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
-import type { ParticipantTileData } from "./components/room/ParticipantTile";
+import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -34,6 +34,7 @@ export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
 
 function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<RoomScreenProps, "roomTitle">) {
   const { connectionState, retry } = useRoomConnection();
+  const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
@@ -47,16 +48,9 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
   const isInstructor = role === "instructor";
   const meId = isInstructor ? "p0" : "p7";
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  const tileParticipants: ParticipantTileData[] = list.map((participant) => ({
-    id: participant.id,
-    name: participant.name,
-    color: participant.color,
-    role: participant.host ? "instructor" : "student",
-    cameraEnabled: participant.cam,
-    microphoneEnabled: participant.mic,
-    handRaised: participant.hand,
-  }));
-  const count = list.length;
+  // 갤러리 그리드와 참여자 수는 실제 room 참가자(useRoomParticipants)를 사용한다.
+  // 사이드 패널 people/chat, 하단 제어바는 아직 fixture 기반(각각 WebSocket·57 소관).
+  const count = tileParticipants.length;
   const messages = chatTab === "public" ? publicMessages : dmMessages;
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
@@ -146,7 +140,7 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
             {view === "gallery" ? (
               <ParticipantGrid
                 participants={tileParticipants}
-                currentParticipantId={meId}
+                currentParticipantId={localParticipantId ?? undefined}
                 isInstructor={isInstructor}
               />
             ) : (
