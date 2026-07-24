@@ -11,7 +11,7 @@ import onnxruntime as ort
 import torch
 
 from zani_ai.engagement.contracts import LABELS
-from zani_ai.engagement.features import SCHEMA_NAME
+from zani_ai.engagement.features import SCHEMA_NAME, SCHEMAS, FeatureSchema, get_schema
 from zani_ai.engagement.model import EngagementTransformer
 
 
@@ -39,6 +39,19 @@ class DeploymentMetadata:
             sample_fps=10.0,
         )
 
+    @classmethod
+    def for_schema(cls, schema: FeatureSchema) -> DeploymentMetadata:
+        return cls(
+            schema=schema.name,
+            input_name="tokens",
+            input_shape=("batch", 20, schema.token_feature_count),
+            output_name="logits",
+            labels=LABELS,
+            window_seconds=10.0,
+            segment_count=20,
+            sample_fps=10.0,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ExportResult:
@@ -54,8 +67,11 @@ def export_onnx(
     opset_version: int = 18,
 ) -> ExportResult:
     """Export only after ONNX structure and numerical parity both validate."""
-    if metadata.schema != SCHEMA_NAME or metadata.input_shape[1:] != (20, 98):
-        raise ValueError("deployment metadata does not match mediapipe_98_v1")
+    if metadata.schema not in SCHEMAS:
+        raise ValueError(f"unknown deployment schema: {metadata.schema}")
+    seg, dim = metadata.input_shape[1:]
+    if (seg, dim) != (20, get_schema(metadata.schema).token_feature_count):
+        raise ValueError("deployment metadata does not match its declared schema")
     if tuple(metadata.labels) != LABELS:
         raise ValueError("deployment label order does not match the training contract")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -63,7 +79,7 @@ def export_onnx(
     metadata_path = output_dir / "engagement.metadata.json"
     temporary_model = output_dir / ".engagement.onnx.tmp"
     temporary_metadata = output_dir / ".engagement.metadata.json.tmp"
-    example = torch.arange(20 * 98, dtype=torch.float32).reshape(1, 20, 98) / 1000
+    example = torch.arange(seg * dim, dtype=torch.float32).reshape(1, seg, dim) / 1000
     model = model.cpu().eval()
     try:
         batch = torch.export.Dim("batch", min=1)
