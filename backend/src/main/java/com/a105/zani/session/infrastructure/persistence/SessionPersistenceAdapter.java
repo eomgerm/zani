@@ -35,6 +35,11 @@ public class SessionPersistenceAdapter implements SessionRepository {
     }
 
     @Override
+    public Optional<Session> findById(Long id) {
+        return sessionJpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<Session> findByInviteCode(String inviteCode) {
         return sessionJpaRepository.findByInviteCode(inviteCode).map(mapper::toDomain);
     }

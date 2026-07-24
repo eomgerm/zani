@@ -106,6 +106,11 @@ class CreateSessionConcurrencyTest {
         }
 
         @Override
+        public java.util.Optional<Session> findById(Long id) {
+            return java.util.Optional.ofNullable(store.get(id));
+        }
+
+        @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))

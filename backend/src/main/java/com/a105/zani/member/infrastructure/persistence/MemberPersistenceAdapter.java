@@ -35,6 +35,11 @@ public class MemberPersistenceAdapter implements MemberRepository {
     }
 
     @Override
+    public Optional<Member> findById(Long id) {
+        return memberJpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<Member> findByGoogleSubject(String googleSubject) {
         return memberJpaRepository.findByGoogleSubject(googleSubject).map(mapper::toDomain);
     }

@@ -74,6 +74,11 @@ class SessionJoinServiceTest {
         }
 
         @Override
+        public Optional<Session> findById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.ofNullable(byInviteCode.get(inviteCode));
         }

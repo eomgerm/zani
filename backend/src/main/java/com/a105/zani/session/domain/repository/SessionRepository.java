@@ -8,5 +8,7 @@ public interface SessionRepository {
 
     Session save(Session session);
 
+    Optional<Session> findById(Long id);
+
     Optional<Session> findByInviteCode(String inviteCode);
 }

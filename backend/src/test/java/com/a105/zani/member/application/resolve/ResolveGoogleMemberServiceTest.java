@@ -33,7 +33,9 @@ class ResolveGoogleMemberServiceTest {
         assertEquals("User", result.displayName());
         assertEquals("https://example.com/pic.png", result.profileImageUrl());
         assertEquals(1, repository.saveCount());
-        assertEquals(GOOGLE_SUBJECT, repository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().googleSubject());
+        assertEquals(
+                GOOGLE_SUBJECT,
+                repository.findByGoogleSubject(GOOGLE_SUBJECT).orElseThrow().googleSubject());
     }
 
     @Test
@@ -73,6 +75,11 @@ class ResolveGoogleMemberServiceTest {
         }
 
         @Override
+        public Optional<Member> findById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             return Optional.ofNullable(membersByGoogleSubject.get(googleSubject));
         }
@@ -83,9 +90,8 @@ class ResolveGoogleMemberServiceTest {
     }
 
     /**
-     * Simulates another request already having inserted the row: the first
-     * {@code findByGoogleSubject} misses, {@code save} then loses the race, and the
-     * follow-up {@code findByGoogleSubject} must see the winner.
+     * Simulates another request already having inserted the row: the first {@code findByGoogleSubject} misses,
+     * {@code save} then loses the race, and the follow-up {@code findByGoogleSubject} must see the winner.
      */
     private static class RacingMemberRepository implements MemberRepository {
 
@@ -100,6 +106,11 @@ class ResolveGoogleMemberServiceTest {
         public Member save(Member member) {
             saveAttempted = true;
             throw new DuplicateGoogleSubjectException(new IllegalStateException("duplicate"));
+        }
+
+        @Override
+        public Optional<Member> findById(Long id) {
+            return Optional.empty();
         }
 
         @Override

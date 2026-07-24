@@ -18,7 +18,6 @@ import com.a105.zani.member.application.resolve.ResolveGoogleMemberResult;
 import com.a105.zani.member.application.resolve.ResolveGoogleMemberUseCase;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GoogleLoginServiceTest {
@@ -99,8 +98,10 @@ class GoogleLoginServiceTest {
 
     private static class RecordingTokenProvider implements TokenProvider {
 
-        private final IssuedToken accessToken = new IssuedToken("access-token", Instant.now().plusSeconds(3600));
-        private final IssuedToken refreshToken = new IssuedToken("refresh-token", Instant.now().plusSeconds(2_592_000));
+        private final IssuedToken accessToken =
+                new IssuedToken("access-token", Instant.now().plusSeconds(3600));
+        private final IssuedToken refreshToken =
+                new IssuedToken("refresh-token", Instant.now().plusSeconds(2_592_000));
         private String accessTokenSubject;
         private String refreshTokenSubject;
         private String refreshTokenId;
