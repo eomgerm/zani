@@ -6,7 +6,7 @@ import random
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import numpy as np
 import torch
@@ -277,17 +277,74 @@ def _class_weights(dataset: CachedFeatureDataset, device: torch.device) -> Tenso
     return torch.as_tensor(weights, dtype=torch.float32, device=device)
 
 
+class Objective(Protocol):
+    """Training objective: loss + label/probability decoding for a model head."""
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor: ...
+
+    def predict(self, out: Tensor) -> Tensor: ...
+
+    def class_probs(self, out: Tensor) -> Tensor: ...
+
+
+class SoftmaxObjective:
+    """Standard 4-way classification objective (E0/E0-A behavior)."""
+
+    def __init__(self, weight: Tensor | None = None) -> None:
+        self.criterion = nn.CrossEntropyLoss(weight=weight)
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        return self.criterion(out, labels)
+
+    def predict(self, out: Tensor) -> Tensor:
+        return out.argmax(dim=1)
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        return out.softmax(dim=1)
+
+
+class CoralObjective:
+    """CORAL ordinal objective: k=num_classes-1 cumulative threshold logits."""
+
+    def __init__(self, num_classes: int = 4) -> None:
+        self.k = num_classes - 1
+
+    def _targets(self, labels: Tensor) -> Tensor:
+        j = torch.arange(self.k, device=labels.device).unsqueeze(0)
+        return (labels.unsqueeze(1) > j).float()  # [B,k], 1[y>j]
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        return nn.functional.binary_cross_entropy_with_logits(out, self._targets(labels))
+
+    def predict(self, out: Tensor) -> Tensor:
+        return (out > 0).sum(dim=1).long()  # count sigmoid(z)>0.5
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        pg = torch.sigmoid(out)  # P(y>k) [B,k]
+        first = 1 - pg[:, :1]
+        mid = pg[:, :-1] - pg[:, 1:]
+        last = pg[:, -1:]
+        p = torch.cat([first, mid, last], dim=1).clamp_min(0)
+        return p / p.sum(dim=1, keepdim=True)
+
+
+def make_objective(config: ModelConfig, class_weights: Tensor | None = None) -> Objective:
+    if config.head == "coral":
+        return CoralObjective(config.num_classes)
+    return SoftmaxObjective(weight=class_weights)
+
+
 def _train_epoch(
     model: EngagementTransformer,
     loader: DataLoader[tuple[Tensor, Tensor]],
     optimizer: torch.optim.Optimizer,
-    criterion: nn.Module,
+    objective: Objective,
     device: torch.device,
 ) -> None:
     model.train()
     for tokens, labels in loader:
         optimizer.zero_grad(set_to_none=True)
-        loss = criterion(model(tokens.to(device)), labels.to(device))
+        loss = objective.loss(model(tokens.to(device)), labels.to(device))
         loss.backward()
         optimizer.step()
 
@@ -298,13 +355,14 @@ def evaluate_model(
     device: torch.device,
 ) -> EvaluationMetrics:
     model.eval()
+    objective = make_objective(model.config)
     expected: list[int] = []
     predicted: list[int] = []
     with torch.inference_mode():
         for tokens, labels in loader:
             logits = model(tokens.to(device))
             expected.extend(labels.tolist())
-            predicted.extend(logits.argmax(dim=1).cpu().tolist())
+            predicted.extend(objective.predict(logits).cpu().tolist())
     report = classification_report(
         expected,
         predicted,
@@ -355,7 +413,9 @@ def load_checkpoint(path: Path, device: str = "cpu") -> EngagementTransformer:
         get_schema(checkpoint_schema)
     except ValueError as error:
         raise ValueError(f"checkpoint schema is unknown: {checkpoint_schema!r}") from error
-    config = ModelConfig(**cast(dict[str, Any], checkpoint["model_config"]))
+    cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
+    cfg_dict.setdefault("head", "softmax")
+    config = ModelConfig(**cfg_dict)
     model = EngagementTransformer(
         torch.as_tensor(checkpoint["feature_mean"]),
         torch.as_tensor(checkpoint["feature_std"]),
@@ -401,7 +461,9 @@ def train_model(
         torch.from_numpy(statistics.mean), torch.from_numpy(statistics.std), config=config.model
     ).to(device)
     weights = _class_weights(datasets.train, device) if config.use_class_weights else None
-    criterion = nn.CrossEntropyLoss(weight=weights)
+    objective = make_objective(
+        config.model, class_weights=weights if config.model.head == "softmax" else None
+    )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     train_loader = _loader(datasets.train, config, shuffle=True)
     valid_loader = _loader(datasets.valid, config, shuffle=False)
@@ -411,7 +473,7 @@ def train_model(
     stale_epochs = 0
     best_validation: EvaluationMetrics | None = None
     for epoch in range(config.max_epochs):
-        _train_epoch(model, train_loader, optimizer, criterion, device)
+        _train_epoch(model, train_loader, optimizer, objective, device)
         validation = evaluate_model(model, valid_loader, device)
         if progress is not None:
             progress(epoch, validation)
@@ -471,13 +533,17 @@ def train_model(
 
 
 __all__ = [
+    "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",
+    "Objective",
+    "SoftmaxObjective",
     "TrainingConfig",
     "TrainingResult",
     "compute_feature_statistics",
     "evaluate_model",
     "load_checkpoint",
+    "make_objective",
     "train_model",
     "validate_manifest_completion",
 ]
