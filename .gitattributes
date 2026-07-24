@@ -6,3 +6,7 @@
 /infrastructure/jenkins/sudoers-* text eol=lf
 /infrastructure/jenkins/tests/*.sh text eol=lf
 /infrastructure/jenkins/systemd/*.service text eol=lf
+/infrastructure/media/*.sh text eol=lf
+/infrastructure/media/*.py text eol=lf
+/infrastructure/media/tests/*.sh text eol=lf
+/infrastructure/media/tests/*.py text eol=lf
