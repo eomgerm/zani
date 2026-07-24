@@ -17,13 +17,21 @@ class ModelConfig:
     mlp_dim: int = 128
     dropout: float = 0.3
     num_classes: int = 4
+    head: str = "softmax"  # "softmax" | "coral"
 
     def __post_init__(self) -> None:
         if self.d_model % self.nhead:
             raise ValueError("d_model must be divisible by nhead")
+        if self.head not in ("softmax", "coral"):
+            raise ValueError("head must be 'softmax' or 'coral'")
 
-    def to_dict(self) -> dict[str, int | float]:
-        return asdict(self)
+    def to_dict(self) -> dict[str, int | float | str]:
+        data = asdict(self)
+        if data["head"] == "softmax":
+            # Omit when default so the E0/E0-A configuration dict (and its
+            # frozen hash) stays byte-identical to the pre-CORAL schema.
+            del data["head"]
+        return data
 
 
 class EngagementTransformer(nn.Module):
@@ -66,18 +74,34 @@ class EngagementTransformer(nn.Module):
         self.encoder = nn.TransformerEncoder(
             layer, num_layers=self.config.num_layers, enable_nested_tensor=False
         )
-        self.classifier = nn.Sequential(
-            nn.Linear(self.config.d_model, self.config.mlp_dim),
-            nn.ReLU(),
-            nn.Dropout(self.config.dropout),
-            nn.Linear(self.config.mlp_dim, self.config.num_classes),
-        )
+        if self.config.head == "softmax":
+            # Unchanged submodule structure/keys so existing E0/E0-A
+            # checkpoints (state_dict keys `classifier.0.*`, `classifier.3.*`)
+            # still load.
+            self.classifier = nn.Sequential(
+                nn.Linear(self.config.d_model, self.config.mlp_dim),
+                nn.ReLU(),
+                nn.Dropout(self.config.dropout),
+                nn.Linear(self.config.mlp_dim, self.config.num_classes),
+            )
+        else:  # coral
+            self.classifier_shared = nn.Sequential(
+                nn.Linear(self.config.d_model, self.config.mlp_dim),
+                nn.ReLU(),
+                nn.Dropout(self.config.dropout),
+            )
+            self.coral_fc = nn.Linear(self.config.mlp_dim, 1)
+            self.coral_bias = nn.Parameter(torch.zeros(self.config.num_classes - 1))
 
     def forward(self, tokens: Tensor) -> Tensor:
         normalized = (tokens - self.feature_mean) / self.feature_std
         embedded = self.input_projection(normalized) + self.position_embedding
         encoded = self.encoder(embedded)
-        return cast(Tensor, self.classifier(encoded.amax(dim=1)))
+        pooled = encoded.amax(dim=1)
+        if self.config.head == "softmax":
+            return cast(Tensor, self.classifier(pooled))
+        feat = self.classifier_shared(pooled)
+        return cast(Tensor, self.coral_fc(feat) + self.coral_bias)
 
 
 __all__ = ["EngagementTransformer", "ModelConfig"]
