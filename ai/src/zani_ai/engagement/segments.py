@@ -25,6 +25,8 @@ def aggregate_segments(
     window_seconds: float = 10.0,
     segment_count: int = 20,
     minimum_valid_frames: int = 3,
+    raw_feature_count: int = RAW_FEATURE_COUNT,
+    token_feature_count: int = TOKEN_FEATURE_COUNT,
 ) -> NDArray[np.float32]:
     """Aggregate raw frame features into per-segment mean and population std tokens."""
     if window_seconds <= 0 or segment_count <= 0 or minimum_valid_frames <= 0:
@@ -34,8 +36,8 @@ def aggregate_segments(
     for frame in frames:
         if frame.values is None or not 0 <= frame.timestamp_seconds < window_seconds:
             continue
-        if frame.values.shape != (RAW_FEATURE_COUNT,) or not np.isfinite(frame.values).all():
-            raise ValueError(f"frame features must have shape ({RAW_FEATURE_COUNT},) and be finite")
+        if frame.values.shape != (raw_feature_count,) or not np.isfinite(frame.values).all():
+            raise ValueError(f"frame features must have shape ({raw_feature_count},) and be finite")
         index = min(int(frame.timestamp_seconds / segment_seconds), segment_count - 1)
         buckets[index].append(frame.values)
 
@@ -50,7 +52,7 @@ def aggregate_segments(
         values = np.stack(bucket)
         tokens.append(np.concatenate((values.mean(axis=0), values.std(axis=0))))
     result = np.asarray(tokens, dtype=np.float32)
-    expected_shape = (segment_count, TOKEN_FEATURE_COUNT)
+    expected_shape = (segment_count, token_feature_count)
     if result.shape != expected_shape:
         raise RuntimeError(f"expected token shape {expected_shape}, got {result.shape}")
     return result
