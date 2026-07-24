@@ -35,13 +35,13 @@ Architecture (`EngagementSTGCN.forward`, `[B,3,100,78] -> [B,4]`):
       1), padding=((temporal_kernel-1)//2, 0))`, sliding over the time axis
       only (kernel width 1 over nodes), same-padded so `T` is preserved.
    c. `BatchNorm2d(out)`.
-   d. Residual add: `nn.Identity()` when `in_channels == out_channels`,
-      otherwise a `Conv2d(in_channels, out_channels, kernel_size=1)`
-      projection of the block's input -- added to the normalized temporal
-      output *before* the final ReLU (standard ST-GCN residual placement).
-      Because the first block already changes channel count (3 -> 64), it
-      also gets the 1x1-conv residual branch; only blocks where consecutive
-      `channels` entries are equal would fall back to the identity branch.
+   d. Residual add (blocks 2 and 3 only): when enabled, `nn.Identity()` when
+      `in_channels == out_channels`, otherwise a `Conv2d(in_channels,
+      out_channels, kernel_size=1)` projection of the block's input -- added
+      to the normalized temporal output *before* the final ReLU (standard
+      ST-GCN residual placement). The first block (block 1, 3 -> 64 channels)
+      has no residual path; residuals are applied only to blocks 2 and 3
+      (64 -> 128 -> 256).
    e. ReLU, then `Dropout(dropout)`.
 3. Global average pool over both time and node axes (`x.mean(dim=(2, 3))`,
    a plain reduction -- deterministic and allocation-light) -> `[B, 256]`.
@@ -108,7 +108,7 @@ class SpatialGraphConv(nn.Module):
 
 
 class STGCNBlock(nn.Module):
-    """One spatial-graph-conv + temporal-conv ST-GCN block with residual."""
+    """One spatial-graph-conv + temporal-conv ST-GCN block with optional residual."""
 
     def __init__(
         self,
@@ -117,6 +117,7 @@ class STGCNBlock(nn.Module):
         num_partitions: int,
         temporal_kernel: int,
         dropout: float,
+        residual: bool = True,
     ) -> None:
         super().__init__()
         self.spatial_conv = SpatialGraphConv(in_channels, out_channels, num_partitions)
@@ -127,18 +128,23 @@ class STGCNBlock(nn.Module):
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout(dropout)
-        self.residual: nn.Module
-        if in_channels == out_channels:
-            self.residual = nn.Identity()
+        self.has_residual = residual
+        self.residual: nn.Module | None
+        if residual:
+            if in_channels == out_channels:
+                self.residual = nn.Identity()
+            else:
+                self.residual = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         else:
-            self.residual = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+            self.residual = None
 
     def forward(self, x: Tensor, partitions: Tensor) -> Tensor:
-        residual = self.residual(x)
         out = self.spatial_conv(x, partitions)
         out = self.temporal_conv(out)
         out = self.bn(out)
-        out = out + residual
+        if self.has_residual and self.residual is not None:
+            residual = self.residual(x)
+            out = out + residual
         out = self.relu(out)
         out = self.dropout(out)
         return out
@@ -172,6 +178,7 @@ class EngagementSTGCN(nn.Module):
                     self.config.num_partitions,
                     self.config.temporal_kernel,
                     self.config.dropout,
+                    residual=(i >= 1),
                 )
                 for i in range(len(self.config.channels))
             ]
