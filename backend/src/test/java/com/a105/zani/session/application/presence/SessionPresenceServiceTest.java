@@ -137,6 +137,15 @@ class SessionPresenceServiceTest {
     }
 
     @Test
+    void 강사_반복_이탈에도_유예_마감시각은_처음_값을_유지한다() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED); // T0 → 마감 T0+5
+        clock.setInstant(T0.plus(Duration.ofMinutes(2)));
+        heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED); // 유예 진행 중이라 갱신 안 됨
+
+        assertEquals(Optional.of(T0.plus(Duration.ofMinutes(5))), presencePort.instructorGraceDeadline(SESSION_ID));
+    }
+
+    @Test
     void 강사가_유예_만료_후_뒤늦게_접속해도_세션은_종료된다() {
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
         clock.setInstant(T0.plus(Duration.ofMinutes(6)));
@@ -205,7 +214,8 @@ class SessionPresenceServiceTest {
 
         @Override
         public void startInstructorGrace(long sessionId, Instant deadline, Duration ttl) {
-            grace.put(sessionId, deadline);
+            // 실제 어댑터의 SETNX 시맨틱을 반영: 진행 중인 유예가 없을 때만 기록한다.
+            grace.putIfAbsent(sessionId, deadline);
         }
 
         @Override

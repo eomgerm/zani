@@ -45,7 +45,8 @@ public class SessionPresenceRedisAdapter implements SessionPresencePort {
     @Override
     public void startInstructorGrace(long sessionId, Instant deadline, Duration ttl) {
         try {
-            redisTemplate.opsForValue().set(graceKey(sessionId), Long.toString(deadline.toEpochMilli()), ttl);
+            // 진행 중인 유예가 없을 때만 마감 시각을 심는다(SETNX, 원자적). 반복·동시 이탈로 마감 시각이 갱신되지 않도록 한다.
+            redisTemplate.opsForValue().setIfAbsent(graceKey(sessionId), Long.toString(deadline.toEpochMilli()), ttl);
         } catch (DataAccessException exception) {
             throw new SessionPresenceUnavailableException(exception);
         }

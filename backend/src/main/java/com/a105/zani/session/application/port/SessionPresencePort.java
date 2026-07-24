@@ -16,7 +16,10 @@ public interface SessionPresencePort {
     /** 참가자 presence 키를 제거한다(연결 종료·재연결 시도). */
     void clearPresence(long sessionId, long participantId);
 
-    /** 강사 유예 마감 시각을 기록한다. 유예 창이 없을 때만 시작하도록 호출부가 제어한다. */
+    /**
+     * 강사 유예를 시작한다. 진행 중인 유예가 없을 때만 마감 시각을 기록하는 원자적 연산(SETNX 계열)이라, 강사가 동시에 여러 연결로 끊겨도 마감 시각이 갱신되지 않는다. 이미 유예가 진행 중이면 아무
+     * 것도 하지 않는다.
+     */
     void startInstructorGrace(long sessionId, Instant deadline, Duration ttl);
 
     /** 강사 유예 창을 제거한다(복귀 또는 종료 처리 후). */

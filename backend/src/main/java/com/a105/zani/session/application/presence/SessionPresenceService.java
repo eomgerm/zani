@@ -83,10 +83,8 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         // RECONNECTING / DISCONNECTED: 현재 접속 상태가 아니다.
         presencePort.clearPresence(sessionId, participantId);
         if (role == SessionParticipantRole.INSTRUCTOR) {
-            // 이미 진행 중인 유예가 있으면 마감 시각을 유지한다(반복 이탈로 유예가 리셋되지 않도록).
-            if (presencePort.instructorGraceDeadline(sessionId).isEmpty()) {
-                presencePort.startInstructorGrace(sessionId, clock.instant().plus(INSTRUCTOR_GRACE), GRACE_KEY_TTL);
-            }
+            // 유예 시작은 포트가 원자적으로 "없을 때만" 처리한다(반복·동시 이탈로 마감 시각이 갱신되지 않도록).
+            presencePort.startInstructorGrace(sessionId, clock.instant().plus(INSTRUCTOR_GRACE), GRACE_KEY_TTL);
             return ReconnectStatus.GRACE_PERIOD;
         }
         return ReconnectStatus.DISCONNECTED;
