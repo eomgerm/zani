@@ -355,10 +355,34 @@ def _save_raw_clip(
                 source_fingerprint=np.asarray(fingerprint),
                 extraction_fingerprint=np.asarray(extraction_fingerprint),
             )
-        temporary.replace(feature_path)
+        _replace_with_retry(temporary, feature_path)
     finally:
         temporary.unlink(missing_ok=True)
     return RawIncludedClip(record.clip_id, record.split, feature_path, fingerprint)
+
+
+def _replace_with_retry(temporary: Path, path: Path) -> None:
+    """Atomically replace ``path`` with ``temporary``, retrying transient Windows locks.
+
+    On Windows, an antivirus/search-indexer/OneDrive handle on the destination can make
+    ``os.replace`` fail intermittently with PermissionError (WinError 5) or a sharing
+    violation (WinError 32) even though nothing in this process holds the file. High-frequency
+    rewrites (the cache-scan manifest snapshots and the per-clip npz writes) make a single
+    transient failure likely, so we retry with a short bounded backoff before giving up.
+    """
+    delays = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
+    for attempt, delay in enumerate(delays):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            time.sleep(delay)
+        except OSError as error:
+            # WinError 32 (sharing violation) surfaces as OSError; retry it too.
+            if getattr(error, "winerror", None) not in (5, 32):
+                raise
+            time.sleep(delay)
+    temporary.replace(path)
 
 
 def _write_raw_manifest(raw_root: Path, manifest: RawManifest) -> None:
@@ -370,7 +394,7 @@ def _write_raw_manifest(raw_root: Path, manifest: RawManifest) -> None:
             json.dumps(manifest.to_json_dict(raw_root), ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        temporary.replace(path)
+        _replace_with_retry(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
 
