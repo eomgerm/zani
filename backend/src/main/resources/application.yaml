@@ -44,6 +44,13 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+livekit:
+  url: ${LIVEKIT_URL:}
+  api-key: ${LIVEKIT_API_KEY:}
+  api-secret: ${LIVEKIT_API_SECRET:}
+  environment: ${LIVEKIT_ENVIRONMENT:local}
+  token-ttl: ${LIVEKIT_TOKEN_TTL:PT10M}
+
 ---
 spring:
   config:

@@ -88,6 +88,11 @@ class CreateSessionServiceTest {
         }
 
         @Override
+        public java.util.Optional<Session> findById(Long id) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
             throw new UnsupportedOperationException("not needed for this test");
         }
