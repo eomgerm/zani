@@ -50,17 +50,25 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
         self.array_key = array_key
         # Default preserves the existing (20, token_feature_count) token-path check.
         self.array_shape = array_shape if array_shape is not None else (20, token_feature_count)
+        # Lazy in-memory cache: each sample's feature tensor is loaded from disk once and
+        # reused across epochs, so training is not bottlenecked on per-epoch npz I/O (keeps the
+        # GPU fed). Returns the identical tensor data, so results/determinism are unchanged.
+        self._feature_cache: list[Tensor | None] = [None] * len(entries)
 
     def __len__(self) -> int:
         return len(self.entries)
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
         entry = self.entries[index]
-        with np.load(entry.feature_path, allow_pickle=False) as cache:
-            array = np.asarray(cache[self.array_key], dtype=np.float32)
-        if array.shape != self.array_shape or not np.isfinite(array).all():
-            raise ValueError(f"invalid cached {self.array_key}: {entry.feature_path}")
-        return torch.from_numpy(array), torch.tensor(entry.label_index, dtype=torch.long)
+        cached = self._feature_cache[index]
+        if cached is None:
+            with np.load(entry.feature_path, allow_pickle=False) as cache:
+                array = np.asarray(cache[self.array_key], dtype=np.float32)
+            if array.shape != self.array_shape or not np.isfinite(array).all():
+                raise ValueError(f"invalid cached {self.array_key}: {entry.feature_path}")
+            cached = torch.from_numpy(array)
+            self._feature_cache[index] = cached
+        return cached, torch.tensor(entry.label_index, dtype=torch.long)
 
     def token_arrays(self) -> Iterator[NDArray[np.float32]]:
         for entry in self.entries:
@@ -305,6 +313,7 @@ def _loader(
         shuffle=shuffle,
         num_workers=config.num_workers,
         generator=generator,
+        pin_memory=torch.cuda.is_available(),
     )
 
 
