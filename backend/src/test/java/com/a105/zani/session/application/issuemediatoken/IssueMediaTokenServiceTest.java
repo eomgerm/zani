@@ -6,7 +6,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
-import com.a105.zani.member.application.MemberDisplayNameReader;
+import com.a105.zani.member.domain.model.Member;
+import com.a105.zani.member.domain.repository.MemberRepository;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
@@ -59,7 +60,7 @@ class IssueMediaTokenServiceTest {
         }
     };
 
-    private final MemberDisplayNameReader memberDisplayNameReader = memberId -> Optional.of("홍길동");
+    private final MemberRepository memberRepository = id -> Optional.of(Member.reconstitute(id, "홍길동"));
 
     private final LiveKitTokenPort liveKitTokenPort = request -> {
         captured.set(request);
@@ -70,8 +71,8 @@ class IssueMediaTokenServiceTest {
                 Instant.parse("2026-07-24T00:00:00Z"));
     };
 
-    private final IssueMediaTokenService service = new IssueMediaTokenService(
-            sessionRepository, participantRepository, memberDisplayNameReader, liveKitTokenPort);
+    private final IssueMediaTokenService service =
+            new IssueMediaTokenService(sessionRepository, participantRepository, memberRepository, liveKitTokenPort);
 
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
@@ -116,5 +117,17 @@ class IssueMediaTokenServiceTest {
         assertEquals("홍길동", captured.get().displayName());
         assertEquals(SessionParticipantRole.STUDENT, captured.get().role());
         assertEquals(100L, captured.get().sessionId());
+    }
+
+    @Test
+    void 표시이름이_없으면_기본값_참가자로_발급한다() {
+        session = sessionWith(SessionStatus.LIVE);
+        participant = SessionParticipant.join(456L, 100L, 7L, SessionParticipantRole.STUDENT, Instant.now());
+        IssueMediaTokenService serviceWithoutName = new IssueMediaTokenService(
+                sessionRepository, participantRepository, id -> Optional.empty(), liveKitTokenPort);
+
+        serviceWithoutName.issue(new IssueMediaTokenCommand(100L, 7L));
+
+        assertEquals("참가자", captured.get().displayName());
     }
 }

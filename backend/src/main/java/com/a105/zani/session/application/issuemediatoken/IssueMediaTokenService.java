@@ -3,7 +3,8 @@ package com.a105.zani.session.application.issuemediatoken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.a105.zani.member.application.MemberDisplayNameReader;
+import com.a105.zani.member.domain.model.Member;
+import com.a105.zani.member.domain.repository.MemberRepository;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
@@ -24,17 +25,17 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
-    private final MemberDisplayNameReader memberDisplayNameReader;
+    private final MemberRepository memberRepository;
     private final LiveKitTokenPort liveKitTokenPort;
 
     public IssueMediaTokenService(
             SessionRepository sessionRepository,
             SessionParticipantRepository participantRepository,
-            MemberDisplayNameReader memberDisplayNameReader,
+            MemberRepository memberRepository,
             LiveKitTokenPort liveKitTokenPort) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
-        this.memberDisplayNameReader = memberDisplayNameReader;
+        this.memberRepository = memberRepository;
         this.liveKitTokenPort = liveKitTokenPort;
     }
 
@@ -52,8 +53,10 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
             throw new SessionAlreadyEndedException();
         }
 
-        String displayName =
-                memberDisplayNameReader.findDisplayName(command.userId()).orElse(DEFAULT_DISPLAY_NAME);
+        String displayName = memberRepository
+                .findById(command.userId())
+                .map(Member::displayName)
+                .orElse(DEFAULT_DISPLAY_NAME);
         String identity = "p-" + participant.id();
 
         IssuedMediaToken issued =
