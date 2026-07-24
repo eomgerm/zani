@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import statistics
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -14,12 +15,16 @@ from typing import cast
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import torch
+from torch import nn
 
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
+from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
 from zani_ai.engagement.model import ModelConfig
+from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
 from zani_ai.engagement.training import (
     EvaluationMetrics,
+    FeatureStatistics,
     TrainingConfig,
     load_checkpoint,
     train_model,
@@ -39,17 +44,79 @@ class E0ExperimentResult:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentSpec:
-    """Fully describes a reproducible experiment protocol (e.g. E0, E0-A)."""
+    """Fully describes a reproducible experiment protocol (e.g. E0, E0-A, E1).
+
+    ``schema`` is a token-based ``FeatureSchema`` for the Transformer family
+    (E0/E0-A/E0-B); non-token representations (e.g. E1's ST-GCN landmark
+    sequences) have no ``FeatureSchema`` and pass ``schema=None`` together
+    with ``representation_name`` instead. Use :attr:`schema_name` to get the
+    manifest/summary schema string regardless of which one is set.
+
+    The fields below ``seeds`` are all optional and default to the existing
+    Transformer behavior, so E0/E0-A/E0-B (which only pass ``protocol``,
+    ``schema`` and ``model_config``) are completely unaffected.
+    """
 
     protocol: str
-    schema: FeatureSchema
-    model_config: ModelConfig
+    schema: FeatureSchema | None
+    model_config: ModelConfig | STGCNConfig
     seeds: tuple[int, ...] = E0_SEEDS
+    # E1 (non-Transformer) hooks; None/defaults reproduce the Transformer path.
+    representation_name: str | None = None
+    build_model: Callable[..., nn.Module] | None = None
+    needs_feature_stats: bool = True
+    learning_rate: float = 1e-4
+    batch_size: int = 32
+    max_epochs: int = 200
+    lr_step: int | None = None
+    array_key: str = "tokens"
+    array_shape: tuple[int, ...] | None = None
+
+    @property
+    def schema_name(self) -> str:
+        """The manifest/summary schema name, for token and non-token specs alike."""
+        if self.representation_name is not None:
+            return self.representation_name
+        if self.schema is None:
+            raise ValueError(f"{self.protocol} spec has neither schema nor representation_name")
+        return self.schema.name
 
 
 E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
 E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
 E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
+
+# Resolved relative to the current working directory at train time (Task 7);
+# it need not exist yet for the spec itself to be defined/imported.
+GRAPH_PATH = Path("datasets/processed/engagenet/landmark_78_v1_graph.npz")
+
+
+def build_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
+    """E1 ``TrainingConfig.build_model`` factory: loads the fixed landmark graph.
+
+    Ignores ``statistics`` (ST-GCN needs no feature normalization statistics;
+    see ``ExperimentSpec.needs_feature_stats=False`` on ``E1_SPEC``).
+    """
+    del statistics
+    _, partitions = load_graph(GRAPH_PATH)
+    return EngagementSTGCN(torch.as_tensor(partitions), STGCNConfig())
+
+
+E1_SPEC = ExperimentSpec(
+    "E1",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=GRAPH_VERSION,
+    build_model=build_stgcn_model,
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 100, 78),
+)
 
 
 def _sha256(path: Path) -> str:
@@ -90,8 +157,8 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
         raise ValueError(f"invalid feature manifest JSON: {manifest_path}") from error
     if not isinstance(payload, dict):
         raise ValueError("feature manifest must be a JSON object")
-    if payload.get("schema") != spec.schema.name:
-        raise ValueError(f"feature manifest schema must be {spec.schema.name}")
+    if payload.get("schema") != spec.schema_name:
+        raise ValueError(f"feature manifest schema must be {spec.schema_name}")
     included, excluded = validate_manifest_completion(payload)
     splits: set[str] = set()
     for index, item in enumerate(included):
@@ -144,33 +211,60 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
 
 
 def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
-    configuration: dict[str, object] = {
-        "feature_schema": spec.schema.name,
-        "input_shape": ["batch", 20, spec.schema.token_feature_count],
+    if spec.build_model is None:
+        # Transformer path (E0/E0-A/E0-B). `spec.learning_rate`/`batch_size`/
+        # `max_epochs` default to the exact literals this used to hardcode, so
+        # this dict (and its hash) is byte-identical to before for those specs.
+        assert spec.schema is not None
+        configuration: dict[str, object] = {
+            "feature_schema": spec.schema.name,
+            "input_shape": ["batch", 20, spec.schema.token_feature_count],
+            "seeds": list(spec.seeds),
+            "optimizer": "Adam",
+            "learning_rate": spec.learning_rate,
+            "batch_size": spec.batch_size,
+            "maximum_epochs": spec.max_epochs,
+            "early_stopping": {
+                "metric": "validation_macro_f1",
+                "mode": "max",
+                "patience": 20,
+            },
+            "class_weighting": False,
+            "model": {
+                **spec.model_config.to_dict(),
+                "learned_position_count": 20,
+                "pooling": "max",
+                "classifier_dimensions": [256, 128, 4],
+            },
+            "device": device,
+            "deterministic_algorithms": True,
+            "num_workers": 0,
+        }
+        if getattr(spec.model_config, "head", "softmax") == "coral":
+            configuration["loss"] = "coral_bce"
+        return configuration
+
+    # ST-GCN path (E1 and other non-token representations).
+    return {
+        "representation": spec.schema_name,
+        "model_family": "stgcn",
         "seeds": list(spec.seeds),
         "optimizer": "Adam",
-        "learning_rate": 1e-4,
-        "batch_size": 32,
-        "maximum_epochs": 200,
+        "learning_rate": spec.learning_rate,
+        "batch_size": spec.batch_size,
+        "maximum_epochs": spec.max_epochs,
+        "lr_step": spec.lr_step,
         "early_stopping": {
             "metric": "validation_macro_f1",
             "mode": "max",
             "patience": 20,
         },
         "class_weighting": False,
-        "model": {
-            **spec.model_config.to_dict(),
-            "learned_position_count": 20,
-            "pooling": "max",
-            "classifier_dimensions": [256, 128, 4],
-        },
+        "model": spec.model_config.to_dict(),
         "device": device,
         "deterministic_algorithms": True,
         "num_workers": 0,
     }
-    if spec.model_config.head == "coral":
-        configuration["loss"] = "coral_bce"
-    return configuration
 
 
 def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
@@ -226,7 +320,7 @@ def _empty_summary(
         "status": "in_progress",
         "feature_manifest": {
             "path": str(manifest_path.resolve()),
-            "schema": spec.schema.name,
+            "schema": spec.schema_name,
             "sha256": manifest_sha256,
         },
         "configuration": configuration,
@@ -503,7 +597,7 @@ def reproduce_experiment(
             epoch: int, metrics: EvaluationMetrics, _seed: int = seed
         ) -> None:
             print(
-                f"{spec.protocol} seed={_seed} epoch={epoch + 1}/200 "
+                f"{spec.protocol} seed={_seed} epoch={epoch + 1}/{spec.max_epochs} "
                 f"validation_accuracy={metrics.accuracy:.6f} "
                 f"validation_macro_f1={metrics.macro_f1:.6f}",
                 flush=True,
@@ -512,9 +606,9 @@ def reproduce_experiment(
         training_config = TrainingConfig(
             features_root=features_root,
             output_dir=seed_dir,
-            max_epochs=200,
-            batch_size=32,
-            learning_rate=1e-4,
+            max_epochs=spec.max_epochs,
+            batch_size=spec.batch_size,
+            learning_rate=spec.learning_rate,
             patience=20,
             seed=seed,
             device=device,
@@ -522,6 +616,11 @@ def reproduce_experiment(
             num_workers=0,
             deterministic=True,
             model=spec.model_config,
+            build_model=spec.build_model,
+            needs_feature_stats=spec.needs_feature_stats,
+            lr_step=spec.lr_step,
+            array_key=spec.array_key,
+            array_shape=spec.array_shape,
         )
         _assert_manifest_unchanged(
             manifest_path, manifest_sha256, f"before seed {seed} training", spec
@@ -553,6 +652,11 @@ def reproduce_experiment(
         _assert_manifest_unchanged(
             manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
         )
+        if spec.schema is None:
+            raise NotImplementedError(
+                f"{spec.protocol}: ONNX export for non-token representation "
+                f"{spec.schema_name!r} is not yet implemented"
+            )
         exported = export_onnx(model, DeploymentMetadata.for_schema(spec.schema), seed_dir / "onnx")
         _assert_manifest_unchanged(
             manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
@@ -606,7 +710,9 @@ __all__ = [
     "E0A_SPEC",
     "E0B_SPEC",
     "E0ExperimentResult",
+    "E1_SPEC",
     "ExperimentSpec",
+    "build_stgcn_model",
     "reproduce_e0",
     "reproduce_experiment",
 ]
