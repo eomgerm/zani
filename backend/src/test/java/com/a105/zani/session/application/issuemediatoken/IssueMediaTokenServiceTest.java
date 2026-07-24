@@ -80,6 +80,7 @@ class IssueMediaTokenServiceTest {
 
     @Test
     void 세션이_없으면_404_예외() {
+        participant = SessionParticipant.join(456L, 100L, 7L, SessionParticipantRole.STUDENT, Instant.now());
         session = null;
         assertThrows(
                 MediaTokenSessionNotFoundException.class, () -> service.issue(new IssueMediaTokenCommand(100L, 7L)));
@@ -87,6 +88,7 @@ class IssueMediaTokenServiceTest {
 
     @Test
     void 종료된_세션이면_409_예외() {
+        participant = SessionParticipant.join(456L, 100L, 7L, SessionParticipantRole.STUDENT, Instant.now());
         session = sessionWith(SessionStatus.ENDED);
         assertThrows(SessionAlreadyEndedException.class, () -> service.issue(new IssueMediaTokenCommand(100L, 7L)));
     }

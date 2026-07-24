@@ -41,15 +41,16 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
     @Override
     @Transactional(readOnly = true)
     public IssueMediaTokenResult issue(IssueMediaTokenCommand command) {
+        // 멤버십을 먼저 확인해 비멤버에게 세션 존재·종료 상태를 노출하지 않는다.
+        SessionParticipant participant = participantRepository
+                .findBySessionIdAndUserId(command.sessionId(), command.userId())
+                .orElseThrow(NotSessionMemberException::new);
+
         Session session =
                 sessionRepository.findById(command.sessionId()).orElseThrow(MediaTokenSessionNotFoundException::new);
         if (session.status() == SessionStatus.ENDED) {
             throw new SessionAlreadyEndedException();
         }
-
-        SessionParticipant participant = participantRepository
-                .findBySessionIdAndUserId(command.sessionId(), command.userId())
-                .orElseThrow(NotSessionMemberException::new);
 
         String displayName =
                 memberDisplayNamePort.findDisplayName(command.userId()).orElse(DEFAULT_DISPLAY_NAME);

@@ -37,4 +37,14 @@ class LiveKitTokenAdapterTest {
         // JWT는 header.payload.signature 3부분이다.
         assertEquals(3, issued.accessToken().split("\\.").length);
     }
+
+    @Test
+    void 자격증명이_비어있으면_발급을_거부한다() {
+        LiveKitTokenAdapter unconfigured =
+                new LiveKitTokenAdapter(new LiveKitProperties("wss://x", "", "", "test", Duration.ofMinutes(10)));
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalStateException.class,
+                () -> unconfigured.issue(new MediaTokenRequest("p-1", "n", SessionParticipantRole.STUDENT, 1L)));
+    }
 }
