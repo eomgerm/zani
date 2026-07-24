@@ -83,10 +83,13 @@ def _extract_raw(args: argparse.Namespace) -> int:
 def _build_features(args: argparse.Namespace) -> int:
     from zani_ai.engagement import representations
     from zani_ai.engagement.features import get_schema
-    from zani_ai.engagement.representations import TokenRepresentation
+    from zani_ai.engagement.representations import TokenRepresentation, LandmarkSequenceRepresentation
 
     contract = _load_contract(args)
-    representation = TokenRepresentation(get_schema(args.schema))
+    if args.schema == "landmark_78_v1":
+        representation = LandmarkSequenceRepresentation()
+    else:
+        representation = TokenRepresentation(get_schema(args.schema))
     manifest_path = representations.build_feature_manifest(
         args.raw_root, args.output, representation, contract
     )
@@ -311,7 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_features.add_argument("--raw-root", type=Path, required=True)
     build_features.add_argument("--output", type=Path, required=True)
     build_features.add_argument(
-        "--schema", choices=("mediapipe_98_v1", "mediapipe_132_v1"), required=True
+        "--schema", choices=("mediapipe_98_v1", "mediapipe_132_v1", "landmark_78_v1"), required=True
     )
     _add_data_options(build_features)
     build_features.set_defaults(handler=_build_features)
