@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate:types": "openapi-typescript ../backend/src/main/resources/contracts/openapi/zani.yaml -o src/shared/types/api.d.ts"
+    "generate:types": "openapi-typescript http://localhost:8080/v3/api-docs -o src/shared/types/api.d.ts"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.23",

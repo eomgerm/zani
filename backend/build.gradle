@@ -3,7 +3,6 @@ plugins {
     id 'org.springframework.boot' version '4.1.0'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'com.diffplug.spotless' version '8.8.0'
-    id 'org.springdoc.openapi-gradle-plugin' version '1.9.0'
 }
 
 group = 'com.a105'
@@ -85,14 +84,4 @@ dependencyManagement {
 
 tasks.named('test') {
     useJUnitPlatform()
-}
-
-// 코드-퍼스트 OpenAPI: 애노테이션된 코드에서 앱을 부팅해 /v3/api-docs.yaml 을 받아
-// contracts/openapi/zani.yaml 로 생성한다. 이 파일은 손으로 편집하지 않는다(생성물).
-// 부팅에는 local 프로파일 기준 MySQL/Redis 가 필요하다(기존 @SpringBootTest 와 동일 전제).
-openApi {
-    apiDocsUrl = 'http://localhost:8080/v3/api-docs.yaml'
-    outputDir = file("$projectDir/src/main/resources/contracts/openapi")
-    outputFileName = 'zani.yaml'
-    waitTimeInSeconds = 90
 }
