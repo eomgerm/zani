@@ -14,8 +14,9 @@ re-running MediaPipe. Each `Representation` declares its own `name` and
 clip in a dataset contract and writes a token-npz cache plus a manifest in
 the exact `ExtractionManifest` JSON shape `training._load_feature_datasets`
 and `experiment._validate_manifest` already consume (schema/included/
-excluded/counts/status/complete), so this is a drop-in feature root for the
-existing training and experiment code.
+excluded/counts/status/complete). Today, the manifest is a drop-in feature
+root for training and experiment only when schema is `mediapipe_98_v1`;
+schema-generalized (132D) consumption is wired in subsequent tasks.
 
 `raw_clip` design: `raw_cache.RawClip` already mirrors the raw npz keys
 field-for-field, so `Representation.build` takes a `RawClip` directly
@@ -262,12 +263,7 @@ def build_feature_manifest(
                     f"representation {representation.name} produced non-finite "
                     "token values"
                 )
-        except (
-            InvalidFrameFeaturesError,
-            InsufficientFaceCoverageError,
-            ValueError,
-            OSError,
-        ) as error:
+        except (ValueError, OSError, KeyError) as error:
             excluded.append(ExcludedClip(clip_id, split, f"{type(error).__name__}: {error}"))
             continue
         feature_path = _save_representation_tokens(
