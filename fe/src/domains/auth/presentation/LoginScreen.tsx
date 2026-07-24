@@ -1,12 +1,57 @@
-import Link from "next/link";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { LOGO_SRC } from "@/shared/ui";
+import { useAuth } from "./AuthProvider";
+import {
+  loadGoogleIdentityScript,
+  initializeGoogleSignIn,
+  renderGoogleSignInButton,
+} from "../infrastructure/googleIdentityScript";
+
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 
 /**
  * SC-01 로그인. Google 로그인 진입 히어로 화면.
- * 프로토타입에서는 로그인 버튼이 약관 동의 화면으로 이동한다.
+ * Google Identity Services 버튼으로 로그인하면 신규 회원은 약관 동의 화면으로,
+ * 기존 회원은 홈으로 이동한다.
  */
 export function LoginScreen() {
+  const router = useRouter();
+  const { loginWithGoogle } = useAuth();
+  const buttonContainerRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadGoogleIdentityScript()
+      .then(() => {
+        if (cancelled || !buttonContainerRef.current) return;
+
+        initializeGoogleSignIn(GOOGLE_CLIENT_ID, async (idToken) => {
+          try {
+            const { newMember } = await loginWithGoogle(idToken);
+            router.push(newMember ? "/terms" : "/home");
+          } catch (loginError) {
+            console.error("Google login failed:", loginError);
+            setError("로그인에 실패했습니다. 다시 시도해주세요.");
+          }
+        });
+        renderGoogleSignInButton(buttonContainerRef.current);
+      })
+      .catch((loadError) => {
+        console.error("Google Identity Services failed to load:", loadError);
+        setError("Google 로그인을 준비하지 못했습니다.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loginWithGoogle, router]);
+
   return (
     <div className="flex min-h-screen flex-col bg-[linear-gradient(120deg,#f5f6fc_0%,#e9f8f2_45%,#edfaf5_100%)]">
       {/* 상단 내비 */}
@@ -30,14 +75,9 @@ export function LoginScreen() {
           <div className="mb-[34px] bg-[linear-gradient(120deg,#42daa0,#16b276)] bg-clip-text text-[118px] font-black leading-[.92] tracking-[-4px] text-transparent">
             ZANI
           </div>
-          <div className="flex flex-wrap gap-3.5">
-            <Link
-              href="/terms"
-              className="z-btn inline-flex items-center gap-3 rounded-[14px] border border-line-muted bg-surface px-[30px] py-4 text-base text-ink shadow-[0_10px_26px_rgba(60,70,130,.12)] hover:bg-[#f6f7ff]"
-            >
-              <span className="inline-block size-[22px] rounded-full bg-[conic-gradient(#ea4335,#f2bd0e,#35cf94,#4285f4)]" />
-              Google 계정으로 시작하기
-            </Link>
+          <div className="flex flex-wrap items-center gap-3.5">
+            <div ref={buttonContainerRef} />
+            {error && <p className="text-sm text-danger">{error}</p>}
           </div>
         </div>
 

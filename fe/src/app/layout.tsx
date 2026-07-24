@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Space_Mono, Noto_Sans_KR } from "next/font/google";
+import { AuthProvider } from "@/domains/auth";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -35,7 +36,9 @@ export default function RootLayout({
       lang="ko"
       className={`${spaceGrotesk.variable} ${spaceMono.variable} ${notoSansKr.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
