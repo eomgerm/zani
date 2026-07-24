@@ -1,0 +1,48 @@
+# 로컬 개발용 의존 서비스(MySQL·Redis)만 띄운다. 백엔드 앱은 IDE/gradle로 로컬 실행한다.
+# 백엔드 `local` 프로파일 기본값과 정합: MySQL root/root, DB `zani`, Redis 무인증, 포트 3306/6379.
+# 사용법:
+#   docker compose -f infrastructure/local/compose.yaml up -d
+#   docker compose -f infrastructure/local/compose.yaml down        # 중지(데이터 유지)
+#   docker compose -f infrastructure/local/compose.yaml down -v     # 중지+데이터 삭제
+# 이 서비스가 떠 있어야 백엔드 @SpringBootTest / gradle generateOpenApiDocs 가 통과한다.
+name: zani-local
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    container_name: zani-local-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: zani
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - zani-local-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: zani-local-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - zani-local-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  zani-local-mysql-data:
+    name: zani-local-mysql-data
+  zani-local-redis-data:
+    name: zani-local-redis-data
