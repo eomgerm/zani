@@ -4,6 +4,14 @@ export { MyLecturesScreen } from "./presentation/MyLecturesScreen";
 export { ReportScreen } from "./presentation/ReportScreen";
 export { PrejoinScreen } from "./presentation/PrejoinScreen";
 export { RoomScreen } from "./presentation/RoomScreen";
+export { RoomProvider, useRoomConnection } from "./presentation/RoomProvider";
+export { useRoomReconnect } from "./presentation/useRoomReconnect";
+export type {
+  Measurability,
+  ReconnectStatus,
+  RoomReconnectState,
+  UseRoomReconnectOptions,
+} from "./presentation/useRoomReconnect";
 export { CreateSetupScreen } from "./presentation/CreateSetupScreen";
 export { NoteScreen } from "./presentation/NoteScreen";
 export { QuizScreen } from "./presentation/QuizScreen";

@@ -127,6 +127,18 @@ test('backend domains cannot import another domain infrastructure', () => {
   assert.match(findings[0].message, /다른 도메인/);
 });
 
+test('backend infrastructure entity may reference another domain infrastructure entity', () => {
+  const findings = checkFiles({
+    'backend/src/main/java/com/a105/zani/session/infrastructure/persistence/entity/SessionJpaEntity.java': [
+      'package com.a105.zani.session.infrastructure.persistence.entity;',
+      'import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;',
+      'class SessionJpaEntity {}',
+    ].join('\n'),
+  });
+
+  assert.equal(findings.length, 0);
+});
+
 test('backend application rejects global technical packages', () => {
   const findings = checkFiles({
     'backend/src/main/java/com/a105/zani/room/application/command/CreateRoomCommand.java':

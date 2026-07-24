@@ -116,11 +116,7 @@ components:
       type: string
       enum:
         - LIVE
-        - NOTE_PENDING
-        - PROCESSING
-        - COMPLETED
-        - FAILED
-        - DELETED
+        - ENDED
 
     SessionRole:
       type: string

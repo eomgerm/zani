@@ -1,5 +1,7 @@
 import { RoomScreen } from "@/domains/lecture";
 
-export default function Page() {
-  return <RoomScreen />;
+export default async function Page({ params }: { params: Promise<{ sessionId: string }> }) {
+  const { sessionId } = await params;
+
+  return <RoomScreen sessionId={sessionId} />;
 }

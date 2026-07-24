@@ -1,11 +1,13 @@
 package com.a105.zani.session.infrastructure.redis;
 
-import com.a105.zani.session.application.exception.SessionLockUnavailableException;
-import com.a105.zani.session.application.port.SessionActivationLockPort;
 import java.time.Duration;
+
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+
+import com.a105.zani.session.application.exception.SessionLockUnavailableException;
+import com.a105.zani.session.application.port.SessionActivationLockPort;
 
 @Component
 public class SessionActivationLockRedisAdapter implements SessionActivationLockPort {
@@ -22,8 +24,7 @@ public class SessionActivationLockRedisAdapter implements SessionActivationLockP
     @Override
     public boolean tryAcquire(long instructorId, Duration ttl) {
         try {
-            Boolean acquired = redisTemplate.opsForValue()
-                    .setIfAbsent(key(instructorId), LOCK_VALUE, ttl);
+            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key(instructorId), LOCK_VALUE, ttl);
             return Boolean.TRUE.equals(acquired);
         } catch (DataAccessException exception) {
             throw new SessionLockUnavailableException(exception);

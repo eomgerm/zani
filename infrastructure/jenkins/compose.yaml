@@ -1,0 +1,56 @@
+name: zani-jenkins
+
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: zani/jenkins-controller:2.568.1-jdk21
+    container_name: zani-jenkins-controller
+    restart: unless-stopped
+    environment:
+      CASC_JENKINS_CONFIG: /var/jenkins_home/jenkins.yaml
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      TZ: Asia/Seoul
+    ports:
+      - 127.0.0.1:18081:8080
+    secrets:
+      - JENKINS_ADMIN_PASSWORD
+      - GITLAB_USERNAME
+      - GITLAB_TOKEN
+      - GITLAB_WEBHOOK_TOKEN
+    volumes:
+      - /srv/zani/jenkins/controller:/var/jenkins_home
+      - ./jenkins.yaml:/var/jenkins_home/jenkins.yaml:ro
+      - ./jobs.groovy:/var/jenkins_home/jobs.groovy:ro
+    networks:
+      - controller
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent http://127.0.0.1:8080/login >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+networks:
+  controller:
+    name: zani-jenkins-controller
+
+secrets:
+  JENKINS_ADMIN_PASSWORD:
+    file: /etc/zani/jenkins/secrets/JENKINS_ADMIN_PASSWORD
+  GITLAB_USERNAME:
+    file: /etc/zani/jenkins/secrets/GITLAB_USERNAME
+  GITLAB_TOKEN:
+    file: /etc/zani/jenkins/secrets/GITLAB_TOKEN
+  GITLAB_WEBHOOK_TOKEN:
+    file: /etc/zani/jenkins/secrets/GITLAB_WEBHOOK_TOKEN

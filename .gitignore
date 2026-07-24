@@ -4,6 +4,6 @@ code-review/output/
 .env.*
 !.env.example
 .idea/
-
-# Claude Code 로컬 미리보기 설정 (개인 환경별 포트가 달라 공유하지 않음)
 .claude/launch.json
+.superpowers/
+**/superpowers/
