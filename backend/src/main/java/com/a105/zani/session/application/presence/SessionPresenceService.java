@@ -6,7 +6,6 @@ import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
@@ -40,8 +39,9 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     private final SessionPresencePort presencePort;
     private final Clock clock;
 
+    // 흔한 heartbeat 경로는 Redis 읽기·쓰기뿐이라 DB 트랜잭션으로 감싸지 않는다(잦은 heartbeat가 Redis 지연 동안
+    // DB 커넥션을 점유하지 않도록). 유일한 DB 쓰기인 endSession의 session 저장은 saveAndFlush로 그 자체가 원자적이다.
     @Override
-    @Transactional
     public PresenceResult record(RecordPresenceCommand command) {
         // 멤버십을 먼저 확인해 비멤버에게 세션 존재·상태를 노출하지 않는다.
         SessionParticipant participant = participantRepository
