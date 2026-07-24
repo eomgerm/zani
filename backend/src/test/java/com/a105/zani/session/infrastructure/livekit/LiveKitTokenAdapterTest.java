@@ -44,7 +44,7 @@ class LiveKitTokenAdapterTest {
                 new LiveKitTokenAdapter(new LiveKitProperties("wss://x", "", "", "test", Duration.ofMinutes(10)));
 
         org.junit.jupiter.api.Assertions.assertThrows(
-                IllegalStateException.class,
+                com.a105.zani.session.application.exception.LiveKitNotConfiguredException.class,
                 () -> unconfigured.issue(new MediaTokenRequest("p-1", "n", SessionParticipantRole.STUDENT, 1L)));
     }
 }

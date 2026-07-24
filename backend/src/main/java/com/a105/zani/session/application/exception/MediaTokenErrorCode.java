@@ -6,7 +6,8 @@ import com.a105.zani.common.error.ErrorType;
 public enum MediaTokenErrorCode implements ErrorCode {
     SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "MEDIA_TOKEN_001", "No session found for the given id"),
     NOT_SESSION_MEMBER(ErrorType.FORBIDDEN, "MEDIA_TOKEN_002", "Not a participant of this session"),
-    SESSION_ALREADY_ENDED(ErrorType.CONFLICT, "MEDIA_TOKEN_003", "Session has already ended");
+    SESSION_ALREADY_ENDED(ErrorType.CONFLICT, "MEDIA_TOKEN_003", "Session has already ended"),
+    LIVEKIT_NOT_CONFIGURED(ErrorType.SERVICE_UNAVAILABLE, "MEDIA_TOKEN_004", "LiveKit media server is not configured");
 
     private final ErrorType type;
     private final String code;
