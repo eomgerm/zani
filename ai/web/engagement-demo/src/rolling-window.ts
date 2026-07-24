@@ -10,6 +10,7 @@ const DEFAULT_OPTIONS: WindowOptions = {
 export class RollingFeatureWindow {
   readonly options: WindowOptions;
   private readonly frames: TimedFrameFeatures[] = [];
+  private startedAtMs: number | null = null;
 
   constructor(options: Partial<WindowOptions> = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
@@ -23,15 +24,15 @@ export class RollingFeatureWindow {
     if (values !== null && values.length !== RAW_FEATURE_COUNT) {
       throw new Error(`프레임 특징은 ${RAW_FEATURE_COUNT}차원이어야 합니다.`);
     }
+    this.startedAtMs ??= timestampMs;
     this.frames.push({ timestampMs, values });
     const cutoff = timestampMs - this.options.windowMs;
     while (this.frames[0] && this.frames[0].timestampMs < cutoff) this.frames.shift();
   }
 
   progress(nowMs: number): number {
-    const first = this.frames[0];
-    if (!first) return 0;
-    return Math.min(1, Math.max(0, (nowMs - first.timestampMs) / this.options.windowMs));
+    if (this.startedAtMs === null) return 0;
+    return Math.min(1, Math.max(0, (nowMs - this.startedAtMs) / this.options.windowMs));
   }
 
   tokens(nowMs: number): Float32Array | null {
@@ -75,5 +76,6 @@ export class RollingFeatureWindow {
 
   clear(): void {
     this.frames.length = 0;
+    this.startedAtMs = null;
   }
 }

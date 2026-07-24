@@ -6,7 +6,6 @@ import { createEngagementModel, type EngagementModel, type Prediction } from "./
 import { RollingFeatureWindow } from "./rolling-window";
 
 const SAMPLE_INTERVAL_MS = 100;
-const PREDICTION_INTERVAL_MS = 1_000;
 const HISTORY_LIMIT = 12;
 
 const KOREAN_LABELS: Record<string, string> = {
@@ -39,7 +38,6 @@ let faceLandmarker: BrowserFaceLandmarker | null = null;
 let stream: MediaStream | null = null;
 let animationFrame = 0;
 let lastSampleAt = -Infinity;
-let lastPredictionAt = -Infinity;
 let inferenceRunning = false;
 const featureWindow = new RollingFeatureWindow();
 const history: Prediction[] = [];
@@ -76,14 +74,17 @@ function renderPrediction(prediction: Prediction): void {
 }
 
 async function predictIfReady(timestampMs: number): Promise<void> {
-  if (!model || inferenceRunning || timestampMs - lastPredictionAt < PREDICTION_INTERVAL_MS) return;
+  if (!model || inferenceRunning) return;
   const tokens = featureWindow.tokens(timestampMs);
   if (!tokens) return;
   inferenceRunning = true;
-  lastPredictionAt = timestampMs;
+  featureWindow.clear();
+  progress.value = 0;
+  progressText.textContent = "0%";
+  setStatus("수집한 10초 구간을 판정하고 있습니다.");
   try {
     renderPrediction(await model.predict(tokens));
-    setStatus("최근 10초를 분석하고 있습니다.", "ready");
+    setStatus("판정 완료. 다음 10초 구간을 수집합니다.", "ready");
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "추론 중 오류가 발생했습니다.", "warning");
   } finally {
@@ -100,7 +101,11 @@ function syncCanvasSize(): void {
 
 function processFrame(timestampMs: number): void {
   if (!stream || !faceLandmarker) return;
-  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && timestampMs - lastSampleAt >= SAMPLE_INTERVAL_MS) {
+  if (
+    !inferenceRunning &&
+    video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+    timestampMs - lastSampleAt >= SAMPLE_INTERVAL_MS
+  ) {
     lastSampleAt = timestampMs;
     syncCanvasSize();
     const result = faceLandmarker.detect(video, timestampMs);
@@ -135,7 +140,6 @@ async function startCamera(): Promise<void> {
     cameraPlaceholder.hidden = true;
     stopButton.disabled = false;
     lastSampleAt = -Infinity;
-    lastPredictionAt = -Infinity;
     animationFrame = requestAnimationFrame(processFrame);
   } catch (error) {
     faceLandmarker?.close();
