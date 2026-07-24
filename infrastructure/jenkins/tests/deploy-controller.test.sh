@@ -21,17 +21,24 @@ assert_contains() {
 ${output}"
 }
 
-# A non-empty token file for cases that must pass the token check.
+# Non-empty token and username files for cases that must pass the credential checks.
 readonly TOKEN_OK="${TEST_ROOT}/token"
 printf 'dummy-token\n' >"${TOKEN_OK}"
+readonly USER_OK="${TEST_ROOT}/user"
+printf 'gitlab+deploy-token-1\n' >"${USER_OK}"
 
 # An empty controller root the dry run must never touch.
 readonly CTRL="${TEST_ROOT}/controller"
 mkdir -p "${CTRL}"
 
 # 1. Missing token file exits non-zero.
-if TOKEN_FILE="${TEST_ROOT}/nope" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run >/dev/null 2>&1; then
+if TOKEN_FILE="${TEST_ROOT}/nope" USER_FILE="${USER_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run >/dev/null 2>&1; then
   fail "missing token should exit non-zero"
+fi
+
+# 1b. Missing username file exits non-zero.
+if TOKEN_FILE="${TOKEN_OK}" USER_FILE="${TEST_ROOT}/nope" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run >/dev/null 2>&1; then
+  fail "missing username should exit non-zero"
 fi
 
 # 2. Unknown flag exits non-zero.
@@ -40,7 +47,7 @@ if TOKEN_FILE="${TOKEN_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --bogus >/dev/
 fi
 
 # 3. Dry run: exits 0, prints intended actions, and touches nothing.
-output="$(TOKEN_FILE="${TOKEN_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run)"
+output="$(TOKEN_FILE="${TOKEN_OK}" USER_FILE="${USER_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run)"
 assert_contains "${output}" "DRY-RUN"
 assert_contains "${output}" "${CTRL}"
 assert_contains "${output}" "compose.yaml"
@@ -53,7 +60,7 @@ fi
 if grep -qF -- "build --pull" <<<"${output}"; then
   fail "default dry run should not include a build step"
 fi
-build_output="$(TOKEN_FILE="${TOKEN_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run --build)"
+build_output="$(TOKEN_FILE="${TOKEN_OK}" USER_FILE="${USER_OK}" CONTROLLER_ROOT="${CTRL}" "${DEPLOY}" --dry-run --build)"
 assert_contains "${build_output}" "build --pull"
 
 printf 'deploy-controller tests passed\n'
