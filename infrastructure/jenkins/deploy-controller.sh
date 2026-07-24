@@ -9,6 +9,7 @@ set -Eeuo pipefail
 # Overridable for testing; defaults target the live EC2 controller.
 CONTROLLER_ROOT="${CONTROLLER_ROOT:-/opt/zani/jenkins/controller}"
 TOKEN_FILE="${TOKEN_FILE:-/etc/zani/jenkins/secrets/GITLAB_TOKEN}"
+USER_FILE="${USER_FILE:-/etc/zani/jenkins/secrets/GITLAB_USERNAME}"
 REPO_URL="${REPO_URL:-https://lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git}"
 BRANCH="${BRANCH:-dev}"
 JENKINS_URL="${JENKINS_URL:-http://127.0.0.1:18081}"
@@ -45,6 +46,7 @@ log() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [ -s "${TOKEN_FILE}" ] || die "GitLab token file missing or empty: ${TOKEN_FILE}"
+[ -s "${USER_FILE}" ] || die "GitLab username file missing or empty: ${USER_FILE}"
 
 compose_up="${DOCKER_BIN} compose -f ${CONTROLLER_ROOT}/compose.yaml up -d --force-recreate controller"
 compose_build="${DOCKER_BIN} compose -f ${CONTROLLER_ROOT}/compose.yaml build --pull controller"
@@ -59,8 +61,9 @@ if [ "${DRY_RUN}" = true ]; then
 fi
 
 # Authenticate the clone through a temporary GIT_ASKPASS helper so the token is
-# never written into the remote URL or the log. The oauth2 username comes from
-# the URL, so git only asks the helper for the password.
+# never written into the remote URL or the log. The GitLab username comes from
+# the URL (a deploy token requires its own username, not "oauth2"), so git only
+# asks the helper for the password.
 askpass="$(mktemp)"
 workdir="$(mktemp -d)"
 cleanup() { rm -f -- "${askpass}"; rm -rf -- "${workdir}"; }
@@ -68,9 +71,10 @@ trap cleanup EXIT
 printf '#!/bin/sh\ncat -- %q\n' "${TOKEN_FILE}" >"${askpass}"
 chmod +x "${askpass}"
 
+gitlab_user="$(tr -d '\r\n' < "${USER_FILE}")"
 log "Cloning ${BRANCH} (shallow)..."
 GIT_ASKPASS="${askpass}" GIT_TERMINAL_PROMPT=0 "${GIT_BIN}" clone --depth 1 --branch "${BRANCH}" \
-  "https://oauth2@${REPO_URL#https://}" "${workdir}/repo"
+  "https://${gitlab_user}@${REPO_URL#https://}" "${workdir}/repo"
 
 src="${workdir}/repo/infrastructure/jenkins"
 [ -d "${src}" ] || die "infrastructure/jenkins not found in cloned ${BRANCH}"
