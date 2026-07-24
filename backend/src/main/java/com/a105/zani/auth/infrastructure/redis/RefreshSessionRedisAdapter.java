@@ -34,6 +34,16 @@ public class RefreshSessionRedisAdapter implements RefreshSessionPort {
     }
 
     @Override
+    public void create(RefreshSession session) {
+        Duration timeToLive = Duration.between(Instant.now(), session.expiresAt());
+        try {
+            redisTemplate.opsForValue().set(key(session.subject(), session.tokenId()), session.subject(), timeToLive);
+        } catch (DataAccessException exception) {
+            throw new RefreshSessionUnavailableException(exception);
+        }
+    }
+
+    @Override
     public boolean rotate(String currentTokenId, String subject, RefreshSession replacement) {
         long timeToLiveMillis =
                 Duration.between(Instant.now(), replacement.expiresAt()).toMillis();

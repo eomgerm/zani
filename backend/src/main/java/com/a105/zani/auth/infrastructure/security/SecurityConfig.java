@@ -39,7 +39,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh", "/api/v1/auth/login/google")
                         .permitAll()
                         .requestMatchers(
                                 "/actuator/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error")

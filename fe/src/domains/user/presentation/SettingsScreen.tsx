@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, Card, MOCK_USER } from "@/shared/ui";
+import { Avatar, Card } from "@/shared/ui";
+import { useAuth } from "@/domains/auth";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -54,7 +55,8 @@ function NotifRow({
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const [name, setName] = useState<string>(MOCK_USER.name);
+  const { member } = useAuth();
+  const [name, setName] = useState<string>(member?.displayName ?? "");
   const [notifSchedule, setNotifSchedule] = useState(true);
   const [notifReport, setNotifReport] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -84,7 +86,7 @@ export function SettingsScreen() {
                   이메일 (변경 불가)
                 </label>
                 <div className="z-field-readonly rounded-[11px] px-3.5 py-3 text-sm">
-                  {MOCK_USER.email}
+                  {member?.email ?? ""}
                 </div>
               </div>
             </div>
