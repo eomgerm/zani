@@ -85,3 +85,33 @@ pipelineJob('zani-frontend-dev') {
     }
     disabled(false)
 }
+
+pipelineJob('zani-mr-review') {
+    description('Receives authenticated GitLab merge request webhooks targeting dev and runs the code-review bot, which publishes one summary comment on the merge request.')
+    triggers {
+        gitlab {
+            triggerOnPush(false)
+            triggerOnMergeRequest(true)
+            branchFilterType('NameBasedFilter')
+            includeBranchesSpec('dev')
+            excludeBranchesSpec('')
+            secretToken(webhookToken)
+        }
+    }
+    definition {
+        cpsScm {
+            scm {
+                git {
+                    remote {
+                        url('https://lab.ssafy.com/s15-webmobile1-sub1/S15P11A105.git')
+                        credentials('gitlab-zani-read')
+                    }
+                    branch('*/dev')
+                }
+            }
+            scriptPath('Jenkinsfile.review')
+            lightweight(true)
+        }
+    }
+    disabled(false)
+}

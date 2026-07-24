@@ -103,6 +103,8 @@ node code-review/bin/review.cjs --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_N
 
 CI 환경에는 `GITLAB_TOKEN`을 Jenkins Credential 또는 GitLab CI 변수로만 주입합니다. 이 예시 파일은 현재 `.gitlab-ci.yml`에 자동 포함되지 않으므로, 아직 Runner가 없는 상태에서 대기 파이프라인을 만들지 않습니다.
 
+Jenkins에서는 이 봇이 `zani-mr-review` 잡으로 이미 연결되어 있습니다. `dev`를 대상으로 하는 MR 이벤트가 오면 Jenkins가 위 명령을 자동 실행해 요약 댓글을 게시합니다. 설정과 운영자 준비 절차는 [`../infrastructure/jenkins/README.md`](../infrastructure/jenkins/README.md)의 "Merge request review"를 참고합니다. Jenkins는 댓글 게시용 `api` 스코프 토큰(`GITLAB_REVIEW_TOKEN`)과 `CLAUDE_CODE_OAUTH_TOKEN`을 Credential로 주입하며, 실행 에이전트에는 `node`와 `claude` CLI가 있어야 합니다.
+
 ## 테스트
 
 ```powershell

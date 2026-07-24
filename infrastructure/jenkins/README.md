@@ -1,6 +1,6 @@
 # Jenkins Application CI/CD
 
-This directory implements Jira `S15P11A105-33` and fixes `S15P11A105-183`. One authenticated `dev` webhook reaches a dispatcher, which queues independent backend and frontend jobs only when their tracked paths changed. The media stack remains outside this pipeline.
+This directory implements Jira `S15P11A105-33`, fixes `S15P11A105-183`, and adds merge request review for `S15P11A105-189`. One authenticated `dev` push webhook reaches a dispatcher, which queues independent backend and frontend jobs only when their tracked paths changed. A second authenticated merge request webhook runs the `code-review` bot on merge requests targeting `dev`. The media stack remains outside this pipeline.
 
 ## Safety boundaries
 
@@ -11,6 +11,7 @@ This directory implements Jira `S15P11A105-33` and fixes `S15P11A105-183`. One a
 - Agent state and workspaces live in `/var/lib/zani-jenkins-agent`; no access permission is added to the existing root-only `/srv/zani` tree.
 - The inbound-agent secret remains `root:root 0600`; systemd `LoadCredential` exposes an ephemeral read-only copy only to the running Agent service.
 - The agent can invoke only the root-owned backend and frontend `verify` and `deploy` wrapper commands.
+- The `zani-mr-review` job runs the `code-review` bot (`node` and `claude`) but never invokes a privileged wrapper. It fetches only the merge request head ref and reviews its diff; it never checks out or executes merge request code, and it runs no install step against merge request contents.
 - CI verification uses disposable MySQL and Redis containers. It never runs tests against the application databases.
 - Backend deployment recreates only `zani-backend`; frontend deployment recreates only `zani-frontend`.
 - Neither deployment recreates MySQL, Application Redis, Nginx, Jenkins, LiveKit, Media Redis, Egress, or TURN.
@@ -33,13 +34,14 @@ The first broad plugin build revealed that the unused `workflow-aggregator` and 
 
 ## Trigger model
 
-GitLab push webhooks trigger only `zani-dev-dispatch`. Polling is disabled. The public URL is limited to the exact plugin endpoint below; Jenkins UI, API, and component jobs remain loopback-only:
+GitLab push webhooks trigger only `zani-dev-dispatch`, and GitLab merge request webhooks trigger only `zani-mr-review`. Polling is disabled. The public URLs are limited to the exact plugin endpoints below; Jenkins UI, API, and component jobs remain loopback-only:
 
 ```text
 https://i15a105.p.ssafy.io/project/zani-dev-dispatch
+https://i15a105.p.ssafy.io/project/zani-mr-review
 ```
 
-The GitLab plugin validates the `X-Gitlab-Token` value against a per-job secret loaded from a Docker secret. In GitLab, enable only `Push events`, keep SSL verification enabled, and enter the same value in `Secret token`. The Nginx location template is stored in `nginx-webhook-location.conf.example`; it must be reviewed and inserted inside the existing TLS `server` block before enabling the webhook.
+The GitLab plugin validates the `X-Gitlab-Token` value against a per-job secret loaded from a Docker secret. Both jobs reuse the same `GITLAB_WEBHOOK_TOKEN`. For the dispatch webhook, enable only `Push events`. For the review webhook, enable only `Merge request events`. Keep SSL verification enabled and enter the same secret value in each webhook's `Secret token`. The Nginx location template is stored in `nginx-webhook-location.conf.example`; both exact locations must be reviewed and inserted inside the existing TLS `server` block before enabling the webhooks.
 
 The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticated push payload. The root `Jenkinsfile` is the dispatcher: it checks out the exact `gitlabAfter` commit and `classify-changes.sh` compares the webhook range. If `gitlabBefore` is unavailable, it safely falls back to the after commit's first parent instead of assuming every component changed.
 
@@ -51,6 +53,21 @@ The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticat
 | Documentation, AI, media, or unrelated paths only | No deployment job |
 
 The backend and frontend jobs have no webhook trigger. Both use `Jenkinsfile.deploy`, while each Job DSL definition fixes `COMPONENT` to its own single allowed value. The shared pipeline also checks that the Job name matches the component before selecting a hard-coded privileged wrapper. It requires a 40-character `GIT_SHA` selected by the dispatcher and verifies that it is an ancestor of `origin/dev`.
+
+## Merge request review
+
+`zani-mr-review` uses the root `Jenkinsfile.review` and runs the `code-review` bot documented in [`../../code-review/README.md`](../../code-review/README.md). The bot is the same tool developers run locally; Jenkins only invokes it automatically on merge request events.
+
+Flow:
+
+1. GitLab sends a merge request event to `/project/zani-mr-review`.
+2. The pipeline loads from the trusted `dev` branch and rejects any event whose `gitlabTargetBranch` is not `dev` or whose `gitlabMergeRequestIid` is not numeric.
+3. It checks out the review tooling from `dev`, then runs `node code-review/bin/review.cjs --base "origin/dev" --mr "<iid>" --publish`.
+4. The bot fetches only the merge request head ref, reviews its diff, and publishes one summary comment. A blocker fails the build (exit code 1); a passing review succeeds (exit code 0). Draft or already-reviewed commits are skipped by the bot itself.
+
+The pipeline never checks out or runs merge request code, so an untrusted branch cannot execute in CI. The merge request head is authenticated for the fetch through a git credential helper that reads the review token from the environment at call time; the token is never written into the remote URL or the build log.
+
+Agent prerequisites: the agent must provide `node` and the `claude` CLI on `PATH`, with outbound network access to GitLab and Claude. No new privileged wrapper is added. Because the current single agent also carries the deployment labels, a follow-up may move review to a dedicated unprivileged agent.
 
 For local administration, use SSH port forwarding without changing any SSH server configuration:
 
@@ -69,13 +86,15 @@ The following files are required and must not be committed:
 /etc/zani/jenkins/secrets/GITLAB_USERNAME
 /etc/zani/jenkins/secrets/GITLAB_TOKEN
 /etc/zani/jenkins/secrets/GITLAB_WEBHOOK_TOKEN
+/etc/zani/jenkins/secrets/GITLAB_REVIEW_TOKEN
+/etc/zani/jenkins/secrets/CLAUDE_CODE_OAUTH_TOKEN
 /etc/zani/jenkins/agent/JENKINS_AGENT_SECRET
 /etc/zani/application/runtime.env
 ```
 
-`GITLAB_TOKEN` should be a deploy token or project access token with repository read permission only. `GITLAB_WEBHOOK_TOKEN` is a separate random secret used only to authenticate incoming GitLab webhook requests. `runtime.env` contains only the currently approved frontend origin:
+`GITLAB_TOKEN` should be a deploy token or project access token with repository read permission only. `GITLAB_WEBHOOK_TOKEN` is a separate random secret used only to authenticate incoming GitLab webhook requests. `GITLAB_REVIEW_TOKEN` is used only by `zani-mr-review`; it needs the GitLab `api` scope because the bot both fetches the merge request head and posts the review comment. Keep it separate from the read-only `GITLAB_TOKEN` so the deployment credential stays read-only. `CLAUDE_CODE_OAUTH_TOKEN` authenticates the Claude Code CLI in the review job. Both new secrets are read only by `zani-mr-review`; if either is missing, only the review job fails and deployment is unaffected. `runtime.env` contains only the currently approved frontend origin:
 
-The controller secret directory is `root:root 0700`. Its four file-backed Docker secrets are `root:1000 0640`, where numeric GID `1000` is the Jenkins group in the pinned controller image. The root-only parent directory prevents ordinary host users from traversing to these files, while the non-root Jenkins process can read only the individual read-only bind mounts.
+The controller secret directory is `root:root 0700`. Its six file-backed Docker secrets are `root:1000 0640`, where numeric GID `1000` is the Jenkins group in the pinned controller image. The root-only parent directory prevents ordinary host users from traversing to these files, while the non-root Jenkins process can read only the individual read-only bind mounts.
 
 ```dotenv
 FRONTEND_ORIGIN=https://i15a105.p.ssafy.io
