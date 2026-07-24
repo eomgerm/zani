@@ -7,7 +7,8 @@ public enum AuthErrorCode implements ErrorCode {
     INVALID_REFRESH_TOKEN(ErrorType.UNAUTHORIZED, "AUTH_002", "Refresh token is invalid"),
     TOKEN_PROVIDER_FAILURE(ErrorType.INTERNAL_SERVER_ERROR, "AUTH_005", "Token processing failed"),
     REFRESH_SESSION_UNAVAILABLE(ErrorType.SERVICE_UNAVAILABLE, "AUTH_006", "Refresh session store is unavailable"),
-    REFRESH_ORIGIN_FORBIDDEN(ErrorType.FORBIDDEN, "AUTH_007", "Refresh origin forbidden");
+    REFRESH_ORIGIN_FORBIDDEN(ErrorType.FORBIDDEN, "AUTH_007", "Refresh origin forbidden"),
+    INVALID_GOOGLE_ID_TOKEN(ErrorType.UNAUTHORIZED, "AUTH_008", "Google ID token is invalid");
 
     private final ErrorType type;
     private final String code;
