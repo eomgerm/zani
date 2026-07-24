@@ -12,6 +12,7 @@ import torch
 
 from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.features import SCHEMA_NAME, SCHEMAS, FeatureSchema, get_schema
+from zani_ai.engagement.landmark_graph import GRAPH_VERSION
 from zani_ai.engagement.model import EngagementTransformer
 
 
@@ -19,7 +20,7 @@ from zani_ai.engagement.model import EngagementTransformer
 class DeploymentMetadata:
     schema: str
     input_name: str
-    input_shape: tuple[str | int, int, int]
+    input_shape: tuple[str | int, ...]
     output_name: str
     labels: tuple[str, ...]
     window_seconds: float
@@ -52,6 +53,27 @@ class DeploymentMetadata:
             sample_fps=10.0,
         )
 
+    @classmethod
+    def for_stgcn(cls) -> DeploymentMetadata:
+        """Deployment metadata for the E1 ST-GCN landmark-sequence model.
+
+        Input is a fixed ``[batch, 3, 100, 78]`` landmark-sequence tensor
+        (channel, time, node) -- see ``representations.LandmarkSequenceRepresentation``
+        and ``stgcn.EngagementSTGCN`` -- rather than the Transformer family's
+        ``[batch, 20, D]`` token sequence, so this does not go through
+        ``for_schema``/``SCHEMAS`` (which are token-schema-only).
+        """
+        return cls(
+            schema=GRAPH_VERSION,
+            input_name="sequence",
+            input_shape=("batch", 3, 100, 78),
+            output_name="logits",
+            labels=LABELS,
+            window_seconds=10.0,
+            segment_count=100,
+            sample_fps=10.0,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ExportResult:
@@ -81,18 +103,31 @@ class _CoralClassProbModule(torch.nn.Module):
 
 
 def export_onnx(
-    model: EngagementTransformer,
+    model: torch.nn.Module,
     metadata: DeploymentMetadata,
     output_dir: Path,
     *,
     opset_version: int = 18,
 ) -> ExportResult:
-    """Export only after ONNX structure and numerical parity both validate."""
-    if metadata.schema not in SCHEMAS:
-        raise ValueError(f"unknown deployment schema: {metadata.schema}")
-    seg, dim = metadata.input_shape[1:]
-    if (seg, dim) != (20, get_schema(metadata.schema).token_feature_count):
-        raise ValueError("deployment metadata does not match its declared schema")
+    """Export only after ONNX structure and numerical parity both validate.
+
+    ``model`` is either an ``EngagementTransformer`` (token schemas, e.g.
+    E0/E0-A/E0-B; ``metadata.input_shape`` is ``("batch", 20, D)``) or an
+    ``EngagementSTGCN`` (E1's landmark-sequence schema, produced by
+    :meth:`DeploymentMetadata.for_stgcn`; ``metadata.input_shape`` is
+    ``("batch", 3, 100, 78)``). The example tensor and ONNX/ORT parity check
+    below are shape-generic and apply identically to both; only the
+    declared-schema validation branches on which family ``metadata`` names.
+    """
+    if metadata.schema == GRAPH_VERSION:
+        if metadata.input_shape != ("batch", 3, 100, 78):
+            raise ValueError("deployment metadata does not match the ST-GCN landmark schema")
+    else:
+        if metadata.schema not in SCHEMAS:
+            raise ValueError(f"unknown deployment schema: {metadata.schema}")
+        seg, dim = metadata.input_shape[1:]
+        if (seg, dim) != (20, get_schema(metadata.schema).token_feature_count):
+            raise ValueError("deployment metadata does not match its declared schema")
     if tuple(metadata.labels) != LABELS:
         raise ValueError("deployment label order does not match the training contract")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -100,10 +135,20 @@ def export_onnx(
     metadata_path = output_dir / "engagement.metadata.json"
     temporary_model = output_dir / ".engagement.onnx.tmp"
     temporary_metadata = output_dir / ".engagement.metadata.json.tmp"
-    example = torch.arange(seg * dim, dtype=torch.float32).reshape(1, seg, dim) / 1000
+    shape_after_batch = metadata.input_shape[1:]
+    element_count = 1
+    for axis_size in shape_after_batch:
+        element_count *= axis_size
+    # Byte-identical to the previous `torch.arange(seg * dim).reshape(1, seg, dim)`
+    # for the 2-dim token form; generalizes to the 3-dim ST-GCN sequence form.
+    example = (
+        torch.arange(element_count, dtype=torch.float32).reshape(1, *shape_after_batch) / 1000
+    )
     model = model.cpu().eval()
     export_module: torch.nn.Module = (
-        _CoralClassProbModule(model).eval() if model.config.head == "coral" else model
+        _CoralClassProbModule(model).eval()
+        if getattr(getattr(model, "config", None), "head", None) == "coral"
+        else model
     )
     try:
         batch = torch.export.Dim("batch", min=1)
@@ -118,7 +163,12 @@ def export_onnx(
                 (example,),
                 input_names=[metadata.input_name],
                 output_names=[metadata.output_name],
-                dynamic_shapes={metadata.input_name: {0: batch}},
+                # Positional form (matching the `(example,)` args tuple) rather than a
+                # dict keyed by `metadata.input_name`: the dict form requires the key to
+                # match the wrapped module's actual `forward` parameter name (`tokens`
+                # for EngagementTransformer, but `x` for EngagementSTGCN), which
+                # `metadata.input_name` (the ONNX graph's input tensor name) need not be.
+                dynamic_shapes=({0: batch},),
                 opset_version=opset_version,
                 dynamo=True,
                 external_data=False,

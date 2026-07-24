@@ -652,12 +652,12 @@ def reproduce_experiment(
         _assert_manifest_unchanged(
             manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
         )
-        if spec.schema is None:
-            raise NotImplementedError(
-                f"{spec.protocol}: ONNX export for non-token representation "
-                f"{spec.schema_name!r} is not yet implemented"
-            )
-        exported = export_onnx(model, DeploymentMetadata.for_schema(spec.schema), seed_dir / "onnx")
+        export_metadata = (
+            DeploymentMetadata.for_stgcn()
+            if spec.schema is None
+            else DeploymentMetadata.for_schema(spec.schema)
+        )
+        exported = export_onnx(model, export_metadata, seed_dir / "onnx")
         _assert_manifest_unchanged(
             manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
         )
