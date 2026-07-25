@@ -9,10 +9,10 @@ import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
+import com.a105.zani.recording.application.exception.OrphanedTrackEgressException;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.RecordingOutboxStore;
@@ -30,17 +30,16 @@ import com.a105.zani.recording.domain.repository.RecordingRepository;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
- * 방 생성 outbox 기반 Egress 시작과 중복 방지를 담당하는 녹화 orchestrator.
+ * outbox 기반 Egress 시작과 중복 방지를 담당하는 녹화 orchestrator.
  *
- * <p>쓰기 경로(enroll/request)는 비즈니스 트랜잭션 안에서 outbox 행만 남기고, 외부(LiveKit) 호출은 릴레이가 outbox를 소비하며 수행한다. 중복 방지는 두 겹이다: dedup
- * key UNIQUE가 같은 작업의 중복 "등록"을, claim(PENDING→IN_PROGRESS 원자 전환)이 다중 인스턴스·재시작 시의 중복 "수행"을 막는다. 실패는 지수 백오프로 재시도하고 상한을 넘으면
+ * <p>쓰기 경로(request)는 비즈니스 트랜잭션 안에서 outbox 행만 남기고, 외부(LiveKit) 호출은 릴레이가 outbox를 소비하며 수행한다. 중복 방지는 두 겹이다: dedup key
+ * UNIQUE가 같은 작업의 중복 "등록"을, claim(PENDING→IN_PROGRESS 원자 전환)이 다중 인스턴스·재시작 시의 중복 "수행"을 막는다. 실패는 지수 백오프로 재시도하고 상한을 넘으면
  * FAILED로 남긴다.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RecordingOrchestrator
-        implements EnrollSessionRecordingUseCase, RequestTrackEgressUseCase, RelayRecordingOutboxUseCase {
+public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRecordingOutboxUseCase {
 
     private static final int RELAY_BATCH_SIZE = 20;
     private static final int MAX_RELAY_ATTEMPTS = 5;
@@ -55,17 +54,6 @@ public class RecordingOrchestrator
     private final TrackEgressPort trackEgressPort;
     private final RecordingRepository recordingRepository;
     private final Clock clock;
-
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void enroll(Long sessionId) {
-        // 방 생성 트랜잭션에 반드시 참여해(MANDATORY) 세션 insert와 outbox 기록의 원자성을 보장한다.
-        boolean enqueued = outboxStore.enqueue(new NewRecordingOutboxMessage(
-                sessionDedupKey(sessionId), RecordingOutboxType.SESSION_RECORDING_ENROLLED, sessionId, null));
-        if (!enqueued) {
-            log.debug("Recording already enrolled for session {}", sessionId);
-        }
-    }
 
     @Override
     @Transactional
@@ -116,6 +104,13 @@ public class RecordingOrchestrator
             try {
                 handle(message, attempt);
                 outboxStore.markCompleted(message.id());
+            } catch (OrphanedTrackEgressException orphaned) {
+                // 이미 Egress가 시작된 작업은 재시도하지 않는다(중복 Egress 방지). 발급된 egressId를 남겨 회수 가능하게 한다.
+                outboxStore.markFailed(message.id(), "orphaned egress: " + orphaned.egressId());
+                log.error(
+                        "Recording outbox {} not retried to avoid duplicate egress (egressId={})",
+                        message.dedupKey(),
+                        orphaned.egressId());
             } catch (RuntimeException exception) {
                 String error =
                         exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
@@ -144,8 +139,6 @@ public class RecordingOrchestrator
 
     private void handle(PendingRecordingOutboxMessage message, int attempt) {
         switch (message.type()) {
-            // 세션 등록 마커는 외부 호출이 없다. 녹화 수명주기의 시작점 기록이며, 이후 복구·대조 작업의 기준이 된다.
-            case SESSION_RECORDING_ENROLLED -> log.info("Recording enrolled for session {}", message.sessionId());
             case START_TRACK_EGRESS -> startTrackEgress(message, attempt);
         }
     }
@@ -156,18 +149,26 @@ public class RecordingOrchestrator
                 .start(new TrackEgressRequest(
                         message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source()))
                 .egressId();
-        recordingRepository.save(Recording.startTrack(
-                TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+        try {
+            recordingRepository.save(Recording.startTrack(
+                    TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+        } catch (RuntimeException persistFailure) {
+            // Egress는 이미 LiveKit에서 시작됐다. 이 작업을 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로
+            // 발급된 egressId를 남기고 재시도 대상에서 제외한다(대조 작업이 회수).
+            log.error(
+                    "Track egress {} started but recording row was not persisted: session={}, trackSid={}",
+                    egressId,
+                    message.sessionId(),
+                    payload.trackSid(),
+                    persistFailure);
+            throw new OrphanedTrackEgressException(egressId, persistFailure);
+        }
         log.info("Track egress {} started: session={}, trackSid={}", egressId, message.sessionId(), payload.trackSid());
     }
 
     /** 지수 백오프: 30s, 1m, 2m, 4m. */
     private static Duration retryDelay(int attempt) {
         return RETRY_BASE_DELAY.multipliedBy(1L << Math.min(attempt - 1, 4));
-    }
-
-    private static String sessionDedupKey(Long sessionId) {
-        return "session-recording:" + sessionId;
     }
 
     private static String trackDedupKey(Long sessionId, String trackSid) {
