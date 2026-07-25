@@ -9,6 +9,9 @@ public interface MediaRoomPort {
     /** 세션에 대응하는 미디어 room 이름. 서버가 규칙으로 재구성한다. */
     String roomName(Long sessionId);
 
+    /** room 이름에서 세션 ID를 복원한다. 환경 세그먼트까지 검증하므로, 같은 미디어 서버를 공유하는 다른 환경의 room은 이 배포의 세션으로 해석되지 않는다. 규칙에 맞지 않으면 비어 있다. */
+    java.util.Optional<Long> resolveSessionId(String roomName);
+
     /** 미디어 서버 접속 자격증명. */
     MediaServerCredentials credentials();
 }
