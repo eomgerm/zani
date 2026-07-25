@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
+import com.a105.zani.recording.application.exception.OrphanedTrackEgressException;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.RecordingOutboxStore;
@@ -103,6 +104,13 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
             try {
                 handle(message, attempt);
                 outboxStore.markCompleted(message.id());
+            } catch (OrphanedTrackEgressException orphaned) {
+                // 이미 Egress가 시작된 작업은 재시도하지 않는다(중복 Egress 방지). 발급된 egressId를 남겨 회수 가능하게 한다.
+                outboxStore.markFailed(message.id(), "orphaned egress: " + orphaned.egressId());
+                log.error(
+                        "Recording outbox {} not retried to avoid duplicate egress (egressId={})",
+                        message.dedupKey(),
+                        orphaned.egressId());
             } catch (RuntimeException exception) {
                 String error =
                         exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
@@ -141,8 +149,20 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                 .start(new TrackEgressRequest(
                         message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source()))
                 .egressId();
-        recordingRepository.save(Recording.startTrack(
-                TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+        try {
+            recordingRepository.save(Recording.startTrack(
+                    TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+        } catch (RuntimeException persistFailure) {
+            // Egress는 이미 LiveKit에서 시작됐다. 이 작업을 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로
+            // 발급된 egressId를 남기고 재시도 대상에서 제외한다(대조 작업이 회수).
+            log.error(
+                    "Track egress {} started but recording row was not persisted: session={}, trackSid={}",
+                    egressId,
+                    message.sessionId(),
+                    payload.trackSid(),
+                    persistFailure);
+            throw new OrphanedTrackEgressException(egressId, persistFailure);
+        }
         log.info("Track egress {} started: session={}, trackSid={}", egressId, message.sessionId(), payload.trackSid());
     }
 

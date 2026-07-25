@@ -147,6 +147,21 @@ class RecordingOrchestratorTest {
     }
 
     @Test
+    void Egress_시작_후_저장이_실패하면_재시도하지_않고_egressId를_남긴다() {
+        // 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로, 이 작업은 즉시 FAILED로 종결돼야 한다.
+        recordings.failSave = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_orphan"));
+
+        orchestrator.relayPendingOutbox();
+        outbox.makeAllDueNow();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.requests.size());
+        assertEquals("FAILED", outbox.statusOf("track:100:TR_orphan"));
+        assertTrue(outbox.errorOf("track:100:TR_orphan").contains("EG_1"));
+    }
+
+    @Test
     void Egress_실패는_백오프와_함께_재시도로_남긴다() {
         egressPort.failWith = new IllegalStateException("livekit down");
         orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_f"));
@@ -190,6 +205,7 @@ class RecordingOrchestratorTest {
         final PendingRecordingOutboxMessage message;
         String status = "PENDING";
         int attemptCount = 0;
+        String lastError;
         Instant nextAttemptAt;
 
         Row(PendingRecordingOutboxMessage message, Instant nextAttemptAt) {
@@ -267,7 +283,9 @@ class RecordingOrchestratorTest {
 
         @Override
         public void markFailed(Long id, String error) {
-            byId.get(id).status = "FAILED";
+            Row row = byId.get(id);
+            row.status = "FAILED";
+            row.lastError = error;
         }
 
         void preClaimAll() {
@@ -289,6 +307,10 @@ class RecordingOrchestratorTest {
         Instant nextAttemptOf(String dedupKey) {
             return rows.get(dedupKey).nextAttemptAt;
         }
+
+        String errorOf(String dedupKey) {
+            return rows.get(dedupKey).lastError;
+        }
     }
 
     private static final class FakeTrackEgressPort implements TrackEgressPort {
@@ -309,9 +331,13 @@ class RecordingOrchestratorTest {
     private static final class InMemoryRecordingRepository implements RecordingRepository {
 
         private final List<Recording> saved = new ArrayList<>();
+        private boolean failSave;
 
         @Override
         public Recording save(Recording recording) {
+            if (failSave) {
+                throw new IllegalStateException("db down");
+            }
             saved.add(recording);
             return recording;
         }
