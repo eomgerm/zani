@@ -7,7 +7,7 @@ import { useRoomParticipants } from "./useRoomParticipants";
 type FakeParticipant = {
   identity: string;
   name: string;
-  attributes: Record<string, string>;
+  metadata?: string;
   isCameraEnabled: boolean;
   isMicrophoneEnabled: boolean;
 };
@@ -18,7 +18,6 @@ const participant = (
 ): FakeParticipant => ({
   identity,
   name: identity,
-  attributes: {},
   isCameraEnabled: true,
   isMicrophoneEnabled: true,
   ...overrides,
@@ -81,7 +80,9 @@ afterEach(() => {
 
 describe("useRoomParticipants", () => {
   it("로컬+원격 참가자를 타일 데이터로 스냅샷하고 localParticipantId를 노출한다", () => {
-    const room = new FakeRoom(participant("host", { attributes: { role: "INSTRUCTOR" } }));
+    const room = new FakeRoom(
+      participant("host", { metadata: JSON.stringify({ role: "INSTRUCTOR" }) }),
+    );
     room.remoteParticipants.set("s1", participant("s1", { name: "학생1" }));
     hoisted.room = room;
 
@@ -144,6 +145,54 @@ describe("useRoomParticipants", () => {
 
     unmount();
     expect(room.handlerCount()).toBe(0);
+  });
+
+  it("reads the instructor role from the token metadata the backend issued", () => {
+    const room = new FakeRoom(participant("host", { metadata: '{"role":"INSTRUCTOR"}' }));
+    room.remoteParticipants.set(
+      "s1",
+      participant("s1", { metadata: '{"role":"STUDENT"}' }),
+    );
+    hoisted.room = room;
+
+    const { result } = renderHook(() => useRoomParticipants());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.participants.find((p) => p.id === "host")?.role).toBe("instructor");
+    expect(result.current.participants.find((p) => p.id === "s1")?.role).toBe("student");
+  });
+
+  it("falls back to student when metadata is missing, malformed, or has no role", () => {
+    const room = new FakeRoom(participant("host"));
+    room.remoteParticipants.set("s1", participant("s1", { metadata: "not-json" }));
+    room.remoteParticipants.set("s2", participant("s2", { metadata: "{}" }));
+    hoisted.room = room;
+
+    const { result } = renderHook(() => useRoomParticipants());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.participants.map((p) => p.role)).toEqual([
+      "student",
+      "student",
+      "student",
+    ]);
+  });
+
+  it("recomputes tiles when participant metadata changes", () => {
+    const remote = participant("s1");
+    const room = new FakeRoom(participant("host"));
+    room.remoteParticipants.set("s1", remote);
+    hoisted.room = room;
+    const { result } = renderHook(() => useRoomParticipants());
+    act(() => vi.advanceTimersByTime(0));
+    expect(result.current.participants.find((p) => p.id === "s1")?.role).toBe("student");
+
+    act(() => {
+      remote.metadata = '{"role":"INSTRUCTOR"}';
+      room.emit(RoomEvent.ParticipantMetadataChanged);
+    });
+
+    expect(result.current.participants.find((p) => p.id === "s1")?.role).toBe("instructor");
   });
 
   it("room이 없으면 빈 목록과 null id를 반환한다", () => {

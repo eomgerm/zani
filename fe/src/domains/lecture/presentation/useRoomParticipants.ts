@@ -28,6 +28,23 @@ function colorFor(identity: string): string {
 }
 
 /**
+ * 역할은 백엔드가 토큰 metadata(JSON)에 심어 보낸다. LiveKit 서버 SDK 0.14.0에는 attributes 설정 API가 없어
+ * metadata로 전달되므로 여기서도 metadata에서 읽는다. 값이 없거나 JSON이 깨져도 화면이 죽지 않도록 student로 폴백한다.
+ */
+function roleOf(participant: Participant): ParticipantTileData["role"] {
+  const raw = participant.metadata;
+  if (!raw) {
+    return "student";
+  }
+  try {
+    const parsed = JSON.parse(raw) as { role?: unknown };
+    return parsed?.role === "INSTRUCTOR" ? "instructor" : "student";
+  } catch {
+    return "student";
+  }
+}
+
+/**
  * 백엔드가 토큰에 심은 값만 사용한다(가이드 §2). identity·표시 이름·역할을 프론트가 만들지 않는다.
  * 손들기는 LiveKit이 아니라 Spring WebSocket(가이드 §10) 소관이라 여기서는 false로 둔다.
  */
@@ -36,7 +53,7 @@ function toTileData(participant: Participant): ParticipantTileData {
     id: participant.identity,
     name: participant.name || participant.identity,
     color: colorFor(participant.identity),
-    role: participant.attributes?.role === "INSTRUCTOR" ? "instructor" : "student",
+    role: roleOf(participant),
     cameraEnabled: participant.isCameraEnabled,
     microphoneEnabled: participant.isMicrophoneEnabled,
     handRaised: false,
@@ -64,7 +81,8 @@ const PARTICIPANT_EVENTS: RoomEvent[] = [
   RoomEvent.TrackUnmuted,
   RoomEvent.LocalTrackPublished,
   RoomEvent.LocalTrackUnpublished,
-  RoomEvent.ParticipantAttributesChanged,
+  // 역할은 metadata에서 읽으므로 metadata 변경을 구독한다.
+  RoomEvent.ParticipantMetadataChanged,
 ];
 
 export type UseRoomParticipantsResult = {
