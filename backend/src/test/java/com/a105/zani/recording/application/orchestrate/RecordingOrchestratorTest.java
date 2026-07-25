@@ -348,7 +348,7 @@ class RecordingOrchestratorTest {
     private static final class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
-        private final Map<String, String> activeEgressByTrackSid = new HashMap<>();
+        private final Map<String, String> egressByTrackSid = new HashMap<>();
         private RuntimeException failWith;
 
         @Override
@@ -358,13 +358,14 @@ class RecordingOrchestratorTest {
             }
             requests.add(request);
             String egressId = "EG_" + requests.size();
-            activeEgressByTrackSid.put(request.trackSid(), egressId);
+            egressByTrackSid.put(request.trackSid(), egressId);
             return new IssuedTrackEgress(egressId);
         }
 
         @Override
-        public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
-            return java.util.Optional.ofNullable(activeEgressByTrackSid.get(request.trackSid()));
+        public java.util.Optional<String> findExistingEgressId(TrackEgressRequest request) {
+            // 실제 어댑터처럼 종료된 실행도 포함해 되돌린다(한 번 시작하면 계속 조회된다).
+            return java.util.Optional.ofNullable(egressByTrackSid.get(request.trackSid()));
         }
     }
 
