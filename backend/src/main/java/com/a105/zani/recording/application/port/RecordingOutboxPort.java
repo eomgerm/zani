@@ -7,7 +7,7 @@ import java.util.List;
  * recording_outbox 저장소 포트. enqueue는 호출자의 DB 트랜잭션에 참여해 비즈니스 쓰기와 원자적으로 기록되고, dedupKey 충돌(이미 등록된 작업)이면 호출자 트랜잭션을 오염시키지 않고
  * false를 반환한다. 릴레이는 claim으로 행을 선점한 뒤 처리해, 다중 인스턴스나 재시작 상황에서도 같은 작업이 두 번 수행되지 않는다.
  */
-public interface RecordingOutboxStore {
+public interface RecordingOutboxPort {
 
     /** outbox 행을 삽입한다. 같은 dedupKey가 이미 있으면 false(중복 방지). 호출자 트랜잭션은 유지된다. */
     boolean enqueue(NewRecordingOutboxMessage message);
