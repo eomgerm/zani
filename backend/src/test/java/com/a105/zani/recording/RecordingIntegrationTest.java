@@ -79,10 +79,9 @@ class RecordingIntegrationTest {
     @BeforeEach
     void setUp() {
         egressFixture.reset();
-        clock.setInstant(SESSION_START.plusSeconds(60));
-        // 릴레이는 전역 PENDING 행을 소비하므로, 다른 테스트가 남긴 outbox 행을 비워 결정적으로 만든다(로컬 테스트 DB 전용).
-        jdbcTemplate.update("DELETE FROM recording_outbox");
-        jdbcTemplate.update("DELETE FROM recording_webhook_events");
+        // outbox 행의 next_attempt_at은 어댑터가 실제 시각으로 기록한다. 테스트 시계를 그보다 조금 앞세워야
+        // 방금 등록한 행이 릴레이 대상(due)이 된다. 백오프 검증은 이 시계를 더 앞당겨 제어한다.
+        clock.setInstant(Instant.now().plusSeconds(60));
 
         sessionId = TsidGenerator.generate();
         instructorParticipantId = TsidGenerator.generate();
@@ -101,7 +100,7 @@ class RecordingIntegrationTest {
         jdbcTemplate.update("DELETE FROM session_participants WHERE session_id = ?", sessionId);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", sessionId);
         jdbcTemplate.update("DELETE FROM members WHERE id = ?", memberId);
-        jdbcTemplate.update("DELETE FROM recording_webhook_events");
+        jdbcTemplate.update("DELETE FROM recording_webhook_events WHERE event_id LIKE ?", sessionId + "-%");
     }
 
     private void insertMember(long id) {
@@ -144,7 +143,7 @@ class RecordingIntegrationTest {
 
     private void publishTrack(String eventId, long participantId, String trackSid, TrackSource source) {
         webhookFixture.nextEvent = new RecordingWebhookEvent(
-                eventId,
+                eventKey(eventId),
                 RecordingWebhookEventType.TRACK_PUBLISHED,
                 sessionId,
                 INSTRUCTOR_IDENTITY_PREFIX + participantId,
@@ -165,8 +164,13 @@ class RecordingIntegrationTest {
             String trackSid,
             List<EgressFileResult> files) {
         webhookFixture.nextEvent = new RecordingWebhookEvent(
-                eventId, type, sessionId, null, null, null, egressId, complete, trackSid, files);
+                eventKey(eventId), type, sessionId, null, null, null, egressId, complete, trackSid, files);
         webhookUseCase.process("{}", "signature");
+    }
+
+    /** 이벤트 id는 실행마다 유일해야 한다(같은 id는 중복 이벤트로 걸러지므로). */
+    private String eventKey(String name) {
+        return sessionId + "-" + name;
     }
 
     private EgressFileResult file(String name, long startOffsetSeconds, long endOffsetSeconds) {
