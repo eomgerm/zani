@@ -20,4 +20,9 @@ public class RecordingFilePersistenceAdapter implements RecordingFileRepository 
         recordingFileJpaRepository.saveAndFlush(mapper.toEntity(recordingFile));
         return recordingFile;
     }
+
+    @Override
+    public boolean existsByStorageKey(String storageKey) {
+        return recordingFileJpaRepository.existsByStorageKey(storageKey);
+    }
 }

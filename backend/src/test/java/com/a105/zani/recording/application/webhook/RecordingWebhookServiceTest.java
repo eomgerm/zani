@@ -98,9 +98,17 @@ class RecordingWebhookServiceTest {
                 return Optional.ofNullable(recordingsByEgressId.get(egressId));
             }
         };
-        RecordingFileRepository fileRepository = file -> {
-            savedFiles.add(file);
-            return file;
+        RecordingFileRepository fileRepository = new RecordingFileRepository() {
+            @Override
+            public RecordingFile save(RecordingFile file) {
+                savedFiles.add(file);
+                return file;
+            }
+
+            @Override
+            public boolean existsByStorageKey(String storageKey) {
+                return savedFiles.stream().anyMatch(saved -> saved.storageKey().equals(storageKey));
+            }
         };
         SessionRepository sessionRepository = new SessionRepository() {
             @Override

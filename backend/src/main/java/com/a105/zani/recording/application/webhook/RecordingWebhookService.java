@@ -133,6 +133,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         Session session =
                 sessionRepository.findById(recording.sessionId()).orElseThrow(RecordingNotReadyException::new);
         long timelineStartMs = session.startedAt().toEpochMilli();
+        boolean trackSidTaken = false;
         for (EgressFileResult file : event.files()) {
             String relativePath = sessionRelativePath(file.filepath(), recording.sessionId());
             if (relativePath == null) {
@@ -143,15 +144,23 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
                         recording.livekitEgressId());
                 continue;
             }
+            // storage_key는 파일의 자연 식별자이고 UNIQUE라, 이미 기록된 파일은 건너뛴다(재처리 멱등).
+            if (recordingFileRepository.existsByStorageKey(relativePath)) {
+                continue;
+            }
             // 시작/종료 offset은 수업 타임라인 기준이다. 파일별 구간 사이의 공백이 곧 누락 구간의 근거가 된다.
             Long startedOffset = file.startedAtMs() > 0 ? Math.max(0, file.startedAtMs() - timelineStartMs) : null;
             Long endedOffset = file.endedAtMs() > 0 ? Math.max(0, file.endedAtMs() - timelineStartMs) : null;
+            // UK(recording_id, livekit_track_sid)는 한 녹화에 트랙당 한 행만 허용한다. Track Egress는 트랙당 파일 하나가
+            // 정상이며, 세그먼트가 여러 개로 오면 첫 행만 trackSid를 갖고 나머지는 null로 남긴다(MySQL은 NULL을 중복으로 보지 않음).
+            String trackSid = trackSidTaken ? null : event.egressTrackSid();
+            trackSidTaken = trackSidTaken || trackSid != null;
             recordingFileRepository.save(RecordingFile.trackFile(
                     TsidGenerator.generate(),
                     recording.sessionId(),
                     recording.id(),
                     relativePath,
-                    event.egressTrackSid(),
+                    trackSid,
                     startedOffset,
                     endedOffset));
         }
