@@ -14,21 +14,22 @@ import com.a105.zani.recording.application.webhook.EgressFileResult;
 import com.a105.zani.recording.application.webhook.RecordingWebhookEvent;
 import com.a105.zani.recording.application.webhook.RecordingWebhookEventType;
 import com.a105.zani.recording.domain.model.TrackSource;
-import com.a105.zani.session.infrastructure.livekit.LiveKitProperties;
-import com.a105.zani.session.infrastructure.livekit.LiveKitRoomNames;
+import com.a105.zani.session.application.port.MediaRoomPort;
+import com.a105.zani.session.application.port.MediaServerCredentials;
 
 /**
  * LiveKit webhook 서명 검증 어댑터. 벤더 SDK(WebhookReceiver·protobuf) 타입은 이 클래스 안에만 존재하며, 검증 실패는 401로 매핑되는 애플리케이션 예외로 변환한다.
- * 시각(ns)은 epoch millis로 변환해 넘긴다.
+ * 시각(ns)은 epoch millis로 변환해 넘긴다. 서명 자격증명과 room 이름 해석은 세션 도메인이 소유하므로 {@link MediaRoomPort}(세션의 application port)를 통해서만
+ * 받는다.
  */
 @Component
 public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPort {
 
-    private final LiveKitProperties properties;
+    private final MediaRoomPort mediaRoomPort;
     private volatile WebhookReceiver receiver;
 
-    public LiveKitWebhookVerifierAdapter(LiveKitProperties properties) {
-        this.properties = properties;
+    public LiveKitWebhookVerifierAdapter(MediaRoomPort mediaRoomPort) {
+        this.mediaRoomPort = mediaRoomPort;
     }
 
     @Override
@@ -44,9 +45,8 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
         return new RecordingWebhookEvent(
                 event.getId(),
                 typeOf(event.getEvent()),
-                // room 이름 규칙(환경 포함)의 해석은 세션 인프라 소유 유틸로 수행하고, 애플리케이션에는 세션 ID만 넘긴다.
-                LiveKitRoomNames.parseSessionId(properties.environment(), roomName)
-                        .orElse(null),
+                // room 이름 규칙(환경 포함)의 해석은 세션 도메인 port에 맡기고, 애플리케이션에는 세션 ID만 넘긴다.
+                mediaRoomPort.resolveSessionId(roomName).orElse(null),
                 event.hasParticipant() ? event.getParticipant().getIdentity() : null,
                 event.hasTrack() ? event.getTrack().getSid() : null,
                 event.hasTrack() ? sourceOf(event.getTrack().getSource()) : null,
@@ -69,7 +69,8 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
         if (current == null) {
             synchronized (this) {
                 if (receiver == null) {
-                    receiver = new WebhookReceiver(properties.apiKey(), properties.apiSecret());
+                    MediaServerCredentials credentials = mediaRoomPort.credentials();
+                    receiver = new WebhookReceiver(credentials.apiKey(), credentials.apiSecret());
                 }
                 current = receiver;
             }
