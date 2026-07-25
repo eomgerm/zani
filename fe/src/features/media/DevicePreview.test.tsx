@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DevicePreview, type DevicePreviewState } from './DevicePreview';
@@ -36,14 +36,14 @@ class FakeAudioContext {
 }
 
 function fakeTrack(kind: 'video' | 'audio', deviceId: string): MediaStreamTrack {
-  return {
+  // EventTarget 을 상속해 실제 addEventListener/dispatchEvent('ended') 가 동작하게 한다
+  // (장치 분리 시 트랙 ended 처리를 테스트에서 재현하기 위함).
+  return Object.assign(new EventTarget(), {
     kind,
     readyState: 'live',
     getSettings: () => ({ deviceId, width: kind === 'video' ? 1280 : undefined }),
     stop: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  } as unknown as MediaStreamTrack;
+  }) as unknown as MediaStreamTrack;
 }
 
 function fakeStream(tracks: MediaStreamTrack[]): MediaStream {
@@ -191,7 +191,6 @@ describe('DevicePreview', () => {
     await waitFor(() => {
       expect(onStateChange.mock.lastCall?.[0].microphoneDeviceId).toBe('mic-2');
     });
-    expect(screen.queryByTestId('device-failure-MICROPHONE_NOT_SELECTED')).toBeNull();
     // 요청한 장치가 그대로 열렸으므로 대체 안내는 뜨지 않는다.
     expect(screen.queryByTestId('microphone-fallback-notice')).toBeNull();
     expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true);
@@ -236,7 +235,6 @@ describe('DevicePreview', () => {
     // 기본 마이크로 폴백해 테스트는 계속되고, '연결 안됨' 대신 대체 안내가 보인다.
     const notice = await screen.findByTestId('microphone-fallback-notice');
     expect(notice).toHaveTextContent('NotReadableError');
-    expect(screen.queryByTestId('device-failure-MICROPHONE_NOT_SELECTED')).toBeNull();
     await waitFor(() => {
       const last = onStateChange.mock.lastCall?.[0];
       expect(last?.microphoneDeviceId).toBe('mic-1');
@@ -303,7 +301,7 @@ describe('DevicePreview', () => {
     expect(await screen.findByText('이어폰 마이크')).toBeInTheDocument();
   });
 
-  it('권한이 거부되면 원인별 안내와 다시 시도 버튼을 보여준다', async () => {
+  it('권한이 거부되면 카메라·마이크 권한 실패를 보고한다', async () => {
     stubMediaDevices({
       video: () => Promise.reject(notAllowedError()),
       audio: () => Promise.reject(notAllowedError()),
@@ -312,17 +310,19 @@ describe('DevicePreview', () => {
     const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
     render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
 
-    expect(
-      await screen.findByTestId('device-failure-CAMERA_PERMISSION_DENIED'),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByTestId('device-failure-MICROPHONE_PERMISSION_DENIED'),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('device-retry-button')).toBeInTheDocument();
+    await waitFor(() => {
+      const failures = onStateChange.mock.lastCall?.[0].result.failures ?? [];
+      expect(failures).toContain('CAMERA_PERMISSION_DENIED');
+      expect(failures).toContain('MICROPHONE_PERMISSION_DENIED');
+    });
     expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(false);
+    // 마이크 권한 문제는 레벨 위 말풍선으로 알린다(카메라는 미리보기 오버레이·체크리스트로 노출).
+    expect(await screen.findByTestId('mic-hint-bubble')).toHaveTextContent(
+      '마이크 권한이 거부되어 있어요',
+    );
   });
 
-  it('카메라가 없으면 카메라 실패 안내를 보여주되 마이크 테스트는 계속한다', async () => {
+  it('카메라가 없으면 카메라 실패를 보고하되 마이크 테스트는 계속한다', async () => {
     analyserByte = 200;
     stubMediaDevices({
       video: () => Promise.reject(notFoundError()),
@@ -332,17 +332,17 @@ describe('DevicePreview', () => {
     const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
     render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
 
-    expect(await screen.findByTestId('device-failure-CAMERA_NOT_SELECTED')).toBeInTheDocument();
     await waitFor(() => {
       const last = onStateChange.mock.lastCall?.[0];
+      expect(last?.result.failures).toContain('CAMERA_NOT_SELECTED');
       expect(last?.result.passed).toBe(false);
+      // 카메라가 없어도 마이크는 정상적으로 열린다.
       expect(last?.microphoneDeviceId).toBe('mic-1');
-      expect(last?.result.failures).not.toContain('MICROPHONE_LEVEL_TOO_LOW');
     });
   });
 
-  it('마이크 입력이 무음이면 입력 레벨 실패 안내를 보여준다', async () => {
-    analyserByte = 128; // 무음
+  it('마이크가 연결돼 있으면 무음이어도 아무 안내 없이 통과한다', async () => {
+    analyserByte = 128; // 무음(연결은 정상)
     stubMediaDevices({
       video: () => Promise.resolve(fakeStream([fakeTrack('video', 'cam-1')])),
       audio: () => Promise.resolve(fakeStream([fakeTrack('audio', 'mic-1')])),
@@ -351,14 +351,43 @@ describe('DevicePreview', () => {
     const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
     render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
 
-    expect(
-      await screen.findByTestId('device-failure-MICROPHONE_LEVEL_TOO_LOW'),
-    ).toBeInTheDocument();
+    // 무음이어도 통과: 연결만 되어 있으면 입장을 막지 않는다.
+    await waitFor(() => {
+      expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true);
+    });
+    // 무음은 오류가 아니므로 실패로 보고하지 않고, 말풍선도 띄우지 않는다.
+    expect(onStateChange.mock.lastCall?.[0].result.failures).toEqual([]);
+    expect(screen.queryByTestId('mic-hint-bubble')).toBeNull();
     expect(screen.getByTestId('mic-level')).toHaveAttribute('data-level-passed', 'false');
-    expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(false);
   });
 
-  it('카메라·마이크 토글을 끄면 꺼짐 안내가 보이고 통과가 깨진다', async () => {
+  it('마이크 트랙이 끊기면(장치 분리) 연결 안됨으로 보고한다', async () => {
+    analyserByte = 200;
+    const micTrack = fakeTrack('audio', 'mic-1');
+    stubMediaDevices({
+      video: () => Promise.resolve(fakeStream([fakeTrack('video', 'cam-1')])),
+      audio: () => Promise.resolve(fakeStream([micTrack])),
+    });
+
+    const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
+    render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
+    await waitFor(() => expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true));
+
+    // 장치 분리로 트랙이 ended 되면 미선택(연결 안됨)으로 되돌아가고, 말풍선으로 안내한다.
+    act(() => {
+      micTrack.dispatchEvent(new Event('ended'));
+    });
+    await waitFor(() => {
+      const last = onStateChange.mock.lastCall?.[0];
+      expect(last?.result.failures).toContain('MICROPHONE_NOT_SELECTED');
+      expect(last?.result.passed).toBe(false);
+    });
+    expect(await screen.findByTestId('mic-hint-bubble')).toHaveTextContent(
+      '마이크가 연결되어 있지 않아요',
+    );
+  });
+
+  it('카메라·마이크 토글을 끄면 꺼짐을 보고하고 통과가 깨진다', async () => {
     analyserByte = 200;
     stubMediaDevices({
       video: () => Promise.resolve(fakeStream([fakeTrack('video', 'cam-1')])),
@@ -370,16 +399,23 @@ describe('DevicePreview', () => {
     await waitFor(() => expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true));
 
     fireEvent.click(screen.getByTestId('camera-toggle'));
-    expect(await screen.findByTestId('device-failure-CAMERA_DISABLED')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(onStateChange.mock.lastCall?.[0].result.failures).toContain('CAMERA_DISABLED'),
+    );
 
     fireEvent.click(screen.getByTestId('microphone-toggle'));
-    expect(await screen.findByTestId('device-failure-MICROPHONE_DISABLED')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(onStateChange.mock.lastCall?.[0].result.failures).toContain('MICROPHONE_DISABLED'),
+    );
     expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(false);
+    // 마이크를 끄면 레벨 위 말풍선으로 알린다.
+    expect(await screen.findByTestId('mic-hint-bubble')).toHaveTextContent('마이크가 꺼져 있어요');
 
-    // 다시 켜면 통과 상태로 복구된다.
+    // 다시 켜면 통과 상태로 복구되고 말풍선도 사라진다.
     fireEvent.click(screen.getByTestId('camera-toggle'));
     fireEvent.click(screen.getByTestId('microphone-toggle'));
     await waitFor(() => expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true));
+    expect(screen.queryByTestId('mic-hint-bubble')).toBeNull();
   });
 
   it('마이크 전환 중에는 기존 통과 상태를 유지하고 실패가 확정될 때만 안내로 바꾼다', async () => {
@@ -425,10 +461,8 @@ describe('DevicePreview', () => {
     fireEvent.click(micSelect);
     fireEvent.click(await screen.findByText('이어폰 마이크'));
 
-    // 전환 요청이 걸려 있는 동안: 실패 안내가 뜨지 않고 직전 통과 상태가 유지된다.
+    // 전환 요청이 걸려 있는 동안: 실패로 보고하지 않고 직전 통과 상태가 유지된다.
     await waitFor(() => expect(rejectEarphone).not.toBeNull());
-    expect(screen.queryByTestId('device-failure-MICROPHONE_LEVEL_TOO_LOW')).toBeNull();
-    expect(screen.queryByTestId('device-failure-MICROPHONE_NOT_SELECTED')).toBeNull();
     expect(screen.getByTestId('mic-level')).toHaveAttribute('data-level-passed', 'true');
     expect(onStateChange.mock.lastCall?.[0].result.passed).toBe(true);
 
@@ -442,35 +476,20 @@ describe('DevicePreview', () => {
     });
   });
 
-  it('장치를 처음 여는 동안에는 실패 안내를 띄우지 않는다', async () => {
-    // 권한 프롬프트가 떠 있는 동안(요청 미해결) 실패 안내가 깜빡이지 않아야 한다.
+  it('장치를 처음 여는 동안에는 통과로 보고하지 않는다(요청 미해결)', async () => {
+    // 권한 프롬프트가 떠 있는 동안(요청 미해결) 성급하게 통과로 보고해 입장이 열리면 안 된다.
     stubMediaDevices({
       video: () => new Promise<MediaStream>(() => {}),
       audio: () => new Promise<MediaStream>(() => {}),
     });
 
-    render(<DevicePreview levelSampleIntervalMs={10} />);
-    // 요청이 계속 진행 중인 상태에서 잠시 기다려도 실패 안내·다시 시도 버튼이 없다.
+    const onStateChange = vi.fn<(state: DevicePreviewState) => void>();
+    render(<DevicePreview onStateChange={onStateChange} levelSampleIntervalMs={10} />);
+    // 요청이 계속 진행 중인 상태에서 잠시 기다려도 통과로 보고되지 않고, 대체 안내도 없다.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByTestId('device-failure-CAMERA_NOT_SELECTED')).toBeNull();
-    expect(screen.queryByTestId('device-failure-MICROPHONE_NOT_SELECTED')).toBeNull();
-    expect(screen.queryByTestId('device-retry-button')).toBeNull();
-  });
-
-  it('다시 시도를 누르면 장치 요청을 다시 수행한다', async () => {
-    stubMediaDevices({
-      video: () => Promise.reject(notAllowedError()),
-      audio: () => Promise.reject(notAllowedError()),
-    });
-
-    render(<DevicePreview levelSampleIntervalMs={10} />);
-    const retryButton = await screen.findByTestId('device-retry-button');
-    const callsBeforeRetry = getUserMedia.mock.calls.length;
-
-    fireEvent.click(retryButton);
-
-    await waitFor(() => {
-      expect(getUserMedia.mock.calls.length).toBeGreaterThan(callsBeforeRetry);
-    });
+    const reportedPassed = onStateChange.mock.calls.map((call) => call[0].result.passed);
+    expect(reportedPassed).not.toContain(true);
+    expect(screen.queryByTestId('camera-fallback-notice')).toBeNull();
+    expect(screen.queryByTestId('microphone-fallback-notice')).toBeNull();
   });
 });
