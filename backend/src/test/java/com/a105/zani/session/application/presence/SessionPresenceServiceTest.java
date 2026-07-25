@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -259,6 +260,20 @@ class SessionPresenceServiceTest {
         @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(byUserId.get(userId));
+        }
+
+        @Override
+        public Optional<SessionParticipant> findById(Long id) {
+            return byUserId.values().stream()
+                    .filter(participant -> id.equals(participant.id()))
+                    .findFirst();
+        }
+
+        @Override
+        public List<SessionParticipant> findBySessionId(Long sessionId) {
+            return byUserId.values().stream()
+                    .filter(participant -> sessionId.equals(participant.sessionId()))
+                    .toList();
         }
 
         @Override

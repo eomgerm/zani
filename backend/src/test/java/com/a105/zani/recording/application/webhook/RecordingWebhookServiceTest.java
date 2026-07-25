@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 import com.a105.zani.recording.application.exception.InvalidWebhookSignatureException;
 import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
+import com.a105.zani.recording.application.orchestrate.RequestTrackEgressResult;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
-import com.a105.zani.recording.application.orchestrate.TrackEgressRequestResult;
-import com.a105.zani.recording.application.port.RecordingWebhookEventStore;
+import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
 import com.a105.zani.recording.domain.model.Recording;
 import com.a105.zani.recording.domain.model.RecordingFile;
 import com.a105.zani.recording.domain.model.RecordingStatus;
@@ -84,7 +84,7 @@ class RecordingWebhookServiceTest {
     void setUp() {
         RequestTrackEgressUseCase egressUseCase = command -> {
             egressRequests.add(command);
-            return new TrackEgressRequestResult(TrackRecordingDecision.RECORD, true);
+            return new RequestTrackEgressResult(TrackRecordingDecision.RECORD, true);
         };
         RecordingRepository recordingRepository = new RecordingRepository() {
             @Override
@@ -158,7 +158,7 @@ class RecordingWebhookServiceTest {
                 return participant;
             }
         };
-        RecordingWebhookEventStore eventStore = new RecordingWebhookEventStore() {
+        RecordingWebhookEventPort eventStore = new RecordingWebhookEventPort() {
             @Override
             public boolean begin(String eventId, String eventType, String payload) {
                 if (processedEvents.contains(eventId)) {

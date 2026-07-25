@@ -13,7 +13,7 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
-import com.a105.zani.recording.application.port.RecordingWebhookEventStore;
+import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
 import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
 import com.a105.zani.recording.domain.model.Recording;
@@ -42,7 +42,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private static final String PARTICIPANT_IDENTITY_PREFIX = "p-";
 
     private final RecordingWebhookVerifierPort verifierPort;
-    private final RecordingWebhookEventStore eventStore;
+    private final RecordingWebhookEventPort eventStore;
     private final RequestTrackEgressUseCase requestTrackEgressUseCase;
     private final RecordingRepository recordingRepository;
     private final RecordingFileRepository recordingFileRepository;
