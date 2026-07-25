@@ -6,8 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 
-import com.a105.zani.member.domain.model.Member;
-import com.a105.zani.member.domain.repository.MemberRepository;
+import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
@@ -60,26 +59,10 @@ class IssueMediaTokenServiceTest {
         }
     };
 
-    private final MemberRepository memberRepository = memberRepositoryReturning(
-            Optional.of(Member.reconstitute(456L, "google-sub", "user@zani.local", "홍길동", null)));
+    private final GetMemberDisplayNameUseCase getMemberDisplayNameUseCase = displayNameOf("홍길동");
 
-    private static MemberRepository memberRepositoryReturning(Optional<Member> member) {
-        return new MemberRepository() {
-            @Override
-            public Member save(Member m) {
-                return m;
-            }
-
-            @Override
-            public Optional<Member> findById(Long id) {
-                return member;
-            }
-
-            @Override
-            public Optional<Member> findByGoogleSubject(String googleSubject) {
-                return Optional.empty();
-            }
-        };
+    private static GetMemberDisplayNameUseCase displayNameOf(String displayName) {
+        return query -> Optional.ofNullable(displayName);
     }
 
     private final LiveKitTokenPort liveKitTokenPort = request -> {
@@ -91,8 +74,8 @@ class IssueMediaTokenServiceTest {
                 Instant.parse("2026-07-24T00:00:00Z"));
     };
 
-    private final IssueMediaTokenService service =
-            new IssueMediaTokenService(sessionRepository, participantRepository, memberRepository, liveKitTokenPort);
+    private final IssueMediaTokenService service = new IssueMediaTokenService(
+            sessionRepository, participantRepository, getMemberDisplayNameUseCase, liveKitTokenPort);
 
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
@@ -144,10 +127,7 @@ class IssueMediaTokenServiceTest {
         session = sessionWith(SessionStatus.LIVE);
         participant = SessionParticipant.join(456L, 100L, 7L, SessionParticipantRole.STUDENT, Instant.now());
         IssueMediaTokenService serviceWithoutName = new IssueMediaTokenService(
-                sessionRepository,
-                participantRepository,
-                memberRepositoryReturning(Optional.empty()),
-                liveKitTokenPort);
+                sessionRepository, participantRepository, displayNameOf(null), liveKitTokenPort);
 
         serviceWithoutName.issue(new IssueMediaTokenCommand(100L, 7L));
 
