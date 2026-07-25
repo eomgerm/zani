@@ -377,6 +377,7 @@ class RecordingIntegrationTest {
     static class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
+        private final Set<String> activeTrackSids = new HashSet<>();
         private final Set<String> failTrackSids = new HashSet<>();
         private boolean failAll;
 
@@ -386,12 +387,26 @@ class RecordingIntegrationTest {
                 throw new TrackEgressUnavailableException(new IllegalStateException("egress unavailable"));
             }
             requests.add(request);
+            activeTrackSids.add(request.trackSid());
             // egressId를 trackSid에서 결정적으로 만들어, 테스트가 후속 콜백을 구성할 수 있게 한다.
-            return new IssuedTrackEgress("EG-" + request.trackSid());
+            return new IssuedTrackEgress(egressIdOf(request.trackSid()));
+        }
+
+        /** 실제 LiveKit처럼 이미 진행 중인 Egress를 되돌려, 재실행이 중복 시작하지 않는지 검증할 수 있게 한다. */
+        @Override
+        public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
+            return activeTrackSids.contains(request.trackSid())
+                    ? java.util.Optional.of(egressIdOf(request.trackSid()))
+                    : java.util.Optional.empty();
+        }
+
+        private static String egressIdOf(String trackSid) {
+            return "EG-" + trackSid;
         }
 
         void reset() {
             requests.clear();
+            activeTrackSids.clear();
             failTrackSids.clear();
             failAll = false;
         }
