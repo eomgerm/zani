@@ -79,7 +79,7 @@ afterEach(() => {
 });
 
 describe("useRoomParticipants", () => {
-  it("로컬+원격 참가자를 타일 데이터로 스냅샷하고 localParticipantId를 노출한다", () => {
+  it("snapshots local and remote participants as tile data and exposes the local participant id", () => {
     const room = new FakeRoom(
       participant("host", { metadata: JSON.stringify({ role: "INSTRUCTOR" }) }),
     );
@@ -100,7 +100,7 @@ describe("useRoomParticipants", () => {
     expect(s1?.name).toBe("학생1");
   });
 
-  it("ParticipantConnected/Disconnected로 타일이 추가·제거된다", () => {
+  it("adds and removes tiles on ParticipantConnected and ParticipantDisconnected", () => {
     const room = new FakeRoom(participant("host"));
     hoisted.room = room;
     const { result } = renderHook(() => useRoomParticipants());
@@ -120,7 +120,7 @@ describe("useRoomParticipants", () => {
     expect(result.current.participants).toHaveLength(1);
   });
 
-  it("TrackMuted/Unmuted로 카메라·마이크 상태가 갱신된다", () => {
+  it("refreshes camera and microphone state on TrackMuted and TrackUnmuted", () => {
     const remote = participant("s1");
     const room = new FakeRoom(participant("host"));
     room.remoteParticipants.set("s1", remote);
@@ -136,7 +136,7 @@ describe("useRoomParticipants", () => {
     expect(result.current.participants.find((p) => p.id === "s1")?.cameraEnabled).toBe(false);
   });
 
-  it("언마운트 시 모든 리스너를 해제한다", () => {
+  it("detaches every room listener on unmount", () => {
     const room = new FakeRoom(participant("host"));
     hoisted.room = room;
     const { unmount } = renderHook(() => useRoomParticipants());
@@ -195,7 +195,7 @@ describe("useRoomParticipants", () => {
     expect(result.current.participants.find((p) => p.id === "s1")?.role).toBe("instructor");
   });
 
-  it("room이 없으면 빈 목록과 null id를 반환한다", () => {
+  it("returns an empty list and a null id when there is no room", () => {
     hoisted.room = null;
     const { result } = renderHook(() => useRoomParticipants());
     act(() => vi.advanceTimersByTime(0));
