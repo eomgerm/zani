@@ -162,6 +162,23 @@ class RecordingOrchestratorTest {
     }
 
     @Test
+    void 완료_표시가_실패해도_재실행_시_Egress를_다시_시작하지_않는다() {
+        // markCompleted가 실패하면 행이 IN_PROGRESS로 남고 lease 만료 후 다시 소비된다.
+        // 그때 handle이 기존 Egress를 채택해야 하므로 외부 시작은 한 번만 일어나야 한다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_mc"));
+        orchestrator.relayPendingOutbox();
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.requests.size());
+        assertEquals(1, recordings.saved.size());
+        assertEquals("COMPLETED", outbox.statusOf("track:100:TR_mc"));
+    }
+
+    @Test
     void Egress_실패는_백오프와_함께_재시도로_남긴다() {
         egressPort.failWith = new IllegalStateException("livekit down");
         orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_f"));
@@ -269,9 +286,24 @@ class RecordingOrchestratorTest {
             // 인메모리 fake에서는 lease 만료 시나리오를 다루지 않는다(영속 어댑터 계약).
         }
 
+        private boolean failMarkCompleted;
+
         @Override
         public void markCompleted(Long id) {
+            if (failMarkCompleted) {
+                throw new IllegalStateException("db down while marking completed");
+            }
             byId.get(id).status = "COMPLETED";
+        }
+
+        /** lease 만료로 다시 소비되는 상황을 재현한다. */
+        void requeueAll() {
+            rows.values().forEach(row -> {
+                if ("IN_PROGRESS".equals(row.status)) {
+                    row.status = "PENDING";
+                    row.nextAttemptAt = Instant.EPOCH;
+                }
+            });
         }
 
         @Override
@@ -316,6 +348,7 @@ class RecordingOrchestratorTest {
     private static final class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
+        private final Map<String, String> activeEgressByTrackSid = new HashMap<>();
         private RuntimeException failWith;
 
         @Override
@@ -324,7 +357,14 @@ class RecordingOrchestratorTest {
                 throw failWith;
             }
             requests.add(request);
-            return new IssuedTrackEgress("EG_" + requests.size());
+            String egressId = "EG_" + requests.size();
+            activeEgressByTrackSid.put(request.trackSid(), egressId);
+            return new IssuedTrackEgress(egressId);
+        }
+
+        @Override
+        public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
+            return java.util.Optional.ofNullable(activeEgressByTrackSid.get(request.trackSid()));
         }
     }
 
@@ -345,7 +385,7 @@ class RecordingOrchestratorTest {
         @Override
         public java.util.Optional<Recording> findByLivekitEgressId(String livekitEgressId) {
             return saved.stream()
-                    .filter(r -> r.livekitEgressId().equals(livekitEgressId))
+                    .filter(recording -> recording.livekitEgressId().equals(livekitEgressId))
                     .findFirst();
         }
     }

@@ -67,6 +67,32 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
         }
     }
 
+    @Override
+    public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
+        MediaServerCredentials credentials = mediaRoomPort.credentials();
+        if (!credentials.isConfigured()) {
+            throw new TrackEgressUnavailableException(new IllegalStateException("LiveKit is not configured"));
+        }
+        String roomName = mediaRoomPort.roomName(request.sessionId());
+        try {
+            Response<java.util.List<LivekitEgress.EgressInfo>> response =
+                    egressClient(credentials).listEgress(roomName, null, true).execute();
+            if (!response.isSuccessful() || response.body() == null) {
+                // 조회 실패는 "없음"으로 단정하지 않는다. 중복 시작 위험이 있으므로 재시도 대상 오류로 올린다.
+                throw new TrackEgressUnavailableException(
+                        new IllegalStateException("Egress list failed with HTTP " + response.code()));
+            }
+            return response.body().stream()
+                    .filter(info -> info.hasTrack()
+                            && request.trackSid().equals(info.getTrack().getTrackId()))
+                    .map(LivekitEgress.EgressInfo::getEgressId)
+                    .filter(egressId -> !egressId.isBlank())
+                    .findFirst();
+        } catch (IOException exception) {
+            throw new TrackEgressUnavailableException(exception);
+        }
+    }
+
     private EgressServiceClient egressClient(MediaServerCredentials credentials) {
         EgressServiceClient current = client;
         if (current == null) {
