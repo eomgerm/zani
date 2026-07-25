@@ -133,13 +133,25 @@ export default function Page({ params }: { params: Promise<{ inviteCode: string 
             <div className="z-card-lg px-[22px] py-5">
               <div className="mb-[15px] text-base font-extrabold">장치 확인</div>
               <div className="flex flex-col gap-[13px]">
-                <ChecklistItem ok={browserSupported} pending={browserSupport === null}>
+                <ChecklistItem
+                  testId="checklist-browser"
+                  ok={browserSupported}
+                  pending={browserSupport === null}
+                >
                   브라우저 · Chrome
                 </ChecklistItem>
-                <ChecklistItem ok={cameraOk} pending={deviceState === null}>
+                <ChecklistItem
+                  testId="checklist-camera"
+                  ok={cameraOk}
+                  pending={deviceState === null}
+                >
                   카메라 영상
                 </ChecklistItem>
-                <ChecklistItem ok={microphoneOk} pending={deviceState === null}>
+                <ChecklistItem
+                  testId="checklist-microphone"
+                  ok={microphoneOk}
+                  pending={deviceState === null}
+                >
                   마이크 입력 레벨
                 </ChecklistItem>
               </div>
@@ -193,14 +205,22 @@ export default function Page({ params }: { params: Promise<{ inviteCode: string 
 function ChecklistItem({
   ok,
   pending,
+  testId,
   children,
 }: {
   ok: boolean;
   pending: boolean;
+  /** 상태를 관찰하기 위한 testid. data-ok 로 통과 여부를, data-pending 으로 판정 전 여부를 노출한다. */
+  testId?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-[11px]">
+    <div
+      data-testid={testId}
+      data-ok={ok}
+      data-pending={pending}
+      className="flex items-center gap-[11px]"
+    >
       {pending ? (
         <span className="z-check bg-faint text-ink-faint">…</span>
       ) : ok ? (

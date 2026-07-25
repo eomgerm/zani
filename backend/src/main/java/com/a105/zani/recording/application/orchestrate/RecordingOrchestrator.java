@@ -15,7 +15,7 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.OrphanedTrackEgressException;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
-import com.a105.zani.recording.application.port.RecordingOutboxStore;
+import com.a105.zani.recording.application.port.RecordingOutboxPort;
 import com.a105.zani.recording.application.port.RecordingOutboxType;
 import com.a105.zani.recording.application.port.TrackEgressPayload;
 import com.a105.zani.recording.application.port.TrackEgressPort;
@@ -51,14 +51,14 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     /** LiveKit Track SID 형식. 경로 구성에 쓰이므로 형식 밖 값은 거부한다. */
     private static final Pattern TRACK_SID_PATTERN = Pattern.compile("TR_[A-Za-z0-9_-]+");
 
-    private final RecordingOutboxStore outboxStore;
+    private final RecordingOutboxPort outboxStore;
     private final TrackEgressPort trackEgressPort;
     private final RecordingRepository recordingRepository;
     private final Clock clock;
 
     @Override
     @Transactional
-    public TrackEgressRequestResult request(RequestTrackEgressCommand command) {
+    public RequestTrackEgressResult request(RequestTrackEgressCommand command) {
         TrackRecordingDecision decision =
                 RecordingTrackPolicy.decide(command.role(), command.source(), command.studentScreenShareApproved());
         if (decision == TrackRecordingDecision.FORBIDDEN) {
@@ -70,7 +70,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
             throw new ForbiddenStudentCameraTrackException();
         }
         if (decision == TrackRecordingDecision.SKIP) {
-            return new TrackEgressRequestResult(decision, false);
+            return new RequestTrackEgressResult(decision, false);
         }
         // alias·trackSid는 Egress 출력 파일 경로에 들어간다. 익명 별칭 형식과 SID 형식을 등록 시점에 강제해
         // 경로 탈출·실명 유입을 원천 차단한다(가이드 §18).
@@ -85,7 +85,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                 RecordingOutboxType.START_TRACK_EGRESS,
                 command.sessionId(),
                 new TrackEgressPayload(command.trackSid(), alias.value(), command.source())));
-        return new TrackEgressRequestResult(decision, enqueued);
+        return new RequestTrackEgressResult(decision, enqueued);
     }
 
     /** 트랜잭션을 걸지 않는다: 외부(LiveKit) 호출을 DB 트랜잭션 안에 가두지 않기 위한 의도적 경계다. 각 상태 전이는 store가 자체 트랜잭션으로 처리한다. */

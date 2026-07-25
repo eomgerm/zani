@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import com.a105.zani.recording.application.port.IssuedTrackEgress;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
-import com.a105.zani.recording.application.port.RecordingOutboxStore;
+import com.a105.zani.recording.application.port.RecordingOutboxPort;
 import com.a105.zani.recording.application.port.TrackEgressPort;
 import com.a105.zani.recording.application.port.TrackEgressRequest;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
@@ -52,7 +52,7 @@ class RecordingOrchestratorTest {
 
     @Test
     void 저장_대상_트랙은_outbox에_등록된다() {
-        TrackEgressRequestResult result =
+        RequestTrackEgressResult result =
                 orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
 
         assertEquals(TrackRecordingDecision.RECORD, result.decision());
@@ -63,7 +63,7 @@ class RecordingOrchestratorTest {
     @Test
     void 같은_트랙의_중복_요청은_한_번만_등록된다() {
         orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
-        TrackEgressRequestResult second =
+        RequestTrackEgressResult second =
                 orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
 
         assertFalse(second.enqueued());
@@ -80,7 +80,7 @@ class RecordingOrchestratorTest {
 
     @Test
     void 미승인_학생_화면공유는_SKIP이고_등록되지_않는다() {
-        TrackEgressRequestResult result =
+        RequestTrackEgressResult result =
                 orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.SCREEN_SHARE, false, "TR_s"));
 
         assertEquals(TrackRecordingDecision.SKIP, result.decision());
@@ -232,7 +232,7 @@ class RecordingOrchestratorTest {
     }
 
     /** 실제 어댑터의 INSERT IGNORE·claim UPDATE 시맨틱을 반영한 인메모리 fake. */
-    private static final class InMemoryOutboxStore implements RecordingOutboxStore {
+    private static final class InMemoryOutboxStore implements RecordingOutboxPort {
 
         private final Map<String, Row> rows = new LinkedHashMap<>();
         private final Map<Long, Row> byId = new HashMap<>();

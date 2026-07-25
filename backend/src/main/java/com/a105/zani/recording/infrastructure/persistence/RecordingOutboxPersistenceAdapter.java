@@ -15,7 +15,7 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.RecordingOutboxUnavailableException;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
-import com.a105.zani.recording.application.port.RecordingOutboxStore;
+import com.a105.zani.recording.application.port.RecordingOutboxPort;
 import com.a105.zani.recording.application.port.RecordingOutboxType;
 import com.a105.zani.recording.application.port.TrackEgressPayload;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingOutboxJpaEntity;
@@ -27,7 +27,7 @@ import com.a105.zani.recording.infrastructure.persistence.repository.RecordingOu
  */
 @Component
 @RequiredArgsConstructor
-public class RecordingOutboxPersistenceAdapter implements RecordingOutboxStore {
+public class RecordingOutboxPersistenceAdapter implements RecordingOutboxPort {
 
     private static final String EMPTY_PAYLOAD = "{}";
 
