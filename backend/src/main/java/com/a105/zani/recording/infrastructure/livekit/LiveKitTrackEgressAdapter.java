@@ -5,6 +5,7 @@ import java.util.Locale;
 
 import io.livekit.server.EgressServiceClient;
 import livekit.LivekitEgress;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import retrofit2.Response;
@@ -15,42 +16,37 @@ import com.a105.zani.recording.application.port.TrackEgressPort;
 import com.a105.zani.recording.application.port.TrackEgressRequest;
 import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.infrastructure.config.RecordingProperties;
-import com.a105.zani.session.infrastructure.livekit.LiveKitProperties;
-import com.a105.zani.session.infrastructure.livekit.LiveKitRoomNames;
+import com.a105.zani.session.application.port.MediaRoomPort;
+import com.a105.zani.session.application.port.MediaServerCredentials;
 
 /**
  * LiveKit Track Egress 시작 어댑터. 벤더 SDK 타입은 이 클래스 안에만 존재한다. 결과 파일은 Egress 노드의 로컬 경로
  * {@code {basePath}/{sessionId}/raw/...}에 원본 codec으로 저장되며, 확장자는 고정 가정하지 않는다(가이드 §13·§14). 파일 경로에는 검증된 익명 alias만 들어간다(경로
- * 탈출 방지, 가이드 §18). LiveKit 연결 설정과 room 이름 규칙은 세션 인프라({@link LiveKitProperties}·{@link LiveKitRoomNames})가 단일 소유한다.
+ * 탈출 방지, 가이드 §18). room 이름과 접속 설정은 세션 도메인이 소유하므로 {@link MediaRoomPort}(세션의 application port)를 통해서만 받는다.
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class LiveKitTrackEgressAdapter implements TrackEgressPort {
 
-    private final LiveKitProperties liveKitProperties;
+    private final MediaRoomPort mediaRoomPort;
     private final RecordingProperties recordingProperties;
     /** Retrofit/OkHttp 풀을 재사용하기 위해 클라이언트는 한 번만 만든다. */
     private volatile EgressServiceClient client;
 
-    public LiveKitTrackEgressAdapter(LiveKitProperties liveKitProperties, RecordingProperties recordingProperties) {
-        this.liveKitProperties = liveKitProperties;
-        this.recordingProperties = recordingProperties;
-    }
-
     @Override
     public IssuedTrackEgress start(TrackEgressRequest request) {
-        if (isBlank(liveKitProperties.url())
-                || isBlank(liveKitProperties.apiKey())
-                || isBlank(liveKitProperties.apiSecret())) {
+        MediaServerCredentials credentials = mediaRoomPort.credentials();
+        if (!credentials.isConfigured()) {
             throw new TrackEgressUnavailableException(new IllegalStateException("LiveKit is not configured"));
         }
 
-        String roomName = LiveKitRoomNames.sessionRoom(liveKitProperties.environment(), request.sessionId());
+        String roomName = mediaRoomPort.roomName(request.sessionId());
         LivekitEgress.DirectFileOutput output = LivekitEgress.DirectFileOutput.newBuilder()
                 .setFilepath(outputFilepath(request))
                 .build();
         try {
-            Response<LivekitEgress.EgressInfo> response = egressClient()
+            Response<LivekitEgress.EgressInfo> response = egressClient(credentials)
                     .startTrackEgress(roomName, output, request.trackSid())
                     .execute();
             if (!response.isSuccessful()) {
@@ -71,15 +67,13 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
         }
     }
 
-    private EgressServiceClient egressClient() {
+    private EgressServiceClient egressClient(MediaServerCredentials credentials) {
         EgressServiceClient current = client;
         if (current == null) {
             synchronized (this) {
                 if (client == null) {
                     client = EgressServiceClient.createClient(
-                            httpUrl(liveKitProperties.url()),
-                            liveKitProperties.apiKey(),
-                            liveKitProperties.apiSecret());
+                            httpUrl(credentials.serverUrl()), credentials.apiKey(), credentials.apiSecret());
                 }
                 current = client;
             }
@@ -109,9 +103,5 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
             return "http://" + url.substring("ws://".length());
         }
         return url;
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 }
