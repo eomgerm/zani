@@ -392,9 +392,9 @@ class RecordingIntegrationTest {
             return new IssuedTrackEgress(egressIdOf(request.trackSid()));
         }
 
-        /** 실제 LiveKit처럼 이미 진행 중인 Egress를 되돌려, 재실행이 중복 시작하지 않는지 검증할 수 있게 한다. */
+        /** 실제 LiveKit처럼 기존 Egress(진행 중·종료 포함)를 되돌려, 재실행이 중복 시작하지 않는지 검증할 수 있게 한다. */
         @Override
-        public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
+        public java.util.Optional<String> findExistingEgressId(TrackEgressRequest request) {
             return activeTrackSids.contains(request.trackSid())
                     ? java.util.Optional.of(egressIdOf(request.trackSid()))
                     : java.util.Optional.empty();
