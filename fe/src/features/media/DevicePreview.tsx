@@ -6,28 +6,23 @@ import { useDevicePreview, type DevicePreviewState } from "./useDevicePreview";
 
 export type { DevicePreviewState } from "./useDevicePreview";
 
-/** 실패 코드별 사용자 안내 문구. 입장 버튼 비활성화 사유로 노출한다. */
-export const DEVICE_FAILURE_MESSAGES: Record<DeviceTestFailure, string> = {
-  CAMERA_PERMISSION_DENIED:
-    "카메라 권한이 거부되어 있어요. 주소창 오른쪽의 카메라 아이콘에서 권한을 허용한 뒤 다시 시도해 주세요.",
-  MICROPHONE_PERMISSION_DENIED:
-    "마이크 권한이 거부되어 있어요. 주소창 오른쪽의 마이크 아이콘에서 권한을 허용한 뒤 다시 시도해 주세요.",
-  CAMERA_NOT_SELECTED:
-    "사용할 수 있는 카메라를 찾지 못했어요. 카메라 연결 상태를 확인하고 다시 시도해 주세요.",
-  MICROPHONE_NOT_SELECTED:
-    "사용할 수 있는 마이크를 찾지 못했어요. 마이크 연결 상태를 확인하고 다시 시도해 주세요.",
-  CAMERA_DISABLED: "카메라가 꺼져 있어요. 입장하려면 카메라를 켜 주세요.",
-  MICROPHONE_DISABLED: "마이크가 꺼져 있어요. 입장하려면 마이크를 켜 주세요.",
-  CAMERA_STREAM_INVALID:
-    "카메라 영상이 나오지 않아요. 다른 카메라를 선택하거나 다시 시도해 주세요.",
-  MICROPHONE_LEVEL_TOO_LOW:
-    "마이크 입력이 감지되지 않아요. 마이크에 가까이에서 소리를 내어 입력 레벨을 확인해 주세요.",
+/**
+ * 마이크 원인별 짧은 안내 문구. 마이크 입력 레벨 위 말풍선으로 노출한다(우선순위: 배열 순서).
+ * 실패 상세 안내 박스는 두지 않는다(컬럼 높이가 늘어 페이지에 스크롤이 생겼음). 카메라 실패는
+ * 미리보기 오버레이와 오른쪽 체크리스트로 이미 드러난다.
+ */
+const MICROPHONE_HINT_MESSAGES: Partial<Record<DeviceTestFailure, string>> = {
+  MICROPHONE_PERMISSION_DENIED: "마이크 권한이 거부되어 있어요",
+  MICROPHONE_NOT_SELECTED: "마이크가 연결되어 있지 않아요",
+  MICROPHONE_DISABLED: "마이크가 꺼져 있어요",
 };
 
 /**
- * 입장 전 카메라·마이크 미리보기와 장치 선택, 오류 복구 UI.
+ * 입장 전 카메라·마이크 미리보기와 장치 선택, 대체 장치 안내 UI.
  *
  * 미디어 획득·판정 로직은 useDevicePreview 훅이, 렌더링은 이 컴포넌트가 담당한다.
+ * 마이크 문제는 입력 레벨 위 말풍선으로만 간단히 알린다. 실패 상세 안내 박스는 두지 않는다
+ * (미리보기 컬럼 높이가 늘어 페이지에 스크롤이 생겼음). 실패 여부는 오른쪽 체크리스트로도 표시한다.
  */
 export function DevicePreview({
   onStateChange,
@@ -58,11 +53,15 @@ export function DevicePreview({
     selectMicrophone,
     toggleCamera,
     toggleMicrophone,
-    retry,
   } = useDevicePreview({ onStateChange, levelSampleIntervalMs });
 
   const levelPercent = Math.min(100, Math.round(microphoneLevel * 100));
   const levelPassed = microphoneLevel >= MICROPHONE_LEVEL_THRESHOLD;
+
+  // 마이크 원인별 말풍선 문구. 요청(전환·초기 획득) 진행 중에는 판정이 확정될 때까지 띄우지 않는다.
+  const microphoneHint = microphoneRequesting
+    ? null
+    : (result.failures.map((failure) => MICROPHONE_HINT_MESSAGES[failure]).find(Boolean) ?? null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,7 +90,6 @@ export function DevicePreview({
         )}
         {cameraHasVideoFrame && !cameraEnabled && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#1a1d30] px-[30px] text-center">
-            <span className="text-4xl">📷</span>
             <div className="text-lg font-extrabold text-white">카메라가 꺼져 있어요</div>
             <div className="text-[13.5px] leading-[1.55] text-white/80">
               입장하려면 아래 버튼으로 카메라를 켜 주세요
@@ -135,8 +133,24 @@ export function DevicePreview({
         </div>
       </div>
 
-      {/* 마이크 입력 레벨 (장치 선택은 미리보기 하단 알약의 화살표 메뉴에서) */}
-      <div className="z-card-lg flex flex-col gap-2 px-[22px] py-[18px]">
+      {/* 마이크 입력 레벨 (장치 선택은 미리보기 하단 알약의 화살표 메뉴에서). */}
+      {/* 마이크 문제는 레벨 위 말풍선으로만 알린다(절대 위치라 레이아웃 높이를 늘리지 않음). */}
+      {/* 연결만 되어 있으면 입력이 무음이어도 안내하지 않는다. */}
+      <div className="relative z-card-lg flex flex-col gap-2 px-[22px] py-[18px]">
+        {microphoneHint && (
+          <div
+            data-testid="mic-hint-bubble"
+            role="status"
+            className="absolute left-[22px] top-0 z-10 flex -translate-y-[calc(100%+8px)] items-center rounded-[10px] bg-[#1a1d30] px-3 py-2 text-[12px] font-semibold text-white shadow-[0_6px_20px_rgba(0,0,0,.22)]"
+          >
+            {microphoneHint}
+            {/* 아래를 향하는 말풍선 꼬리 */}
+            <span
+              aria-hidden
+              className="absolute left-5 top-full size-2.5 -translate-y-1/2 rotate-45 bg-[#1a1d30]"
+            />
+          </div>
+        )}
         <div className="flex items-center gap-[11px]">
           <span className="flex-none text-[13px] font-bold text-ink-faint">마이크 입력 레벨</span>
           <div
@@ -154,7 +168,7 @@ export function DevicePreview({
         </div>
       </div>
 
-      {/* 선택 장치를 못 열어 다른 장치로 대체했을 때의 안내 */}
+      {/* 선택 장치를 못 열어 다른 장치로 대체했을 때의 안내(드물게 발생). */}
       {(cameraNotice || microphoneNotice) && (
         <div className="flex flex-col gap-[9px] rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px]">
           {cameraNotice && (
@@ -175,32 +189,6 @@ export function DevicePreview({
               {microphoneNotice}
             </div>
           )}
-        </div>
-      )}
-
-      {/* 원인별 안내 + 복구. 장치 요청이 진행 중일 때는 판정이 확정될 때까지 띄우지 않는다. */}
-      {!cameraRequesting && !microphoneRequesting && result.failures.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px]">
-          <ul className="flex flex-col gap-[9px]">
-            {result.failures.map((failure) => (
-              <li
-                key={failure}
-                data-testid={`device-failure-${failure}`}
-                className="flex gap-2 text-[12.5px] leading-[1.6] text-ink-faint"
-              >
-                <span className="shrink-0 text-primary">!</span>
-                {DEVICE_FAILURE_MESSAGES[failure]}
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            data-testid="device-retry-button"
-            onClick={retry}
-            className="z-btn z-btn-outline z-btn-md mt-1 self-start"
-          >
-            다시 시도
-          </button>
         </div>
       )}
     </div>

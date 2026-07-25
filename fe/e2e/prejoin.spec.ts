@@ -35,9 +35,9 @@ test('카메라·마이크가 모두 유효하면 입장이 활성화되고 장�
   const enterButton = page.getByTestId('prejoin-enter-button');
   await expect(enterButton).toBeEnabled({ timeout: 20_000 });
 
-  // 카메라를 끄면 입장이 막히고, 다시 켜면 복구된다.
+  // 카메라를 끄면 입장이 막히고(체크리스트도 실패 표시), 다시 켜면 복구된다.
   await page.getByTestId('camera-toggle').click();
-  await expect(page.getByTestId('device-failure-CAMERA_DISABLED')).toBeVisible();
+  await expect(page.getByTestId('checklist-camera')).toHaveAttribute('data-ok', 'false');
   await expect(enterButton).toBeDisabled();
   await page.getByTestId('camera-toggle').click();
   await expect(enterButton).toBeEnabled({ timeout: 10_000 });
@@ -69,9 +69,10 @@ test('권한이 거부되면 입장이 비활성화되고 권한 안내가 보�
   });
   await page.goto(PREJOIN_URL);
 
-  await expect(page.getByTestId('device-failure-CAMERA_PERMISSION_DENIED')).toBeVisible();
-  await expect(page.getByTestId('device-failure-MICROPHONE_PERMISSION_DENIED')).toBeVisible();
-  await expect(page.getByTestId('device-retry-button')).toBeVisible();
+  // 마이크 권한 문제는 레벨 위 말풍선으로, 카메라·마이크 실패는 체크리스트로 드러난다.
+  await expect(page.getByTestId('mic-hint-bubble')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('checklist-camera')).toHaveAttribute('data-ok', 'false');
+  await expect(page.getByTestId('checklist-microphone')).toHaveAttribute('data-ok', 'false');
   await expect(page.getByTestId('prejoin-enter-button')).toBeDisabled();
 });
 
@@ -86,17 +87,20 @@ test('카메라가 없으면 카메라 안내가 보이고 마이크 테스트�
   });
   await page.goto(PREJOIN_URL);
 
-  await expect(page.getByTestId('device-failure-CAMERA_NOT_SELECTED')).toBeVisible();
+  // 카메라 실패는 체크리스트로 드러나고 입장이 막힌다.
+  await expect(page.getByTestId('checklist-camera')).toHaveAttribute('data-ok', 'false', {
+    timeout: 20_000,
+  });
   await expect(page.getByTestId('prejoin-enter-button')).toBeDisabled();
 
-  // 마이크는 fake 톤 입력으로 정상 판정되어 레벨 실패 안내가 없어야 한다.
+  // 마이크는 fake 톤 입력으로 정상 판정되어 말풍선 안내가 없어야 한다.
   await expect(page.getByTestId('mic-level')).toHaveAttribute('data-level-passed', 'true', {
     timeout: 20_000,
   });
-  await expect(page.getByTestId('device-failure-MICROPHONE_LEVEL_TOO_LOW')).toHaveCount(0);
+  await expect(page.getByTestId('mic-hint-bubble')).toHaveCount(0);
 });
 
-test('마이크 입력이 무음이면 입력 레벨 안내가 보이고 입장이 비활성화된다', async ({ page }) => {
+test('마이크가 연결돼 있으면 무음이어도 안내 없이 입장할 수 있다', async ({ page }) => {
   await fakeChromeBrand(page);
   await page.addInitScript(() => {
     // 장치는 정상 연결하되 분석기에 항상 무음(128)을 채워 무입력을 재현한다.
@@ -106,11 +110,12 @@ test('마이크 입력이 무음이면 입력 레벨 안내가 보이고 입장�
   });
   await page.goto(PREJOIN_URL);
 
-  await expect(page.getByTestId('device-failure-MICROPHONE_LEVEL_TOO_LOW')).toBeVisible({
+  // 무음은 오류가 아니므로 말풍선이 뜨지 않고, 연결만 되어 있으면 입장할 수 있다.
+  await expect(page.getByTestId('mic-level')).toHaveAttribute('data-level-passed', 'false', {
     timeout: 20_000,
   });
-  await expect(page.getByTestId('mic-level')).toHaveAttribute('data-level-passed', 'false');
-  await expect(page.getByTestId('prejoin-enter-button')).toBeDisabled();
+  await expect(page.getByTestId('mic-hint-bubble')).toHaveCount(0);
+  await expect(page.getByTestId('prejoin-enter-button')).toBeEnabled();
 });
 
 test('비지원 브라우저면 입장이 비활성화되고 Chrome 안내가 보인다', async ({ page }) => {

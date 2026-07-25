@@ -49,7 +49,6 @@ export interface DevicePreviewController {
   selectMicrophone(deviceId: string): void;
   toggleCamera(): void;
   toggleMicrophone(): void;
-  retry(): void;
 }
 
 /** permissions API 로 현재 권한 상태를 읽는다. 조회 실패 시 prompt 로 간주한다. */
@@ -184,12 +183,6 @@ export function useDevicePreview({
   const [cameraRequesting, setCameraRequesting] = useState(() => hasMediaDevices());
   const [microphoneRequesting, setMicrophoneRequesting] = useState(() => hasMediaDevices());
   const [retryToken, setRetryToken] = useState(0);
-
-  const retry = useCallback(() => {
-    setCameraNotice(null);
-    setMicrophoneNotice(null);
-    setRetryToken((token) => token + 1);
-  }, []);
 
   // 같은 장치를 다시 고르면(폴백 뒤 재시도 등) 상태가 같아 effect 가 안 돌므로 재시도로 처리한다.
   const selectCamera = useCallback(
@@ -383,6 +376,12 @@ export function useDevicePreview({
         }
         const openedId = track?.getSettings().deviceId ?? null;
         setActiveMicrophoneId(openedId);
+        // 장치가 중간에 빠지면(이어폰 분리 등) 트랙이 ended 되므로 연결 해제로 처리한다.
+        // 무음(입력 레벨 0)은 연결 상태로 그대로 두되, 트랙이 끊긴 경우만 미선택으로 되돌린다.
+        track?.addEventListener("ended", () => {
+          setActiveMicrophoneId(null);
+          setMicrophoneLevel(0);
+        });
 
         // 선택한 장치가 아닌 다른 장치가 열렸으면 사용자에게 알린다(이어폰 마이크 실패 등).
         setMicrophoneNotice(
@@ -466,7 +465,6 @@ export function useDevicePreview({
     cameraEnabled,
     microphoneEnabled,
     cameraHasVideoFrame,
-    microphoneLevel,
   });
 
   // 판정 결과가 실제로 바뀔 때만 부모에 보고한다(레벨 샘플링 주기마다 반복 호출 방지).
@@ -508,6 +506,5 @@ export function useDevicePreview({
     selectMicrophone,
     toggleCamera,
     toggleMicrophone,
-    retry,
   };
 }
