@@ -68,15 +68,16 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
     }
 
     @Override
-    public java.util.Optional<String> findActiveEgressId(TrackEgressRequest request) {
+    public java.util.Optional<String> findExistingEgressId(TrackEgressRequest request) {
         MediaServerCredentials credentials = mediaRoomPort.credentials();
         if (!credentials.isConfigured()) {
             throw new TrackEgressUnavailableException(new IllegalStateException("LiveKit is not configured"));
         }
         String roomName = mediaRoomPort.roomName(request.sessionId());
         try {
+            // active=false → 진행 중·종료된 Egress를 모두 조회한다(종료된 실행을 놓치면 재실행이 중복 시작한다).
             Response<java.util.List<LivekitEgress.EgressInfo>> response =
-                    egressClient(credentials).listEgress(roomName, null, true).execute();
+                    egressClient(credentials).listEgress(roomName, null, false).execute();
             if (!response.isSuccessful() || response.body() == null) {
                 // 조회 실패는 "없음"으로 단정하지 않는다. 중복 시작 위험이 있으므로 재시도 대상 오류로 올린다.
                 throw new TrackEgressUnavailableException(
@@ -85,9 +86,10 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
             return response.body().stream()
                     .filter(info -> info.hasTrack()
                             && request.trackSid().equals(info.getTrack().getTrackId()))
-                    .map(LivekitEgress.EgressInfo::getEgressId)
-                    .filter(egressId -> !egressId.isBlank())
-                    .findFirst();
+                    .filter(info -> !info.getEgressId().isBlank())
+                    // 같은 트랙에 여러 실행 기록이 있으면 가장 최근 것을 채택한다.
+                    .max(java.util.Comparator.comparingLong(LivekitEgress.EgressInfo::getStartedAt))
+                    .map(LivekitEgress.EgressInfo::getEgressId);
         } catch (IOException exception) {
             throw new TrackEgressUnavailableException(exception);
         }

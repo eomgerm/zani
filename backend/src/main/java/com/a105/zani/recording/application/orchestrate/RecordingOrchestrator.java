@@ -164,11 +164,11 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
         TrackEgressRequest request = new TrackEgressRequest(
                 message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source());
 
-        // 재실행(완료 표시 유실·크래시 후 lease 회수·재시도)일 수 있으므로, 첫 시도가 아니면 이미 진행 중인 Egress를
-        // 먼저 찾아 채택한다. 이렇게 하면 같은 트랙에 두 번째 Egress가 붙지 않는다.
+        // 재실행(완료 표시 유실·크래시 후 lease 회수·재시도)일 수 있으므로, 첫 시도가 아니면 이 트랙의 기존 Egress를
+        // 먼저 찾아 채택한다(이미 종료된 실행도 포함). 이렇게 하면 같은 트랙에 두 번째 Egress가 붙지 않는다.
         String egressId = attempt > FIRST_ATTEMPT
                 ? trackEgressPort
-                        .findActiveEgressId(request)
+                        .findExistingEgressId(request)
                         .orElseGet(() -> trackEgressPort.start(request).egressId())
                 : trackEgressPort.start(request).egressId();
 
