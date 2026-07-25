@@ -55,6 +55,16 @@ class IssueMediaTokenServiceTest {
         }
 
         @Override
+        public Optional<SessionParticipant> findById(Long id) {
+            return Optional.ofNullable(participant);
+        }
+
+        @Override
+        public java.util.List<SessionParticipant> findBySessionId(Long sessionId) {
+            return participant == null ? java.util.List.of() : java.util.List.of(participant);
+        }
+
+        @Override
         public SessionParticipant save(SessionParticipant p) {
             return p;
         }

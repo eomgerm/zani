@@ -336,5 +336,12 @@ class RecordingOrchestratorTest {
             saved.add(recording);
             return recording;
         }
+
+        @Override
+        public java.util.Optional<Recording> findByLivekitEgressId(String livekitEgressId) {
+            return saved.stream()
+                    .filter(r -> r.livekitEgressId().equals(livekitEgressId))
+                    .findFirst();
+        }
     }
 }
