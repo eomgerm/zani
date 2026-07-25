@@ -51,17 +51,6 @@ class RecordingOrchestratorTest {
     }
 
     @Test
-    void 세션_등록은_dedup_key로_한_번만_기록된다() {
-        orchestrator.enroll(SESSION_ID);
-        orchestrator.enroll(SESSION_ID);
-
-        assertEquals(1, outbox.rows.size());
-        assertEquals(
-                "session-recording:100",
-                outbox.rows.values().iterator().next().message.dedupKey());
-    }
-
-    @Test
     void 저장_대상_트랙은_outbox에_등록된다() {
         TrackEgressRequestResult result =
                 orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
@@ -155,16 +144,6 @@ class RecordingOrchestratorTest {
 
         assertEquals(0, processed);
         assertEquals(0, egressPort.requests.size());
-    }
-
-    @Test
-    void 세션_등록_마커는_외부_호출_없이_완료된다() {
-        orchestrator.enroll(SESSION_ID);
-
-        orchestrator.relayPendingOutbox();
-
-        assertEquals(0, egressPort.requests.size());
-        assertEquals("COMPLETED", outbox.statusOf("session-recording:100"));
     }
 
     @Test

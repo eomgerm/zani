@@ -46,8 +46,8 @@ class CreateSessionConcurrencyTest {
 
         SessionActivationLockRedisAdapter lockPort = new SessionActivationLockRedisAdapter(redisTemplate);
         SessionRepository sessionRepository = new InMemorySessionRepository();
-        createSessionService = new CreateSessionService(
-                new NewSessionSaver(sessionRepository, sessionId -> {}), lockPort, new InviteCodeGenerator());
+        createSessionService =
+                new CreateSessionService(new NewSessionSaver(sessionRepository), lockPort, new InviteCodeGenerator());
 
         redisTemplate.delete("session:active-lock:" + INSTRUCTOR_ID);
     }
