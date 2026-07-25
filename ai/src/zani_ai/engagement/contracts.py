@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Literal
+
+type SplitName = Literal["train", "valid", "test"]
+
+LABELS = ("Not-Engaged", "Barely-Engaged", "Engaged", "Highly-Engaged")
+_LABEL_LOOKUP = {label.casefold(): label for label in LABELS}
+_LABEL_LOOKUP["barely-engaged"] = "Barely-Engaged"
+_SPLIT_FILES: dict[SplitName, str] = {
+    "train": "train.txt",
+    "valid": "valid.txt",
+    "test": "test.txt",
+}
+
+
+class DatasetContractError(ValueError):
+    """Raised when an EngageNet directory violates the expected data contract."""
+
+    def __init__(self, problems: list[str]) -> None:
+        self.problems = tuple(problems)
+        super().__init__("Invalid EngageNet dataset:\n- " + "\n- ".join(problems))
+
+
+@dataclass(frozen=True, slots=True)
+class ClipRecord:
+    clip_id: str
+    label: str
+    label_index: int
+    split: SplitName
+    video_path: Path
+    subject_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetContract:
+    root: Path
+    splits: dict[SplitName, tuple[ClipRecord, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class _LabelRow:
+    label: str
+    subject_id: str | None
+
+
+def _normalize_clip_id(value: str) -> str:
+    return Path(value.strip()).stem
+
+
+def _read_split(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [_normalize_clip_id(line) for line in lines if line.strip()]
+
+
+def _read_labels(
+    path: Path,
+    id_column: str,
+    label_column: str,
+    subject_column: str | None,
+) -> tuple[dict[str, _LabelRow], list[str]]:
+    problems: list[str] = []
+    result: dict[str, _LabelRow] = {}
+    with path.open(newline="", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        fieldnames = reader.fieldnames or []
+        actual_id_column = (
+            id_column if id_column in fieldnames else (fieldnames[0] if fieldnames else "")
+        )
+        if not actual_id_column or label_column not in fieldnames:
+            return {}, [f"final_labels.csv requires an ID column and '{label_column}' column"]
+        for row_number, row in enumerate(reader, start=2):
+            clip_id = _normalize_clip_id(row.get(actual_id_column, ""))
+            raw_label = row.get(label_column, "").strip()
+            label = _LABEL_LOOKUP.get(raw_label.casefold())
+            if not clip_id:
+                problems.append(f"final_labels.csv row {row_number} has an empty clip ID")
+                continue
+            if label is None:
+                problems.append(f"clip {clip_id} has unknown label '{raw_label}'")
+                continue
+            if clip_id in result:
+                problems.append(f"clip {clip_id} appears more than once in final_labels.csv")
+                continue
+            subject_value = (
+                row.get(subject_column, "").strip()
+                if subject_column and subject_column in row
+                else ""
+            )
+            result[clip_id] = _LabelRow(label, subject_value or None)
+    return result, problems
+
+
+def _validate_split_ids(
+    split_ids: dict[SplitName, list[str]],
+    labels: dict[str, _LabelRow],
+    videos_dir: Path,
+    video_extension: str,
+) -> list[str]:
+    problems: list[str] = []
+    clip_splits: dict[str, list[SplitName]] = {}
+    subject_splits: dict[str, set[SplitName]] = {}
+    for split, clip_ids in split_ids.items():
+        if not clip_ids:
+            problems.append(f"{_SPLIT_FILES[split]} is empty")
+        for clip_id in clip_ids:
+            clip_splits.setdefault(clip_id, []).append(split)
+            label = labels.get(clip_id)
+            if label is None:
+                problems.append(f"clip {clip_id} has no label")
+            elif label.subject_id:
+                subject_splits.setdefault(label.subject_id, set()).add(split)
+            if not (videos_dir / f"{clip_id}{video_extension}").is_file():
+                problems.append(f"missing video: videos/{clip_id}{video_extension}")
+    for clip_id, splits in clip_splits.items():
+        if len(splits) > 1 and len(set(splits)) == 1:
+            problems.append(f"clip {clip_id} appears more than once in {splits[0]}.txt")
+        elif len(set(splits)) > 1:
+            problems.append(f"clip {clip_id} is present in multiple splits: {', '.join(splits)}")
+    for subject_id, subject_split_names in subject_splits.items():
+        if len(subject_split_names) > 1:
+            names = ", ".join(sorted(subject_split_names))
+            problems.append(f"subject {subject_id} is present in multiple splits: {names}")
+    return problems
+
+
+def load_dataset_contract(
+    root: Path,
+    *,
+    id_column: str = "clip_id",
+    label_column: str = "label",
+    subject_column: str | None = "subject_id",
+    video_extension: str = ".mp4",
+) -> DatasetContract:
+    """Validate and load an official-style EngageNet dataset directory."""
+    root = root.resolve()
+    extension = video_extension if video_extension.startswith(".") else f".{video_extension}"
+    required = ("final_labels.csv", "train.txt", "valid.txt", "test.txt", "videos")
+    missing = [name for name in required if not (root / name).exists()]
+    if missing:
+        raise DatasetContractError([f"missing required path: {name}" for name in missing])
+
+    labels, problems = _read_labels(
+        root / "final_labels.csv", id_column, label_column, subject_column
+    )
+    split_ids = {split: _read_split(root / filename) for split, filename in _SPLIT_FILES.items()}
+    problems.extend(_validate_split_ids(split_ids, labels, root / "videos", extension))
+    if problems:
+        raise DatasetContractError(problems)
+
+    splits: dict[SplitName, tuple[ClipRecord, ...]] = {}
+    for split, clip_ids in split_ids.items():
+        records = []
+        for clip_id in clip_ids:
+            label_row = labels[clip_id]
+            records.append(
+                ClipRecord(
+                    clip_id=clip_id,
+                    label=label_row.label,
+                    label_index=LABELS.index(label_row.label),
+                    split=split,
+                    video_path=root / "videos" / f"{clip_id}{extension}",
+                    subject_id=label_row.subject_id,
+                )
+            )
+        splits[split] = tuple(records)
+    return DatasetContract(root=root, splits=dict(MappingProxyType(splits)))
+
+
+__all__ = [
+    "LABELS",
+    "ClipRecord",
+    "DatasetContract",
+    "DatasetContractError",
+    "SplitName",
+    "load_dataset_contract",
+]
