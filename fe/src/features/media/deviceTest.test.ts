@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   type DeviceTestInput,
-  MICROPHONE_LEVEL_THRESHOLD,
   evaluateDeviceTest,
   normalizedInputLevel,
 } from './deviceTest';
@@ -16,7 +15,6 @@ function validInput(overrides: Partial<DeviceTestInput> = {}): DeviceTestInput {
     cameraEnabled: true,
     microphoneEnabled: true,
     cameraHasVideoFrame: true,
-    microphoneLevel: 0.5,
     ...overrides,
   };
 }
@@ -58,13 +56,10 @@ describe('evaluateDeviceTest', () => {
     expect(result.failures).not.toContain('CAMERA_STREAM_INVALID');
   });
 
-  it('마이크를 꺼 두면 MICROPHONE_DISABLED 만 보고한다(레벨 실패 중복 없음)', () => {
-    const result = evaluateDeviceTest(
-      validInput({ microphoneEnabled: false, microphoneLevel: 0 }),
-    );
+  it('마이크를 꺼 두면 MICROPHONE_DISABLED 를 보고한다', () => {
+    const result = evaluateDeviceTest(validInput({ microphoneEnabled: false }));
     expect(result.passed).toBe(false);
     expect(result.failures).toContain('MICROPHONE_DISABLED');
-    expect(result.failures).not.toContain('MICROPHONE_LEVEL_TOO_LOW');
   });
 
   it('권한이 거부되면 꺼짐 실패는 중복 보고하지 않는다', () => {
@@ -80,31 +75,23 @@ describe('evaluateDeviceTest', () => {
     expect(result.failures).toContain('CAMERA_STREAM_INVALID');
   });
 
-  it('마이크 입력 레벨이 임계 미만이면 LEVEL_TOO_LOW', () => {
-    const result = evaluateDeviceTest(
-      validInput({ microphoneLevel: MICROPHONE_LEVEL_THRESHOLD - 0.001 }),
-    );
-    expect(result.failures).toContain('MICROPHONE_LEVEL_TOO_LOW');
+  it('마이크가 연결·활성 상태면 무음이어도 통과한다(입력 레벨로 막지 않는다)', () => {
+    const result = evaluateDeviceTest(validInput());
+    expect(result.passed).toBe(true);
+    expect(result.failures).toEqual([]);
   });
 
-  it('임계값과 같은 레벨은 유효로 본다(경계값)', () => {
-    const result = evaluateDeviceTest(validInput({ microphoneLevel: MICROPHONE_LEVEL_THRESHOLD }));
-    expect(result.failures).not.toContain('MICROPHONE_LEVEL_TOO_LOW');
-  });
-
-  it('권한이 거부되면 같은 장치의 STREAM/LEVEL 실패는 중복 보고하지 않는다', () => {
+  it('권한이 거부되면 같은 장치의 STREAM 실패는 중복 보고하지 않는다', () => {
     const result = evaluateDeviceTest(
       validInput({
         cameraPermission: 'denied',
         cameraHasVideoFrame: false,
         microphonePermission: 'denied',
-        microphoneLevel: 0,
       }),
     );
     expect(result.failures).toContain('CAMERA_PERMISSION_DENIED');
     expect(result.failures).toContain('MICROPHONE_PERMISSION_DENIED');
     expect(result.failures).not.toContain('CAMERA_STREAM_INVALID');
-    expect(result.failures).not.toContain('MICROPHONE_LEVEL_TOO_LOW');
   });
 
   it('prompt 상태에서도 장치가 정상이면 통과한다', () => {

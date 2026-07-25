@@ -55,7 +55,7 @@ function failedState(): DevicePreviewState {
   return {
     cameraDeviceId: 'cam-1',
     microphoneDeviceId: 'mic-1',
-    result: { passed: false, failures: ['MICROPHONE_LEVEL_TOO_LOW'] },
+    result: { passed: false, failures: ['MICROPHONE_DISABLED'] },
   };
 }
 

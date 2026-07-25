@@ -15,8 +15,7 @@ export type DeviceTestFailure =
   | 'MICROPHONE_NOT_SELECTED'
   | 'CAMERA_DISABLED'
   | 'MICROPHONE_DISABLED'
-  | 'CAMERA_STREAM_INVALID'
-  | 'MICROPHONE_LEVEL_TOO_LOW';
+  | 'CAMERA_STREAM_INVALID';
 
 export interface DeviceTestInput {
   readonly cameraDeviceId: string | null;
@@ -29,8 +28,6 @@ export interface DeviceTestInput {
   readonly microphoneEnabled: boolean;
   /** 카메라가 유효한 영상 프레임을 내보내는지 (예: 트랙 활성 + 해상도 > 0). */
   readonly cameraHasVideoFrame: boolean;
-  /** 측정된 마이크 입력 레벨 (0~1 로 정규화된 피크). */
-  readonly microphoneLevel: number;
 }
 
 export interface DeviceTestResult {
@@ -38,14 +35,21 @@ export interface DeviceTestResult {
   readonly failures: readonly DeviceTestFailure[];
 }
 
-/** 유효한 마이크 입력으로 인정하는 최소 정규화 레벨(0~1). 이 값 미만이면 무음으로 본다. */
+/**
+ * 마이크 입력 레벨 게이지 색상 전환의 기준이 되는 최소 정규화 레벨(0~1).
+ * 이 값 이상이면 입력이 들어온 것으로 보고 게이지를 강조색으로 채운다. 판정(입장 가능 여부)에는
+ * 쓰지 않는다. 연결만 되어 있으면 무음이어도 입장을 막지 않기 때문이다.
+ */
 export const MICROPHONE_LEVEL_THRESHOLD = 0.02;
 
 /**
  * 장치 테스트 결과를 판정한다.
  *
- * 권한이 거부된 경우에는 스트림/레벨 실패를 중복으로 보고하지 않고(근본 원인은 권한),
- * 사용자가 장치를 꺼 둔 경우에도 스트림/레벨 실패 대신 꺼짐만 보고한다(근본 원인은 토글).
+ * 권한이 거부된 경우에는 스트림 실패를 중복으로 보고하지 않고(근본 원인은 권한),
+ * 사용자가 장치를 꺼 둔 경우에도 스트림 실패 대신 꺼짐만 보고한다(근본 원인은 토글).
+ *
+ * 마이크는 트랙이 살아 있으면(연결됨) 입력이 무음이어도 통과시킨다. 조용한 환경·푸시투토크 등
+ * 정상적으로 무음일 수 있기 때문이다. 트랙이 열리지 않거나 끊긴 경우만 MICROPHONE_NOT_SELECTED 로 본다.
  */
 export function evaluateDeviceTest(input: DeviceTestInput): DeviceTestResult {
   const failures: DeviceTestFailure[] = [];
@@ -81,15 +85,6 @@ export function evaluateDeviceTest(input: DeviceTestInput): DeviceTestResult {
     !input.cameraHasVideoFrame
   ) {
     failures.push('CAMERA_STREAM_INVALID');
-  }
-
-  if (
-    !microphoneDenied &&
-    input.microphoneDeviceId &&
-    input.microphoneEnabled &&
-    input.microphoneLevel < MICROPHONE_LEVEL_THRESHOLD
-  ) {
-    failures.push('MICROPHONE_LEVEL_TOO_LOW');
   }
 
   return { passed: failures.length === 0, failures };

@@ -6,6 +6,8 @@ dump.rdb
 !.env.example
 .idea/
 .claude/launch.json
+docs/superpowers/
+ai/docs/superpowers/
 .superpowers/
 **/superpowers/
 
