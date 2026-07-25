@@ -43,6 +43,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
 
     private static final int RELAY_BATCH_SIZE = 20;
     private static final int MAX_RELAY_ATTEMPTS = 5;
+    private static final int FIRST_ATTEMPT = 1;
     /** 백오프 기본 간격. attempt가 오를수록 2배씩 늘어난다(30s, 1m, 2m, 4m). */
     private static final Duration RETRY_BASE_DELAY = Duration.ofSeconds(30);
     /** IN_PROGRESS로 방치된 행을 되살리는 lease 시간. */
@@ -103,7 +104,9 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
             int attempt = message.attemptCount() + 1;
             try {
                 handle(message, attempt);
-                outboxStore.markCompleted(message.id());
+                // 완료 표시는 작업의 일부가 아니다. 여기서 실패해도 handle을 다시 실행하면 안 되므로(중복 Egress)
+                // 재시도 경로로 보내지 않고 별도로 처리한다. 재실행되더라도 handle이 기존 Egress를 채택해 멱등하다.
+                markCompletedSafely(message);
             } catch (OrphanedTrackEgressException orphaned) {
                 // 이미 Egress가 시작된 작업은 재시도하지 않는다(중복 Egress 방지). 발급된 egressId를 남겨 회수 가능하게 한다.
                 outboxStore.markFailed(message.id(), "orphaned egress: " + orphaned.egressId());
@@ -137,6 +140,19 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
         return processed;
     }
 
+    private void markCompletedSafely(PendingRecordingOutboxMessage message) {
+        try {
+            outboxStore.markCompleted(message.id());
+        } catch (RuntimeException completionFailure) {
+            // 작업 자체는 성공했다. lease 만료 후 이 행이 다시 소비되더라도 handle이 기존 Egress를 채택하므로
+            // 외부 부작용은 한 번만 발생한다.
+            log.error(
+                    "Recording outbox {} completed but could not be marked COMPLETED: {}",
+                    message.dedupKey(),
+                    completionFailure.getMessage());
+        }
+    }
+
     private void handle(PendingRecordingOutboxMessage message, int attempt) {
         switch (message.type()) {
             case START_TRACK_EGRESS -> startTrackEgress(message, attempt);
@@ -145,10 +161,25 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
 
     private void startTrackEgress(PendingRecordingOutboxMessage message, int attempt) {
         TrackEgressPayload payload = message.payload();
-        String egressId = trackEgressPort
-                .start(new TrackEgressRequest(
-                        message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source()))
-                .egressId();
+        TrackEgressRequest request = new TrackEgressRequest(
+                message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source());
+
+        // 재실행(완료 표시 유실·크래시 후 lease 회수·재시도)일 수 있으므로, 첫 시도가 아니면 이미 진행 중인 Egress를
+        // 먼저 찾아 채택한다. 이렇게 하면 같은 트랙에 두 번째 Egress가 붙지 않는다.
+        String egressId = attempt > FIRST_ATTEMPT
+                ? trackEgressPort
+                        .findActiveEgressId(request)
+                        .orElseGet(() -> trackEgressPort.start(request).egressId())
+                : trackEgressPort.start(request).egressId();
+
+        // 채택한 Egress의 녹화 행이 이미 있으면(이전 실행이 저장까지 마친 경우) 다시 만들지 않는다.
+        if (recordingRepository.findByLivekitEgressId(egressId).isPresent()) {
+            log.info(
+                    "Track egress {} already recorded, skipping duplicate row: session={}",
+                    egressId,
+                    message.sessionId());
+            return;
+        }
         try {
             recordingRepository.save(Recording.startTrack(
                     TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));

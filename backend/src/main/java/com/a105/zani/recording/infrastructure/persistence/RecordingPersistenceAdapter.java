@@ -21,4 +21,9 @@ public class RecordingPersistenceAdapter implements RecordingRepository {
         RecordingJpaEntity saved = recordingJpaRepository.saveAndFlush(mapper.toEntity(recording));
         return mapper.toDomain(saved);
     }
+
+    @Override
+    public java.util.Optional<Recording> findByLivekitEgressId(String livekitEgressId) {
+        return recordingJpaRepository.findByLivekitEgressId(livekitEgressId).map(mapper::toDomain);
+    }
 }
