@@ -28,8 +28,8 @@ class CreateSessionServiceTest {
         Set<String> takenCodes = new HashSet<>(List.of("AAAAAAAA"));
         StubInviteCodeGenerator codeGenerator = new StubInviteCodeGenerator("AAAAAAAA", "BBBBBBBB");
         RecordingSessionRepository repository = new RecordingSessionRepository(takenCodes);
-        CreateSessionService service =
-                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository, sessionId -> {}), new AlwaysAcquireLockPort(), codeGenerator);
 
         CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "재시도 테스트"));
 
@@ -42,8 +42,8 @@ class CreateSessionServiceTest {
         StubInviteCodeGenerator codeGenerator =
                 new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA");
         RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
-        CreateSessionService service =
-                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository, sessionId -> {}), new AlwaysAcquireLockPort(), codeGenerator);
 
         assertThrows(
                 InviteCodeGenerationFailedException.class,
