@@ -89,15 +89,16 @@ export function VideoEditorScreen({ lectureId }: { lectureId: string }) {
             <div className="absolute inset-0 flex items-center gap-0.5 px-1">
               <div className="h-[38px] flex-1 rounded [background:repeating-linear-gradient(90deg,#2a2f4e,#2a2f4e_3px,#232744_3px,#232744_6px)]" />
             </div>
+            {/* 잘라낸 구간은 45° 해치 패턴으로, 좌우 경계만 빨간 선으로 막는다 */}
             {cuts.map((c, i) => (
               <div
                 key={i}
-                className="absolute inset-y-0 border-x-2 border-danger bg-danger/35"
+                className="absolute inset-y-0 border-x-2 border-danger [background:repeating-linear-gradient(45deg,#e0455f55,#e0455f55_4px,#12152a_4px,#12152a_8px)]"
                 style={{ left: `${c.s}%`, width: `${c.e - c.s}%` }}
               />
             ))}
             <div
-              className="absolute inset-y-0 rounded-md border-2 border-violet bg-violet/20"
+              className="absolute inset-y-0 border-x-[3px] border-violet bg-[#10bfa433]"
               style={{ left: `${lo}%`, width: `${hi - lo}%` }}
             />
           </div>

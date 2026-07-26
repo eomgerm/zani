@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, Card } from "@/shared/ui";
+import { Avatar, CalendarIcon, Card, FileIcon } from "@/shared/ui";
 import { useAuth } from "@/domains/auth";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -29,7 +29,7 @@ function NotifRow({
   on,
   onToggle,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   desc: string;
   on: boolean;
@@ -37,7 +37,7 @@ function NotifRow({
 }) {
   return (
     <div className="flex items-center gap-3.5 border-t border-line-light py-4">
-      <span className="flex size-[38px] items-center justify-center rounded-[11px] bg-primary-soft text-[17px]">
+      <span className="flex size-[38px] items-center justify-center rounded-[11px] bg-primary-soft">
         {icon}
       </span>
       <div className="min-w-0 flex-1">
@@ -71,7 +71,7 @@ export function SettingsScreen() {
         <Card className="px-[30px] py-7">
           <div className="mb-5 text-[17px] font-extrabold">프로필 정보</div>
           <div className="flex flex-wrap items-start gap-[34px]">
-            <Avatar initial={name.charAt(0)} size={84} className="text-[34px]" />
+            <Avatar initial={name.charAt(0)} size={84} fontSize={26} />
             <div className="flex min-w-[260px] flex-1 flex-wrap gap-[22px]">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-[7px] block text-[13px] font-bold text-ink-faint">이름</label>
@@ -103,14 +103,14 @@ export function SettingsScreen() {
             이메일로 알림을 받아보실 수 있습니다.
           </p>
           <NotifRow
-            icon="📅"
+            icon={<CalendarIcon size={18} className="text-primary" />}
             title="수업 일정 알림"
             desc="예약된 수업 일정이 시작되기 전에 알림을 받습니다."
             on={notifSchedule}
             onToggle={() => setNotifSchedule((v) => !v)}
           />
           <NotifRow
-            icon="📄"
+            icon={<FileIcon size={18} className="text-[#15bd7d]" />}
             title="강의 리포트 알림"
             desc="수업 리포트가 생성되면 이메일로 알림을 받습니다."
             on={notifReport}

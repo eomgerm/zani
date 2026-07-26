@@ -86,8 +86,15 @@ export function LoginScreen() {
           <div className="absolute inset-x-[4%] inset-y-[6%] blur-[6px] [background:radial-gradient(circle_at_30%_30%,#cbf2e3,transparent_60%),radial-gradient(circle_at_75%_75%,#ddf6ec,transparent_60%)]" />
 
           <FloatCard className="left-[12%] right-[16%] top-6">
-            <span className="z-icon-chip">🎥</span>
-            <span className="flex-1 text-base font-extrabold text-ink">실시간 화상 강의</span>
+            <span className="z-icon-chip">
+              <HeroIcon>
+                <rect x="2" y="6" width="13" height="12" rx="2.5" />
+                <path d="M22 8l-5 4 5 4z" />
+              </HeroIcon>
+            </span>
+            <span className="flex-1 whitespace-nowrap text-base font-extrabold text-ink">
+              실시간 화상 강의
+            </span>
             <span className="z-pill bg-surface px-[11px] py-[5px] text-xs text-danger shadow-[0_3px_10px_rgba(224,69,95,.15)]">
               <span className="size-[7px] rounded-full bg-danger" />
               LIVE
@@ -96,7 +103,13 @@ export function LoginScreen() {
 
           <div className="absolute left-[4%] right-[8%] top-[150px] rounded-[22px] border border-white bg-white/[.66] px-6 py-[22px] shadow-[0_20px_50px_rgba(60,70,130,.16)] backdrop-blur-lg">
             <div className="mb-2 flex items-center gap-3.5">
-              <span className="z-icon-chip">📊</span>
+              <span className="z-icon-chip">
+                <HeroIcon strokeWidth={2.4}>
+                  <path d="M5 20V13" />
+                  <path d="M12 20V6" />
+                  <path d="M19 20v-9" />
+                </HeroIcon>
+              </span>
               <span className="text-base font-extrabold text-ink">AI 학습 분석</span>
             </div>
             <div className="flex items-end gap-3">
@@ -115,10 +128,36 @@ export function LoginScreen() {
             </div>
           </div>
 
-          <FloatCard className="bottom-auto left-[14%] right-[4%] top-[410px]">
-            <span className="z-icon-chip">📄</span>
+          <FloatCard className="bottom-auto left-[14%] right-[4%] top-[368px]">
+            <span className="z-icon-chip">
+              <HeroIcon className="text-[#15bd7d]" strokeWidth={2.2}>
+                <path d="M14 3v5h5" />
+                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+              </HeroIcon>
+            </span>
             <span className="text-base font-extrabold text-ink">수업 요약 &amp; 리포트</span>
           </FloatCard>
+
+          {/* 일러스트 주변을 떠다니는 원형 아이콘 */}
+          <FloatBubble className="right-[2%] top-[120px] size-14 bg-[linear-gradient(135deg,#42daa0,#48c69b)] shadow-[0_12px_28px_rgba(18,184,134,.35)]">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+              <circle cx="9" cy="8" r="3.2" />
+              <circle cx="16.5" cy="9" r="2.6" />
+              <path d="M3 19c0-3 3-4.5 6-4.5s6 1.5 6 4.5z" />
+              <path d="M15 19c0-2.2 1.6-3.4 3.6-3.4S22 16.8 22 19z" />
+            </svg>
+          </FloatBubble>
+          <FloatBubble className="bottom-[120px] left-[2%] size-[52px] bg-[linear-gradient(135deg,#57cfa1,#73ddb4)] shadow-[0_12px_26px_rgba(90,169,230,.35)]">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff" aria-hidden="true">
+              <path d="M12 2l8 3v6c0 5-3.5 8.5-8 11-4.5-2.5-8-6-8-11V5z" />
+            </svg>
+          </FloatBubble>
+          <FloatBubble className="bottom-11 right-[6%] size-14 bg-[linear-gradient(135deg,#34dc9b,#53dca7)] shadow-[0_12px_28px_rgba(34,196,147,.35)]">
+            <HeroIcon size={26} className="text-white" strokeWidth={2.2}>
+              <path d="M14 3v5h5" />
+              <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+            </HeroIcon>
+          </FloatBubble>
         </div>
       </div>
 
@@ -128,6 +167,45 @@ export function LoginScreen() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** 히어로 카드/버블 안에 들어가는 스트로크 아이콘. 기본색은 브랜드 그린. */
+function HeroIcon({
+  children,
+  size = 22,
+  strokeWidth = 2.2,
+  className = "text-primary",
+}: {
+  children: React.ReactNode;
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      {children}
+    </svg>
+  );
+}
+
+/** 일러스트 주변을 떠다니는 원형 아이콘 버블 */
+function FloatBubble({ className, children }: { className: string; children: React.ReactNode }) {
+  return (
+    <span className={`absolute flex items-center justify-center rounded-full ${className}`}>
+      {children}
+    </span>
   );
 }
 
