@@ -7,6 +7,7 @@
     "test": "npm run test:code-review",
     "test:code-review": "node --test code-review/test/*.test.cjs",
     "review:mr": "node code-review/bin/review.cjs",
+    "architecture:generate": "node scripts/generate-architecture-maps.cjs",
     "prepare": "husky"
   },
   "repository": {
