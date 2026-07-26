@@ -13,8 +13,10 @@ import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
+import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 import { useRoomMediaControls } from "./useRoomMediaControls";
+import { useSessionPresence } from "./useSessionPresence";
 
 /**
  * SC-09 실시간 강의실 (밝은 테마). LiveKit room 연결과 로컬 마이크·카메라 publish 제어를 붙였다.
@@ -34,6 +36,7 @@ export function RoomScreen({ sessionId, roomTitle, prejoinInviteCode }: RoomScre
   return (
     <RoomProvider sessionId={sessionId}>
       <RoomScreenContent
+        sessionId={sessionId}
         roomTitle={roomTitle}
         prejoinInviteCode={prejoinInviteCode ?? sessionId}
       />
@@ -42,9 +45,10 @@ export function RoomScreen({ sessionId, roomTitle, prejoinInviteCode }: RoomScre
 }
 
 function RoomScreenContent({
+  sessionId,
   roomTitle = "React 상태관리 심화",
   prejoinInviteCode,
-}: Pick<RoomScreenProps, "roomTitle" | "prejoinInviteCode">) {
+}: Pick<RoomScreenProps, "sessionId" | "roomTitle" | "prejoinInviteCode">) {
   const { connectionState, retry } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
@@ -52,6 +56,8 @@ function RoomScreenContent({
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [chatTab, setChatTab] = useState<"public" | "dm">("public");
   const media = useRoomMediaControls(prejoinInviteCode);
+  // 서버는 이 heartbeat로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
+  const presence = useSessionPresence(sessionId);
   const [handRaised, setHandRaised] = useState(false);
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -78,6 +84,12 @@ function RoomScreenContent({
 
   return (
     <div className="flex h-screen flex-col bg-mint-deep text-ink">
+      {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
+      <SessionPresenceNotice
+        reconnectStatus={presence.reconnectStatus}
+        sessionEnded={presence.sessionEnded}
+        error={presence.error}
+      />
       {/* 상단 바 */}
       <div className="relative flex shrink-0 items-center gap-4 border-b border-line bg-surface px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
