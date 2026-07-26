@@ -15,6 +15,7 @@ const MEDIA_EVENTS: RoomEvent[] = [
   RoomEvent.TrackMuted,
   RoomEvent.TrackUnmuted,
   RoomEvent.ActiveDeviceChanged,
+  RoomEvent.ParticipantPermissionsChanged,
 ];
 
 const MICROPHONE_KIND = "audioinput";
@@ -30,6 +31,8 @@ export type RoomMediaControls = {
   cameraEnabled: boolean;
   /** room에 연결돼 조작할 수 있는 상태인지. false면 제어 UI를 비활성화한다. */
   ready: boolean;
+  /** 강사 제한 모드: 서버가 publish 권한을 회수해 마이크·카메라를 켤 수 없는 상태. */
+  publishBlocked: boolean;
   /** 장치 조작 실패 안내. 다음 성공 시 null로 돌아간다. */
   mediaError: string | null;
   /** 선택 가능한 마이크 목록. */
@@ -47,7 +50,12 @@ export type RoomMediaControls = {
 
 type MediaSnapshot = Pick<
   RoomMediaControls,
-  "microphoneEnabled" | "cameraEnabled" | "ready" | "activeMicrophoneId" | "activeCameraId"
+  | "microphoneEnabled"
+  | "cameraEnabled"
+  | "ready"
+  | "publishBlocked"
+  | "activeMicrophoneId"
+  | "activeCameraId"
 >;
 
 type DeviceOptions = Pick<RoomMediaControls, "microphones" | "cameras">;
@@ -56,6 +64,7 @@ const disconnectedSnapshot: MediaSnapshot = {
   microphoneEnabled: false,
   cameraEnabled: false,
   ready: false,
+  publishBlocked: false,
   activeMicrophoneId: null,
   activeCameraId: null,
 };
@@ -81,6 +90,8 @@ function snapshot(room: Room | null): MediaSnapshot {
     microphoneEnabled: local.isMicrophoneEnabled,
     cameraEnabled: local.isCameraEnabled,
     ready: true,
+    // permissions는 서버가 토큰·moderation으로 정한다. 값이 없으면 제한 없음으로 본다.
+    publishBlocked: local.permissions ? !local.permissions.canPublish : false,
     activeMicrophoneId: room?.getActiveDevice(MICROPHONE_KIND) ?? null,
     activeCameraId: room?.getActiveDevice(CAMERA_KIND) ?? null,
   };
@@ -118,7 +129,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
   const toggle = useCallback(
     (kind: "microphone" | "camera") => {
       const local = room?.localParticipant;
-      if (!local) {
+      if (!local || (local.permissions && !local.permissions.canPublish)) {
         return;
       }
       const applied =

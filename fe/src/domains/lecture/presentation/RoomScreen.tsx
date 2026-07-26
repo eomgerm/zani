@@ -226,7 +226,8 @@ function RoomScreenContent({
           <RoomControlBar
             isInstructor={isInstructor}
             me={me}
-            mediaDisabled={!media.ready}
+            mediaDisabled={!media.ready || media.publishBlocked}
+            publishBlocked={media.publishBlocked}
             microphones={media.microphones}
             cameras={media.cameras}
             activeMicrophoneId={media.activeMicrophoneId}

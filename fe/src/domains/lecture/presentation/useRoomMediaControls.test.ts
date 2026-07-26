@@ -8,6 +8,7 @@ class FakeLocalParticipant {
   isMicrophoneEnabled = true;
   isCameraEnabled = true;
   microphoneFailure: Error | null = null;
+  permissions: { canPublish: boolean } | undefined;
 
   setMicrophoneEnabled(enabled: boolean) {
     if (this.microphoneFailure) {
@@ -302,6 +303,53 @@ describe("useRoomMediaControls", () => {
     await act(async () => vi.advanceTimersByTime(0));
 
     expect(room.switched).toEqual([]);
+  });
+
+  it("treats a revoked publish permission as the instructor restricted mode", () => {
+    const room = connectedRoom();
+    room.localParticipant!.permissions = { canPublish: false };
+
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.publishBlocked).toBe(true);
+  });
+
+  it("is not restricted while the participant may publish", () => {
+    const room = connectedRoom();
+    room.localParticipant!.permissions = { canPublish: true };
+
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.publishBlocked).toBe(false);
+  });
+
+  it("does not try to publish while restricted", async () => {
+    const room = connectedRoom();
+    room.localParticipant!.permissions = { canPublish: false };
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.toggleMicrophone());
+
+    expect(room.localParticipant!.isMicrophoneEnabled).toBe(true);
+    expect(result.current.mediaError).toBeNull();
+  });
+
+  it("lifts the restriction when the server grants publishing again", () => {
+    const room = connectedRoom();
+    room.localParticipant!.permissions = { canPublish: false };
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+    expect(result.current.publishBlocked).toBe(true);
+
+    act(() => {
+      room.localParticipant!.permissions = { canPublish: true };
+      room.emit(RoomEvent.ParticipantPermissionsChanged);
+    });
+
+    expect(result.current.publishBlocked).toBe(false);
   });
 
   it("removes every room listener on unmount", () => {

@@ -12,6 +12,8 @@ interface RoomControlBarProps {
   me: MeState;
   /** room에 연결되기 전이거나 publish가 막혀 마이크·카메라를 조작할 수 없는 상태. */
   mediaDisabled: boolean;
+  /** 강사 제한 모드(서버가 publish 권한을 회수)인지. 안내 배지를 함께 노출한다. */
+  publishBlocked: boolean;
   microphones: readonly SelectOption[];
   cameras: readonly SelectOption[];
   activeMicrophoneId: string | null;
@@ -103,6 +105,7 @@ export function RoomControlBar({
   isInstructor,
   me,
   mediaDisabled,
+  publishBlocked,
   microphones,
   cameras,
   activeMicrophoneId,
@@ -185,6 +188,16 @@ export function RoomControlBar({
       </button>
 
       <div className="flex-1" />
+
+      {publishBlocked && (
+        <span
+          role="status"
+          data-testid="room-publish-blocked"
+          className="rounded-full bg-warn-soft px-3 py-1.5 text-[12px] font-extrabold text-warn-text"
+        >
+          강사가 마이크·카메라 사용을 제한했습니다
+        </span>
+      )}
     </div>
   );
 }
