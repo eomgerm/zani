@@ -28,19 +28,23 @@ type RoomScreenProps = {
 export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent roomTitle={roomTitle} />
+      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} />
     </RoomProvider>
   );
 }
 
-function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<RoomScreenProps, "roomTitle">) {
+function RoomScreenContent({
+  sessionId,
+  roomTitle = "React 상태관리 심화",
+}: Pick<RoomScreenProps, "sessionId" | "roomTitle">) {
   const { connectionState, retry } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [chatTab, setChatTab] = useState<"public" | "dm">("public");
-  const media = useRoomMediaControls();
+  // 입장 전 점검은 초대 코드로 장치를 저장하고, 강의실 경로 파라미터가 그 코드다.
+  const media = useRoomMediaControls(sessionId);
   const [handRaised, setHandRaised] = useState(false);
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -223,6 +227,12 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
             isInstructor={isInstructor}
             me={me}
             mediaDisabled={!media.ready}
+            microphones={media.microphones}
+            cameras={media.cameras}
+            activeMicrophoneId={media.activeMicrophoneId}
+            activeCameraId={media.activeCameraId}
+            onSelectMicrophone={media.selectMicrophone}
+            onSelectCamera={media.selectCamera}
             sharing={sharing}
             reactMenuOpen={reactMenuOpen}
             onToggleMic={media.toggleMicrophone}

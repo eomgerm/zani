@@ -8,6 +8,15 @@ const renderBar = (overrides: Partial<Parameters<typeof RoomControlBar>[0]> = {}
     isInstructor: true,
     me: { mic: true, cam: true, hand: false },
     mediaDisabled: false,
+    microphones: [
+      { value: "mic-1", label: "내장 마이크" },
+      { value: "mic-2", label: "이어폰 마이크" },
+    ],
+    cameras: [{ value: "cam-1", label: "내장 카메라" }],
+    activeMicrophoneId: "mic-1",
+    activeCameraId: "cam-1",
+    onSelectMicrophone: vi.fn(),
+    onSelectCamera: vi.fn(),
     sharing: false,
     reactMenuOpen: false,
     onToggleMic: vi.fn(),
@@ -45,5 +54,23 @@ describe("RoomControlBar", () => {
 
     expect(screen.getByTestId("room-microphone-toggle")).toBeDisabled();
     expect(screen.getByTestId("room-camera-toggle")).toBeDisabled();
+    expect(screen.getByTestId("room-microphone-select")).toBeDisabled();
+    expect(screen.getByTestId("room-camera-select")).toBeDisabled();
+  });
+
+  it("reports the microphone picked from the device menu", async () => {
+    const props = renderBar();
+
+    fireEvent.click(screen.getByTestId("room-microphone-select"));
+    fireEvent.click(await screen.findByText("이어폰 마이크"));
+
+    expect(props.onSelectMicrophone).toHaveBeenCalledWith("mic-2");
+  });
+
+  it("disables the device menu when no device is available", () => {
+    renderBar({ cameras: [], activeCameraId: null });
+
+    expect(screen.getByTestId("room-camera-select")).toBeDisabled();
+    expect(screen.getByTestId("room-camera-toggle")).toBeEnabled();
   });
 });
