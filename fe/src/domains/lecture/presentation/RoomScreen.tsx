@@ -14,10 +14,11 @@ import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
+import { useRoomMediaControls } from "./useRoomMediaControls";
 
 /**
- * SC-09 실시간 강의실 (밝은 테마). LiveKit room connection is attached here;
- * media track publishing remains out of scope.
+ * SC-09 실시간 강의실 (밝은 테마). LiveKit room 연결과 로컬 마이크·카메라 publish 제어를 붙였다.
+ * 손들기·반응·채팅은 Spring WebSocket 소관(가이드 §10)이라 아직 fixture 기반이다.
  */
 type RoomScreenProps = {
   sessionId: string;
@@ -39,7 +40,8 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [chatTab, setChatTab] = useState<"public" | "dm">("public");
-  const [me, setMe] = useState({ mic: true, cam: true, hand: false });
+  const media = useRoomMediaControls();
+  const [handRaised, setHandRaised] = useState(false);
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -47,9 +49,10 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
 
   const isInstructor = role === "instructor";
   const meId = isInstructor ? "p0" : "p7";
+  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  // 갤러리 그리드와 참여자 수는 실제 room 참가자(useRoomParticipants)를 사용한다.
-  // 사이드 패널 people/chat, 하단 제어바는 아직 fixture 기반(각각 WebSocket·57 소관).
+  // 갤러리 그리드·참여자 수는 실제 room 참가자(useRoomParticipants), 마이크·카메라는 실제 publish 상태를 쓴다.
+  // 사이드 패널 people/chat과 손들기·반응은 아직 fixture 기반(WebSocket 소관).
   const count = tileParticipants.length;
   const messages = chatTab === "public" ? publicMessages : dmMessages;
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
@@ -61,7 +64,6 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
         ? "LIVE"
         : "연결 실패";
 
-  const toggleMe = (k: "mic" | "cam" | "hand") => setMe((p) => ({ ...p, [k]: !p[k] }));
 
   return (
     <div className="flex h-screen flex-col bg-mint-deep text-ink">
@@ -208,15 +210,25 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
             )}
           </div>
 
+          {media.mediaError && (
+            <div
+              role="alert"
+              className="rounded-xl border border-danger bg-danger-softer px-4 py-2 text-[13px] font-bold text-danger"
+            >
+              {media.mediaError}
+            </div>
+          )}
+
           <RoomControlBar
             isInstructor={isInstructor}
             me={me}
+            mediaDisabled={!media.ready}
             sharing={sharing}
             reactMenuOpen={reactMenuOpen}
-            onToggleMic={() => toggleMe("mic")}
-            onToggleCam={() => toggleMe("cam")}
+            onToggleMic={media.toggleMicrophone}
+            onToggleCam={media.toggleCamera}
             onToggleShare={() => setSharing((v) => !v)}
-            onToggleHand={() => toggleMe("hand")}
+            onToggleHand={() => setHandRaised((raised) => !raised)}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onPreview={() => (isInstructor ? setAlertOpen(true) : setPromptOpen(true))}
           />

@@ -9,6 +9,8 @@ interface MeState {
 interface RoomControlBarProps {
   isInstructor: boolean;
   me: MeState;
+  /** room에 연결되기 전이거나 publish가 막혀 마이크·카메라를 조작할 수 없는 상태. */
+  mediaDisabled: boolean;
   sharing: boolean;
   reactMenuOpen: boolean;
   onToggleMic: () => void;
@@ -21,7 +23,7 @@ interface RoomControlBarProps {
 
 /** 컨트롤 버튼 스타일. 활성(끔/공유 등)이면 강조색, 아니면 옅은 배경. */
 function ctlCls(active: boolean, activeCls: string) {
-  return `flex cursor-pointer flex-col items-center gap-[3px] rounded-xl border-0 px-3.5 py-2 font-sans text-[11.5px] font-bold ${
+  return `flex cursor-pointer flex-col items-center gap-[3px] rounded-xl border-0 px-3.5 py-2 font-sans text-[11.5px] font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
     active ? activeCls : "bg-canvas text-ink-sub"
   }`;
 }
@@ -30,6 +32,7 @@ function ctlCls(active: boolean, activeCls: string) {
 export function RoomControlBar({
   isInstructor,
   me,
+  mediaDisabled,
   sharing,
   reactMenuOpen,
   onToggleMic,
@@ -41,11 +44,25 @@ export function RoomControlBar({
 }: RoomControlBarProps) {
   return (
     <div className="relative flex shrink-0 items-center gap-1.5 rounded-2xl border border-line bg-surface px-[18px] py-[11px] shadow-[0_4px_18px_rgba(24,74,62,.05)]">
-      <button onClick={onToggleMic} className={ctlCls(!me.mic, "bg-danger-softer text-danger")}>
+      <button
+        type="button"
+        data-testid="room-microphone-toggle"
+        aria-pressed={me.mic}
+        disabled={mediaDisabled}
+        onClick={onToggleMic}
+        className={ctlCls(!me.mic, "bg-danger-softer text-danger")}
+      >
         <span className="text-[19px]">{me.mic ? "🎤" : "🔇"}</span>
         {me.mic ? "마이크" : "음소거"}
       </button>
-      <button onClick={onToggleCam} className={ctlCls(!me.cam, "bg-danger-softer text-danger")}>
+      <button
+        type="button"
+        data-testid="room-camera-toggle"
+        aria-pressed={me.cam}
+        disabled={mediaDisabled}
+        onClick={onToggleCam}
+        className={ctlCls(!me.cam, "bg-danger-softer text-danger")}
+      >
         <span className="text-[19px]">{me.cam ? "🎥" : "📷"}</span>
         {me.cam ? "카메라" : "끔"}
       </button>

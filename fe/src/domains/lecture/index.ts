@@ -7,6 +7,8 @@ export { RoomScreen } from "./presentation/RoomScreen";
 export { RoomProvider, useRoomConnection } from "./presentation/RoomProvider";
 export { useRoomParticipants } from "./presentation/useRoomParticipants";
 export type { UseRoomParticipantsResult } from "./presentation/useRoomParticipants";
+export { useRoomMediaControls } from "./presentation/useRoomMediaControls";
+export type { RoomMediaControls } from "./presentation/useRoomMediaControls";
 export { useRoomReconnect } from "./presentation/useRoomReconnect";
 export type {
   Measurability,
