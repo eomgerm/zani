@@ -60,6 +60,7 @@ export function SettingsScreen() {
   const [notifSchedule, setNotifSchedule] = useState(true);
   const [notifReport, setNotifReport] = useState(true);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const nameChanged = name.trim() !== (member?.displayName ?? "").trim() && name.trim().length > 0;
 
   return (
     <>
@@ -92,7 +93,16 @@ export function SettingsScreen() {
             </div>
           </div>
           <div className="mt-5 flex justify-end">
-            <button className="z-btn z-btn-primary z-btn-md">저장하기</button>
+            {/* 이름을 바꾸지 않았으면 저장할 것이 없어 비활성으로 둔다 */}
+            <button
+              type="button"
+              disabled={!nameChanged}
+              className={`z-btn z-btn-md ${
+                nameChanged ? "z-btn-primary" : "cursor-not-allowed bg-disabled text-white"
+              }`}
+            >
+              저장하기
+            </button>
           </div>
         </Card>
 
