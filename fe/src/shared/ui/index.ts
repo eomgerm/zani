@@ -6,7 +6,6 @@ export { Card } from "./Card";
 export { Select, ChevronDownIcon } from "./Select";
 export type { SelectOption } from "./Select";
 export { StatCard } from "./StatCard";
-export { DistributionBar } from "./DistributionBar";
 export { FocusFlowChart } from "./FocusFlowChart";
 export type { FlowSegment } from "./FocusFlowChart";
 export { EvalDonuts } from "./EvalDonuts";
@@ -22,6 +21,9 @@ export {
   ListIcon,
   CalendarIcon,
   ClockIcon,
+  BookmarkIcon,
+  MenuIcon,
+  DownloadIcon,
   FileIcon,
   ChevronLeftIcon,
   ChevronRightIcon,

@@ -107,6 +107,31 @@ export function ClockIcon({ size = 15, className }: IconProps) {
   );
 }
 
+/** 섹션 제목 앞 햄버거(마지막 줄이 짧다) */
+export function MenuIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2, className)}>
+      <path d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  );
+}
+
+export function BookmarkIcon({ size = 15, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2, className)}>
+      <path d="M6 4h12v16l-6-4-6 4z" />
+    </svg>
+  );
+}
+
+export function DownloadIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.2, className)}>
+      <path d="M12 4v11M7 11l5 4 5-4M5 20h14" />
+    </svg>
+  );
+}
+
 /** 문서/리포트 */
 export function FileIcon({ size = 18, className }: IconProps) {
   return (

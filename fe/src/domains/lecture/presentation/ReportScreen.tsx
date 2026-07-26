@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { DownloadIcon } from "@/shared/ui";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -9,8 +10,8 @@ import { StudentReport } from "./components/report/StudentReport";
 import { SegmentModal } from "./components/report/SegmentModal";
 
 const tabCls = (active: boolean) =>
-  `-mb-px cursor-pointer border-0 border-b-2 bg-transparent px-[22px] py-[13px] font-sans text-[14.5px] font-extrabold ${
-    active ? "border-primary text-primary" : "border-transparent text-ink-faint"
+  `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
+    active ? "border-primary text-ink" : "border-transparent text-ink-fainter"
   }`;
 
 /**
@@ -31,9 +32,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     setSegModal(i);
   };
 
-  const meta = isInstructor
-    ? `수강생 ${lecture.students ?? 0}명 · ${lecture.date} · ${lecture.dur}`
-    : `강사 ${lecture.instructor ?? "박서준"} · ${lecture.date} · ${lecture.dur}`;
+  const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
 
   return (
     <>
@@ -41,7 +40,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
         href="/my-lectures"
         className="mb-4 inline-flex items-center gap-[7px] text-sm font-extrabold text-ink-sub no-underline"
       >
-        ← 내 강의실
+        ← {isInstructor ? "진행강의" : "참여강의"}
       </Link>
 
       <div className="mb-5 flex items-center gap-4">
@@ -49,8 +48,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
-        {!failed && (
-          <button className="z-btn z-btn-primary z-btn-md shrink-0">⭳ 리포트 다운로드</button>
+        {/* 다운로드는 리포트 탭에서만 노출한다(클립 탭에는 내려받을 문서가 없다). */}
+        {!failed && tab === "report" && (
+          <button
+            type="button"
+            className="z-btn z-btn-primary shrink-0 gap-2 rounded-xl px-[22px] py-[13px] text-sm"
+          >
+            <DownloadIcon />
+            리포트 다운로드
+          </button>
         )}
       </div>
 
@@ -72,11 +78,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
       )}
 
       {/* 탭 */}
-      <div className="my-[22px] flex border-b border-line">
-        <button onClick={() => setTab("clip")} className={tabCls(tab === "clip")}>
+      <div className="mb-[22px] flex border-b border-line">
+        <button
+          type="button"
+          onClick={() => setTab("clip")}
+          className={`${tabCls(tab === "clip")} mr-[30px]`}
+        >
           {isInstructor ? "수업 클립" : "복습 클립"}
         </button>
-        <button onClick={() => setTab("report")} className={tabCls(tab === "report")}>
+        <button type="button" onClick={() => setTab("report")} className={tabCls(tab === "report")}>
           {isInstructor ? "수업 리포트" : "학습 리포트"}
         </button>
       </div>

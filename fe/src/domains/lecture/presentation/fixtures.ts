@@ -129,6 +129,8 @@ export const recommendations = [
   { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
   { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
   { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#15bd7d" },
+  { t: "1:12:05", title: "예외 처리 및 응답 코드", reason: "‘헷갈림’ 응답이 몰린 구간이라 다시 확인하면 좋아요.", tag: "헷갈림", color: "#e0455f" },
+  { t: "1:35:20", title: "테스트 코드 작성 (given·when·then)", reason: "반복된 확인 필요 신호가 감지된 구간이에요.", tag: "반복 확인", color: "#10b981" },
 ];
 
 /** 리포트(강사) - 분야별 평가 도넛 */
@@ -203,9 +205,14 @@ export const summarySections = [
   { h: "5. 정리와 선택 기준", p: "지역 상태는 useState, 좁은 범위의 공유 상태는 Context, 전역이거나 복잡한 상태 흐름은 라이브러리로 접근합니다. 무엇을 선택하든 리렌더링 비용과 참조 안정성을 이해하는 것이 핵심입니다." },
 ];
 
-/** 집중 점수(0–4)에 대한 색/배경/라벨 */
+/**
+ * 집중 점수(0–4)에 대한 색/배경/라벨. 타임라인 카드와 구간 모달이 쓴다.
+ *
+ * 보통(1.5–2.5) 구간이 짙은 골드(#c9a11a)인 것은 의도한 차이다 — 흐름 차트 내부는
+ * 같은 구간을 #f4c325 로 칠하고(FocusFlowChart 의 colOf), 프로토타입도 두 값을 나눠 쓴다.
+ */
 export function focusColor(f: number) {
-  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#f4c325" : f >= 0.5 ? "#e0714f" : "#e0455f";
+  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#c9a11a" : f >= 0.5 ? "#e0714f" : "#e0455f";
 }
 export function focusBg(f: number) {
   return f >= 3.5 ? "#eaf7f2" : f >= 2.5 ? "#eef8ef" : f >= 1.5 ? "#fdf8e7" : f >= 0.5 ? "#fdefe8" : "#fdeeee";
