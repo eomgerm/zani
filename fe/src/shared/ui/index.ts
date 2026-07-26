@@ -13,3 +13,16 @@ export { EvalDonuts } from "./EvalDonuts";
 export type { EvalDatum } from "./EvalDonuts";
 export { AppShell } from "./AppShell";
 export type { AppShellMember } from "./AppShell";
+export {
+  HomeIcon,
+  CardsIcon,
+  GearIcon,
+  SearchIcon,
+  SortIcon,
+  ListIcon,
+  CalendarIcon,
+  ClockIcon,
+  FileIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "./icons";
