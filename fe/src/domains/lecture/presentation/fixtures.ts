@@ -90,18 +90,6 @@ export const publicMessages: ChatMessage[] = [
   { id: 4, author: "정하윤", text: "감사합니다!", host: false, mine: false },
 ];
 
-export const dmMessages: ChatMessage[] = [
-  { id: 1, author: "김도현", text: "선생님, 아까 예제 코드 다시 볼 수 있을까요?", host: false, mine: true },
-  { id: 2, author: "박서준", text: "네, 종료 후 리포트에 올려둘게요.", host: true, mine: false },
-];
-
-/** 강의실 집단 알림 응답 분포 */
-export const alertDistribution = [
-  { label: "이해함", percent: 58, value: "58%", color: "#21e298" },
-  { label: "헷갈림", percent: 32, value: "32%", color: "#f4c325" },
-  { label: "잠깐 놓침", percent: 10, value: "10%", color: "#f26d7d" },
-];
-
 /** 리포트 - 수업 내용 전사 */
 export const transcript = [
   { t: "00:02", speaker: "박서준", text: "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다." },

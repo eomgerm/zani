@@ -7,16 +7,20 @@ import type { Participant, Room } from "livekit-client";
 import { useRoomConnection } from "./RoomProvider";
 import type { ParticipantTileData } from "./components/room/ParticipantTile";
 
-// 타일 배경 그라디언트용 색. identity 기준으로 결정적 배정한다.
+// 타일 원형 아바타 색. identity 기준으로 결정적 배정한다.
+// 어두운 스테이지 위에 올라가므로 프로토타입 participantsMeta의 채도 낮은 팔레트를 쓴다.
 const TILE_COLORS = [
-  "#1cdd93",
-  "#3b82f6",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#ec4899",
-  "#14b8a6",
-  "#f97316",
+  "#c9a24b",
+  "#2aa584",
+  "#c07284",
+  "#57ad97",
+  "#5e9ec6",
+  "#c88d5d",
+  "#66b195",
+  "#6d8fc2",
+  "#9c87cc",
+  "#b981a0",
+  "#8681c8",
 ];
 
 function colorFor(identity: string): string {

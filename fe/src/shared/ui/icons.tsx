@@ -117,7 +117,100 @@ export function FileIcon({ size = 18, className }: IconProps) {
   );
 }
 
-/* ---- 셰브론 (월 이동 등, stroke 2.4) ---- */
+/* ---- 강의실 (프로토타입 SC-09, 22px / stroke 1.9) ---- */
+
+export function PeopleIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <circle cx="9" cy="7" r="3.2" />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 8h5M16 12h5M16 16h5" />
+    </svg>
+  );
+}
+
+export function ChatIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <path d="M20 11.5a7.5 7.5 0 0 1-10.5 6.9L4 20l1.6-4.5A7.5 7.5 0 1 1 20 11.5Z" />
+    </svg>
+  );
+}
+
+export function MicIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0M12 19v3" />
+    </svg>
+  );
+}
+
+/** 타일 이름칩에 들어가는 작은 음소거 표시(프로토타입은 stroke 2.4) */
+export function MicOffIcon({ size = 11, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.4, className)}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
+export function CameraIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <path d="M15 10l6-3.5v11L15 14M3 6.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+export function ScreenShareIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M12 21v-3M8 21h8M12 13V8m0 0-2.2 2.2M12 8l2.2 2.2" />
+    </svg>
+  );
+}
+
+export function ReactionIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.5a4 4 0 0 0 7 0M9 9.5h.01M15 9.5h.01" />
+    </svg>
+  );
+}
+
+/** 나가기(프로토타입은 stroke 2.2) */
+export function CloseIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.2, className)}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </svg>
+  );
+}
+
+/** 참가자 퇴장(문 밖으로 나가는 화살표) */
+export function KickIcon({ size = 13, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2, className)}>
+      <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8" />
+      <path d="M14 12h7M18 8l4 4-4 4" />
+    </svg>
+  );
+}
+
+/** 화면 공유 오버레이의 모니터 일러스트 */
+export function MonitorIcon({ size = 60, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.5, className)}>
+      <rect x="2" y="4" width="20" height="13" rx="2" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
+  );
+}
+
+/* ---- 셰브론 (월 이동 · 갤러리 페이지 이동, stroke 2.4) ---- */
 
 export function ChevronLeftIcon({ size = 14, className }: IconProps) {
   return (
