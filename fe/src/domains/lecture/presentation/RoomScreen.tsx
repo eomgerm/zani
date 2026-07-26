@@ -23,28 +23,35 @@ import { useRoomMediaControls } from "./useRoomMediaControls";
 type RoomScreenProps = {
   sessionId: string;
   roomTitle?: string;
+  /**
+   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
+   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
+   */
+  prejoinInviteCode?: string;
 };
 
-export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, prejoinInviteCode }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} />
+      <RoomScreenContent
+        roomTitle={roomTitle}
+        prejoinInviteCode={prejoinInviteCode ?? sessionId}
+      />
     </RoomProvider>
   );
 }
 
 function RoomScreenContent({
-  sessionId,
   roomTitle = "React 상태관리 심화",
-}: Pick<RoomScreenProps, "sessionId" | "roomTitle">) {
+  prejoinInviteCode,
+}: Pick<RoomScreenProps, "roomTitle" | "prejoinInviteCode">) {
   const { connectionState, retry } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [chatTab, setChatTab] = useState<"public" | "dm">("public");
-  // 입장 전 점검은 초대 코드로 장치를 저장하고, 강의실 경로 파라미터가 그 코드다.
-  const media = useRoomMediaControls(sessionId);
+  const media = useRoomMediaControls(prejoinInviteCode);
   const [handRaised, setHandRaised] = useState(false);
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -226,8 +233,9 @@ function RoomScreenContent({
           <RoomControlBar
             isInstructor={isInstructor}
             me={me}
-            mediaDisabled={!media.ready || media.publishBlocked}
-            publishBlocked={media.publishBlocked}
+            mediaDisabled={!media.ready}
+            microphoneBlocked={media.microphoneBlocked}
+            cameraBlocked={media.cameraBlocked}
             microphones={media.microphones}
             cameras={media.cameras}
             activeMicrophoneId={media.activeMicrophoneId}

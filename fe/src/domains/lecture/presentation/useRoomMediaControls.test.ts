@@ -8,7 +8,7 @@ class FakeLocalParticipant {
   isMicrophoneEnabled = true;
   isCameraEnabled = true;
   microphoneFailure: Error | null = null;
-  permissions: { canPublish: boolean } | undefined;
+  permissions: { canPublish: boolean; canPublishSources?: number[] } | undefined;
 
   setMicrophoneEnabled(enabled: boolean) {
     if (this.microphoneFailure) {
@@ -29,6 +29,7 @@ class FakeRoom {
   activeDevices = new Map<MediaDeviceKind, string>();
   switched: Array<{ kind: MediaDeviceKind; deviceId: string }> = [];
   switchFailure: Error | null = null;
+  switchResult = true;
   private handlers = new Map<string, Set<() => void>>();
 
   constructor(local: FakeLocalParticipant | null) {
@@ -44,8 +45,11 @@ class FakeRoom {
       return Promise.reject(this.switchFailure);
     }
     this.switched.push({ kind, deviceId });
+    if (!this.switchResult) {
+      return Promise.resolve(false);
+    }
     this.activeDevices.set(kind, deviceId);
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
 
   on(event: string, handler: () => void) {
@@ -70,7 +74,10 @@ class FakeRoom {
   }
 }
 
-const hoisted = vi.hoisted(() => ({ room: null as FakeRoom | null }));
+const hoisted = vi.hoisted(() => ({
+  room: null as FakeRoom | null,
+  connectionState: "connected" as "connecting" | "connected" | "error",
+}));
 
 vi.mock("./RoomProvider", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./RoomProvider")>();
@@ -78,7 +85,7 @@ vi.mock("./RoomProvider", async (importOriginal) => {
     ...actual,
     useRoomConnection: () => ({
       room: hoisted.room,
-      connectionState: hoisted.room ? "connected" : "connecting",
+      connectionState: hoisted.room ? hoisted.connectionState : "connecting",
       error: null,
       retry: () => {},
     }),
@@ -107,6 +114,7 @@ const connectedRoom = () => {
 
 beforeEach(() => {
   hoisted.room = null;
+  hoisted.connectionState = "connected";
   sessionStorage.clear();
   vi.useFakeTimers();
 });
@@ -225,14 +233,14 @@ describe("useRoomMediaControls", () => {
     expect(result.current.cameras).toEqual([{ value: "cam-1", label: "내장 카메라" }]);
   });
 
-  it("labels a device by its ID prefix when the browser hides the label", async () => {
+  it("labels a device the same way as the pre-join check when the browser hides it", async () => {
     stubMediaDevices([device("abcdef123456", "audioinput", "")]);
     connectedRoom();
 
     const { result } = renderHook(() => useRoomMediaControls());
     await act(async () => vi.advanceTimersByTime(0));
 
-    expect(result.current.microphones).toEqual([{ value: "abcdef123456", label: "장치 abcdef" }]);
+    expect(result.current.microphones).toEqual([{ value: "abcdef123456", label: "마이크 1" }]);
   });
 
   it("refreshes the device list when the browser reports a device change", async () => {
@@ -271,7 +279,6 @@ describe("useRoomMediaControls", () => {
     await act(async () => result.current.selectCamera("cam-2"));
 
     expect(result.current.mediaError).not.toBeNull();
-    expect(result.current.activeCameraId).toBeNull();
   });
 
   it("keeps the devices chosen during the pre-join check", async () => {
@@ -305,29 +312,43 @@ describe("useRoomMediaControls", () => {
     expect(room.switched).toEqual([]);
   });
 
-  it("treats a revoked publish permission as the instructor restricted mode", () => {
+  it("blocks only the source the server left out of the publish grant", () => {
+    // 서버는 canPublish 를 항상 true 로 두고 canPublishSources 로 제한을 표현한다(가이드 §8).
+    const room = connectedRoom();
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [1] };
+
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.microphoneBlocked).toBe(true);
+    expect(result.current.cameraBlocked).toBe(false);
+  });
+
+  it("blocks both sources when publishing is revoked entirely", () => {
     const room = connectedRoom();
     room.localParticipant!.permissions = { canPublish: false };
 
     const { result } = renderHook(() => useRoomMediaControls());
     act(() => vi.advanceTimersByTime(0));
 
-    expect(result.current.publishBlocked).toBe(true);
+    expect(result.current.microphoneBlocked).toBe(true);
+    expect(result.current.cameraBlocked).toBe(true);
   });
 
-  it("is not restricted while the participant may publish", () => {
+  it("treats an empty source grant as unrestricted", () => {
     const room = connectedRoom();
-    room.localParticipant!.permissions = { canPublish: true };
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [] };
 
     const { result } = renderHook(() => useRoomMediaControls());
     act(() => vi.advanceTimersByTime(0));
 
-    expect(result.current.publishBlocked).toBe(false);
+    expect(result.current.microphoneBlocked).toBe(false);
+    expect(result.current.cameraBlocked).toBe(false);
   });
 
-  it("does not try to publish while restricted", async () => {
+  it("does not try to publish a blocked source", async () => {
     const room = connectedRoom();
-    room.localParticipant!.permissions = { canPublish: false };
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [1] };
     const { result } = renderHook(() => useRoomMediaControls());
     act(() => vi.advanceTimersByTime(0));
 
@@ -337,19 +358,121 @@ describe("useRoomMediaControls", () => {
     expect(result.current.mediaError).toBeNull();
   });
 
-  it("lifts the restriction when the server grants publishing again", () => {
+  it("lifts the restriction when the server grants the source again", () => {
     const room = connectedRoom();
-    room.localParticipant!.permissions = { canPublish: false };
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [1] };
     const { result } = renderHook(() => useRoomMediaControls());
     act(() => vi.advanceTimersByTime(0));
-    expect(result.current.publishBlocked).toBe(true);
+    expect(result.current.microphoneBlocked).toBe(true);
 
     act(() => {
-      room.localParticipant!.permissions = { canPublish: true };
+      room.localParticipant!.permissions = { canPublish: true, canPublishSources: [1, 2] };
       room.emit(RoomEvent.ParticipantPermissionsChanged);
     });
 
-    expect(result.current.publishBlocked).toBe(false);
+    expect(result.current.microphoneBlocked).toBe(false);
+  });
+
+  it("is not ready while LiveKit is reconnecting", () => {
+    connectedRoom();
+    hoisted.connectionState = "connecting";
+
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    expect(result.current.ready).toBe(false);
+  });
+
+  it("reports an error when the device change silently falls back", async () => {
+    stubMediaDevices([]);
+    const room = connectedRoom();
+    room.switchResult = false;
+    const { result } = renderHook(() => useRoomMediaControls());
+    await act(async () => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.selectMicrophone("mic-2"));
+
+    expect(result.current.mediaError).not.toBeNull();
+  });
+
+  it("shows the requested device until LiveKit reports the active one", async () => {
+    stubMediaDevices([]);
+    const room = connectedRoom();
+    room.switchResult = false;
+    const { result } = renderHook(() => useRoomMediaControls());
+    await act(async () => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.selectCamera("cam-7"));
+
+    expect(result.current.activeCameraId).toBe("cam-7");
+  });
+
+  it("keeps the last device list when enumeration fails", async () => {
+    const { mediaDevices, fireDeviceChange } = stubMediaDevices([
+      device("mic-1", "audioinput", "내장 마이크"),
+    ]);
+    connectedRoom();
+    const { result } = renderHook(() => useRoomMediaControls());
+    await act(async () => vi.advanceTimersByTime(0));
+
+    mediaDevices.enumerateDevices.mockRejectedValueOnce(new Error("blocked"));
+    await act(async () => fireDeviceChange());
+
+    expect(result.current.microphones).toEqual([{ value: "mic-1", label: "내장 마이크" }]);
+  });
+
+  it("ignores a second toggle while the first publish is still running", async () => {
+    const room = connectedRoom();
+    let release = () => {};
+    room.localParticipant!.setMicrophoneEnabled = (enabled: boolean) =>
+      new Promise<void>((resolve) => {
+        release = () => {
+          room.localParticipant!.isMicrophoneEnabled = enabled;
+          resolve();
+        };
+      });
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    act(() => {
+      result.current.toggleMicrophone();
+      result.current.toggleMicrophone();
+    });
+    await act(async () => release());
+
+    expect(result.current.microphoneEnabled).toBe(false);
+  });
+
+  it("drops a publish result that arrives after the room was replaced", async () => {
+    const room = connectedRoom();
+    let release = () => {};
+    room.localParticipant!.setMicrophoneEnabled = () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    const { result, rerender } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+    act(() => result.current.toggleMicrophone());
+
+    hoisted.room = null;
+    rerender();
+    act(() => vi.advanceTimersByTime(0));
+    await act(async () => release());
+
+    expect(result.current.ready).toBe(false);
+    expect(result.current.microphoneEnabled).toBe(false);
+  });
+
+  it("removes the devicechange listener on unmount", async () => {
+    const { fireDeviceChange, mediaDevices } = stubMediaDevices([]);
+    connectedRoom();
+    const { unmount } = renderHook(() => useRoomMediaControls());
+    await act(async () => vi.advanceTimersByTime(0));
+
+    unmount();
+    await act(async () => fireDeviceChange());
+
+    expect(mediaDevices.enumerateDevices).toHaveBeenCalledTimes(1);
   });
 
   it("removes every room listener on unmount", () => {

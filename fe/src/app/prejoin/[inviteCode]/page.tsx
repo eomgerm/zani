@@ -11,7 +11,7 @@ import {
   type BrowserSupportResult,
 } from "@/features/media/browserSupport";
 import { DevicePreview, type DevicePreviewState } from "@/features/media/DevicePreview";
-import { prejoinStorageKey } from "@/features/media/prejoinResult";
+import { writePrejoinResult } from "@/features/media/prejoinResult";
 
 /** 브라우저 실패 코드별 사용자 안내 문구. */
 const BROWSER_FAILURE_MESSAGES: Record<BrowserSupportFailure, string> = {
@@ -64,14 +64,11 @@ export default function Page({ params }: { params: Promise<{ inviteCode: string 
       return;
     }
     // 입장 요청(prejoin)에 포함할 값. 장치 원본 데이터는 저장하지 않는다.
-    sessionStorage.setItem(
-      prejoinStorageKey(inviteCode),
-      JSON.stringify({
-        cameraDeviceId: deviceState.cameraDeviceId,
-        microphoneDeviceId: deviceState.microphoneDeviceId,
-        testedAt,
-      }),
-    );
+    writePrejoinResult(inviteCode, {
+      cameraDeviceId: deviceState.cameraDeviceId,
+      microphoneDeviceId: deviceState.microphoneDeviceId,
+      testedAt,
+    });
     router.push(`/room/${inviteCode}`);
   }, [canEnter, deviceState, testedAt, inviteCode, router]);
 

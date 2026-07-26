@@ -8,7 +8,8 @@ const renderBar = (overrides: Partial<Parameters<typeof RoomControlBar>[0]> = {}
     isInstructor: true,
     me: { mic: true, cam: true, hand: false },
     mediaDisabled: false,
-    publishBlocked: false,
+    microphoneBlocked: false,
+    cameraBlocked: false,
     microphones: [
       { value: "mic-1", label: "내장 마이크" },
       { value: "mic-2", label: "이어폰 마이크" },
@@ -59,11 +60,20 @@ describe("RoomControlBar", () => {
     expect(screen.getByTestId("room-camera-select")).toBeDisabled();
   });
 
-  it("announces the instructor restriction while publishing is blocked", () => {
-    renderBar({ publishBlocked: true, mediaDisabled: true });
+  it("announces only the device the instructor restricted", () => {
+    renderBar({ microphoneBlocked: true });
 
-    expect(screen.getByTestId("room-publish-blocked")).toHaveAttribute("role", "status");
-    expect(screen.getByTestId("room-microphone-toggle")).toBeDisabled();
+    const notice = screen.getByTestId("room-publish-blocked");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice.textContent).toContain("마이크");
+    expect(notice.textContent).not.toContain("카메라");
+  });
+
+  it("disables only the restricted device toggle", () => {
+    renderBar({ cameraBlocked: true });
+
+    expect(screen.getByTestId("room-camera-toggle")).toBeDisabled();
+    expect(screen.getByTestId("room-microphone-toggle")).toBeEnabled();
   });
 
   it("hides the restriction notice while publishing is allowed", () => {

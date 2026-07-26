@@ -10,10 +10,11 @@ interface MeState {
 interface RoomControlBarProps {
   isInstructor: boolean;
   me: MeState;
-  /** room에 연결되기 전이거나 publish가 막혀 마이크·카메라를 조작할 수 없는 상태. */
+  /** room에 연결되기 전이라 마이크·카메라를 조작할 수 없는 상태. */
   mediaDisabled: boolean;
-  /** 강사 제한 모드(서버가 publish 권한을 회수)인지. 안내 배지를 함께 노출한다. */
-  publishBlocked: boolean;
+  /** 강사 제한 모드: 서버가 마이크·카메라 publish 권한을 회수한 상태(각각 따로 제한될 수 있다). */
+  microphoneBlocked: boolean;
+  cameraBlocked: boolean;
   microphones: readonly SelectOption[];
   cameras: readonly SelectOption[];
   activeMicrophoneId: string | null;
@@ -100,12 +101,21 @@ function MediaControl({
   );
 }
 
+/** 제한된 장치만 안내 문구에 넣는다(마이크만·카메라만 제한될 수 있다). */
+function restrictedLabel(microphoneBlocked: boolean, cameraBlocked: boolean): string {
+  if (microphoneBlocked && cameraBlocked) {
+    return "마이크·카메라";
+  }
+  return microphoneBlocked ? "마이크" : "카메라";
+}
+
 /** 강의실 하단 컨트롤 바(밝은 테마). */
 export function RoomControlBar({
   isInstructor,
   me,
   mediaDisabled,
-  publishBlocked,
+  microphoneBlocked,
+  cameraBlocked,
   microphones,
   cameras,
   activeMicrophoneId,
@@ -128,7 +138,7 @@ export function RoomControlBar({
         selectTestId="room-microphone-select"
         selectAriaLabel="마이크 선택"
         enabled={me.mic}
-        disabled={mediaDisabled}
+        disabled={mediaDisabled || microphoneBlocked}
         onToggle={onToggleMic}
         icon={me.mic ? "🎤" : "🔇"}
         label={me.mic ? "마이크" : "음소거"}
@@ -141,7 +151,7 @@ export function RoomControlBar({
         selectTestId="room-camera-select"
         selectAriaLabel="카메라 선택"
         enabled={me.cam}
-        disabled={mediaDisabled}
+        disabled={mediaDisabled || cameraBlocked}
         onToggle={onToggleCam}
         icon={me.cam ? "🎥" : "📷"}
         label={me.cam ? "카메라" : "끔"}
@@ -189,13 +199,13 @@ export function RoomControlBar({
 
       <div className="flex-1" />
 
-      {publishBlocked && (
+      {(microphoneBlocked || cameraBlocked) && (
         <span
           role="status"
           data-testid="room-publish-blocked"
           className="rounded-full bg-warn-soft px-3 py-1.5 text-[12px] font-extrabold text-warn-text"
         >
-          강사가 마이크·카메라 사용을 제한했습니다
+          강사가 {restrictedLabel(microphoneBlocked, cameraBlocked)} 사용을 제한했습니다
         </span>
       )}
     </div>
