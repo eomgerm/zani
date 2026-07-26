@@ -10,6 +10,8 @@ export type { UseRoomParticipantsResult } from "./presentation/useRoomParticipan
 export { useRoomMediaControls } from "./presentation/useRoomMediaControls";
 export type { RoomMediaControls } from "./presentation/useRoomMediaControls";
 export { useRoomReconnect } from "./presentation/useRoomReconnect";
+export { useSessionPresence } from "./presentation/useSessionPresence";
+export type { SessionPresenceState } from "./presentation/useSessionPresence";
 export type {
   Measurability,
   ReconnectStatus,
