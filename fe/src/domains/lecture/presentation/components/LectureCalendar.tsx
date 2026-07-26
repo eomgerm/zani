@@ -1,5 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
+import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui";
 import type { Lecture } from "../fixtures";
+import { isLectureOpenable } from "../status";
 
 const WEEKDAYS = [
   { label: "일", cls: "text-sunday" },
@@ -11,29 +16,47 @@ const WEEKDAYS = [
   { label: "토", cls: "text-saturday" },
 ];
 
-/** 2026년 7월 강의 캘린더. 내 강의실 캘린더 보기 전용. */
+/** 시연 기준 월. 실데이터가 붙으면 현재 월로 바꾼다. */
+const INITIAL = { year: 2026, month: 7 };
+
+const navBtn =
+  "flex size-8 cursor-pointer items-center justify-center rounded-[9px] border border-line-muted bg-surface text-ink-muted hover:bg-primary-softer";
+
+/** 강의 캘린더. 강의가 있는 날을 강조하고 월 단위로 이동한다. */
 export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
-  const year = 2026;
-  const month = 6; // July (0-based)
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const [{ year, month }, setYm] = useState(INITIAL);
+
+  const shift = (delta: number) =>
+    setYm(({ year: y, month: m }) => {
+      const next = m + delta;
+      if (next < 1) return { year: y - 1, month: 12 };
+      if (next > 12) return { year: y + 1, month: 1 };
+      return { year: y, month: next };
+    });
+
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const prefix = `${year}-${String(month).padStart(2, "0")}`;
 
   const byDay = new Map<number, Lecture[]>();
   for (const l of lectures) {
-    if (!l.date.startsWith("2026-07")) continue;
+    if (!l.date.startsWith(prefix)) continue;
     const d = parseInt(l.date.slice(8), 10);
     byDay.set(d, [...(byDay.get(d) ?? []), l]);
   }
 
-  const cells: ({ blank: true } | { blank: false; day: number })[] = [];
-  for (let i = 0; i < firstDow; i++) cells.push({ blank: true });
-  for (let d = 1; d <= daysInMonth; d++) cells.push({ blank: false, day: d });
-  while (cells.length % 7 !== 0) cells.push({ blank: true });
-
   return (
     <div className="z-card-lg px-[26px] py-6">
       <div className="mb-4 flex items-center gap-2.5">
-        <div className="text-lg font-extrabold">2026년 7월</div>
+        <div className="text-lg font-extrabold">
+          {year}년 {month}월
+        </div>
+        <button type="button" onClick={() => shift(-1)} aria-label="이전 달" className={navBtn}>
+          <ChevronLeftIcon />
+        </button>
+        <button type="button" onClick={() => shift(1)} aria-label="다음 달" className={navBtn}>
+          <ChevronRightIcon />
+        </button>
       </div>
 
       <div className="mb-2 grid grid-cols-7 gap-2">
@@ -45,40 +68,40 @@ export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
       </div>
 
       <div className="grid grid-cols-7 gap-2">
-        {cells.map((cell, i) => {
-          if (cell.blank) return <div key={i} />;
-          const { day } = cell;
-          const dow = (firstDow + day - 1) % 7;
-          const isToday = day === 16;
+        {Array.from({ length: firstDow }, (_, i) => (
+          <div key={`blank-${i}`} />
+        ))}
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+          const dow = new Date(year, month - 1, day).getDay();
           const items = byDay.get(day) ?? [];
-          const numCls = isToday
-            ? "text-primary"
-            : dow === 0
-              ? "text-sunday"
-              : dow === 6
-                ? "text-saturday"
-                : "text-ink-muted";
+          const has = items.length > 0;
+          const numCls = dow === 0 ? "text-sunday" : dow === 6 ? "text-saturday" : "text-ink-muted";
 
           return (
             <div
-              key={i}
-              className={`flex min-h-[84px] flex-col gap-[3px] overflow-hidden rounded-xl border px-2 py-[7px] ${
-                isToday ? "border-line-primary bg-primary-softer" : "border-[#eff1f8] bg-surface"
+              key={day}
+              className={`flex min-h-24 flex-col items-stretch overflow-hidden rounded-xl border px-[7px] py-2 ${
+                has ? "border-[#e0e4f5] bg-[#fafbff]" : "border-[#f1f2f8] bg-surface"
               }`}
             >
               <span className={`text-xs font-extrabold ${numCls}`}>{day}</span>
-              {items.slice(0, 2).map((l) => {
-                const isIns = l.role === "instructor";
-                return (
+              {items.map((l) => {
+                const chipCls = `mt-1 block truncate rounded-md px-[7px] py-[3px] text-[10.5px] font-bold leading-[1.35] text-primary-dark no-underline ${
+                  l.role === "instructor" ? "bg-primary-soft" : "bg-primary-mint"
+                }`;
+                // 분석이 끝나지 않은 강의는 열 화면이 없어 링크로 만들지 않는다.
+                return isLectureOpenable(l.status) ? (
                   <Link
                     key={l.id}
                     href={l.status === "LIVE" ? `/room/${l.id}` : `/my-lectures/${l.id}/report`}
-                    className={`truncate rounded-[5px] px-[5px] py-0.5 text-[10px] font-bold no-underline ${
-                      isIns ? "bg-primary/15 text-primary" : "bg-info/15 text-info"
-                    }`}
+                    className={chipCls}
                   >
                     {l.title}
                   </Link>
+                ) : (
+                  <span key={l.id} className={chipCls}>
+                    {l.title}
+                  </span>
                 );
               })}
             </div>

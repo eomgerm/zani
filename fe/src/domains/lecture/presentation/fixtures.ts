@@ -24,16 +24,6 @@ export const lectures: Lecture[] = [
   { id: "s8", title: "Docker 실전 배포", date: "2026-07-13", role: "instructor", status: "FAILED", students: 22, dur: "1시간 20분" },
 ];
 
-/** 썸네일 팔레트 (강의 카드) */
-export const thumbPalette = [
-  { bg: "linear-gradient(135deg,#e8ecff,#f3f0ff)", fg: "#10b981" },
-  { bg: "linear-gradient(135deg,#e8f7f1,#f1fbf7)", fg: "#12a870" },
-  { bg: "linear-gradient(135deg,#fdf7e2,#fefbef)", fg: "#cba118" },
-  { bg: "linear-gradient(135deg,#fde8ee,#fff0f4)", fg: "#d1587a" },
-  { bg: "linear-gradient(135deg,#e7edfb,#eff3fd)", fg: "#4a6fd6" },
-  { bg: "linear-gradient(135deg,#efe8fb,#f6f1ff)", fg: "#8b6fd0" },
-];
-
 export interface Participant {
   id: string;
   name: string;
