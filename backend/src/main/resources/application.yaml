@@ -48,6 +48,10 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 
+session:
+  # 최대 수업 시간(3시간) 초과 세션을 정리하는 주기(ISO-8601 duration).
+  expiry-sweep-delay: ${SESSION_EXPIRY_SWEEP_DELAY:PT1M}
+
 livekit:
   url: ${LIVEKIT_URL:}
   api-key: ${LIVEKIT_API_KEY:}
