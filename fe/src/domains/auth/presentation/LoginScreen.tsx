@@ -104,12 +104,12 @@ export function LoginScreen() {
                 <polyline
                   points="0,70 40,58 75,64 110,44 150,52 190,30 230,34 260,10"
                   fill="none"
-                  stroke="#1cdd93"
+                  stroke="#10b981"
                   strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
-                <circle cx="260" cy="10" r="5" fill="#1cdd93" />
+                <circle cx="260" cy="10" r="5" fill="#10b981" />
               </svg>
               <span className="text-[34px] font-black tracking-[-1px] text-primary">92%</span>
             </div>

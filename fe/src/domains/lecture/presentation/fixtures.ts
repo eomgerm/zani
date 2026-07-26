@@ -26,8 +26,8 @@ export const lectures: Lecture[] = [
 
 /** 썸네일 팔레트 (강의 카드) */
 export const thumbPalette = [
-  { bg: "linear-gradient(135deg,#e8ecff,#f3f0ff)", fg: "#1cdd93" },
-  { bg: "linear-gradient(135deg,#e8f7f1,#f1fbf7)", fg: "#19c986" },
+  { bg: "linear-gradient(135deg,#e8ecff,#f3f0ff)", fg: "#10b981" },
+  { bg: "linear-gradient(135deg,#e8f7f1,#f1fbf7)", fg: "#12a870" },
   { bg: "linear-gradient(135deg,#fdf7e2,#fefbef)", fg: "#cba118" },
   { bg: "linear-gradient(135deg,#fde8ee,#fff0f4)", fg: "#d1587a" },
   { bg: "linear-gradient(135deg,#e7edfb,#eff3fd)", fg: "#4a6fd6" },
@@ -149,14 +149,14 @@ export const learnSegments: LearnSegment[] = [
 /** 리포트(학생) - 복습 추천 */
 export const recommendations = [
   { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
-  { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#1cdd93" },
-  { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#21e298" },
+  { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
+  { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#15bd7d" },
 ];
 
 /** 리포트(강사) - 분야별 평가 도넛 */
 export const evalDonutData = [
-  { name: "전달력", value: 88, color: "#1cdd93" },
-  { name: "구성·흐름", value: 84, color: "#21e298" },
+  { name: "전달력", value: 88, color: "#10b981" },
+  { name: "구성·흐름", value: 84, color: "#15bd7d" },
   { name: "상호작용", value: 71, color: "#f4c325" },
   { name: "난이도 조절", value: 76, color: "#e0714f" },
 ];
@@ -181,8 +181,8 @@ export const quizData: QuizQuestion[] = [
 
 /** 강사 리포트 개선 TIP */
 export const improveTips = [
-  { icon: "📘", color: "#1cdd93", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
-  { icon: "🙋", color: "#19c986", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
+  { icon: "📘", color: "#10b981", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
+  { icon: "🙋", color: "#12a870", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
   { icon: "📷", color: "#e0455f", title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "· 다이어그램, 플로우차트 활용을 늘려보세요." },
   { icon: "🎯", color: "#e2b41b", title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "· 개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
 ];
@@ -196,10 +196,10 @@ export const insights = [
 ];
 
 export const instructorGlance = [
-  { icon: "👥", iconColor: "#1cdd93", label: "총 수강생", value: "32명" },
-  { icon: "🕐", iconColor: "#1cdd93", label: "수업 시간", value: "2시간 5분" },
-  { icon: "💬", iconColor: "#1cdd93", label: "채팅 수", value: "184개" },
-  { icon: "📈", iconColor: "#19c986", label: "평균 집중도", value: "78%", badge: "보통" },
+  { icon: "👥", iconColor: "#10b981", label: "총 수강생", value: "32명" },
+  { icon: "🕐", iconColor: "#10b981", label: "수업 시간", value: "2시간 5분" },
+  { icon: "💬", iconColor: "#10b981", label: "채팅 수", value: "184개" },
+  { icon: "📈", iconColor: "#12a870", label: "평균 집중도", value: "78%", badge: "보통" },
   { icon: "🔔", iconColor: "#e0455f", label: "이해도 알림 발생", value: "7회" },
 ];
 
