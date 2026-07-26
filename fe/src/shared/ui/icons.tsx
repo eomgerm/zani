@@ -197,6 +197,15 @@ export function ScreenShareIcon({ size = 22, className }: IconProps) {
   );
 }
 
+/** 손들기. 이모지는 OS·폰트에 따라 컬러 이모지로도 렌더돼 다른 아이콘과 어긋나므로 SVG로 고정한다. */
+export function HandIcon({ size = 22, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V6a1.5 1.5 0 0 1 3 0v5M16 8.5a1.5 1.5 0 0 1 3 0v4.5a7 7 0 0 1-7 7h-1a6 6 0 0 1-5.2-3L4 15.5c-.6-1 .3-2.2 1.4-1.9L7 14" />
+    </svg>
+  );
+}
+
 export function ReactionIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...svgProps(size, 1.9, className)}>

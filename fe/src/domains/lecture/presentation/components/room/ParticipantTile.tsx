@@ -1,4 +1,4 @@
-import { KickIcon, MicOffIcon } from "@/shared/ui";
+import { HandIcon, KickIcon, MicOffIcon } from "@/shared/ui";
 
 export type ParticipantTileData = {
   id: string;
@@ -61,8 +61,8 @@ export function ParticipantTile({ participant, canControl = false }: Participant
           </span>
         )}
         {handRaised && (
-          <div className="absolute left-2 top-2 flex size-7 items-center justify-center rounded-[9px] bg-warn text-sm shadow-[0_4px_12px_#f4c32550]">
-            ✋
+          <div className="absolute left-2 top-2 flex size-7 items-center justify-center rounded-[9px] bg-warn text-[#3a2d05] shadow-[0_4px_12px_#f4c32550]">
+            <HandIcon size={16} />
           </div>
         )}
         <div className="absolute bottom-[9px] left-[9px] inline-flex max-w-[calc(100%-18px)] items-center gap-1.5 rounded-[9px] bg-black/70 px-2.5 py-[5px] backdrop-blur-[4px]">

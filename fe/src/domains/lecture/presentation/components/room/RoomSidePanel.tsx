@@ -1,4 +1,4 @@
-import { Avatar, KickIcon } from "@/shared/ui";
+import { Avatar, HandIcon, KickIcon } from "@/shared/ui";
 import type { ChatMessage, Participant } from "../../fixtures";
 
 interface RoomSidePanelProps {
@@ -98,9 +98,7 @@ export function RoomSidePanel({
                 >
                   <Avatar initial={p.name.charAt(0)} size={34} bg={avatarBg(p.color)} />
                   <span className="flex-1 text-[13.5px] font-bold text-panel-text">{p.name}</span>
-                  <span aria-hidden="true" className="text-sm">
-                    ✋
-                  </span>
+                  <HandIcon size={16} className="text-warn" />
                 </div>
               ))}
               <div className="mx-0.5 mb-3 mt-2 h-px bg-room-line" />

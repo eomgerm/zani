@@ -34,25 +34,32 @@ export interface Participant {
   hand: boolean;
 }
 
+// 어두운 스테이지 위 원형 아바타에 올라가므로 채도 낮은 팔레트를 쓴다(프로토타입 participantsMeta).
 const participantsMeta: { id: string; name: string; color: string; host?: boolean }[] = [
-  { id: "p0", name: "박서준", color: "#1cdd93", host: true },
-  { id: "p1", name: "이지은", color: "#f4c325" },
-  { id: "p2", name: "최민서", color: "#21e298" },
-  { id: "p3", name: "정하윤", color: "#f26d7d" },
-  { id: "p4", name: "강태오", color: "#63e1b0" },
-  { id: "p5", name: "윤서아", color: "#3bb0e5" },
-  { id: "p6", name: "오지호", color: "#f0803c" },
-  { id: "p7", name: "김도현", color: "#65cba4" },
-  { id: "p8", name: "이서연", color: "#5b9bd5" },
-  { id: "p9", name: "이준호", color: "#c77dff" },
-  { id: "p10", name: "박지온", color: "#f4c325" },
-  { id: "p11", name: "정민재", color: "#21e298" },
-  { id: "p12", name: "한수빈", color: "#e2749b" },
-  { id: "p13", name: "강동현", color: "#3bb0e5" },
-  { id: "p14", name: "최지우", color: "#8b7bf0" },
-  { id: "p15", name: "운서연", color: "#f0803c" },
-  { id: "p16", name: "임세훈", color: "#65cba4" },
-  { id: "p17", name: "권민아", color: "#5b9bd5" },
+  { id: "p0", name: "박서준", color: "#10b981", host: true },
+  { id: "p1", name: "이지은", color: "#c9a24b" },
+  { id: "p2", name: "최민서", color: "#2aa584" },
+  { id: "p3", name: "정하윤", color: "#c07284" },
+  { id: "p4", name: "강태오", color: "#57ad97" },
+  { id: "p5", name: "윤서아", color: "#5e9ec6" },
+  { id: "p6", name: "오지호", color: "#c88d5d" },
+  { id: "p7", name: "김도현", color: "#66b195" },
+  { id: "p8", name: "이서연", color: "#6d8fc2" },
+  { id: "p9", name: "이준호", color: "#9c87cc" },
+  { id: "p10", name: "박지온", color: "#c9a24b" },
+  { id: "p11", name: "정민재", color: "#2aa584" },
+  { id: "p12", name: "한수빈", color: "#b981a0" },
+  { id: "p13", name: "강동현", color: "#5e9ec6" },
+  { id: "p14", name: "최지우", color: "#8681c8" },
+  { id: "p15", name: "운서연", color: "#c88d5d" },
+  { id: "p16", name: "임세훈", color: "#66b195" },
+  { id: "p17", name: "권민아", color: "#6d8fc2" },
+  { id: "p18", name: "오지훈", color: "#9c87cc" },
+  { id: "p19", name: "김나영", color: "#10b981" },
+  { id: "p20", name: "문지후", color: "#c9a24b" },
+  { id: "p21", name: "서하늘", color: "#2aa584" },
+  { id: "p22", name: "조현우", color: "#b981a0" },
+  { id: "p23", name: "배수연", color: "#5e9ec6" },
 ];
 
 /** 강의실 참가자 (cam 기본 on, 첫 명만 mic on, 일부 손들기) */
@@ -61,6 +68,17 @@ export const participants: Participant[] = participantsMeta.map((p, i) => ({
   cam: true,
   mic: i === 0,
   hand: i === 3 || i === 10,
+}));
+
+/** 갤러리 타일이 쓰는 형태로 변환한 시연용 참가자 목록 */
+export const participantTiles = participants.map((p) => ({
+  id: p.id,
+  name: p.name,
+  color: p.color,
+  role: p.host ? ("instructor" as const) : ("student" as const),
+  cameraEnabled: p.cam,
+  microphoneEnabled: p.mic,
+  handRaised: p.hand,
 }));
 
 export const reactionEmojis = ["👍", "❤️", "👏", "🎉", "😮", "🙌"];

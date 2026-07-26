@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
-import { participants as participantsFixture, publicMessages } from "./fixtures";
+import {
+  participantTiles,
+  participants as participantsFixture,
+  publicMessages,
+} from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
@@ -54,12 +58,12 @@ function PanelToggle({
 export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent roomTitle={roomTitle} />
+      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} />
     </RoomProvider>
   );
 }
 
-function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<RoomScreenProps, "roomTitle">) {
+function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" }: RoomScreenProps) {
   const router = useRouter();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
@@ -88,8 +92,15 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
   }, []);
 
   // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
+  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
+  const connected = tileParticipants.length > 0;
   const isInstructor =
+    !connected ||
     tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
+
+  // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
+  // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
+  const galleryParticipants = connected ? tileParticipants : participantTiles;
 
   // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
   const meId = isInstructor ? "p0" : "p7";
@@ -112,6 +123,14 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
     setReactMenuOpen(false);
     // zFloat 애니메이션(2.4s)이 끝나면 목록에서 제거한다.
     track(setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 2400));
+  };
+
+  /**
+   * 나가기. 강사는 수업을 종료하는 것이라 사후 메모 작성으로 넘기고(프로토타입 endRoom),
+   * 학생은 참여했던 강의 목록으로 돌아간다.
+   */
+  const leaveRoom = () => {
+    router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
   };
 
   const answerPrompt = (text: string) => {
@@ -184,8 +203,8 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
               </div>
             ) : view === "gallery" ? (
               <ParticipantGrid
-                participants={tileParticipants}
-                currentParticipantId={localParticipantId ?? undefined}
+                participants={galleryParticipants}
+                currentParticipantId={localParticipantId ?? "p0"}
                 isInstructor={isInstructor}
                 narrow={panelOpen}
               />
@@ -265,7 +284,7 @@ function RoomScreenContent({ roomTitle = "React 상태관리 심화" }: Pick<Roo
             onToggleHand={() => toggleMe("hand")}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onReact={addReaction}
-            onLeave={() => router.push("/home")}
+            onLeave={leaveRoom}
           />
         </div>
 

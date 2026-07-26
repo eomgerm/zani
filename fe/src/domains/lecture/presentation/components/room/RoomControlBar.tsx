@@ -1,4 +1,11 @@
-import { CameraIcon, CloseIcon, MicIcon, ReactionIcon, ScreenShareIcon } from "@/shared/ui";
+import {
+  CameraIcon,
+  CloseIcon,
+  HandIcon,
+  MicIcon,
+  ReactionIcon,
+  ScreenShareIcon,
+} from "@/shared/ui";
 import { reactionEmojis } from "../../fixtures";
 
 interface MeState {
@@ -84,9 +91,9 @@ export function RoomControlBar({
         title="손들기"
         aria-label="손들기"
         aria-pressed={me.hand}
-        className={`${circle} ${me.hand ? "bg-warn" : "bg-room-control"} text-[19px]`}
+        className={`${circle} ${me.hand ? "bg-warn text-[#372b03]" : "bg-room-control"}`}
       >
-        ✋
+        <HandIcon />
       </button>
 
       <div className="relative">

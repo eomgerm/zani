@@ -43,6 +43,21 @@ const asStudent = () => {
   roomParticipants.localParticipantId = "me";
 };
 
+const asInstructor = () => {
+  roomParticipants.participants = [
+    {
+      id: "me",
+      name: "박서준",
+      color: "#10b981",
+      role: "instructor",
+      cameraEnabled: true,
+      microphoneEnabled: true,
+      handRaised: false,
+    },
+  ];
+  roomParticipants.localParticipantId = "me";
+};
+
 afterEach(() => {
   cleanup();
   push.mockClear();
@@ -108,6 +123,50 @@ describe("RoomScreen side panel", () => {
   });
 });
 
+describe("RoomScreen view toggle", () => {
+  const withParticipants = (count: number) => {
+    roomParticipants.participants = Array.from({ length: count }, (_, i) => ({
+      id: `p${i}`,
+      name: `참가자 ${i}`,
+      color: "#2aa584",
+      role: i === 0 ? ("instructor" as const) : ("student" as const),
+      cameraEnabled: true,
+      microphoneEnabled: true,
+      handRaised: false,
+    }));
+    roomParticipants.localParticipantId = "p0";
+  };
+
+  it("shows participant tiles in the default gallery view", () => {
+    withParticipants(3);
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ }).length).toBeGreaterThan(0);
+  });
+
+  it("brings the tiles back when returning from speaker view", () => {
+    withParticipants(3);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.queryByRole("group", { name: /카메라 켜짐/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /전체 보기/ }));
+
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ }).length).toBeGreaterThan(0);
+  });
+
+  it("keeps showing tiles after the panel opens and closes", () => {
+    withParticipants(20);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "참여자" }));
+    fireEvent.click(screen.getByRole("button", { name: "참여자" }));
+
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
+  });
+});
+
 describe("RoomScreen controls", () => {
   it("toggles screen share into an overlay with a stop action", () => {
     asStudent();
@@ -122,13 +181,22 @@ describe("RoomScreen controls", () => {
     expect(screen.queryByText("내 화면을 공유하고 있어요")).not.toBeInTheDocument();
   });
 
-  it("leaves the room from the control bar", () => {
+  it("sends a leaving student back to their lecture list", () => {
     asStudent();
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
-    expect(push).toHaveBeenCalledWith("/home");
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+  });
+
+  it("sends a leaving instructor to the post-class note screen", () => {
+    asInstructor();
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
   });
 
   it("derives the instructor role from the token-provided participant role", () => {
