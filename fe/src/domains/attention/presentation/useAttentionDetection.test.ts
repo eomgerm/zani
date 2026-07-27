@@ -1,14 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EngagementPrediction } from "../domain/engagementPrediction";
+import type { AttentionPrediction } from "../domain/attentionPrediction";
 import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
 import type {
-  EngagementInferenceClient,
-  EngagementInferenceFailure,
-} from "../infrastructure/engagementInferenceClient";
+  AttentionInferenceClient,
+  AttentionInferenceFailure,
+} from "../infrastructure/attentionInferenceClient";
 import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
-import { useEngagementDetection, type FrameScheduler } from "./useEngagementDetection";
+import { useAttentionDetection, type FrameScheduler } from "./useAttentionDetection";
 
 /** 얼굴이 정면을 보는 유효한 MediaPipe 출력 1장. */
 function detectedFace(): FrameLandmarkerValues {
@@ -61,15 +61,15 @@ function readyVideoRef() {
   return { current: video };
 }
 
-describe("useEngagementDetection", () => {
+describe("useAttentionDetection", () => {
   let frames: ReturnType<typeof manualScheduler>;
   let detect: ReturnType<typeof vi.fn>;
   let close: ReturnType<typeof vi.fn>;
   let submit: ReturnType<typeof vi.fn>;
   let terminate: ReturnType<typeof vi.fn>;
   let createLandmarker: ReturnType<typeof vi.fn>;
-  let emitPrediction: (prediction: EngagementPrediction) => void;
-  let emitFailure: (failure: EngagementInferenceFailure) => void;
+  let emitPrediction: (prediction: AttentionPrediction) => void;
+  let emitFailure: (failure: AttentionInferenceFailure) => void;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -87,9 +87,9 @@ describe("useEngagementDetection", () => {
   });
 
   function createInferenceClient(handlers: {
-    onPrediction(prediction: EngagementPrediction): void;
-    onFailure(failure: EngagementInferenceFailure): void;
-  }): EngagementInferenceClient {
+    onPrediction(prediction: AttentionPrediction): void;
+    onFailure(failure: AttentionInferenceFailure): void;
+  }): AttentionInferenceClient {
     emitPrediction = handlers.onPrediction;
     emitFailure = handlers.onFailure;
     return { submit, terminate };
@@ -99,7 +99,7 @@ describe("useEngagementDetection", () => {
     const videoRef = readyVideoRef();
     return renderHook(
       (props: { camera: "on" | "off" | "denied" }) =>
-        useEngagementDetection({
+        useAttentionDetection({
           videoRef,
           camera: props.camera,
           scheduler: frames.scheduler,
@@ -162,7 +162,7 @@ describe("useEngagementDetection", () => {
   });
 
   it("exposes the prediction the worker returns", async () => {
-    const prediction: EngagementPrediction = {
+    const prediction: AttentionPrediction = {
       label: "Engaged",
       probabilities: [0.1, 0.1, 0.7, 0.1],
     };
@@ -242,7 +242,7 @@ describe("useEngagementDetection", () => {
   });
 
   it("does not surface the previous session's judgement after the camera is turned back on", async () => {
-    const prediction: EngagementPrediction = {
+    const prediction: AttentionPrediction = {
       label: "Engaged",
       probabilities: [0.1, 0.1, 0.7, 0.1],
     };

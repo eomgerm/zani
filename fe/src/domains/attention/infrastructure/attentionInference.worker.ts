@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
 
-import { createEngagementModel, type EngagementModel } from "./engagementModel";
+import { createAttentionModel, type AttentionModel } from "./attentionModel";
 import type {
-  EngagementWorkerRequest,
-  EngagementWorkerResponse,
-} from "./engagementWorkerProtocol";
+  AttentionWorkerRequest,
+  AttentionWorkerResponse,
+} from "./attentionWorkerProtocol";
 
 /**
  * 참여도 추론 Worker.
@@ -15,7 +15,7 @@ import type {
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
-function reply(response: EngagementWorkerResponse): void {
+function reply(response: AttentionWorkerResponse): void {
   scope.postMessage(response);
 }
 
@@ -27,19 +27,19 @@ function reason(error: unknown, fallback: string): string {
  * 모델은 한 번만 로드한다. 로드가 실패하면 실패를 기억해 매 창마다 재시도하지 않고
  * 판정을 비활성화한다(수업은 계속된다).
  */
-let modelPromise: Promise<EngagementModel> | null = null;
+let modelPromise: Promise<AttentionModel> | null = null;
 
-function loadModel(): Promise<EngagementModel> {
-  modelPromise ??= createEngagementModel();
+function loadModel(): Promise<AttentionModel> {
+  modelPromise ??= createAttentionModel();
   return modelPromise;
 }
 
-scope.onmessage = (event: MessageEvent<EngagementWorkerRequest>) => {
+scope.onmessage = (event: MessageEvent<AttentionWorkerRequest>) => {
   const request = event.data;
   if (request.type !== "predict") return;
 
   void (async () => {
-    let model: EngagementModel;
+    let model: AttentionModel;
     try {
       model = await loadModel();
     } catch (error) {

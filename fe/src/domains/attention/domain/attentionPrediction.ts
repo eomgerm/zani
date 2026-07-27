@@ -1,15 +1,18 @@
 /**
  * 학습된 참여도 모델의 4-class 라벨. 순서까지 학습 계약(`mediapipe_98_v1`)과 같아야 하며,
  * 이 순서가 곧 모델 출력 logit 의 인덱스다.
+ *
+ * 라벨 문자열은 학습·export 쪽 계약이므로 도메인 이름과 별개로 그대로 유지한다.
+ * 바꾸면 `validateMetadata` 가 모델을 거부한다.
  */
-export const ENGAGEMENT_LABELS = [
+export const ATTENTION_LABELS = [
   "Not-Engaged",
   "Barely-Engaged",
   "Engaged",
   "Highly-Engaged",
 ] as const;
 
-export type EngagementLabel = (typeof ENGAGEMENT_LABELS)[number];
+export type AttentionLabel = (typeof ATTENTION_LABELS)[number];
 
 /**
  * 10초 창 하나에 대한 판정 결과.
@@ -17,15 +20,15 @@ export type EngagementLabel = (typeof ENGAGEMENT_LABELS)[number];
  * Worker 경계를 넘어오는 값이라 구조화 복제로 안전한 타입만 담는다. 브라우저 메모리에만
  * 존재하며 서버로 보내지 않는다.
  */
-export interface EngagementPrediction {
-  readonly label: EngagementLabel;
-  /** `ENGAGEMENT_LABELS` 와 같은 순서의 확률 4개. 합은 1이다. */
+export interface AttentionPrediction {
+  readonly label: AttentionLabel;
+  /** `ATTENTION_LABELS` 와 같은 순서의 확률 4개. 합은 1이다. */
   readonly probabilities: readonly number[];
 }
 
 /**
  * 상위(강의실 화면)에 알리는 판정 상태. 카메라 프레임이나 랜드마크는 절대 올려보내지
- * 않고 이 상태와 `EngagementPrediction` 만 전달한다.
+ * 않고 이 상태와 `AttentionPrediction` 만 전달한다.
  *
  * - `idle`: 카메라 OFF 등으로 판정을 하지 않는 상태
  * - `preparing`: MediaPipe·ONNX 모델 준비 중

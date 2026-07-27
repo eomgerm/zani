@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { softmax, validateMetadata } from "./engagementModel";
+import { softmax, validateMetadata } from "./attentionModel";
 
 function validMetadata(): Record<string, unknown> {
   return {

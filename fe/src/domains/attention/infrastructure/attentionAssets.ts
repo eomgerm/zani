@@ -17,10 +17,13 @@ export interface AttentionAssetPaths {
   readonly faceLandmarkerModel: string;
   /** `ort.env.wasm.wasmPaths`. onnxruntime-web 이 접두사로 이어 붙이므로 슬래시로 끝난다. */
   readonly onnxRuntimeWasmBase: string;
-  /** 학습된 참여도 모델. */
-  readonly engagementModel: string;
+  /**
+   * 학습된 참여도 모델. 파일명 `engagement.onnx` 는 ai/ 의 export 명령이 정하는 이름이라
+   * attention 으로 바꾸지 않는다(바꾸면 모델을 못 찾는다).
+   */
+  readonly attentionModel: string;
   /** Python exporter 가 모델과 함께 내보내는 배포 메타데이터. */
-  readonly engagementMetadata: string;
+  readonly attentionModelMetadata: string;
 }
 
 export function attentionAssetPaths(base: string = ATTENTION_ASSET_BASE): AttentionAssetPaths {
@@ -29,7 +32,7 @@ export function attentionAssetPaths(base: string = ATTENTION_ASSET_BASE): Attent
     visionWasmBase: `${root}/mediapipe/wasm`,
     faceLandmarkerModel: `${root}/mediapipe/face_landmarker.task`,
     onnxRuntimeWasmBase: `${root}/onnxruntime/`,
-    engagementModel: `${root}/models/engagement.onnx`,
-    engagementMetadata: `${root}/models/engagement.metadata.json`,
+    attentionModel: `${root}/models/engagement.onnx`,
+    attentionModelMetadata: `${root}/models/engagement.metadata.json`,
   };
 }

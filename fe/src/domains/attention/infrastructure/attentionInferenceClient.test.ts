@@ -1,25 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { EngagementPrediction } from "../domain/engagementPrediction";
-import { createEngagementInferenceClient } from "./engagementInferenceClient";
+import type { AttentionPrediction } from "../domain/attentionPrediction";
+import { createAttentionInferenceClient } from "./attentionInferenceClient";
 import type {
-  EngagementWorkerPort,
-  EngagementWorkerRequest,
-  EngagementWorkerResponse,
-} from "./engagementWorkerProtocol";
+  AttentionWorkerPort,
+  AttentionWorkerRequest,
+  AttentionWorkerResponse,
+} from "./attentionWorkerProtocol";
 
 interface SentMessage {
-  readonly message: EngagementWorkerRequest;
+  readonly message: AttentionWorkerRequest;
   readonly transfer: Transferable[] | undefined;
 }
 
-class FakeWorker implements EngagementWorkerPort {
+class FakeWorker implements AttentionWorkerPort {
   readonly sent: SentMessage[] = [];
   terminated = false;
-  onmessage: ((event: MessageEvent<EngagementWorkerResponse>) => void) | null = null;
+  onmessage: ((event: MessageEvent<AttentionWorkerResponse>) => void) | null = null;
   onerror: ((event: unknown) => void) | null = null;
 
-  postMessage(message: EngagementWorkerRequest, transfer?: Transferable[]): void {
+  postMessage(message: AttentionWorkerRequest, transfer?: Transferable[]): void {
     this.sent.push({ message, transfer });
   }
 
@@ -27,12 +27,12 @@ class FakeWorker implements EngagementWorkerPort {
     this.terminated = true;
   }
 
-  respond(response: EngagementWorkerResponse): void {
-    this.onmessage?.({ data: response } as MessageEvent<EngagementWorkerResponse>);
+  respond(response: AttentionWorkerResponse): void {
+    this.onmessage?.({ data: response } as MessageEvent<AttentionWorkerResponse>);
   }
 
   /** 마지막으로 받은 predict 요청에 판정 결과로 응답한다. */
-  respondToLatest(label: EngagementPrediction["label"] = "Engaged"): void {
+  respondToLatest(label: AttentionPrediction["label"] = "Engaged"): void {
     const last = this.sent.at(-1)?.message;
     if (!last) throw new Error("predict 요청이 없습니다.");
     this.respond({
@@ -47,7 +47,7 @@ function tokens(fill: number): Float32Array {
   return new Float32Array(20 * 98).fill(fill);
 }
 
-describe("createEngagementInferenceClient", () => {
+describe("createAttentionInferenceClient", () => {
   let worker: FakeWorker;
   let onPrediction: ReturnType<typeof vi.fn>;
   let onFailure: ReturnType<typeof vi.fn>;
@@ -59,7 +59,7 @@ describe("createEngagementInferenceClient", () => {
   });
 
   function client() {
-    return createEngagementInferenceClient({
+    return createAttentionInferenceClient({
       createWorker: () => worker,
       onPrediction,
       onFailure,
@@ -193,7 +193,7 @@ describe("createEngagementInferenceClient", () => {
   it("starts the worker immediately so the model is warm before the first window", () => {
     const createWorker = vi.fn(() => worker);
 
-    createEngagementInferenceClient({ createWorker, onPrediction, onFailure });
+    createAttentionInferenceClient({ createWorker, onPrediction, onFailure });
 
     expect(createWorker).toHaveBeenCalledTimes(1);
   });

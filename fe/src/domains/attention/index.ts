@@ -1,13 +1,13 @@
 // attention 도메인의 공개 API. 다른 도메인/app에서는 이 파일을 통해서만 접근한다.
-export { useEngagementDetection } from "./presentation/useEngagementDetection";
+export { useAttentionDetection } from "./presentation/useAttentionDetection";
 export type {
+  AttentionDetectionState,
   CameraAvailability,
-  EngagementDetectionState,
-  UseEngagementDetectionOptions,
-} from "./presentation/useEngagementDetection";
-export { ENGAGEMENT_LABELS } from "./domain/engagementPrediction";
+  UseAttentionDetectionOptions,
+} from "./presentation/useAttentionDetection";
+export { ATTENTION_LABELS } from "./domain/attentionPrediction";
 export type {
+  AttentionLabel,
+  AttentionPrediction,
   AttentionStatus,
-  EngagementLabel,
-  EngagementPrediction,
-} from "./domain/engagementPrediction";
+} from "./domain/attentionPrediction";

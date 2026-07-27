@@ -1,9 +1,9 @@
-import type { EngagementPrediction } from "../domain/engagementPrediction";
+import type { AttentionPrediction } from "../domain/attentionPrediction";
 import type {
-  EngagementFailureKind,
-  EngagementWorkerPort,
-  EngagementWorkerResponse,
-} from "./engagementWorkerProtocol";
+  AttentionFailureKind,
+  AttentionWorkerPort,
+  AttentionWorkerResponse,
+} from "./attentionWorkerProtocol";
 
 /**
  * 추론 Worker 의 메인 스레드 측 창구.
@@ -13,34 +13,34 @@ import type {
  * 남기고 나머지는 버린다(밀린 프레임 폐기).
  */
 
-export interface EngagementInferenceFailure {
-  readonly kind: EngagementFailureKind;
+export interface AttentionInferenceFailure {
+  readonly kind: AttentionFailureKind;
   readonly message: string;
 }
 
-export interface EngagementInferenceClient {
+export interface AttentionInferenceClient {
   /** 완성된 20×98 토큰 창을 넘긴다. 추론 중이면 최신 창으로 대체된다. */
   submit(tokens: Float32Array): void;
   terminate(): void;
 }
 
-export interface EngagementInferenceClientOptions {
+export interface AttentionInferenceClientOptions {
   /** 실제 Worker 생성. 테스트에서 대체한다. */
-  createWorker?: () => EngagementWorkerPort;
-  onPrediction(prediction: EngagementPrediction): void;
-  onFailure(failure: EngagementInferenceFailure): void;
+  createWorker?: () => AttentionWorkerPort;
+  onPrediction(prediction: AttentionPrediction): void;
+  onFailure(failure: AttentionInferenceFailure): void;
 }
 
-function spawnWorker(): EngagementWorkerPort {
+function spawnWorker(): AttentionWorkerPort {
   // 번들러가 이 URL 로 Worker 청크를 따로 만들어 준다.
-  return new Worker(new URL("./engagementInference.worker.ts", import.meta.url), {
+  return new Worker(new URL("./attentionInference.worker.ts", import.meta.url), {
     type: "module",
-  }) as unknown as EngagementWorkerPort;
+  }) as unknown as AttentionWorkerPort;
 }
 
-export function createEngagementInferenceClient(
-  options: EngagementInferenceClientOptions,
-): EngagementInferenceClient {
+export function createAttentionInferenceClient(
+  options: AttentionInferenceClientOptions,
+): AttentionInferenceClient {
   const { createWorker = spawnWorker, onPrediction, onFailure } = options;
 
   // 모델 로드가 몇 초 걸리므로 첫 10초 창이 완성되기 전에 미리 띄워 둔다.
@@ -70,7 +70,7 @@ export function createEngagementInferenceClient(
     post(latest);
   }
 
-  worker.onmessage = (event: MessageEvent<EngagementWorkerResponse>) => {
+  worker.onmessage = (event: MessageEvent<AttentionWorkerResponse>) => {
     if (terminated) return;
     const response = event.data;
     // 이미 대체되거나 취소된 요청의 늦은 응답은 버린다.

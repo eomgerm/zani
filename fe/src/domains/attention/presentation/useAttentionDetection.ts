@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import type { AttentionStatus, EngagementPrediction } from "../domain/engagementPrediction";
+import type { AttentionStatus, AttentionPrediction } from "../domain/attentionPrediction";
 import {
   createBrowserFaceLandmarker,
   type BrowserFaceLandmarker,
 } from "../infrastructure/faceLandmarker";
 import {
-  createEngagementInferenceClient,
-  type EngagementInferenceClient,
-  type EngagementInferenceFailure,
-} from "../infrastructure/engagementInferenceClient";
+  createAttentionInferenceClient,
+  type AttentionInferenceClient,
+  type AttentionInferenceFailure,
+} from "../infrastructure/attentionInferenceClient";
 import { extractFrameFeatures } from "../infrastructure/frameFeatures";
 import { RollingFeatureWindow } from "../infrastructure/rollingFeatureWindow";
 
@@ -35,27 +35,27 @@ const ANIMATION_FRAME_SCHEDULER: FrameScheduler = {
 /** 카메라 가용 상태. 스트림을 소유한 상위 화면이 판단해 내려준다. */
 export type CameraAvailability = "on" | "off" | "denied";
 
-export interface UseEngagementDetectionOptions {
+export interface UseAttentionDetectionOptions {
   /** 판정 대상인 로컬 카메라 비디오 요소. */
   readonly videoRef: RefObject<HTMLVideoElement | null>;
   /** `on` 이 아니면 판정을 중단하고 상태만 알린다. */
   readonly camera: CameraAvailability;
-  onPrediction?: (prediction: EngagementPrediction) => void;
+  onPrediction?: (prediction: AttentionPrediction) => void;
   onStatusChange?: (status: AttentionStatus) => void;
   /** 표본 추출 주기(ms). 기본 100. */
   readonly sampleIntervalMs?: number;
   createLandmarker?: () => Promise<BrowserFaceLandmarker>;
   createInferenceClient?: (handlers: {
-    onPrediction(prediction: EngagementPrediction): void;
-    onFailure(failure: EngagementInferenceFailure): void;
-  }) => EngagementInferenceClient;
+    onPrediction(prediction: AttentionPrediction): void;
+    onFailure(failure: AttentionInferenceFailure): void;
+  }) => AttentionInferenceClient;
   readonly scheduler?: FrameScheduler;
 }
 
-export interface EngagementDetectionState {
+export interface AttentionDetectionState {
   readonly status: AttentionStatus;
   /** 가장 최근 10초 창의 판정 결과. 아직 없으면 null. */
-  readonly prediction: EngagementPrediction | null;
+  readonly prediction: AttentionPrediction | null;
 }
 
 /**
@@ -65,7 +65,7 @@ export interface EngagementDetectionState {
 interface ReportedState {
   readonly camera: CameraAvailability;
   readonly status: AttentionStatus;
-  readonly prediction: EngagementPrediction | null;
+  readonly prediction: AttentionPrediction | null;
 }
 
 const INITIAL_REPORT: ReportedState = { camera: "off", status: "preparing", prediction: null };
@@ -78,9 +78,9 @@ const INITIAL_REPORT: ReportedState = { camera: "off", status: "preparing", pred
  * 최신 프레임만 처리한다. 프레임·랜드마크는 브라우저 밖으로 나가지 않으며 상위에는
  * 상태와 판정 결과만 노출한다.
  */
-export function useEngagementDetection(
-  options: UseEngagementDetectionOptions,
-): EngagementDetectionState {
+export function useAttentionDetection(
+  options: UseAttentionDetectionOptions,
+): AttentionDetectionState {
   const {
     videoRef,
     camera,
@@ -88,7 +88,7 @@ export function useEngagementDetection(
     onStatusChange,
     sampleIntervalMs = DEFAULT_SAMPLE_INTERVAL_MS,
     createLandmarker = createBrowserFaceLandmarker,
-    createInferenceClient = createEngagementInferenceClient,
+    createInferenceClient = createAttentionInferenceClient,
     scheduler = ANIMATION_FRAME_SCHEDULER,
   } = options;
 
@@ -142,13 +142,13 @@ export function useEngagementDetection(
     }
 
     const inference = createInferenceClient({
-      onPrediction(next: EngagementPrediction) {
+      onPrediction(next: AttentionPrediction) {
         if (cancelled) return;
         hasPrediction = true;
         report({ status: "measuring", prediction: next });
         notifyRef.current.onPrediction?.(next);
       },
-      onFailure(failure: EngagementInferenceFailure) {
+      onFailure(failure: AttentionInferenceFailure) {
         if (cancelled) return;
         if (failure.kind !== "modelUnavailable") {
           // 세션은 살아 있으므로 다음 창에서 다시 시도한다.

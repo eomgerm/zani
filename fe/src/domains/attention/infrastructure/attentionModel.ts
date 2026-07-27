@@ -1,9 +1,9 @@
 import type { InferenceSession } from "onnxruntime-web";
 
 import {
-  ENGAGEMENT_LABELS,
-  type EngagementPrediction,
-} from "../domain/engagementPrediction";
+  ATTENTION_LABELS,
+  type AttentionPrediction,
+} from "../domain/attentionPrediction";
 import { attentionAssetPaths } from "./attentionAssets";
 import { SCHEMA_NAME } from "./frameFeatures";
 
@@ -11,7 +11,7 @@ import { SCHEMA_NAME } from "./frameFeatures";
  * onnxruntime-web 추론 어댑터. `ai/web/engagement-demo/src/model.ts` 에서 이식했다.
  *
  * 데모와 달리 모델·wasm 을 CDN 대신 `public/attention/` 에서 받고, 결과를 도메인 타입
- * `EngagementPrediction` 으로 돌려준다. Worker 안에서만 생성한다.
+ * `AttentionPrediction` 으로 돌려준다. Worker 안에서만 생성한다.
  */
 
 export interface DeploymentMetadata {
@@ -19,15 +19,15 @@ export interface DeploymentMetadata {
   input_name: string;
   input_shape: readonly ["batch", 20, 98];
   output_name: string;
-  labels: typeof ENGAGEMENT_LABELS;
+  labels: typeof ATTENTION_LABELS;
   window_seconds: 10;
   segment_count: 20;
   sample_fps: 10;
 }
 
-export interface EngagementModel {
+export interface AttentionModel {
   readonly metadata: DeploymentMetadata;
-  predict(tokens: Float32Array): Promise<EngagementPrediction>;
+  predict(tokens: Float32Array): Promise<AttentionPrediction>;
   dispose(): Promise<void>;
 }
 
@@ -49,7 +49,7 @@ export function validateMetadata(value: unknown): DeploymentMetadata {
   if (!isExactArray(value.input_shape, ["batch", 20, 98])) {
     throw new Error("모델 입력 shape은 [batch, 20, 98]이어야 합니다.");
   }
-  if (!isExactArray(value.labels, ENGAGEMENT_LABELS)) {
+  if (!isExactArray(value.labels, ATTENTION_LABELS)) {
     throw new Error("모델 클래스 순서가 학습 계약과 다릅니다.");
   }
   if (
@@ -65,7 +65,7 @@ export function validateMetadata(value: unknown): DeploymentMetadata {
 }
 
 export function softmax(logits: Float32Array): Float32Array {
-  if (logits.length !== ENGAGEMENT_LABELS.length) {
+  if (logits.length !== ATTENTION_LABELS.length) {
     throw new Error("모델은 4개 logit을 출력해야 합니다.");
   }
   const maximum = Math.max(...logits);
@@ -100,18 +100,18 @@ async function createSession(
   }
 }
 
-export async function createEngagementModel(
+export async function createAttentionModel(
   paths = attentionAssetPaths(),
-): Promise<EngagementModel> {
-  const response = await fetch(paths.engagementMetadata);
+): Promise<AttentionModel> {
+  const response = await fetch(paths.attentionModelMetadata);
   if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
     throw new Error("학습된 모델이 없습니다. Python export 명령을 먼저 실행하세요.");
   }
   const metadata = validateMetadata(await response.json());
-  const { session, ort } = await createSession(paths.engagementModel, paths.onnxRuntimeWasmBase);
+  const { session, ort } = await createSession(paths.attentionModel, paths.onnxRuntimeWasmBase);
   return {
     metadata,
-    async predict(tokens: Float32Array): Promise<EngagementPrediction> {
+    async predict(tokens: Float32Array): Promise<AttentionPrediction> {
       if (tokens.length !== 20 * 98) throw new Error("ONNX 입력은 20×98 토큰이어야 합니다.");
       const input = new ort.Tensor("float32", tokens, [1, 20, 98]);
       const outputs = await session.run({ [metadata.input_name]: input });
@@ -125,7 +125,7 @@ export async function createEngagementModel(
         if ((probabilities[index] ?? 0) > (probabilities[bestIndex] ?? 0)) bestIndex = index;
       }
       return {
-        label: ENGAGEMENT_LABELS[bestIndex] ?? ENGAGEMENT_LABELS[0],
+        label: ATTENTION_LABELS[bestIndex] ?? ATTENTION_LABELS[0],
         probabilities: Array.from(probabilities),
       };
     },

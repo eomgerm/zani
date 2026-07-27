@@ -17,8 +17,8 @@ describe("attentionAssetPaths", () => {
 
     expect(paths.visionWasmBase).toBe("/assets/attention/mediapipe/wasm");
     expect(paths.faceLandmarkerModel).toBe("/assets/attention/mediapipe/face_landmarker.task");
-    expect(paths.engagementModel).toBe("/assets/attention/models/engagement.onnx");
-    expect(paths.engagementMetadata).toBe("/assets/attention/models/engagement.metadata.json");
+    expect(paths.attentionModel).toBe("/assets/attention/models/engagement.onnx");
+    expect(paths.attentionModelMetadata).toBe("/assets/attention/models/engagement.metadata.json");
   });
 
   it("keeps a trailing slash on the onnxruntime base that ort.env.wasm.wasmPaths requires", () => {
