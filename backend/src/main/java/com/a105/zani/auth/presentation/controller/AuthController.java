@@ -4,6 +4,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +24,7 @@ import com.a105.zani.auth.presentation.response.GoogleLoginResponse;
 import com.a105.zani.auth.presentation.response.RotateRefreshTokenResponse;
 import com.a105.zani.common.response.ApiResponse;
 
+@Tag(name = "인증", description = "Google 로그인과 토큰 재발급. 다른 API 는 모두 여기서 받은 Access Token 이 있어야 호출할 수 있습니다.")
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -38,6 +42,27 @@ public class AuthController {
         this.refreshTokenCookieManager = refreshTokenCookieManager;
     }
 
+    @Operation(
+            summary = "Google 로그인",
+            description = """
+                    프론트엔드가 Google 로그인 버튼에서 받은 **ID Token** 을 그대로 보내면, 서버가 Google 에 검증한 뒤 ZANI 계정을 만들거나 찾아 로그인시킵니다.
+
+                    - 처음 로그인하는 사용자는 이때 회원으로 등록됩니다(별도 회원가입 API 없음).
+                    - 응답의 **Access Token** 은 이후 요청의 `Authorization: Bearer ...` 헤더에 넣습니다. 유효기간 1시간.
+                    - **Refresh Token** 은 본문이 아니라 `refresh_token` **HttpOnly 쿠키**로 내려갑니다. 자바스크립트로 읽을 수 없으니 그대로 두고, 재발급 때 요청에 쿠키만 함께 보내면 됩니다.
+                    - 로그인 전에 부르는 API 라 Access Token 이 필요 없습니다.
+                    """,
+            security = {})
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그인 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "idToken 이 비어 있습니다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "Google ID Token 이 유효하지 않거나 만료됐습니다. 로그인을 다시 시도해 주세요. (`AUTH_008`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "503",
+                description = "토큰 저장소(Redis)를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요. (`AUTH_006`)")
+    })
     @PostMapping("/login/google")
     public ApiResponse<GoogleLoginResponse> loginWithGoogle(
             @Valid @RequestBody GoogleLoginRequest request, HttpServletResponse response) {
@@ -46,6 +71,27 @@ public class AuthController {
         return ApiResponse.success(GoogleLoginResponse.from(result));
     }
 
+    @Operation(
+            summary = "Access Token 재발급",
+            description = """
+                    Access Token 이 만료됐을 때 호출합니다. 요청 본문은 없고, 브라우저가 자동으로 실어 보내는 `refresh_token` 쿠키만으로 동작합니다(fetch 는 credentials 를 include 로).
+
+                    - 호출할 때마다 Refresh Token 도 **새 값으로 교체**됩니다(회전). 예전 토큰은 즉시 무효라 같은 토큰으로 두 번 재발급할 수 없습니다.
+                    - 401 이 오면 다시 로그인시켜야 합니다.
+                    """,
+            security = {})
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "재발급 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "Refresh Token 이 없거나 만료·이미 사용된 값입니다. 다시 로그인해야 합니다. (`AUTH_002`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "허용되지 않은 출처에서의 재발급 요청입니다. (`AUTH_007`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "503",
+                description = "토큰 저장소(Redis)를 사용할 수 없습니다. (`AUTH_006`)")
+    })
     @PostMapping("/refresh")
     public ApiResponse<RotateRefreshTokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
         RotateRefreshTokenResult result = rotateRefreshTokenUseCase.rotate(new RotateRefreshTokenCommand(
