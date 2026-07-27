@@ -16,6 +16,18 @@ LABELS = ("Not-Engaged", "Barely-Engaged", "Engaged", "Highly-Engaged")
 #: CLI can list the choices without importing torch.
 CLASS_WEIGHTING_SCHEMES = ("none", "balanced", "sqrt_balanced")
 
+#: Classification loss shapes for the softmax head. ``focal`` adds Lin et al.'s
+#: ``(1 - p_t)^gamma`` modulating term, which reweights by *sample difficulty*
+#: where ``CLASS_WEIGHTING_SCHEMES`` reweights by class frequency; the two
+#: compose. Kept beside the weighting schemes so the CLI can list both without
+#: importing torch.
+LOSS_SCHEMES = ("cross_entropy", "focal")
+
+#: Training-split sampling schemes. ``balanced`` draws with replacement so each
+#: class contributes equally per epoch, which corrects the imbalance in the
+#: batch composition rather than in the loss.
+SAMPLER_SCHEMES = ("none", "balanced")
+
 _LABEL_LOOKUP = {label.casefold(): label for label in LABELS}
 _LABEL_LOOKUP["barely-engaged"] = "Barely-Engaged"
 _SPLIT_FILES: dict[SplitName, str] = {

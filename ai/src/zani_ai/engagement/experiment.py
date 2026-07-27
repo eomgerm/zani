@@ -95,6 +95,11 @@ class ExperimentSpec:
     # Loss weighting; see training.CLASS_WEIGHTING_SCHEMES. Part of the
     # protocol identity, so changing it defines a new experiment.
     class_weighting: str = "none"
+    # Loss shape and training-split sampling; see training.LOSS_SCHEMES and
+    # training.SAMPLER_SCHEMES. Also part of the identity.
+    loss: str = "cross_entropy"
+    focal_gamma: float = 2.0
+    sampler: str = "none"
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -125,6 +130,30 @@ E0C_SPEC = ExperimentSpec(
 )
 E0D_SPEC = ExperimentSpec(
     "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
+)
+
+# E0-E / E0-F pick up where E0-D stopped: it beat E0 by only +0.49%p Validation
+# Macro F1, short of the +1.0%p bar. Both remaining levers act on the imbalance
+# without touching the encoder, and each isolates one variable.
+#
+# E0-E keeps E0-D's sqrt_balanced weights and changes only the loss shape, so
+# any difference is the focal term alone. Frequency weighting cannot tell an
+# easy majority sample from a hard one; `(1 - p_t)^2` can, which matters here
+# because 89% of E0's errors are one adjacent grade away.
+#
+# E0-F moves the correction from the loss to the batch and therefore reverts to
+# E0's unweighted loss -- keeping sqrt_balanced weights on top of a balanced
+# sampler would correct the same imbalance twice.
+E0E_SPEC = ExperimentSpec(
+    "E0-E",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    class_weighting="sqrt_balanced",
+    loss="focal",
+    focal_gamma=2.0,
+)
+E0F_SPEC = ExperimentSpec(
+    "E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced"
 )
 
 
@@ -245,6 +274,8 @@ SPECS: dict[str, ExperimentSpec] = {
         E0B_SPEC,
         E0C_SPEC,
         E0D_SPEC,
+        E0E_SPEC,
+        E0F_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -354,6 +385,26 @@ def _class_weighting_value(spec: ExperimentSpec) -> object:
     return False if spec.class_weighting == "none" else spec.class_weighting
 
 
+def _apply_loss_and_sampling(
+    configuration: dict[str, object], spec: ExperimentSpec
+) -> dict[str, object]:
+    """Record the loss shape and sampler, but only when they leave the default.
+
+    Emitting these keys unconditionally would rewrite the hash of every protocol
+    that predates them and discard its completed seeds, so a plain
+    cross-entropy, unsampled spec must produce the dict it always has.
+    """
+    if getattr(spec.model_config, "head", "softmax") == "coral":
+        # CORAL replaces the head, so its loss is fixed regardless of spec.loss.
+        configuration["loss"] = "coral_bce"
+    elif spec.loss != "cross_entropy":
+        configuration["loss"] = spec.loss
+        configuration["focal_gamma"] = spec.focal_gamma
+    if spec.sampler != "none":
+        configuration["sampler"] = spec.sampler
+    return configuration
+
+
 def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
     # Only the device *type* may enter the identity: `cuda` and `cuda:2` are
     # the same protocol on different cards and must share a hash, or moving a
@@ -388,31 +439,32 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
             "deterministic_algorithms": True,
             "num_workers": 0,
         }
-        if getattr(spec.model_config, "head", "softmax") == "coral":
-            configuration["loss"] = "coral_bce"
-        return configuration
+        return _apply_loss_and_sampling(configuration, spec)
 
     # ST-GCN path (E1 and other non-token representations).
-    return {
-        "representation": spec.schema_name,
-        "model_family": "stgcn",
-        "seeds": list(spec.seeds),
-        "optimizer": "Adam",
-        "learning_rate": spec.learning_rate,
-        "batch_size": spec.batch_size,
-        "maximum_epochs": spec.max_epochs,
-        "lr_step": spec.lr_step,
-        "early_stopping": {
-            "metric": "validation_macro_f1",
-            "mode": "max",
-            "patience": spec.patience,
+    return _apply_loss_and_sampling(
+        {
+            "representation": spec.schema_name,
+            "model_family": "stgcn",
+            "seeds": list(spec.seeds),
+            "optimizer": "Adam",
+            "learning_rate": spec.learning_rate,
+            "batch_size": spec.batch_size,
+            "maximum_epochs": spec.max_epochs,
+            "lr_step": spec.lr_step,
+            "early_stopping": {
+                "metric": "validation_macro_f1",
+                "mode": "max",
+                "patience": spec.patience,
+            },
+            "class_weighting": _class_weighting_value(spec),
+            "model": spec.model_config.to_dict(),
+            "device": device,
+            "deterministic_algorithms": True,
+            "num_workers": 0,
         },
-        "class_weighting": _class_weighting_value(spec),
-        "model": spec.model_config.to_dict(),
-        "device": device,
-        "deterministic_algorithms": True,
-        "num_workers": 0,
-    }
+        spec,
+    )
 
 
 def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
@@ -911,6 +963,9 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         seed=seed,
         device=context.device,
         class_weighting=spec.class_weighting,
+        loss=spec.loss,
+        focal_gamma=spec.focal_gamma,
+        sampler=spec.sampler,
         num_workers=0,
         deterministic=True,
         model=spec.model_config,

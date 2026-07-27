@@ -146,6 +146,26 @@ seed마다 실제 실행 환경이 `summary.json`에 기록됩니다.
 크기가 유지되어 학습률을 그대로 쓸 수 있습니다. `class_weighting`은 재현성
 identity에 포함되므로 각각 별도 프로토콜이며 기존 E0 결과는 그대로 남습니다.
 
+`reproduce-e0e`와 `reproduce-e0f`는 E0-D가 E0 대비 Validation Macro F1 +0.49%p에 그친
+뒤 남은 두 축을 각각 하나씩만 바꿉니다.
+
+E0-E는 E0-D의 `sqrt_balanced` 가중치를 그대로 두고 손실 모양만 Focal
+(`FL = -α_t (1 - p_t)^γ log p_t`, `γ = 2.0`)로 바꿉니다. 빈도 가중치는 다수 클래스의 쉬운
+표본과 어려운 표본을 구분하지 못하지만 `(1 - p_t)^γ`는 구분합니다. 감쇠(reduction)는
+`CrossEntropyLoss(weight=...)`와 같은 가중 평균이라 손실 크기가 유지되고 학습률을 그대로
+씁니다. 따라서 E0-D와의 차이는 Focal 항 하나로 귀속됩니다.
+
+E0-F는 보정을 손실에서 배치로 옮깁니다. `WeightedRandomSampler`가 표본 가중
+`∝ 1/n_i`로 `len(train)`개를 복원추출해 epoch마다 클래스 균등에 가까운 배치를 만들고,
+손실은 **가중 없는 CE로 되돌립니다**. 균형 샘플러 위에 가중 손실을 얹으면 같은 불균형을
+두 번 보정하기 때문입니다. 샘플러는 학습 분할에만 적용되며, 평가 분할을 다시 뽑으면
+Macro F1을 재는 분포 자체가 바뀌므로 적용하지 않습니다. 복원추출은 확률 과정이라
+`config.seed`로 시드된 `torch.Generator`를 주입해 재현성을 유지합니다.
+
+`loss`·`focal_gamma`·`sampler`도 재현성 identity에 포함됩니다. 다만 기본값을 벗어난
+프로토콜에서만 `configuration`에 기록되므로, 이들이 없던 기존 8개 프로토콜의
+`configuration_sha256`은 바뀌지 않고 완료된 seed도 그대로 재사용됩니다.
+
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
 학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고
