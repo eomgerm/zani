@@ -11,3 +11,19 @@ export type {
   AttentionPrediction,
   AttentionStatus,
 } from "./domain/attentionPrediction";
+export { CoachingPromptPanel } from "./presentation/CoachingPromptPanel";
+export type {
+  CoachingPromptOption,
+  CoachingPromptPanelProps,
+} from "./presentation/CoachingPromptPanel";
+export { usePromptTimer } from "./presentation/usePromptTimer";
+export {
+  UNDERSTANDING_CHECK_COOLDOWN_MS,
+  UNDERSTANDING_CHECK_SECONDS,
+  useUnderstandingCheckPrompt,
+} from "./presentation/useUnderstandingCheckPrompt";
+export type {
+  UnderstandingCheckPrompt,
+  UnderstandingCheckResponse,
+  UseUnderstandingCheckPromptOptions,
+} from "./presentation/useUnderstandingCheckPrompt";

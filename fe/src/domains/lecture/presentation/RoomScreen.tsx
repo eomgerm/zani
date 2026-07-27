@@ -4,6 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
+  CoachingPromptPanel,
+  useUnderstandingCheckPrompt,
+  type UnderstandingCheckResponse,
+} from "@/domains/attention";
+import {
   participantTiles,
   participants as participantsFixture,
   publicMessages,
@@ -24,6 +29,12 @@ type RoomScreenProps = {
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
+
+const UNDERSTANDING_CHECK_FEEDBACK: Record<UnderstandingCheckResponse, string> = {
+  UNDERSTOOD: "응답을 보냈어요.",
+  CONFUSED: "응답을 보냈어요.",
+  MISSED: "응답을 보냈어요.",
+};
 
 /** 상단 바의 참여자/채팅 토글 버튼 */
 function PanelToggle({
@@ -72,8 +83,8 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
   const [me, setMe] = useState({ mic: true, cam: true, hand: false });
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
+  const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const [alertOpen, setAlertOpen] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
@@ -133,9 +144,9 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
     router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
   };
 
-  const answerPrompt = (text: string) => {
-    setPromptOpen(false);
-    setPromptToast(text);
+  const answerPrompt = (value: UnderstandingCheckResponse) => {
+    understandingCheck.respond(value);
+    setPromptToast(UNDERSTANDING_CHECK_FEEDBACK[value]);
     track(setTimeout(() => setPromptToast(null), 2600));
   };
 
@@ -146,6 +157,16 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
         <div className="flex-1" />
+        {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
+        {!isInstructor && process.env.NODE_ENV !== "production" && (
+          <button
+            type="button"
+            onClick={() => understandingCheck.trigger(`dev-${Date.now()}`)}
+            className="rounded-[11px] border border-[#262b42] bg-[#151830] px-3 py-[9px] font-sans text-[12px] text-panel-muted"
+          >
+            확인 프롬프트 테스트
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
@@ -300,41 +321,34 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
       </div>
 
       {/* 확인 프롬프트 (학생) */}
-      {promptOpen && (
-        <div className="absolute bottom-24 left-1/2 z-50 w-[420px] -translate-x-1/2 animate-[zPop_.2s] rounded-[20px] bg-surface p-[22px] text-ink shadow-[0_20px_50px_#0008]">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-base font-extrabold">잠깐 확인할게요 ✋</span>
-            <span className="flex h-[34px] min-w-[34px] items-center justify-center rounded-[10px] bg-primary-soft px-2 font-mono text-[15px] font-black text-primary">
-              30
-            </span>
-          </div>
-          <p className="mb-4 text-sm text-ink-sub">
-            방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요.
-          </p>
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 고마워요!")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#d4f0e5] bg-primary-mint py-3.5 text-primary-dark"
-            >
-              👍 이해했어요
-            </button>
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 곧 짚어드릴게요.")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#f6e3a7] bg-warn-soft py-3.5 text-warn-text"
-            >
-              🤔 헷갈려요
-            </button>
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 관련 구간을 리포트에 담아둘게요.")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-line-muted bg-primary-softer py-3.5 text-ink-muted"
-            >
-              😅 놓쳤어요
-            </button>
-          </div>
-        </div>
+      {understandingCheck.prompt && (
+        <CoachingPromptPanel
+          title="잠깐 확인할게요 ✋"
+          body="방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요."
+          remainingMs={understandingCheck.prompt.remainingMs}
+          durationMs={understandingCheck.prompt.durationMs}
+          onSelect={answerPrompt}
+          options={[
+            {
+              value: "UNDERSTOOD",
+              label: "이해했어요",
+              emoji: "👍",
+              toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+            },
+            {
+              value: "CONFUSED",
+              label: "헷갈려요",
+              emoji: "🤔",
+              toneClassName: "border-[#f6e3a7] bg-warn-soft text-warn-text",
+            },
+            {
+              value: "MISSED",
+              label: "놓쳤어요",
+              emoji: "😅",
+              toneClassName: "border-line-muted bg-primary-softer text-ink-muted",
+            },
+          ]}
+        />
       )}
       {promptToast && (
         <div
