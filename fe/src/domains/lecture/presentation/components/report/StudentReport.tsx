@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Card, FocusFlowChart } from "@/shared/ui";
+import { Badge, BookmarkIcon, Card, FocusFlowChart } from "@/shared/ui";
 import { learnSegments, recommendations, studentGlance, studentSummary } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
 import { FocusLegend } from "./FocusLegend";
@@ -45,7 +45,7 @@ export function StudentReport({ lectureId, activeSeg, onSelect }: Props) {
       </Card>
 
       <Card className="px-6 pb-3.5 pt-[22px]">
-        <FocusLegend title="집중 흐름" scope="내 집중" />
+        <FocusLegend title="집중 흐름" scope="내 집중도" />
         <FocusFlowChart segments={flow} activeSeg={activeSeg} onSelect={onSelect} />
       </Card>
 
@@ -59,7 +59,7 @@ export function StudentReport({ lectureId, activeSeg, onSelect }: Props) {
           </span>
         </div>
         <div className="mb-3 mt-1.5 text-xs font-bold text-ink-faint">
-          수업 내용 기반 구간 · 내 집중 점수 (0–4)
+          수업 내용 기반 구간 · 내 집중도 점수 (0–4)
         </div>
         <TimelineSegments
           segments={learnSegments}
@@ -102,6 +102,7 @@ export function StudentReport({ lectureId, activeSeg, onSelect }: Props) {
                   </div>
                   <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
                 </div>
+                <BookmarkIcon className="shrink-0 text-[#c2c7dc]" />
               </div>
             ))}
           </div>

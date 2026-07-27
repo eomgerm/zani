@@ -42,12 +42,12 @@ describe("ParticipantTile", () => {
       />,
     );
 
+    // 손들기 표시는 장식용 SVG라 텍스트가 없다. 상태는 타일의 접근성 이름으로만 알린다.
     expect(
       screen.getByRole("group", {
         name: "학생 이지은, 카메라 꺼짐, 마이크 꺼짐, 손 들음",
       }),
     ).toBeVisible();
-    expect(screen.getByText("✋")).toBeVisible();
   });
 
   it("keeps instructor-only participant controls for a student tile", () => {

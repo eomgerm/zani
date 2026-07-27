@@ -20,16 +20,17 @@ export function HomeScreen() {
 
       {/* 진행 중 수업 배너 */}
       <div className="mb-[34px] flex items-center gap-[18px] rounded-[18px] border border-line-mint bg-primary-softer px-6 py-[18px]">
-        <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-surface text-2xl shadow-[0_4px_14px_rgba(18,184,134,.16)]">
-          🎥
+        <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-surface shadow-[0_4px_14px_rgba(18,184,134,.16)]">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="2.5" y="6.5" width="12" height="11" rx="2.5" fill="#10b981" />
+            <path d="M15 10l6-3.5v11L15 14z" fill="#10b981" />
+          </svg>
         </span>
         <div className="min-w-0 flex-1">
           <div className="mb-[5px] text-[19px] font-extrabold tracking-[-.3px]">
             JavaScript 비동기 마스터
           </div>
-          <div className="text-[13.5px] font-semibold text-ink-faint">
-            최민서 선생님 · 진행 중 · 지금 다시 입장할 수 있어요
-          </div>
+          <div className="text-[13.5px] font-semibold text-ink-faint">최민서 강사 · 진행 중</div>
         </div>
         <Link href="/room/s6" className="z-btn z-btn-primary z-btn-md shrink-0 text-[14.5px]">
           수업으로 돌아가기
@@ -44,8 +45,21 @@ export function HomeScreen() {
       <div className="grid grid-cols-2 gap-[22px]">
         {/* 강의실 만들기 */}
         <div className="relative flex flex-col overflow-hidden rounded-[20px] border border-line-mint bg-canvas px-7 py-[30px]">
-          <CornerIcon>🎬</CornerIcon>
-          <h3 className="mb-3 text-[22px] font-extrabold tracking-[-.4px]">강의실 만들기</h3>
+          <CornerIcon>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="3" fill="#fff" />
+              <rect x="3" y="5" width="18" height="5" rx="3" fill="#10b981" />
+              <path d="M8 3v4M16 3v4" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" />
+              <rect x="6.5" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
+              <rect x="10.7" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
+              <rect x="14.9" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
+              <rect x="6.5" y="16.4" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
+              <rect x="10.7" y="16.4" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
+            </svg>
+          </CornerIcon>
+          <h3 className="mb-3 whitespace-nowrap pr-[92px] text-[22px] font-extrabold tracking-[-.4px]">
+            강의실 만들기
+          </h3>
           <p className="mb-7 max-w-[200px] text-sm leading-[1.55] text-ink-faint">
             지금 바로 강의실을 만들고
             <br />
@@ -59,8 +73,26 @@ export function HomeScreen() {
 
         {/* 강의실 참여하기 */}
         <div className="relative flex flex-col overflow-hidden rounded-[20px] border border-line-mint bg-canvas px-7 py-[30px]">
-          <CornerIcon>🎟️</CornerIcon>
-          <h3 className="mb-3 text-[22px] font-extrabold tracking-[-.4px]">강의실 참여하기</h3>
+          <CornerIcon>
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#1ece8a"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9.5 14.5l5-5" />
+              <path d="M13 7l1.5-1.5a3.5 3.5 0 0 1 5 5L18 12" />
+              <path d="M11 17l-1.5 1.5a3.5 3.5 0 0 1-5-5L6 12" />
+            </svg>
+          </CornerIcon>
+          <h3 className="mb-3 whitespace-nowrap pr-[92px] text-[22px] font-extrabold tracking-[-.4px]">
+            강의실 참여하기
+          </h3>
           <p className="mb-7 max-w-[200px] text-sm leading-[1.55] text-ink-faint">
             초대 코드 또는 링크로
             <br />
@@ -88,7 +120,7 @@ export function HomeScreen() {
 /** 카드 우상단의 큰 아이콘 배지 */
 function CornerIcon({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute right-[26px] top-[26px] flex size-24 items-center justify-center rounded-[22px] bg-[linear-gradient(135deg,#daf3ea,#c9ecdf)] text-[44px] shadow-[0_12px_30px_rgba(18,184,134,.22)]">
+    <div className="absolute right-6 top-6 flex size-[76px] items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#daf3ea,#c9ecdf)] shadow-[0_12px_30px_rgba(18,184,134,.22)]">
       {children}
     </div>
   );

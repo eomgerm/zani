@@ -7,10 +7,9 @@
    ========================================================================== */
 @theme {
   /* brand */
-  --color-primary: #1cdd93;
-  --color-primary-dark: #19c986;
+  --color-primary: #10b981;
+  --color-primary-dark: #12a870;
   --color-primary-deep: #16c582;
-  --color-primary-alt: #21e298;
   --color-primary-soft: #e9f8f2;
   --color-primary-softer: #f0f8f5;
 
@@ -75,6 +74,10 @@
   --color-panel-muted: #8a90b8;
   --color-panel-soft: #cfd3f0;
   --color-panel-dim: #aeb4d8;
+  /* 강의실 원형 컨트롤 버튼 · 갤러리 페이지 이동 버튼의 기본 배경 */
+  --color-room-control: #262b42;
+  /* 참가자 상태 보조 텍스트(카메라 꺼짐 등) */
+  --color-room-status: #7b81a8;
 
   /* fonts */
   --font-sans: var(--font-space-grotesk), var(--font-noto-sans-kr), sans-serif;

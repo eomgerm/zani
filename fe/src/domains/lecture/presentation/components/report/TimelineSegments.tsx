@@ -19,14 +19,14 @@ export function TimelineSegments({ segments, role, activeSeg, onSelect }: Timeli
           <div
             key={i}
             onClick={() => onSelect(i)}
-            className={`w-[168px] shrink-0 cursor-pointer rounded-[13px] border px-3.5 py-[13px] ${
-              active ? "border-line-primary bg-primary-softer" : "border-line-light bg-surface"
+            className={`w-[152px] shrink-0 cursor-pointer rounded-[14px] border-[1.5px] px-3.5 py-[13px] text-left ${
+              active ? "border-primary bg-[#edfaf5]" : "border-line-mint bg-surface"
             }`}
           >
             <div className="mb-[9px] flex items-center justify-between">
               <span className="font-mono text-[11px] font-bold text-ink-fainter">{s.range}</span>
               <span
-                className="flex size-[26px] items-center justify-center rounded-full border-[1.5px] text-xs font-black"
+                className="flex size-[30px] shrink-0 items-center justify-center rounded-full border-[1.6px] font-mono text-[13px] font-extrabold"
                 style={{ color: c, background: focusBg(score), borderColor: c }}
               >
                 {score}
