@@ -4,7 +4,7 @@ import {
   ATTENTION_LABELS,
   type AttentionPrediction,
 } from "../domain/attentionPrediction";
-import { attentionAssetPaths } from "./attentionAssets";
+import { attentionAssetPaths, type AttentionAssetPaths } from "./attentionAssets";
 import { SCHEMA_NAME } from "./frameFeatures";
 
 /**
@@ -74,6 +74,16 @@ export function softmax(logits: Float32Array): Float32Array {
   return Float32Array.from(exponentials, (value) => value / total);
 }
 
+/** onnxruntime-web 로더. 테스트에서 가짜 런타임으로 대체한다. */
+export type OnnxRuntimeLoader = () => Promise<typeof import("onnxruntime-web/webgpu")>;
+
+const loadWebGpuRuntime: OnnxRuntimeLoader = () => import("onnxruntime-web/webgpu");
+
+export interface CreateAttentionModelOptions {
+  readonly paths?: AttentionAssetPaths;
+  readonly loadRuntime?: OnnxRuntimeLoader;
+}
+
 /**
  * WebGPU 로 세션을 열고, 미지원 환경에서는 WASM 백엔드로 폴백한다.
  * 두 백엔드 모두 wasm 바이너리를 같은 오리진의 `public/attention/onnxruntime/` 에서 받는다.
@@ -81,8 +91,9 @@ export function softmax(logits: Float32Array): Float32Array {
 async function createSession(
   modelUrl: string,
   wasmPaths: string,
+  loadRuntime: OnnxRuntimeLoader,
 ): Promise<{ session: InferenceSession; ort: typeof import("onnxruntime-web/webgpu") }> {
-  const ort = await import("onnxruntime-web/webgpu");
+  const ort = await loadRuntime();
   ort.env.wasm.wasmPaths = wasmPaths;
   try {
     const session = await ort.InferenceSession.create(modelUrl, {
@@ -101,14 +112,19 @@ async function createSession(
 }
 
 export async function createAttentionModel(
-  paths = attentionAssetPaths(),
+  options: CreateAttentionModelOptions = {},
 ): Promise<AttentionModel> {
+  const { paths = attentionAssetPaths(), loadRuntime = loadWebGpuRuntime } = options;
   const response = await fetch(paths.attentionModelMetadata);
   if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
     throw new Error("학습된 모델이 없습니다. Python export 명령을 먼저 실행하세요.");
   }
   const metadata = validateMetadata(await response.json());
-  const { session, ort } = await createSession(paths.attentionModel, paths.onnxRuntimeWasmBase);
+  const { session, ort } = await createSession(
+    paths.attentionModel,
+    paths.onnxRuntimeWasmBase,
+    loadRuntime,
+  );
   return {
     metadata,
     async predict(tokens: Float32Array): Promise<AttentionPrediction> {

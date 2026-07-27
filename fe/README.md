@@ -61,7 +61,7 @@ src/
 │   └── attention/              # 학습 신호(참여도) 브라우저 판정
 │       ├── domain/             # 판정 결과·상태 타입
 │       ├── infrastructure/     # MediaPipe·ONNX 어댑터, 추론 Worker
-│       ├── presentation/       # useEngagementDetection 훅
+│       ├── presentation/       # useAttentionDetection 훅
 │       └── index.ts
 │
 └── shared/
