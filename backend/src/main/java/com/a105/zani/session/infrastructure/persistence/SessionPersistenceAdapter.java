@@ -42,7 +42,7 @@ public class SessionPersistenceAdapter implements SessionRepository {
     public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
         return sessionJpaRepository
                 .findByStatusAndStartedAtLessThanEqualOrderByStartedAtAsc(
-                        SessionStatus.LIVE.name(), startedBefore, PageRequest.of(0, limit))
+                        SessionStatus.LIVE, startedBefore, PageRequest.of(0, limit))
                 .stream()
                 .map(mapper::toDomain)
                 .toList();
