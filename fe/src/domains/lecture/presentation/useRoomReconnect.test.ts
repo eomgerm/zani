@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 describe("useRoomReconnect", () => {
-  it("connected면 stable + MEASURABLE", () => {
+  it("reports stable and MEASURABLE while connected", () => {
     setState("connected");
     const { result } = renderHook(() => useRoomReconnect());
 
@@ -44,14 +44,14 @@ describe("useRoomReconnect", () => {
     expect(result.current.measurability).toBe("MEASURABLE");
   });
 
-  it("connecting이면 reconnecting + UNMEASURABLE", () => {
+  it("reports reconnecting and UNMEASURABLE while connecting", () => {
     const { result } = renderHook(() => useRoomReconnect());
 
     expect(result.current.status).toBe("reconnecting");
     expect(result.current.measurability).toBe("UNMEASURABLE");
   });
 
-  it("error면 지연마다 재입장하고 한도를 넘으면 failed로 멈춘다", () => {
+  it("rejoins after each delay on error and stops at failed once the limit is exceeded", () => {
     setState("error");
     const { result } = renderHook(() =>
       useRoomReconnect({ rejoinDelayMs: 1000, maxRejoinAttempts: 2 }),
@@ -79,7 +79,7 @@ describe("useRoomReconnect", () => {
     expect(hoisted.retry).toHaveBeenCalledTimes(2);
   });
 
-  it("측정 가능 여부가 바뀔 때만 onMeasurabilityChange로 통지한다", () => {
+  it("notifies onMeasurabilityChange only when measurability actually changes", () => {
     const onMeasurabilityChange = vi.fn();
     const { rerender } = renderHook(() => useRoomReconnect({ onMeasurabilityChange }));
 

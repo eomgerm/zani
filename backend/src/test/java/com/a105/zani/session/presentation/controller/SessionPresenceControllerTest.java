@@ -39,7 +39,7 @@ class SessionPresenceControllerTest {
     }
 
     @Test
-    void 인증이_없으면_401() throws Exception {
+    void respondsUnauthorizedWithoutAuthentication() throws Exception {
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/presence", MISSING_SESSION_ID)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(BODY))
@@ -47,7 +47,7 @@ class SessionPresenceControllerTest {
     }
 
     @Test
-    void 세션_멤버가_아니면_403() throws Exception {
+    void respondsForbiddenWhenTheUserIsNotASessionMember() throws Exception {
         String accessToken =
                 tokenProvider.issueAccessToken(String.valueOf(NON_MEMBER_ID)).value();
 
@@ -59,7 +59,7 @@ class SessionPresenceControllerTest {
     }
 
     @Test
-    void 본문이_없으면_400() throws Exception {
+    void respondsBadRequestWhenTheRequestBodyIsIncomplete() throws Exception {
         String accessToken =
                 tokenProvider.issueAccessToken(String.valueOf(NON_MEMBER_ID)).value();
 
