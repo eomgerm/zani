@@ -9,6 +9,7 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 import torch
+from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.features import SCHEMA_NAME, SCHEMAS, FeatureSchema, get_schema
@@ -102,6 +103,23 @@ class _CoralClassProbModule(torch.nn.Module):
         return p / p.sum(dim=1, keepdim=True)
 
 
+def assert_output_parity(actual: NDArray[np.float32], expected: NDArray[np.float32]) -> None:
+    """Fail unless ONNX Runtime reproduces PyTorch's output for the probe input.
+
+    The error is judged against the whole output vector rather than each logit's
+    own magnitude. The probe is a synthetic ramp and normalization divides by
+    ``feature_std`` values that :class:`EngagementTransformer` clamps at 1e-6
+    (three of E0 seed 42's 98 features fall below it), so the model runs far
+    outside its trained range and logits come out spanning orders of magnitude
+    -- 3e4 beside 5 on one observed seed. A pure relative tolerance then rejects
+    the smallest logit over a float32 accumulation-order difference of ~3e-3,
+    which cannot change the predicted class. A genuinely broken graph is off by
+    orders of magnitude and still fails.
+    """
+    scale = float(np.abs(expected).max())
+    np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=max(1e-5, 1e-6 * scale))
+
+
 def export_onnx(
     model: torch.nn.Module,
     metadata: DeploymentMetadata,
@@ -185,7 +203,7 @@ def export_onnx(
         actual = session.run(
             [metadata.output_name], {metadata.input_name: example.numpy()}
         )[0]
-        np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-5)
+        assert_output_parity(actual, expected)
         temporary_metadata.write_text(
             json.dumps(asdict(metadata), ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -197,4 +215,4 @@ def export_onnx(
     return ExportResult(model_path, metadata_path)
 
 
-__all__ = ["DeploymentMetadata", "ExportResult", "export_onnx"]
+__all__ = ["DeploymentMetadata", "ExportResult", "assert_output_parity", "export_onnx"]
