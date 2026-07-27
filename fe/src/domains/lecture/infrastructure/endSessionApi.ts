@@ -17,7 +17,11 @@ export class EndSessionRequestError extends Error {
   }
 }
 
-export type SessionEnder = (sessionId: string, signal?: AbortSignal) => Promise<EndSessionResult>;
+export type SessionEnder = (
+  sessionId: string,
+  accessToken: string,
+  signal?: AbortSignal,
+) => Promise<EndSessionResult>;
 
 const isEndSessionResult = (value: unknown): value is EndSessionResult => {
   if (typeof value !== "object" || value === null) {
@@ -33,15 +37,16 @@ const isEndSessionResult = (value: unknown): value is EndSessionResult => {
 
 /**
  * 강사가 수업을 종료한다(POST /api/v1/sessions/{sessionId}/end).
- * 서버가 강사 본인인지 확인하므로 화면의 역할 표시와 무관하게 권한은 서버가 최종 판단한다.
+ * 서버는 Access Token 의 사용자가 이 수업을 연 강사인지 확인하므로, 화면의 역할 표시와 무관하게 권한은 서버가 최종 판단한다.
+ * 토큰은 인증 컨텍스트(useAuth)가 메모리에만 들고 있는 값을 그대로 전달받는다(저장·로그 금지).
  */
-export const endSession: SessionEnder = async (sessionId, signal) => {
+export const endSession: SessionEnder = async (sessionId, accessToken, signal) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
   const response = await fetch(
     `${apiBaseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/end`,
     {
       method: "POST",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
       credentials: "include",
       signal,
     },

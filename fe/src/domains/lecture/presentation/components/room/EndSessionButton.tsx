@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useAuth } from "@/domains/auth";
 import { endSession, EndSessionRequestError, type SessionEnder } from "../../../infrastructure/endSessionApi";
 
 type EndSessionButtonProps = {
@@ -12,6 +13,7 @@ type EndSessionButtonProps = {
 };
 
 const FORBIDDEN_MESSAGE = "수업을 연 강사만 종료할 수 있습니다.";
+const SIGNED_OUT_MESSAGE = "로그인이 풀렸습니다. 다시 로그인한 뒤 종료해 주세요.";
 const FAILURE_MESSAGE = "수업을 종료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 
 function failureMessage(error: unknown): string {
@@ -29,6 +31,7 @@ export function EndSessionButton({
   endSessionRequest = endSession,
 }: EndSessionButtonProps) {
   const router = useRouter();
+  const { accessToken } = useAuth();
   const [confirming, setConfirming] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +42,16 @@ export function EndSessionButton({
     if (requested.current) {
       return;
     }
+    if (!accessToken) {
+      setConfirming(false);
+      setError(SIGNED_OUT_MESSAGE);
+      return;
+    }
     requested.current = true;
     setEnding(true);
     setError(null);
     try {
-      await endSessionRequest(sessionId);
+      await endSessionRequest(sessionId, accessToken);
       router.push("/home");
     } catch (failure) {
       requested.current = false;
@@ -51,7 +59,7 @@ export function EndSessionButton({
       setConfirming(false);
       setError(failureMessage(failure));
     }
-  }, [endSessionRequest, router, sessionId]);
+  }, [accessToken, endSessionRequest, router, sessionId]);
 
   if (!confirming) {
     return (

@@ -5,13 +5,19 @@ import { EndSessionRequestError } from "../../../infrastructure/endSessionApi";
 import { EndSessionButton } from "./EndSessionButton";
 
 const push = vi.fn();
+const auth = vi.hoisted(() => ({ accessToken: "test-access-token" as string | null }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => ({ accessToken: auth.accessToken }),
+}));
+
 beforeEach(() => {
   push.mockReset();
+  auth.accessToken = "test-access-token";
 });
 
 describe("EndSessionButton", () => {
@@ -46,7 +52,20 @@ describe("EndSessionButton", () => {
     fireEvent.click(screen.getByTestId("end-session-confirm"));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/home"));
-    expect(endSessionRequest).toHaveBeenCalledWith("123");
+    expect(endSessionRequest).toHaveBeenCalledWith("123", "test-access-token");
+  });
+
+  it("asks the instructor to sign in again when the session token is gone", async () => {
+    auth.accessToken = null;
+    const endSessionRequest = vi.fn();
+    render(<EndSessionButton sessionId="123" endSessionRequest={endSessionRequest} />);
+
+    fireEvent.click(screen.getByTestId("end-session-button"));
+    fireEvent.click(screen.getByTestId("end-session-confirm"));
+
+    expect((await screen.findByTestId("end-session-error")).textContent).toContain("로그인");
+    expect(endSessionRequest).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("sends only one request when the confirm button is clicked twice", async () => {
