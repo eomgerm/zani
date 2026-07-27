@@ -16,6 +16,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.a105.zani.common.error.BusinessException;
 import com.a105.zani.common.error.CommonErrorCode;
@@ -76,6 +77,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBadRequest(Exception exception, HttpServletRequest request) {
         log.debug("Invalid request", exception);
         return failure(CommonErrorCode.BAD_REQUEST, request, null);
+    }
+
+    /** multipart 상한 초과는 컨트롤러 진입 전에 서블릿 계층에서 던져지므로 여기서 413으로 매핑한다. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePayloadTooLarge(
+            MaxUploadSizeExceededException exception, HttpServletRequest request) {
+        log.debug("Upload size exceeded", exception);
+        return failure(CommonErrorCode.PAYLOAD_TOO_LARGE, request, null);
     }
 
     @ExceptionHandler(Exception.class)

@@ -3,6 +3,13 @@ spring:
     name: ZANI-BE
   profiles:
     default: local
+  servlet:
+    multipart:
+      # 오디오 클립 업로드는 "디스크 미기록"이 보장돼야 한다(전사 후 즉시 폐기 요구사항).
+      # file-size-threshold 를 상한과 같게 두어 Tomcat 이 java.io.tmpdir 로 spill 하지 않게 한다.
+      max-file-size: 8MB
+      max-request-size: 9MB
+      file-size-threshold: 8MB
   jpa:
     open-in-view: false
     properties:
