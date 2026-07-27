@@ -1,10 +1,15 @@
+import type { ReactNode } from "react";
+
 import {
   CameraIcon,
+  ChevronDownIcon,
   CloseIcon,
   HandIcon,
   MicIcon,
   ReactionIcon,
   ScreenShareIcon,
+  Select,
+  type SelectOption,
 } from "@/shared/ui";
 import { reactionEmojis } from "../../fixtures";
 
@@ -16,6 +21,17 @@ interface MeState {
 
 interface RoomControlBarProps {
   me: MeState;
+  /** room 에 연결되기 전이라 마이크·카메라를 조작할 수 없는 상태. */
+  mediaDisabled: boolean;
+  /** 강사 제한 모드: 서버가 해당 source 의 publish 권한을 회수한 상태. */
+  microphoneBlocked: boolean;
+  cameraBlocked: boolean;
+  microphones: readonly SelectOption[];
+  cameras: readonly SelectOption[];
+  activeMicrophoneId: string | null;
+  activeCameraId: string | null;
+  onSelectMicrophone: (deviceId: string) => void;
+  onSelectCamera: (deviceId: string) => void;
   sharing: boolean;
   reactMenuOpen: boolean;
   onToggleMic: () => void;
@@ -35,9 +51,89 @@ function toneCls(active: boolean, activeCls: string) {
   return `${circle} ${active ? activeCls : "bg-room-control"}`;
 }
 
+/**
+ * [원형 토글 + 장치 선택 화살표] 묶음. 입장 전 점검(DevicePreview)과 같은 구성이며 강의실 어두운 테마를 따른다.
+ * 목록이 비어 있으면 화살표만 비활성화되고 토글은 그대로 쓸 수 있다.
+ */
+function MediaControl({
+  toggleTestId,
+  selectTestId,
+  selectAriaLabel,
+  enabled,
+  disabled,
+  onToggle,
+  title,
+  icon,
+  options,
+  value,
+  onChange,
+}: {
+  toggleTestId: string;
+  selectTestId: string;
+  selectAriaLabel: string;
+  enabled: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  title: string;
+  icon: ReactNode;
+  options: readonly SelectOption[];
+  value: string | null;
+  onChange: (deviceId: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        data-testid={toggleTestId}
+        onClick={onToggle}
+        disabled={disabled}
+        title={title}
+        aria-label={title}
+        aria-pressed={enabled}
+        className={`${toneCls(!enabled, "bg-danger")} disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        {icon}
+      </button>
+      <Select
+        data-testid={selectTestId}
+        aria-label={selectAriaLabel}
+        options={options}
+        value={value}
+        onChange={onChange}
+        disabled={disabled || options.length === 0}
+        placement="top"
+        trigger={({ open }) => (
+          <ChevronDownIcon
+            className={`size-[15px] text-white transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        )}
+        triggerClassName="flex cursor-pointer items-center rounded-full border-0 bg-transparent p-1 transition-colors hover:bg-room-control disabled:cursor-not-allowed disabled:opacity-40"
+        listClassName="left-auto w-56"
+      />
+    </div>
+  );
+}
+
+/** 제한된 장치만 안내 문구에 넣는다(마이크만·카메라만 제한될 수 있다). */
+function restrictedLabel(microphoneBlocked: boolean, cameraBlocked: boolean): string {
+  if (microphoneBlocked && cameraBlocked) {
+    return "마이크·카메라";
+  }
+  return microphoneBlocked ? "마이크" : "카메라";
+}
+
 /** 강의실 하단 컨트롤 바(어두운 테마). 라벨 없이 아이콘만 두고 title로 설명한다. */
 export function RoomControlBar({
   me,
+  mediaDisabled,
+  microphoneBlocked,
+  cameraBlocked,
+  microphones,
+  cameras,
+  activeMicrophoneId,
+  activeCameraId,
+  onSelectMicrophone,
+  onSelectCamera,
   sharing,
   reactMenuOpen,
   onToggleMic,
@@ -50,27 +146,33 @@ export function RoomControlBar({
 }: RoomControlBarProps) {
   return (
     <div className="flex shrink-0 items-center justify-center gap-3.5 pb-0.5 pt-2">
-      <button
-        type="button"
-        onClick={onToggleMic}
+      <MediaControl
+        toggleTestId="room-microphone-toggle"
+        selectTestId="room-microphone-select"
+        selectAriaLabel="마이크 선택"
+        enabled={me.mic}
+        disabled={mediaDisabled || microphoneBlocked}
+        onToggle={onToggleMic}
         title={me.mic ? "마이크 끄기" : "마이크 켜기"}
-        aria-label={me.mic ? "마이크 끄기" : "마이크 켜기"}
-        aria-pressed={!me.mic}
-        className={toneCls(!me.mic, "bg-danger")}
-      >
-        <MicIcon />
-      </button>
+        icon={<MicIcon />}
+        options={microphones}
+        value={activeMicrophoneId}
+        onChange={onSelectMicrophone}
+      />
 
-      <button
-        type="button"
-        onClick={onToggleCam}
+      <MediaControl
+        toggleTestId="room-camera-toggle"
+        selectTestId="room-camera-select"
+        selectAriaLabel="카메라 선택"
+        enabled={me.cam}
+        disabled={mediaDisabled || cameraBlocked}
+        onToggle={onToggleCam}
         title={me.cam ? "카메라 끄기" : "카메라 켜기"}
-        aria-label={me.cam ? "카메라 끄기" : "카메라 켜기"}
-        aria-pressed={!me.cam}
-        className={toneCls(!me.cam, "bg-danger")}
-      >
-        <CameraIcon />
-      </button>
+        icon={<CameraIcon />}
+        options={cameras}
+        value={activeCameraId}
+        onChange={onSelectCamera}
+      />
 
       {/* 공유를 멈추는 주 동작은 스테이지 오버레이의 "화면 공유 중지" 버튼이다.
           여기서는 프로토타입대로 상태만 알리고, 켜짐 여부는 aria-pressed로 전달한다. */}
@@ -133,6 +235,16 @@ export function RoomControlBar({
       >
         <CloseIcon />
       </button>
+
+      {(microphoneBlocked || cameraBlocked) && (
+        <span
+          role="status"
+          data-testid="room-publish-blocked"
+          className="rounded-full bg-warn-soft px-3 py-1.5 text-[12px] font-extrabold text-warn-text"
+        >
+          강사가 {restrictedLabel(microphoneBlocked, cameraBlocked)} 사용을 제한했습니다
+        </span>
+      )}
     </div>
   );
 }

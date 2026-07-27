@@ -15,6 +15,7 @@ import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
 import { EndSessionButton } from "./components/room/EndSessionButton";
+import { useRoomMediaControls } from "./useRoomMediaControls";
 
 /**
  * SC-09 실시간 강의실 (어두운 테마). LiveKit room connection is attached here;
@@ -78,11 +79,15 @@ function RoomScreenContent({
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
   const { sessionExpiresAt } = useRoomConnection();
+  // 입장 전 점검은 초대 코드로 장치를 저장하고, 강의실 경로 파라미터가 그 코드다.
+  const media = useRoomMediaControls(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [me, setMe] = useState({ mic: true, cam: true, hand: false });
+  const [handRaised, setHandRaised] = useState(false);
+  // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기는 아직 fixture(WebSocket 소관).
+  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -121,7 +126,7 @@ function RoomScreenContent({
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
 
-  const toggleMe = (k: "mic" | "cam" | "hand") => setMe((p) => ({ ...p, [k]: !p[k] }));
+  const toggleHand = () => setHandRaised((raised) => !raised);
 
   /** 같은 패널을 다시 누르면 닫고, 다른 패널이면 그쪽으로 전환한다(프로토타입 togglePeople/toggleChat). */
   const togglePanel = (next: "people" | "chat") => {
@@ -301,10 +306,19 @@ function RoomScreenContent({
             me={me}
             sharing={sharing}
             reactMenuOpen={reactMenuOpen}
-            onToggleMic={() => toggleMe("mic")}
-            onToggleCam={() => toggleMe("cam")}
+            mediaDisabled={!media.ready}
+            microphoneBlocked={media.microphoneBlocked}
+            cameraBlocked={media.cameraBlocked}
+            microphones={media.microphones}
+            cameras={media.cameras}
+            activeMicrophoneId={media.activeMicrophoneId}
+            activeCameraId={media.activeCameraId}
+            onSelectMicrophone={media.selectMicrophone}
+            onSelectCamera={media.selectCamera}
+            onToggleMic={media.toggleMicrophone}
+            onToggleCam={media.toggleCamera}
             onToggleShare={() => setSharing((v) => !v)}
-            onToggleHand={() => toggleMe("hand")}
+            onToggleHand={toggleHand}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onReact={addReaction}
             onLeave={leaveRoom}

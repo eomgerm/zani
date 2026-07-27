@@ -19,6 +19,28 @@ vi.mock("@/domains/auth", () => ({
   useAuth: () => ({ accessToken: "test-access-token" }),
 }));
 
+// 실제 LiveKit publish 상태 대신 테스트가 제어하는 값을 쓴다(미디어 훅 자체는 useRoomMediaControls.test 가 검증).
+const media = vi.hoisted(() => ({
+  microphoneEnabled: true,
+  cameraEnabled: true,
+  ready: true,
+  microphoneBlocked: false,
+  cameraBlocked: false,
+  mediaError: null as string | null,
+  microphones: [] as { value: string; label: string }[],
+  cameras: [] as { value: string; label: string }[],
+  activeMicrophoneId: null as string | null,
+  activeCameraId: null as string | null,
+  toggleMicrophone: vi.fn(),
+  toggleCamera: vi.fn(),
+  selectMicrophone: vi.fn(),
+  selectCamera: vi.fn(),
+}));
+
+vi.mock("./useRoomMediaControls", () => ({
+  useRoomMediaControls: () => media,
+}));
+
 const roomParticipants = vi.hoisted(() => ({
   participants: [] as {
     id: string;
@@ -75,6 +97,10 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   roomConnection.sessionExpiresAt = null;
+  media.cameraEnabled = true;
+  media.microphoneEnabled = true;
+  media.toggleCamera.mockClear();
+  media.toggleMicrophone.mockClear();
   vi.useRealTimers();
 });
 
@@ -228,8 +254,9 @@ describe("RoomScreen controls", () => {
     ];
     roomParticipants.localParticipantId = "me";
 
+    media.cameraEnabled = false;
+
     render(<RoomScreen sessionId="123" />);
-    fireEvent.click(screen.getByRole("button", { name: "카메라 끄기" }));
 
     // 강사에게는 학생용 카메라 안내가 뜨지 않는다.
     expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
@@ -237,11 +264,20 @@ describe("RoomScreen controls", () => {
 
   it("warns a student whose camera is off", () => {
     asStudent();
+    media.cameraEnabled = false;
+
     render(<RoomScreen sessionId="123" />);
 
+    expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+  });
+
+  it("delegates the camera toggle to the media hook", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
     fireEvent.click(screen.getByRole("button", { name: "카메라 끄기" }));
 
-    expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+    expect(media.toggleCamera).toHaveBeenCalledOnce();
   });
 });
 
