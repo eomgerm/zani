@@ -42,6 +42,11 @@ class IssueMediaTokenServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }
@@ -87,9 +92,11 @@ class IssueMediaTokenServiceTest {
     private final IssueMediaTokenService service = new IssueMediaTokenService(
             sessionRepository, participantRepository, getMemberDisplayNameUseCase, liveKitTokenPort);
 
+    private static final Instant STARTED_AT = Instant.parse("2026-07-26T09:00:00Z");
+
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
-                100L, 1L, "제목", "INVITE1", false, Instant.now(), status, SessionAnalysisStatus.NOT_STARTED);
+                100L, 1L, "제목", "INVITE1", false, STARTED_AT, status, SessionAnalysisStatus.NOT_STARTED);
     }
 
     @Test
@@ -125,6 +132,8 @@ class IssueMediaTokenServiceTest {
         assertEquals("zani-test-session-100", result.roomName());
         assertEquals("wss://livekit.example.com", result.liveKitUrl());
         assertEquals("jwt-token", result.accessToken());
+        // 강의실이 종료 임박 안내를 띄우려면 자동 종료 예정 시각(시작 + 3시간)이 함께 와야 한다.
+        assertEquals(STARTED_AT.plus(Session.ACTIVE_DURATION), result.sessionExpiresAt());
         // 포트에 전달된 서버 결정 값 검증
         assertEquals("p-456", captured.get().identity());
         assertEquals("홍길동", captured.get().displayName());

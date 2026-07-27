@@ -133,6 +133,12 @@ class RecordingWebhookServiceTest {
             public Optional<Session> findByInviteCode(String inviteCode) {
                 return Optional.empty();
             }
+
+            @Override
+            public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
+                // 이 테스트는 만료 세션 조회를 쓰지 않는다(자동 종료 스케줄러 전용 경로).
+                return List.of();
+            }
         };
         SessionParticipantRepository participantRepository = new SessionParticipantRepository() {
             @Override

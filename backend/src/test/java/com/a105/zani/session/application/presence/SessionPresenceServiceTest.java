@@ -15,6 +15,8 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.session.application.end.EndSessionResult;
+import com.a105.zani.session.application.end.EndSessionUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.port.SessionPresencePort;
@@ -48,9 +50,21 @@ class SessionPresenceServiceTest {
 
     private SessionPresenceService service;
 
+    /** 실제 EndSessionService와 같은 계약: LIVE면 종료·저장, 이미 종료면 멱등 no-op. */
+    private final EndSessionUseCase endSessionUseCase = command -> {
+        Session session = sessionRepository.session;
+        if (session.isEnded()) {
+            return new EndSessionResult(command.sessionId(), session.status(), false);
+        }
+        session.end();
+        sessionRepository.save(session);
+        return new EndSessionResult(command.sessionId(), session.status(), true);
+    };
+
     @BeforeEach
     void setUp() {
-        service = new SessionPresenceService(sessionRepository, participantRepository, presencePort, clock);
+        service = new SessionPresenceService(
+                sessionRepository, participantRepository, presencePort, endSessionUseCase, clock);
         sessionRepository.session = liveSession();
         participantRepository.byUserId.put(
                 INSTRUCTOR_USER,
@@ -245,6 +259,11 @@ class SessionPresenceServiceTest {
         @Override
         public Optional<Session> findById(Long id) {
             return Optional.ofNullable(session);
+        }
+
+        @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
         }
 
         @Override

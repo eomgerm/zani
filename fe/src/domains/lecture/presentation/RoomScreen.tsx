@@ -12,7 +12,9 @@ import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
-import { RoomProvider } from "./RoomProvider";
+import { RoomProvider, useRoomConnection } from "./RoomProvider";
+import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
+import { EndSessionButton } from "./components/room/EndSessionButton";
 
 /**
  * SC-09 실시간 강의실 (어두운 테마). LiveKit room connection is attached here;
@@ -21,6 +23,11 @@ import { RoomProvider } from "./RoomProvider";
 type RoomScreenProps = {
   sessionId: string;
   roomTitle?: string;
+  /**
+   * 종료 예정 시각(ISO-8601) 강제 지정. 평소에는 미디어 토큰 응답이 준 값을 쓰므로 넘길 필요가 없고,
+   * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
+   */
+  expiresAt?: string;
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
@@ -55,16 +62,22 @@ function PanelToggle({
   );
 }
 
-export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} />
+      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} expiresAt={expiresAt} />
     </RoomProvider>
   );
 }
 
-function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" }: RoomScreenProps) {
+function RoomScreenContent({
+  sessionId,
+  roomTitle = "React 상태관리 심화",
+  expiresAt,
+}: RoomScreenProps) {
   const router = useRouter();
+  // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
+  const { sessionExpiresAt } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
@@ -141,6 +154,8 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
 
   return (
     <div className="relative flex h-screen flex-col bg-stage text-panel-text">
+      {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
+      <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
@@ -167,6 +182,14 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
         >
           <ChatIcon />
         </PanelToggle>
+        {/*
+          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
+          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
+          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
+        */}
+        {connected && isInstructor && (
+          <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
+        )}
       </div>
 
       {/* 본문 */}

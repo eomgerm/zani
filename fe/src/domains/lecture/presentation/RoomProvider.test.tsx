@@ -12,6 +12,7 @@ const token: MediaToken = {
   accessToken: "signed-token",
   roomName: "session-55",
   participantIdentity: "user-42",
+  sessionExpiresAt: "2026-07-24T15:00:00Z",
   expiresAt: "2026-07-23T15:00:00Z",
 };
 

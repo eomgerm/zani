@@ -1,9 +1,22 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const roomConnection = vi.hoisted(() => ({
+  connectionState: "connected" as const,
+  error: null,
+  room: null,
+  sessionExpiresAt: null as string | null,
+  retry: vi.fn(),
+}));
 
 vi.mock("./RoomProvider", () => ({
   RoomProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useRoomConnection: () => ({ connectionState: "connected", error: null, retry: vi.fn(), room: null }),
+  useRoomConnection: () => roomConnection,
+}));
+
+// 강사 종료 버튼이 인증 컨텍스트를 쓰므로, 컨텍스트가 없는 단위 테스트에서는 대체한다.
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => ({ accessToken: "test-access-token" }),
 }));
 
 const roomParticipants = vi.hoisted(() => ({
@@ -61,6 +74,8 @@ const asInstructor = () => {
 afterEach(() => {
   cleanup();
   push.mockClear();
+  roomConnection.sessionExpiresAt = null;
+  vi.useRealTimers();
 });
 
 describe("RoomScreen side panel", () => {
@@ -227,5 +242,57 @@ describe("RoomScreen controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "카메라 끄기" }));
 
     expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+  });
+});
+
+describe("RoomScreen maximum duration warning", () => {
+  it("warns with the auto-end time the server sent on entry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T12:00:00Z"));
+    asStudent();
+    // 미디어 토큰 응답이 알려준 자동 종료 예정 시각 — 5분 뒤
+    roomConnection.sessionExpiresAt = "2026-07-26T12:05:00Z";
+
+    render(<RoomScreen sessionId="123" />);
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(screen.getByText(/최대 수업 시간까지/)).toBeVisible();
+  });
+
+  it("stays quiet when the server has not reported an auto-end time yet", async () => {
+    vi.useFakeTimers();
+    asStudent();
+    roomConnection.sessionExpiresAt = null;
+
+    render(<RoomScreen sessionId="123" />);
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(screen.queryByText(/최대 수업 시간까지/)).toBeNull();
+  });
+});
+
+describe("RoomScreen end-session control", () => {
+  it("offers the end-class button to the instructor only", () => {
+    asInstructor();
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByTestId("end-session-button")).toBeVisible();
+  });
+
+  it("hides the end-class button from students", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("end-session-button")).toBeNull();
+  });
+
+  it("hides the end-class button until the role is confirmed", () => {
+    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 이때 종료 버튼이 보이면 학생에게도 잠시 노출된다.
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("end-session-button")).toBeNull();
   });
 });
