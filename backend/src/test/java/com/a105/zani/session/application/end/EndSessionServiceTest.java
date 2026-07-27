@@ -46,7 +46,7 @@ class EndSessionServiceTest {
     void isIdempotentWhenTheSessionHasAlreadyEnded() {
         sessionRepository.session = sessionWith(SessionStatus.ENDED);
 
-        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
+        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT));
 
         assertFalse(result.ended());
         assertEquals(SessionStatus.ENDED, result.status());
