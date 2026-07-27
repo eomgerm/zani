@@ -46,7 +46,10 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     private static final int FIRST_ATTEMPT = 1;
     /** 백오프 기본 간격. attempt가 오를수록 2배씩 늘어난다(30s, 1m, 2m, 4m). */
     private static final Duration RETRY_BASE_DELAY = Duration.ofSeconds(30);
-    /** IN_PROGRESS로 방치된 행을 되살리는 lease 시간. */
+    /**
+     * IN_PROGRESS로 방치된 행을 되살리는 lease 시간. 외부 호출이 아직 진행 중인데 lease가 만료되면 다른 인스턴스가 같은 트랙에 Egress를 중복 시작할 수 있으므로, LiveKit 호출
+     * 상한(LiveKitTrackEgressAdapter.CALL_TIMEOUT = 20초)보다 반드시 크게 잡는다.
+     */
     private static final Duration CLAIM_LEASE = Duration.ofMinutes(2);
     /** LiveKit Track SID 형식. 경로 구성에 쓰이므로 형식 밖 값은 거부한다. */
     private static final Pattern TRACK_SID_PATTERN = Pattern.compile("TR_[A-Za-z0-9_-]+");
