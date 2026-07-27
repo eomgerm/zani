@@ -1,9 +1,11 @@
 package com.a105.zani.recording.infrastructure.livekit;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Locale;
 
 import io.livekit.server.EgressServiceClient;
+import io.livekit.server.okhttp.OkHttpFactory;
 import livekit.LivekitEgress;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +30,13 @@ import com.a105.zani.session.application.port.MediaServerCredentials;
 @Component
 @RequiredArgsConstructor
 public class LiveKitTrackEgressAdapter implements TrackEgressPort {
+
+    /**
+     * LiveKit 호출 1건의 상한. 재시도·리다이렉트를 포함한 전체 호출 시간을 제한한다. 이 값은 릴레이의 claim lease(
+     * {@code RecordingOrchestrator.CLAIM_LEASE})보다 반드시 작아야 한다. 호출이 lease보다 오래 매달리면 아직 진행 중인 작업이 만료 처리되어 다른 인스턴스가 같은 트랙에
+     * Egress를 중복 시작할 수 있다.
+     */
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
 
     private final MediaRoomPort mediaRoomPort;
     private final RecordingProperties recordingProperties;
@@ -101,7 +110,10 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
             synchronized (this) {
                 if (client == null) {
                     client = EgressServiceClient.createClient(
-                            httpUrl(credentials.serverUrl()), credentials.apiKey(), credentials.apiSecret());
+                            httpUrl(credentials.serverUrl()),
+                            credentials.apiKey(),
+                            credentials.apiSecret(),
+                            new OkHttpFactory(false, builder -> builder.callTimeout(CALL_TIMEOUT)));
                 }
                 current = client;
             }
