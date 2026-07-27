@@ -24,7 +24,10 @@ import { RoomProvider, useRoomConnection } from "./RoomProvider";
 type RoomScreenProps = {
   sessionId: string;
   roomTitle?: string;
-  /** 서버가 알려준 최대 수업 시간 종료 예정 시각(ISO-8601). 없으면 종료 임박 안내를 표시하지 않는다. */
+  /**
+   * 종료 예정 시각(ISO-8601) 강제 지정. 평소에는 미디어 토큰 응답이 준 값을 쓰므로 넘길 필요가 없고,
+   * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
+   */
   expiresAt?: string;
 };
 
@@ -41,7 +44,7 @@ function RoomScreenContent({
   roomTitle = "React 상태관리 심화",
   expiresAt,
 }: Pick<RoomScreenProps, "sessionId" | "roomTitle" | "expiresAt">) {
-  const { connectionState, retry } = useRoomConnection();
+  const { connectionState, retry, sessionExpiresAt } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
@@ -74,7 +77,7 @@ function RoomScreenContent({
   return (
     <div className="flex h-screen flex-col bg-mint-deep text-ink">
       {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
-      <SessionTimeWarning expiresAt={expiresAt} />
+      <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
       {/* 상단 바 */}
       <div className="relative flex shrink-0 items-center gap-4 border-b border-line bg-surface px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
