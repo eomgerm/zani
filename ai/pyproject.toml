@@ -20,6 +20,10 @@ train = [
     "onnxruntime>=1.20,<2",
     "onnxscript>=0.5,<1",
     "scikit-learn>=1.7,<2",
+    # Direct: landmark_graph.py uses scipy.spatial.Delaunay, and experiment.py
+    # imports it at module level. Relying on scikit-learn to drag scipy in
+    # would break E1 at import time the moment that transitive edge changes.
+    "scipy>=1.14,<2",
     "torch>=2.7,<3",
 ]
 eda = [
@@ -38,14 +42,23 @@ dev = [
     "ruff>=0.12,<1",
 ]
 
+# Pin the CUDA build per platform instead of letting PyPI's default decide.
+# Linux is cu128 because the L40S training host runs driver 570.211.01, which
+# tops out at CUDA 12.8; a CUDA 13 runtime needs driver 580 or newer.
 [tool.uv.sources]
 torch = [
     { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
