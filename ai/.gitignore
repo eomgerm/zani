@@ -21,5 +21,7 @@ wandb/
 *.ckpt
 *.onnx
 web/engagement-demo/public/models/engagement.metadata.json
+# Local scratch for bench.html: checkpoint-specific ONNX and its metadata.
+web/engagement-demo/public/models/bench/
 web/engagement-demo/.runtime/
 *.task
