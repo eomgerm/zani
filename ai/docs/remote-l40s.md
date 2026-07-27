@@ -122,6 +122,25 @@ Test 평가와 HTML 리포트는 5개 seed가 모두 끝난 뒤 한 번만 실�
 cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 uv run python -m zani_ai engagement finalize-e1 --features datasets/processed/engagenet/e1 --output artifacts/engagement/e1 --device cuda
 ```
 
+## 성능 특성
+
+L40S 한 장에서 E1을 batch 32로 순차 실행할 때 측정한 값입니다.
+
+| 지표 | 값 |
+|---|---|
+| `utilization.gpu` | 98~99% |
+| `power.draw` | 311~315 W / 350 W |
+| `memory.used` | 5,095 / 46,068 MiB |
+
+**seed를 한 장에서 병렬로 돌리지 마세요.** 유휴 33W에서 313W로 올라간 것은 SM이 실제로
+포화됐다는 뜻입니다(`utilization.gpu`만으로는 작은 커널이 연속 실행되는 경우와 구분되지
+않습니다). compute 바운드이므로 한 장에 여러 seed를 얹으면 시분할일 뿐이고 총 시간이
+줄지 않습니다. GPU를 여러 장 쓸 수 있다면 카드마다 하나씩 배치하는 것은 유효합니다.
+
+배치 크기도 마찬가지입니다. 메모리가 9배 남지만 총 FLOPs가 같아 이득이 없고
+`configuration_sha256`만 깨집니다. 처리량을 더 원한다면 남은 레버는 정밀도(TF32 / BF16)뿐이며,
+결과 수치가 바뀌므로 새 프로토콜로 다뤄야 합니다.
+
 ## landmark graph 경로
 
 E1은 ST-GCN 노드 토폴로지를 정의하는 `landmark_78_v1_graph.npz`가 필요합니다. 찾는 순서는
