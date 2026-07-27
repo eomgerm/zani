@@ -17,7 +17,6 @@ import torch
 
 from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.experiment import E0_SPEC, E0A_SPEC, ExperimentSpec
-from zani_ai.engagement.runtime import parse_device
 from zani_ai.engagement.training import (
     TrainingConfig,
     _load_feature_datasets,
@@ -130,11 +129,9 @@ def evaluate_frozen_checkpoints(
     """
 
     protocol = f"{spec.protocol}-fixed-checkpoint-test"
-    try:
-        kind, _ = parse_device(device)
-    except ValueError as error:
-        raise ValueError(f"{spec.protocol} evaluation {error}") from error
-    if kind == "cuda" and not torch.cuda.is_available():
+    if device not in {"cpu", "cuda"}:
+        raise ValueError(f"{spec.protocol} evaluation device must be 'cpu' or 'cuda'")
+    if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(f"{spec.protocol} Test evaluation requested CUDA, but CUDA is unavailable")
     summary_path = output_dir / "summary.json"
     manifest_path = features_root / "manifest.json"

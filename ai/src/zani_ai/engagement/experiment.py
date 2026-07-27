@@ -6,7 +6,7 @@ import os
 import platform
 import statistics
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -21,7 +21,6 @@ from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
 from zani_ai.engagement.model import ModelConfig
-from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
 from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
 from zani_ai.engagement.training import (
     EvaluationMetrics,
@@ -35,16 +34,6 @@ from zani_ai.engagement.training import (
 E0_SEEDS = (42, 43, 44, 45, 46)
 _SPLITS = {"train", "valid", "test"}
 _CUBLAS_CONFIGS = {":4096:8", ":16:8"}
-
-#: Environment keys that still must match exactly under
-#: ``allow_environment_drift``. These change the numerics; the rest (Python
-#: patch level, which physical card was allocated) only change the label.
-_NUMERIC_ENVIRONMENT_KEYS = (
-    "pytorch",
-    "cuda_runtime",
-    "cublas_workspace_config",
-    "requested_device",
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,10 +55,6 @@ class ExperimentSpec:
     The fields below ``seeds`` are all optional and default to the existing
     Transformer behavior, so E0/E0-A/E0-B (which only pass ``protocol``,
     ``schema`` and ``model_config``) are completely unaffected.
-
-    None of these fields may leak into ``_build_configuration``: that dict is
-    the reproducibility identity, and ``graph_path`` in particular is a
-    per-machine location, not part of the protocol.
     """
 
     protocol: str
@@ -86,10 +71,6 @@ class ExperimentSpec:
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
-    # ST-GCN specs read a landmark graph file whose location varies per machine.
-    # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
-    needs_landmark_graph: bool = False
-    graph_path: Path | None = None
 
     @property
     def schema_name(self) -> str:
@@ -105,33 +86,20 @@ E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
 E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
 E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
 
-def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
-    """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
+# Resolved relative to the current working directory at train time (Task 7);
+# it need not exist yet for the spec itself to be defined/imported.
+GRAPH_PATH = Path("datasets/processed/engagenet/landmark_78_v1_graph.npz")
 
-    The inner function is deliberately named ``build_stgcn_model``:
-    ``training.train_model`` records ``build_model.__name__`` in
-    ``metrics.json``, so an anonymous closure would write a machine-specific
-    ``repr`` (absolute paths included) into every run's metrics.
 
-    ``graph_path`` is ``None`` only on the module-level spec, which exists
-    before any features root is known; ``reproduce_experiment`` rebinds it.
+def build_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
+    """E1 ``TrainingConfig.build_model`` factory: loads the fixed landmark graph.
+
+    Ignores ``statistics`` (ST-GCN needs no feature normalization statistics;
+    see ``ExperimentSpec.needs_feature_stats=False`` on ``E1_SPEC``).
     """
-
-    def build_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
-        """Ignores ``statistics``: ST-GCN needs no feature normalization stats.
-
-        See ``ExperimentSpec.needs_feature_stats=False`` on ``E1_SPEC``.
-        """
-        del statistics
-        if graph_path is None:
-            raise RuntimeError(
-                "E1 landmark graph is unresolved; run through reproduce_experiment "
-                "or set ExperimentSpec.graph_path"
-            )
-        _, partitions = load_graph(graph_path)
-        return EngagementSTGCN(torch.as_tensor(partitions), STGCNConfig())
-
-    return build_stgcn_model
+    del statistics
+    _, partitions = load_graph(GRAPH_PATH)
+    return EngagementSTGCN(torch.as_tensor(partitions), STGCNConfig())
 
 
 E1_SPEC = ExperimentSpec(
@@ -140,7 +108,7 @@ E1_SPEC = ExperimentSpec(
     STGCNConfig(),
     seeds=E0_SEEDS,
     representation_name=GRAPH_VERSION,
-    build_model=stgcn_model_builder(None),
+    build_model=build_stgcn_model,
     needs_feature_stats=False,
     learning_rate=2e-3,
     batch_size=32,
@@ -148,16 +116,7 @@ E1_SPEC = ExperimentSpec(
     lr_step=100,
     array_key="sequence",
     array_shape=(3, 100, 78),
-    needs_landmark_graph=True,
 )
-
-
-#: Every reproducible protocol, keyed by the name it is known by on the CLI
-#: and in ``summary.json``. Lets callers dispatch on the protocol string
-#: instead of duplicating a handler per experiment.
-SPECS: dict[str, ExperimentSpec] = {
-    spec.protocol: spec for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E1_SPEC)
-}
 
 
 def _sha256(path: Path) -> str:
@@ -252,10 +211,6 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
 
 
 def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
-    # Only the device *type* may enter the identity: `cuda` and `cuda:2` are
-    # the same protocol on different cards and must share a hash, or moving a
-    # run between GPUs would discard every completed seed.
-    device = device_type(device)
     if spec.build_model is None:
         # Transformer path (E0/E0-A/E0-B). `spec.learning_rate`/`batch_size`/
         # `max_epochs` default to the exact literals this used to hardcode, so
@@ -313,23 +268,14 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
 
 
 def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
-    kind, requested_index = parse_device(device)
     cuda_available = torch.cuda.is_available()
-    if kind == "cuda" and not cuda_available:
+    if device == "cuda" and not cuda_available:
         raise RuntimeError(
-            f"{spec.protocol} requested device={device}, but PyTorch reports CUDA unavailable"
+            f"{spec.protocol} requested device=cuda, but PyTorch reports CUDA unavailable"
         )
     cuda_device: dict[str, object] | None = None
-    if kind == "cuda":
-        # An unqualified `cuda` follows PyTorch's current device, which is what
-        # CUDA_VISIBLE_DEVICES already narrows for us on a shared server.
-        index = torch.cuda.current_device() if requested_index is None else requested_index
-        if not 0 <= index < torch.cuda.device_count():
-            raise RuntimeError(
-                f"{spec.protocol} requested device={device}, but only "
-                f"{torch.cuda.device_count()} CUDA device(s) are visible; "
-                "check CUDA_VISIBLE_DEVICES"
-            )
+    if device == "cuda":
+        index = torch.cuda.current_device()
         cuda_device = {
             "index": index,
             "name": torch.cuda.get_device_name(index),
@@ -340,8 +286,7 @@ def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
         "pytorch": str(torch.__version__),
         "cuda_runtime": torch.version.cuda,
         "cuda_available": cuda_available,
-        # Normalized so a card index shows up once, in `cuda_device.index`.
-        "requested_device": kind,
+        "requested_device": device,
         "cuda_device": cuda_device,
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }
@@ -349,7 +294,7 @@ def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
 
 def _enable_strict_determinism(device: str) -> None:
     cublas_config = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
-    if device_type(device) == "cuda" and cublas_config not in _CUBLAS_CONFIGS:
+    if device == "cuda" and cublas_config not in _CUBLAS_CONFIGS:
         raise RuntimeError(
             "strict CUDA determinism requires CUBLAS_WORKSPACE_CONFIG=:4096:8 or :16:8"
         )
@@ -363,54 +308,12 @@ def _enable_strict_determinism(device: str) -> None:
         raise RuntimeError("PyTorch strict deterministic execution could not be enabled")
 
 
-def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
-    """Provenance for the landmark graph, which nothing else in the repo records.
-
-    The graph defines the ST-GCN node topology, so two runs that used different
-    graphs are not comparable even with an identical ``configuration``. There
-    is no CLI that regenerates it, which makes the fingerprint the only link
-    between a summary and the file it was trained against.
-    """
-    if graph_path is None:
-        return None
-    return {
-        "path": str(graph_path.resolve()),
-        "sha256": _sha256(graph_path),
-        "size_bytes": graph_path.stat().st_size,
-    }
-
-
-def _validate_inputs_identity(
-    summary: dict[str, object], inputs: dict[str, object], spec: ExperimentSpec
-) -> None:
-    recorded = summary.get("inputs")
-    if not isinstance(recorded, dict):
-        # Summary predates input fingerprinting; adopt the current one.
-        summary["inputs"] = inputs
-        return
-    for name, current in inputs.items():
-        previous = recorded.get(name)
-        if previous is None:
-            continue
-        if (
-            isinstance(previous, dict)
-            and isinstance(current, dict)
-            and previous.get("sha256") != current.get("sha256")
-        ):
-            raise ValueError(
-                f"existing {spec.protocol} summary used a different {name}; "
-                "choose a new output directory"
-            )
-    summary["inputs"] = {**recorded, **inputs}
-
-
 def _empty_summary(
     manifest_path: Path,
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
     spec: ExperimentSpec,
-    inputs: dict[str, object],
 ) -> dict[str, object]:
     return {
         "protocol": spec.protocol,
@@ -420,7 +323,6 @@ def _empty_summary(
             "schema": spec.schema_name,
             "sha256": manifest_sha256,
         },
-        "inputs": inputs,
         "configuration": configuration,
         "configuration_sha256": _canonical_hash(configuration),
         "environment": environment,
@@ -443,31 +345,12 @@ def _load_summary(path: Path, spec: ExperimentSpec) -> dict[str, object]:
     return cast(dict[str, object], payload)
 
 
-def _environment_matches(
-    recorded: object, current: dict[str, object], *, allow_drift: bool
-) -> bool:
-    """Whether a recorded environment may continue into ``current``.
-
-    Strict by default: an exact match, as before. Under ``allow_drift`` only
-    the keys that change results are compared, so a run may resume on another
-    machine or another card -- each seed still records the environment it
-    actually ran in, so what happened stays reconstructible.
-    """
-    if not allow_drift:
-        return recorded == current
-    if not isinstance(recorded, dict):
-        return False
-    return all(recorded.get(key) == current.get(key) for key in _NUMERIC_ENVIRONMENT_KEYS)
-
-
 def _validate_summary_identity(
     summary: dict[str, object],
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
     spec: ExperimentSpec,
-    *,
-    allow_environment_drift: bool = False,
 ) -> None:
     manifest = summary.get("feature_manifest")
     actual_manifest_hash = manifest.get("sha256") if isinstance(manifest, dict) else None
@@ -485,12 +368,10 @@ def _validate_summary_identity(
         raise ValueError(
             f"existing {spec.protocol} summary has an invalid configuration fingerprint"
         )
-    if not _environment_matches(
-        summary.get("environment"), environment, allow_drift=allow_environment_drift
-    ):
+    if summary.get("environment") != environment:
         raise ValueError(
             f"existing {spec.protocol} summary was created in a different runtime environment; "
-            "choose a new output directory or pass --allow-environment-drift"
+            "choose a new output directory"
         )
     seeds = summary.get("seeds")
     if not isinstance(seeds, list):
@@ -667,28 +548,11 @@ def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
 
 
 def reproduce_experiment(
-    spec: ExperimentSpec,
-    features_root: Path,
-    output_dir: Path,
-    *,
-    device: str,
-    graph_path: Path | None = None,
-    allow_environment_drift: bool = False,
+    spec: ExperimentSpec, features_root: Path, output_dir: Path, *, device: str
 ) -> E0ExperimentResult:
-    try:
-        parse_device(device)
-    except ValueError as error:
-        raise ValueError(f"{spec.protocol} {error}") from error
+    if device not in {"cpu", "cuda"}:
+        raise ValueError(f"{spec.protocol} device must be 'cpu' or 'cuda'")
     manifest_path, manifest_sha256 = _validate_manifest(features_root, spec)
-    if spec.needs_landmark_graph:
-        resolved_graph = resolve_landmark_graph(features_root, graph_path or spec.graph_path)
-        spec = replace(
-            spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
-        )
-    inputs: dict[str, object] = {}
-    graph_record = _graph_record(spec.graph_path)
-    if graph_record is not None:
-        inputs["landmark_graph"] = graph_record
     configuration = _build_configuration(spec, device)
     environment = _environment(device, spec)
     _enable_strict_determinism(device)
@@ -697,23 +561,10 @@ def reproduce_experiment(
     summary_path = output_dir / "summary.json"
     if summary_path.is_file():
         summary = _load_summary(summary_path, spec)
-        _validate_summary_identity(
-            summary,
-            manifest_sha256,
-            configuration,
-            environment,
-            spec,
-            allow_environment_drift=allow_environment_drift,
-        )
-        _validate_inputs_identity(summary, inputs, spec)
-        if allow_environment_drift:
-            # Record that the strict check was waived, and keep the latest
-            # environment so the summary describes the run that is continuing.
-            summary["environment_drift_allowed"] = True
-            summary["environment"] = environment
+        _validate_summary_identity(summary, manifest_sha256, configuration, environment, spec)
     else:
         summary = _empty_summary(
-            manifest_path, manifest_sha256, configuration, environment, spec, inputs
+            manifest_path, manifest_sha256, configuration, environment, spec
         )
         _write_json_atomic(summary_path, summary)
 
@@ -824,10 +675,6 @@ def reproduce_experiment(
             "status": "complete",
             "feature_manifest_sha256": manifest_sha256,
             "configuration_sha256": _canonical_hash(configuration),
-            # Per-seed snapshot: with drift allowed, the summary's top-level
-            # environment describes only the most recent run, so this is the
-            # only record of which machine and card produced this checkpoint.
-            "environment": environment,
             "best_epoch": result.best_epoch,
             "validation": {
                 "accuracy": result.validation.accuracy,
@@ -853,20 +700,8 @@ def reproduce_experiment(
     return E0ExperimentResult(summary_path, completed)
 
 
-def reproduce_e0(
-    features_root: Path,
-    output_dir: Path,
-    *,
-    device: str,
-    allow_environment_drift: bool = False,
-) -> E0ExperimentResult:
-    return reproduce_experiment(
-        E0_SPEC,
-        features_root,
-        output_dir,
-        device=device,
-        allow_environment_drift=allow_environment_drift,
-    )
+def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0ExperimentResult:
+    return reproduce_experiment(E0_SPEC, features_root, output_dir, device=device)
 
 
 __all__ = [
@@ -876,9 +711,8 @@ __all__ = [
     "E0B_SPEC",
     "E0ExperimentResult",
     "E1_SPEC",
-    "SPECS",
     "ExperimentSpec",
+    "build_stgcn_model",
     "reproduce_e0",
     "reproduce_experiment",
-    "stgcn_model_builder",
 ]

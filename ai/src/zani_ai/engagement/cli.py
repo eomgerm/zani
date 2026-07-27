@@ -10,40 +10,8 @@ from zani_ai.engagement.contracts import (
     DatasetContractError,
     load_dataset_contract,
 )
-from zani_ai.engagement.runtime import parse_device
 
 type Command = Callable[[argparse.Namespace], int]
-
-
-def _device(value: str) -> str:
-    """argparse type for ``--device``: ``cpu``, ``cuda`` or ``cuda:N``.
-
-    A plain ``choices`` list cannot express the index, and on a shared server
-    only one card is usually allocated.
-    """
-    try:
-        parse_device(value)
-    except ValueError as error:
-        raise argparse.ArgumentTypeError(str(error)) from error
-    return value
-
-
-def _add_experiment_options(parser: argparse.ArgumentParser) -> None:
-    """Options every ``reproduce-*``/``finalize-*`` subcommand shares."""
-    parser.add_argument("--features", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--device", type=_device)
-
-
-def _add_drift_option(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--allow-environment-drift",
-        action="store_true",
-        help=(
-            "resume a run recorded on different hardware; PyTorch/CUDA/cuBLAS "
-            "settings must still match, and each seed records its own environment"
-        ),
-    )
 
 
 def _add_data_options(parser: argparse.ArgumentParser) -> None:
@@ -129,66 +97,114 @@ def _build_features(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_device(args: argparse.Namespace) -> str:
-    """The requested device, defaulting to CUDA only when it is actually there."""
+def _reproduce_e0a(args: argparse.Namespace) -> int:
     import torch
 
-    return args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    from zani_ai.engagement.experiment import E0A_SPEC, reproduce_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_experiment(E0A_SPEC, args.features, args.output, device=device)
+    print(
+        f"E0-A reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
+    )
+    return 0
 
 
-def _reproduce(protocol: str) -> Command:
-    """Build the ``reproduce-<protocol>`` handler.
+def _finalize_e0a(args: argparse.Namespace) -> int:
+    import torch
 
-    Every protocol runs the same driver and differs only by its spec, so the
-    handlers are generated rather than written out once per experiment.
-    Imports stay inside so ``--help`` does not pay for loading torch.
-    """
+    from zani_ai.engagement.experiment import E0A_SPEC
+    from zani_ai.engagement.report import finalize_experiment
 
-    def handler(args: argparse.Namespace) -> int:
-        from zani_ai.engagement.experiment import SPECS, reproduce_experiment
-
-        result = reproduce_experiment(
-            SPECS[protocol],
-            args.features,
-            args.output,
-            device=_resolve_device(args),
-            graph_path=getattr(args, "graph", None),
-            allow_environment_drift=args.allow_environment_drift,
-        )
-        print(
-            f"{protocol} reproduction complete "
-            f"| seeds={','.join(map(str, result.completed_seeds))} "
-            f"| {result.summary_path}",
-            flush=True,
-        )
-        return 0
-
-    return handler
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_experiment(
+        E0A_SPEC,
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E0-A Test evaluation and report complete | {report_path}", flush=True)
+    return 0
 
 
-def _finalize(protocol: str) -> Command:
-    """Build the ``finalize-<protocol>`` handler; see :func:`_reproduce`."""
+def _reproduce_e0b(args: argparse.Namespace) -> int:
+    import torch
 
-    def handler(args: argparse.Namespace) -> int:
-        from zani_ai.engagement.experiment import SPECS
-        from zani_ai.engagement.report import finalize_experiment
+    from zani_ai.engagement.experiment import E0B_SPEC, reproduce_experiment
 
-        report_path = finalize_experiment(
-            SPECS[protocol],
-            args.features,
-            args.output,
-            device=_resolve_device(args),
-            face_landmarker_model=args.face_landmarker_model,
-            preparation_manifest=args.preparation_manifest,
-            threshold_manifest=args.threshold_manifest,
-        )
-        print(f"{protocol} Test evaluation and report complete | {report_path}", flush=True)
-        return 0
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_experiment(E0B_SPEC, args.features, args.output, device=device)
+    print(
+        f"E0-B reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
+    )
+    return 0
 
-    return handler
+
+def _finalize_e0b(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import E0B_SPEC
+    from zani_ai.engagement.report import finalize_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_experiment(
+        E0B_SPEC,
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E0-B Test evaluation and report complete | {report_path}", flush=True)
+    return 0
+
+
+def _reproduce_e1(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import E1_SPEC, reproduce_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_experiment(E1_SPEC, args.features, args.output, device=device)
+    print(
+        f"E1 reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
+    )
+    return 0
+
+
+def _finalize_e1(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import E1_SPEC
+    from zani_ai.engagement.report import finalize_experiment
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_experiment(
+        E1_SPEC,
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E1 Test evaluation and report complete | {report_path}", flush=True)
+    return 0
 
 
 def _train(args: argparse.Namespace) -> int:
+    import torch
+
     from zani_ai.engagement.training import TrainingConfig, train_model
 
     manifest = args.features / "manifest.json"
@@ -203,7 +219,7 @@ def _train(args: argparse.Namespace) -> int:
             learning_rate=args.learning_rate,
             patience=args.patience,
             seed=args.seed,
-            device=_resolve_device(args),
+            device=args.device or ("cuda" if torch.cuda.is_available() else "cpu"),
             use_class_weights=args.class_weights,
         )
     )
@@ -213,6 +229,39 @@ def _train(args: argparse.Namespace) -> int:
         f"Training complete | best_epoch={result.best_epoch} "
         f"test_macro_f1={result.test.macro_f1:.4f} | {result.checkpoint_path}"
     )
+    return 0
+
+
+def _reproduce_e0(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.experiment import reproduce_e0
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    result = reproduce_e0(args.features, args.output, device=device)
+    print(
+        f"E0 reproduction complete | seeds={','.join(map(str, result.completed_seeds))} "
+        f"| {result.summary_path}",
+        flush=True,
+    )
+    return 0
+
+
+def _finalize_e0(args: argparse.Namespace) -> int:
+    import torch
+
+    from zani_ai.engagement.report import finalize_e0
+
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    report_path = finalize_e0(
+        args.features,
+        args.output,
+        device=device,
+        face_landmarker_model=args.face_landmarker_model,
+        preparation_manifest=args.preparation_manifest,
+        threshold_manifest=args.threshold_manifest,
+    )
+    print(f"E0 Test evaluation and report complete | {report_path}", flush=True)
     return 0
 
 
@@ -278,45 +327,85 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--learning-rate", type=float, default=1e-4)
     train.add_argument("--patience", type=int, default=20)
     train.add_argument("--seed", type=int, default=42)
-    train.add_argument("--device", type=_device)
+    train.add_argument("--device", choices=("cpu", "cuda"))
     train.add_argument("--class-weights", action="store_true")
     train.set_defaults(handler=_train)
 
-    for command, protocol, description in (
-        ("e0", "E0", "E0"),
-        ("e0a", "E0-A", "E0-A"),
-        ("e0b", "E0-B", "E0-B"),
-        ("e1", "E1", "E1 (ST-GCN)"),
-    ):
-        reproduce = commands.add_parser(
-            f"reproduce-{command}",
-            help=f"run the validation-only five-seed {description} protocol",
-        )
-        _add_experiment_options(reproduce)
-        _add_drift_option(reproduce)
-        if protocol == "E1":
-            reproduce.add_argument(
-                "--graph",
-                type=Path,
-                help=(
-                    "landmark graph .npz; defaults to ZANI_LANDMARK_GRAPH, then "
-                    "landmark_78_v1_graph.npz beside or above --features"
-                ),
-            )
-        reproduce.set_defaults(handler=_reproduce(protocol))
+    reproduce_e0 = commands.add_parser(
+        "reproduce-e0", help="run the validation-only five-seed E0 protocol"
+    )
+    reproduce_e0.add_argument("--features", type=Path, required=True)
+    reproduce_e0.add_argument("--output", type=Path, required=True)
+    reproduce_e0.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e0.set_defaults(handler=_reproduce_e0)
 
-        finalize = commands.add_parser(
-            f"finalize-{command}",
-            help=(
-                f"evaluate frozen {description} checkpoints once "
-                "and write the HTML report"
-            ),
-        )
-        _add_experiment_options(finalize)
-        finalize.add_argument("--face-landmarker-model", type=Path)
-        finalize.add_argument("--preparation-manifest", type=Path)
-        finalize.add_argument("--threshold-manifest", type=Path)
-        finalize.set_defaults(handler=_finalize(protocol))
+    finalize_e0_parser = commands.add_parser(
+        "finalize-e0", help="evaluate frozen E0 checkpoints once and write the HTML report"
+    )
+    finalize_e0_parser.add_argument("--features", type=Path, required=True)
+    finalize_e0_parser.add_argument("--output", type=Path, required=True)
+    finalize_e0_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e0_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e0_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e0_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e0_parser.set_defaults(handler=_finalize_e0)
+
+    reproduce_e0a = commands.add_parser(
+        "reproduce-e0a", help="run the validation-only five-seed E0-A protocol"
+    )
+    reproduce_e0a.add_argument("--features", type=Path, required=True)
+    reproduce_e0a.add_argument("--output", type=Path, required=True)
+    reproduce_e0a.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e0a.set_defaults(handler=_reproduce_e0a)
+
+    finalize_e0a_parser = commands.add_parser(
+        "finalize-e0a", help="evaluate frozen E0-A checkpoints once and write the HTML report"
+    )
+    finalize_e0a_parser.add_argument("--features", type=Path, required=True)
+    finalize_e0a_parser.add_argument("--output", type=Path, required=True)
+    finalize_e0a_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e0a_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e0a_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e0a_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e0a_parser.set_defaults(handler=_finalize_e0a)
+
+    reproduce_e0b = commands.add_parser(
+        "reproduce-e0b", help="run the validation-only five-seed E0-B protocol"
+    )
+    reproduce_e0b.add_argument("--features", type=Path, required=True)
+    reproduce_e0b.add_argument("--output", type=Path, required=True)
+    reproduce_e0b.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e0b.set_defaults(handler=_reproduce_e0b)
+
+    finalize_e0b_parser = commands.add_parser(
+        "finalize-e0b", help="evaluate frozen E0-B checkpoints once and write the HTML report"
+    )
+    finalize_e0b_parser.add_argument("--features", type=Path, required=True)
+    finalize_e0b_parser.add_argument("--output", type=Path, required=True)
+    finalize_e0b_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e0b_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e0b_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e0b_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e0b_parser.set_defaults(handler=_finalize_e0b)
+
+    reproduce_e1 = commands.add_parser(
+        "reproduce-e1", help="run the validation-only five-seed E1 (ST-GCN) protocol"
+    )
+    reproduce_e1.add_argument("--features", type=Path, required=True)
+    reproduce_e1.add_argument("--output", type=Path, required=True)
+    reproduce_e1.add_argument("--device", choices=("cpu", "cuda"))
+    reproduce_e1.set_defaults(handler=_reproduce_e1)
+
+    finalize_e1_parser = commands.add_parser(
+        "finalize-e1", help="evaluate frozen E1 checkpoints once and write the HTML report"
+    )
+    finalize_e1_parser.add_argument("--features", type=Path, required=True)
+    finalize_e1_parser.add_argument("--output", type=Path, required=True)
+    finalize_e1_parser.add_argument("--device", choices=("cpu", "cuda"))
+    finalize_e1_parser.add_argument("--face-landmarker-model", type=Path)
+    finalize_e1_parser.add_argument("--preparation-manifest", type=Path)
+    finalize_e1_parser.add_argument("--threshold-manifest", type=Path)
+    finalize_e1_parser.set_defaults(handler=_finalize_e1)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)
