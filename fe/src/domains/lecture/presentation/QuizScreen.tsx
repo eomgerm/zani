@@ -20,6 +20,8 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
   const q = quizData[idx];
   const correct = picked === q?.answer;
   const score = answers.filter((a, i) => a === quizData[i].answer).length;
+  // 답을 낸 문항 중 틀린 것만 "다시 살펴볼 개념"으로 센다(프로토타입 reviewConcepts).
+  const reviewCount = answers.filter((a, i) => a !== quizData[i].answer).length;
   const progressPct = done ? 100 : Math.round(((idx + (submitted ? 1 : 0)) / total) * 100);
 
   const submit = () => {
@@ -54,7 +56,7 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
           <div className="flex-1">
             <div className="text-[15px] font-extrabold">{lecture.title} · AI 이해도 퀴즈</div>
             <div className="text-[12.5px] text-ink-faint">
-              {done ? "결과 확인" : `${idx + 1} / ${total} 문항`}
+              {done ? "결과 확인" : `${idx + 1} / ${total}`}
             </div>
           </div>
         </div>
@@ -79,46 +81,39 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
               {q.opts.map((opt, i) => {
                 const isPicked = picked === i;
                 const isAnswer = i === q.answer;
-                const showState = submitted && (isAnswer || isPicked);
-                const borderCls = submitted
-                  ? isAnswer
-                    ? "border-primary"
+
+                // 제출 후에는 정답/내 오답만 색으로 남기고 나머지 보기는 흐리게 죽인다.
+                const optCls = !submitted
+                  ? isPicked
+                    ? "border-primary bg-primary-soft text-ink cursor-pointer"
+                    : "border-line-muted bg-surface text-ink cursor-pointer"
+                  : isAnswer
+                    ? "border-[#98e1c5] bg-primary-mint text-primary-dark cursor-default"
                     : isPicked
-                      ? "border-danger"
-                      : "border-line-muted"
-                  : isPicked
-                    ? "border-primary"
-                    : "border-line-muted";
-                const bgCls = showState
-                  ? isAnswer
-                    ? "bg-primary-soft"
-                    : "bg-danger-softer"
-                  : "bg-surface";
-                const markFilled = isPicked || (submitted && isAnswer);
-                const markBg = submitted
-                  ? isAnswer
-                    ? "bg-primary text-white"
+                      ? "border-[#f4b8c1] bg-[#fff0f2] text-danger cursor-default"
+                      : "border-line-mint bg-faint text-ink-fainter cursor-default";
+
+                // 제출 전에는 마크가 비어 있고, 제출 후 정답/오답에만 채워진다.
+                const markCls = !submitted
+                  ? "bg-transparent"
+                  : isAnswer
+                    ? "bg-[#15bd7d]"
                     : isPicked
-                      ? "bg-danger text-white"
-                      : "bg-surface text-ink-faint"
-                  : isPicked
-                    ? "bg-primary text-white"
-                    : "bg-surface text-ink-faint";
+                      ? "bg-danger"
+                      : "bg-transparent";
 
                 return (
                   <button
+                    type="button"
                     key={i}
                     onClick={() => !submitted && setPicked(i)}
-                    className={`flex items-center gap-3 rounded-[13px] border-[1.5px] px-4 py-3.5 text-left font-sans text-[14.5px] text-ink ${borderCls} ${bgCls} ${
-                      submitted ? "cursor-default" : "cursor-pointer"
-                    }`}
+                    className={`flex w-full items-center gap-[13px] rounded-[14px] border-[1.5px] px-[18px] py-4 text-left font-sans text-[14.5px] font-semibold ${optCls}`}
                   >
                     <span
-                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border-[1.5px] text-xs font-extrabold ${borderCls} ${markBg} ${
-                        markFilled ? "border-transparent" : ""
-                      }`}
+                      aria-hidden="true"
+                      className={`flex size-[22px] shrink-0 items-center justify-center rounded-full text-xs font-black text-white ${markCls}`}
                     >
-                      {submitted && isAnswer ? "✓" : submitted && isPicked ? "✕" : i + 1}
+                      {submitted && isAnswer ? "✓" : submitted && isPicked ? "✕" : ""}
                     </span>
                     <span className="flex-1">{opt}</span>
                   </button>
@@ -127,13 +122,11 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
             </div>
 
             {submitted && (
-              <div className="mt-[22px] rounded-[14px] border border-line-mint bg-faint px-5 py-[18px]">
+              <div className="mt-[22px] rounded-[14px] border border-line-mint bg-[#f6f7fd] px-5 py-[18px]">
                 <div className="mb-2 flex items-center gap-2">
                   <span
-                    className={`rounded-full px-2.5 py-[3px] text-[11.5px] font-extrabold ${
-                      correct
-                        ? "bg-primary-soft text-primary-deep"
-                        : "bg-danger-soft text-danger"
+                    className={`z-badge rounded-lg px-2.5 py-[3px] text-xs ${
+                      correct ? "bg-primary-mint text-primary-dark" : "bg-[#fff0f2] text-danger"
                     }`}
                   >
                     {correct ? "정답" : "오답"}
@@ -149,8 +142,12 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
 
             <div className="mt-[22px] flex justify-end">
               {submitted ? (
-                <button onClick={next} className="z-btn z-btn-primary z-btn-md text-[14.5px]">
-                  {idx + 1 >= total ? "결과 보기" : "다음 문제"}
+                <button
+                  type="button"
+                  onClick={next}
+                  className="z-btn z-btn-primary rounded-[13px] px-7 py-[13px] text-[14.5px]"
+                >
+                  {idx + 1 >= total ? "결과 보기" : "다음 문제 →"}
                 </button>
               ) : (
                 <button
@@ -170,10 +167,12 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
             <div className="z-card-lg mb-[18px] px-8 py-[30px] text-center">
               <div className="mb-2.5 text-[40px]">🎉</div>
               <h1 className="mb-2 text-[22px] font-extrabold">
-                {total}문제 중 {score}문제를 맞혔어요
+                {total}개 개념 중 {score}개를 확인했어요.
               </h1>
               <p className="text-[14.5px] text-ink-muted">
-                틀린 문항의 관련 구간을 다시 보면 이해도가 올라가요.
+                {reviewCount > 0
+                  ? `다시 살펴볼 개념이 ${reviewCount}개 있어요.`
+                  : "모든 개념을 잘 확인했어요 👏"}
               </p>
             </div>
 
@@ -188,8 +187,8 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
                       className="flex gap-[13px] border-b border-primary-softer pb-3.5"
                     >
                       <span
-                        className={`flex size-[26px] shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold ${
-                          ok ? "bg-primary-soft text-primary-deep" : "bg-danger-soft text-danger"
+                        className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[13px] font-black text-white ${
+                          ok ? "bg-[#15bd7d]" : "bg-danger"
                         }`}
                       >
                         {ok ? "✓" : "✕"}
@@ -202,9 +201,15 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
                         <div className="mb-1 text-[13px] leading-[1.6] text-ink-sub">
                           <b className="text-primary-dark">정답</b> · {item.opts[item.answer]}
                         </div>
-                        <div className="text-[13px] leading-[1.6] text-ink-faint">
+                        <div className="mb-2 text-[13px] leading-[1.6] text-ink-faint">
                           {item.explain}
                         </div>
+                        <button
+                          type="button"
+                          className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-extrabold text-primary"
+                        >
+                          ▶ 관련 복습 구간 다시 보기
+                        </button>
                       </div>
                     </div>
                   );
