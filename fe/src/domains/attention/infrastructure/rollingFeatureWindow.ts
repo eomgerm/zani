@@ -49,6 +49,10 @@ export class RollingFeatureWindow {
       () => [],
     );
     for (const frame of this.frames) {
+      // 창은 반열린 구간 [start, nowMs) 다. `>=` 를 `>` 로 바꾸면 정확히 nowMs 인 경계
+      // 프레임이 마지막 세그먼트에 더해져 그 세그먼트만 6프레임이 되고, 20개 세그먼트가
+      // 같은 500ms 를 덮는다는 학습 계약(`mediapipe_98_v1`)이 깨진다. 경계 프레임은 다음
+      // 창 몫이다. rollingFeatureWindow.test.ts 가 이 규약을 고정한다.
       if (frame.timestampMs < start || frame.timestampMs >= nowMs || frame.values === null) continue;
       const index = Math.min(
         Math.floor((frame.timestampMs - start) / segmentMs),
