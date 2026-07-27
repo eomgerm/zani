@@ -52,6 +52,15 @@ session:
   # 최대 수업 시간(3시간) 초과 세션을 정리하는 주기(ISO-8601 duration).
   expiry-sweep-delay: ${SESSION_EXPIRY_SWEEP_DELAY:PT1M}
 
+gms:
+  base-url: ${GMS_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com}
+  api-key: ${GMS_API_KEY:}
+  stt-model: ${GMS_STT_MODEL:whisper-1}
+  health-model: ${GMS_HEALTH_MODEL:gpt-4.1-nano}
+  mock-enabled: ${GMS_MOCK_ENABLED:true}
+  health-timeout: ${GMS_HEALTH_TIMEOUT:3s}
+  connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
+
 livekit:
   url: ${LIVEKIT_URL:}
   api-key: ${LIVEKIT_API_KEY:}
@@ -165,3 +174,6 @@ auth:
 cors:
   allowed-origins:
     - ${FRONTEND_ORIGIN}
+
+gms:
+  mock-enabled: ${GMS_MOCK_ENABLED:false}

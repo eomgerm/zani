@@ -2,6 +2,7 @@ package com.a105.zani.session.application.create;
 
 import java.time.Instant;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -20,14 +21,17 @@ public class CreateSessionService implements CreateSessionUseCase {
     private final NewSessionSaver newSessionSaver;
     private final SessionActivationLockPort activationLockPort;
     private final InviteCodeGenerator inviteCodeGenerator;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CreateSessionService(
             NewSessionSaver newSessionSaver,
             SessionActivationLockPort activationLockPort,
-            InviteCodeGenerator inviteCodeGenerator) {
+            InviteCodeGenerator inviteCodeGenerator,
+            ApplicationEventPublisher eventPublisher) {
         this.newSessionSaver = newSessionSaver;
         this.activationLockPort = activationLockPort;
         this.inviteCodeGenerator = inviteCodeGenerator;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -38,6 +42,7 @@ public class CreateSessionService implements CreateSessionUseCase {
 
         try {
             Session saved = saveWithInviteCodeRetry(command);
+            eventPublisher.publishEvent(new SessionCreatedEvent(saved.id(), command.instructorId()));
             return new CreateSessionResult(saved.id(), saved.inviteCode(), saved.status(), saved.expiresAt());
         } catch (RuntimeException exception) {
             try {
