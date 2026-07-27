@@ -25,7 +25,7 @@ class LiveKitTokenAdapterTest {
     private final LiveKitTokenAdapter adapter = new LiveKitTokenAdapter(properties);
 
     @Test
-    void roomName을_환경과_sessionId로_구성하고_JWT를_발급한다() {
+    void buildsTheRoomNameFromTheEnvironmentAndSessionIdAndIssuesAJwt() {
         IssuedMediaToken issued =
                 adapter.issue(new MediaTokenRequest("p-456", "홍길동", SessionParticipantRole.STUDENT, 123L));
 
@@ -39,7 +39,7 @@ class LiveKitTokenAdapterTest {
     }
 
     @Test
-    void 자격증명이_비어있으면_발급을_거부한다() {
+    void refusesToIssueWhenTheCredentialsAreMissing() {
         LiveKitTokenAdapter unconfigured =
                 new LiveKitTokenAdapter(new LiveKitProperties("wss://x", "", "", "test", Duration.ofMinutes(10)));
 

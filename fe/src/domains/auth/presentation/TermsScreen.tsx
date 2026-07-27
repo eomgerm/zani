@@ -105,8 +105,8 @@ export function TermsScreen() {
                 ✕
               </button>
             </div>
-            <div className="overflow-y-auto whitespace-pre-wrap px-[26px] py-[22px] text-[13.5px] leading-[1.7] text-ink-label">
-              {detail.body}
+            <div className="flex flex-col overflow-y-auto px-[26px] py-[22px] text-[13.5px] text-ink-label">
+              <TermsBody body={detail.body} />
             </div>
             <div className="border-t border-line-light px-[26px] py-4">
               <button
@@ -120,5 +120,44 @@ export function TermsScreen() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 약관 본문을 줄 단위로 훑어 조항 제목·동의 문장·일반 문단을 구분해 렌더한다.
+ * 본문 텍스트 자체는 손대지 않고 표현만 나눈다.
+ */
+function TermsBody({ body }: { body: string }) {
+  return (
+    <>
+      {body.split("\n").map((line, i) => {
+        const text = line.trim();
+
+        if (!text) return <div key={i} className="h-1.5" />;
+
+        if (/^제\d+조/.test(text)) {
+          return (
+            <div key={i} className="mb-[5px] mt-4 text-[14.5px] font-extrabold text-ink">
+              {text}
+            </div>
+          );
+        }
+
+        // "본인은 ~ 동의합니다" 형태의 마무리 문장은 강조해 둔다.
+        if (text.startsWith("본인은")) {
+          return (
+            <div key={i} className="mt-4 text-[13.5px] font-bold leading-[1.7] text-ink">
+              {line}
+            </div>
+          );
+        }
+
+        return (
+          <div key={i} className="mb-0.5 text-[13.5px] leading-[1.8] text-ink-label">
+            {line}
+          </div>
+        );
+      })}
+    </>
   );
 }

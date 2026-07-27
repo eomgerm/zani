@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { DownloadIcon } from "@/shared/ui";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -9,8 +10,8 @@ import { StudentReport } from "./components/report/StudentReport";
 import { SegmentModal } from "./components/report/SegmentModal";
 
 const tabCls = (active: boolean) =>
-  `-mb-px cursor-pointer border-0 border-b-2 bg-transparent px-[22px] py-[13px] font-sans text-[14.5px] font-extrabold ${
-    active ? "border-primary text-primary" : "border-transparent text-ink-faint"
+  `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
+    active ? "border-primary text-ink" : "border-transparent text-ink-fainter"
   }`;
 
 /**
@@ -22,6 +23,10 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
   const isInstructor = lecture.role === "instructor";
   const failed = lecture.status === "FAILED";
 
+  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
+  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+  const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
+
   const [tab, setTab] = useState<"clip" | "report">("clip");
   const [activeSeg, setActiveSeg] = useState(2);
   const [segModal, setSegModal] = useState<number | null>(null);
@@ -31,9 +36,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     setSegModal(i);
   };
 
-  const meta = isInstructor
-    ? `수강생 ${lecture.students ?? 0}명 · ${lecture.date} · ${lecture.dur}`
-    : `강사 ${lecture.instructor ?? "박서준"} · ${lecture.date} · ${lecture.dur}`;
+  const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
 
   return (
     <>
@@ -41,7 +44,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
         href="/my-lectures"
         className="mb-4 inline-flex items-center gap-[7px] text-sm font-extrabold text-ink-sub no-underline"
       >
-        ← 내 강의실
+        ← {isInstructor ? "진행강의" : "참여강의"}
       </Link>
 
       <div className="mb-5 flex items-center gap-4">
@@ -49,8 +52,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
-        {!failed && (
-          <button className="z-btn z-btn-primary z-btn-md shrink-0">⭳ 리포트 다운로드</button>
+        {/* 다운로드는 리포트 탭에서만 노출한다(클립 탭에는 내려받을 문서가 없다). */}
+        {ready && tab === "report" && (
+          <button
+            type="button"
+            className="z-btn z-btn-primary shrink-0 gap-2 rounded-xl px-[22px] py-[13px] text-sm"
+          >
+            <DownloadIcon />
+            리포트 다운로드
+          </button>
         )}
       </div>
 
@@ -71,22 +81,44 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
         </div>
       )}
 
-      {/* 탭 */}
-      <div className="my-[22px] flex border-b border-line">
-        <button onClick={() => setTab("clip")} className={tabCls(tab === "clip")}>
-          {isInstructor ? "수업 클립" : "복습 클립"}
-        </button>
-        <button onClick={() => setTab("report")} className={tabCls(tab === "report")}>
-          {isInstructor ? "수업 리포트" : "학습 리포트"}
-        </button>
-      </div>
-
-      {tab === "clip" ? (
-        <ReportClipTab title={lecture.title} />
-      ) : isInstructor ? (
-        <InstructorReport activeSeg={activeSeg} onSelect={onSelectSeg} />
+      {!ready ? (
+        /* 프로토타입은 이 상태에서 본문을 비우지만, URL 직접 진입 시 빈 화면이 되므로
+           왜 볼 것이 없는지만 짧게 알린다. */
+        !failed && (
+          <div className="mt-[22px] px-5 py-[70px] text-center text-ink-fainter">
+            <div className="mb-3.5 text-[44px]">⏳</div>
+            <div className="mb-1 font-bold text-ink-muted">아직 분석이 끝나지 않았어요</div>
+            <div className="text-[13.5px]">분석이 완료되면 리포트를 확인할 수 있어요.</div>
+          </div>
+        )
       ) : (
-        <StudentReport lectureId={lecture.id} activeSeg={activeSeg} onSelect={onSelectSeg} />
+        <>
+          {/* 탭 */}
+          <div className="mb-[22px] flex border-b border-line">
+            <button
+              type="button"
+              onClick={() => setTab("clip")}
+              className={`${tabCls(tab === "clip")} mr-[30px]`}
+            >
+              {isInstructor ? "수업 클립" : "복습 클립"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("report")}
+              className={tabCls(tab === "report")}
+            >
+              {isInstructor ? "수업 리포트" : "학습 리포트"}
+            </button>
+          </div>
+
+          {tab === "clip" ? (
+            <ReportClipTab title={lecture.title} />
+          ) : isInstructor ? (
+            <InstructorReport activeSeg={activeSeg} onSelect={onSelectSeg} />
+          ) : (
+            <StudentReport lectureId={lecture.id} activeSeg={activeSeg} onSelect={onSelectSeg} />
+          )}
+        </>
       )}
 
       {segModal !== null && (

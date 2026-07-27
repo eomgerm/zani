@@ -20,6 +20,8 @@ export type RoomConnectionContextValue = {
   room: Room | null;
   connectionState: RoomConnectionState;
   error: string | null;
+  /** 서버가 알려준 수업 자동 종료 예정 시각(ISO-8601). 연결 전이거나 실패했으면 null. */
+  sessionExpiresAt: string | null;
   retry: () => void;
 };
 
@@ -47,6 +49,7 @@ const connectingSnapshot: Omit<RoomConnectionContextValue, "retry"> = {
   room: null,
   connectionState: "connecting",
   error: null,
+  sessionExpiresAt: null,
 };
 
 const connectionFailureMessage = "실시간 강의 연결에 실패했습니다.";
@@ -76,15 +79,29 @@ export function RoomProvider({
     let isCurrent = true;
     const abortController = new AbortController();
     const room = connectionKey.roomFactory();
+    // 재연결·종료 이벤트에서도 유지해야 하는 값이라 effect 스코프에 담아둔다.
+    let sessionExpiresAt: string | null = null;
     const handleReconnecting = () => {
       if (!isCurrent) return;
 
-      setConnection({ room, connectionState: "connecting", error: null, key: connectionKey });
+      setConnection({
+        room,
+        connectionState: "connecting",
+        error: null,
+        sessionExpiresAt,
+        key: connectionKey,
+      });
     };
     const handleReconnected = () => {
       if (!isCurrent) return;
 
-      setConnection({ room, connectionState: "connected", error: null, key: connectionKey });
+      setConnection({
+        room,
+        connectionState: "connected",
+        error: null,
+        sessionExpiresAt,
+        key: connectionKey,
+      });
     };
     const handleDisconnected = () => {
       if (!isCurrent) return;
@@ -93,6 +110,7 @@ export function RoomProvider({
         room: null,
         connectionState: "error",
         error: connectionFailureMessage,
+        sessionExpiresAt,
         key: connectionKey,
       });
     };
@@ -105,13 +123,20 @@ export function RoomProvider({
         );
         if (!isCurrent) return;
 
+        sessionExpiresAt = mediaToken.sessionExpiresAt;
         await room.connect(mediaToken.liveKitUrl, mediaToken.accessToken);
         if (!isCurrent) return;
 
         room.on(RoomEvent.Reconnecting, handleReconnecting);
         room.on(RoomEvent.Reconnected, handleReconnected);
         room.on(RoomEvent.Disconnected, handleDisconnected);
-        setConnection({ room, connectionState: "connected", error: null, key: connectionKey });
+        setConnection({
+          room,
+          connectionState: "connected",
+          error: null,
+          sessionExpiresAt,
+          key: connectionKey,
+        });
       } catch (error) {
         if (!isCurrent) return;
 
@@ -119,6 +144,7 @@ export function RoomProvider({
           room: null,
           connectionState: "error",
           error: connectionErrorMessage(error),
+          sessionExpiresAt,
           key: connectionKey,
         });
       }

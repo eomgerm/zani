@@ -3,7 +3,10 @@ export type MediaToken = {
   accessToken: string;
   roomName: string;
   participantIdentity: string;
+  /** LiveKit 토큰 만료 시각(TTL 10분). */
   expiresAt: string;
+  /** 최대 수업 시간(3시간)에 도달해 수업이 자동 종료될 시각. 강의실 종료 임박 안내의 기준이다. */
+  sessionExpiresAt: string;
 };
 
 export type MediaTokenRequester = (
@@ -31,7 +34,8 @@ const isMediaToken = (value: unknown): value is MediaToken => {
     isNonBlankString(token.accessToken) &&
     isNonBlankString(token.roomName) &&
     isNonBlankString(token.participantIdentity) &&
-    isNonBlankString(token.expiresAt)
+    isNonBlankString(token.expiresAt) &&
+    isNonBlankString(token.sessionExpiresAt)
   );
 };
 

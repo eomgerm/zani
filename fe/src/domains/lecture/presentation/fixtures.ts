@@ -24,16 +24,6 @@ export const lectures: Lecture[] = [
   { id: "s8", title: "Docker 실전 배포", date: "2026-07-13", role: "instructor", status: "FAILED", students: 22, dur: "1시간 20분" },
 ];
 
-/** 썸네일 팔레트 (강의 카드) */
-export const thumbPalette = [
-  { bg: "linear-gradient(135deg,#e8ecff,#f3f0ff)", fg: "#1cdd93" },
-  { bg: "linear-gradient(135deg,#e8f7f1,#f1fbf7)", fg: "#19c986" },
-  { bg: "linear-gradient(135deg,#fdf7e2,#fefbef)", fg: "#cba118" },
-  { bg: "linear-gradient(135deg,#fde8ee,#fff0f4)", fg: "#d1587a" },
-  { bg: "linear-gradient(135deg,#e7edfb,#eff3fd)", fg: "#4a6fd6" },
-  { bg: "linear-gradient(135deg,#efe8fb,#f6f1ff)", fg: "#8b6fd0" },
-];
-
 export interface Participant {
   id: string;
   name: string;
@@ -44,25 +34,32 @@ export interface Participant {
   hand: boolean;
 }
 
+// 어두운 스테이지 위 원형 아바타에 올라가므로 채도 낮은 팔레트를 쓴다(프로토타입 participantsMeta).
 const participantsMeta: { id: string; name: string; color: string; host?: boolean }[] = [
-  { id: "p0", name: "박서준", color: "#1cdd93", host: true },
-  { id: "p1", name: "이지은", color: "#f4c325" },
-  { id: "p2", name: "최민서", color: "#21e298" },
-  { id: "p3", name: "정하윤", color: "#f26d7d" },
-  { id: "p4", name: "강태오", color: "#63e1b0" },
-  { id: "p5", name: "윤서아", color: "#3bb0e5" },
-  { id: "p6", name: "오지호", color: "#f0803c" },
-  { id: "p7", name: "김도현", color: "#65cba4" },
-  { id: "p8", name: "이서연", color: "#5b9bd5" },
-  { id: "p9", name: "이준호", color: "#c77dff" },
-  { id: "p10", name: "박지온", color: "#f4c325" },
-  { id: "p11", name: "정민재", color: "#21e298" },
-  { id: "p12", name: "한수빈", color: "#e2749b" },
-  { id: "p13", name: "강동현", color: "#3bb0e5" },
-  { id: "p14", name: "최지우", color: "#8b7bf0" },
-  { id: "p15", name: "운서연", color: "#f0803c" },
-  { id: "p16", name: "임세훈", color: "#65cba4" },
-  { id: "p17", name: "권민아", color: "#5b9bd5" },
+  { id: "p0", name: "박서준", color: "#10b981", host: true },
+  { id: "p1", name: "이지은", color: "#c9a24b" },
+  { id: "p2", name: "최민서", color: "#2aa584" },
+  { id: "p3", name: "정하윤", color: "#c07284" },
+  { id: "p4", name: "강태오", color: "#57ad97" },
+  { id: "p5", name: "윤서아", color: "#5e9ec6" },
+  { id: "p6", name: "오지호", color: "#c88d5d" },
+  { id: "p7", name: "김도현", color: "#66b195" },
+  { id: "p8", name: "이서연", color: "#6d8fc2" },
+  { id: "p9", name: "이준호", color: "#9c87cc" },
+  { id: "p10", name: "박지온", color: "#c9a24b" },
+  { id: "p11", name: "정민재", color: "#2aa584" },
+  { id: "p12", name: "한수빈", color: "#b981a0" },
+  { id: "p13", name: "강동현", color: "#5e9ec6" },
+  { id: "p14", name: "최지우", color: "#8681c8" },
+  { id: "p15", name: "운서연", color: "#c88d5d" },
+  { id: "p16", name: "임세훈", color: "#66b195" },
+  { id: "p17", name: "권민아", color: "#6d8fc2" },
+  { id: "p18", name: "오지훈", color: "#9c87cc" },
+  { id: "p19", name: "김나영", color: "#10b981" },
+  { id: "p20", name: "문지후", color: "#c9a24b" },
+  { id: "p21", name: "서하늘", color: "#2aa584" },
+  { id: "p22", name: "조현우", color: "#b981a0" },
+  { id: "p23", name: "배수연", color: "#5e9ec6" },
 ];
 
 /** 강의실 참가자 (cam 기본 on, 첫 명만 mic on, 일부 손들기) */
@@ -71,6 +68,17 @@ export const participants: Participant[] = participantsMeta.map((p, i) => ({
   cam: true,
   mic: i === 0,
   hand: i === 3 || i === 10,
+}));
+
+/** 갤러리 타일이 쓰는 형태로 변환한 시연용 참가자 목록 */
+export const participantTiles = participants.map((p) => ({
+  id: p.id,
+  name: p.name,
+  color: p.color,
+  role: p.host ? ("instructor" as const) : ("student" as const),
+  cameraEnabled: p.cam,
+  microphoneEnabled: p.mic,
+  handRaised: p.hand,
 }));
 
 export const reactionEmojis = ["👍", "❤️", "👏", "🎉", "😮", "🙌"];
@@ -88,18 +96,6 @@ export const publicMessages: ChatMessage[] = [
   { id: 2, author: "최민서", text: "화면 잘 보입니다 👍", host: false, mine: false },
   { id: 3, author: "박서준", text: "네 시작할게요. 오늘 자료는 채팅에 공유했어요.", host: true, mine: false },
   { id: 4, author: "정하윤", text: "감사합니다!", host: false, mine: false },
-];
-
-export const dmMessages: ChatMessage[] = [
-  { id: 1, author: "김도현", text: "선생님, 아까 예제 코드 다시 볼 수 있을까요?", host: false, mine: true },
-  { id: 2, author: "박서준", text: "네, 종료 후 리포트에 올려둘게요.", host: true, mine: false },
-];
-
-/** 강의실 집단 알림 응답 분포 */
-export const alertDistribution = [
-  { label: "이해함", percent: 58, value: "58%", color: "#21e298" },
-  { label: "헷갈림", percent: 32, value: "32%", color: "#f4c325" },
-  { label: "잠깐 놓침", percent: 10, value: "10%", color: "#f26d7d" },
 ];
 
 /** 리포트 - 수업 내용 전사 */
@@ -149,14 +145,16 @@ export const learnSegments: LearnSegment[] = [
 /** 리포트(학생) - 복습 추천 */
 export const recommendations = [
   { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
-  { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#1cdd93" },
-  { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#21e298" },
+  { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
+  { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#15bd7d" },
+  { t: "1:12:05", title: "예외 처리 및 응답 코드", reason: "‘헷갈림’ 응답이 몰린 구간이라 다시 확인하면 좋아요.", tag: "헷갈림", color: "#e0455f" },
+  { t: "1:35:20", title: "테스트 코드 작성 (given·when·then)", reason: "반복된 확인 필요 신호가 감지된 구간이에요.", tag: "반복 확인", color: "#10b981" },
 ];
 
 /** 리포트(강사) - 분야별 평가 도넛 */
 export const evalDonutData = [
-  { name: "전달력", value: 88, color: "#1cdd93" },
-  { name: "구성·흐름", value: 84, color: "#21e298" },
+  { name: "전달력", value: 88, color: "#10b981" },
+  { name: "구성·흐름", value: 84, color: "#15bd7d" },
   { name: "상호작용", value: 71, color: "#f4c325" },
   { name: "난이도 조절", value: 76, color: "#e0714f" },
 ];
@@ -181,8 +179,8 @@ export const quizData: QuizQuestion[] = [
 
 /** 강사 리포트 개선 TIP */
 export const improveTips = [
-  { icon: "📘", color: "#1cdd93", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
-  { icon: "🙋", color: "#19c986", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
+  { icon: "📘", color: "#10b981", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
+  { icon: "🙋", color: "#12a870", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
   { icon: "📷", color: "#e0455f", title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "· 다이어그램, 플로우차트 활용을 늘려보세요." },
   { icon: "🎯", color: "#e2b41b", title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "· 개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
 ];
@@ -196,10 +194,10 @@ export const insights = [
 ];
 
 export const instructorGlance = [
-  { icon: "👥", iconColor: "#1cdd93", label: "총 수강생", value: "32명" },
-  { icon: "🕐", iconColor: "#1cdd93", label: "수업 시간", value: "2시간 5분" },
-  { icon: "💬", iconColor: "#1cdd93", label: "채팅 수", value: "184개" },
-  { icon: "📈", iconColor: "#19c986", label: "평균 집중도", value: "78%", badge: "보통" },
+  { icon: "👥", iconColor: "#10b981", label: "총 수강생", value: "32명" },
+  { icon: "🕐", iconColor: "#10b981", label: "수업 시간", value: "2시간 5분" },
+  { icon: "💬", iconColor: "#10b981", label: "채팅 수", value: "184개" },
+  { icon: "📈", iconColor: "#12a870", label: "평균 집중도", value: "78%", badge: "보통" },
   { icon: "🔔", iconColor: "#e0455f", label: "이해도 알림 발생", value: "7회" },
 ];
 
@@ -225,9 +223,14 @@ export const summarySections = [
   { h: "5. 정리와 선택 기준", p: "지역 상태는 useState, 좁은 범위의 공유 상태는 Context, 전역이거나 복잡한 상태 흐름은 라이브러리로 접근합니다. 무엇을 선택하든 리렌더링 비용과 참조 안정성을 이해하는 것이 핵심입니다." },
 ];
 
-/** 집중 점수(0–4)에 대한 색/배경/라벨 */
+/**
+ * 집중 점수(0–4)에 대한 색/배경/라벨. 타임라인 카드와 구간 모달이 쓴다.
+ *
+ * 보통(1.5–2.5) 구간이 짙은 골드(#c9a11a)인 것은 의도한 차이다 — 흐름 차트 내부는
+ * 같은 구간을 #f4c325 로 칠하고(FocusFlowChart 의 colOf), 프로토타입도 두 값을 나눠 쓴다.
+ */
 export function focusColor(f: number) {
-  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#f4c325" : f >= 0.5 ? "#e0714f" : "#e0455f";
+  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#c9a11a" : f >= 0.5 ? "#e0714f" : "#e0455f";
 }
 export function focusBg(f: number) {
   return f >= 3.5 ? "#eaf7f2" : f >= 2.5 ? "#eef8ef" : f >= 1.5 ? "#fdf8e7" : f >= 0.5 ? "#fdefe8" : "#fdeeee";

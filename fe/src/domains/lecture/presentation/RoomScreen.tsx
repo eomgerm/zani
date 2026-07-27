@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { DistributionBar } from "@/shared/ui";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
-  alertDistribution,
-  dmMessages,
+  participantTiles,
   participants as participantsFixture,
   publicMessages,
 } from "./fixtures";
@@ -14,123 +13,188 @@ import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
+import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
+import { EndSessionButton } from "./components/room/EndSessionButton";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 
 /**
- * SC-09 실시간 강의실 (밝은 테마). LiveKit room 연결과 로컬 마이크·카메라 publish 제어를 붙였다.
- * 손들기·반응·채팅은 Spring WebSocket 소관(가이드 §10)이라 아직 fixture 기반이다.
+ * SC-09 실시간 강의실 (어두운 테마). LiveKit room connection is attached here;
+ * media track publishing remains out of scope.
  */
 type RoomScreenProps = {
   sessionId: string;
   roomTitle?: string;
   /**
-   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
-   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
+   * 종료 예정 시각(ISO-8601) 강제 지정. 평소에는 미디어 토큰 응답이 준 값을 쓰므로 넘길 필요가 없고,
+   * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
    */
-  prejoinInviteCode?: string;
+  expiresAt?: string;
 };
 
-export function RoomScreen({ sessionId, roomTitle, prejoinInviteCode }: RoomScreenProps) {
+type FloatingReaction = { key: number; emoji: string; left: number };
+
+/** 상단 바의 참여자/채팅 토글 버튼 */
+function PanelToggle({
+  active,
+  label,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      className={`inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
+        active
+          ? "border-primary bg-[#0e2a20] text-[#2fbf88]"
+          : "border-room-line bg-panel text-panel-soft"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent
-        roomTitle={roomTitle}
-        prejoinInviteCode={prejoinInviteCode ?? sessionId}
-      />
+      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} expiresAt={expiresAt} />
     </RoomProvider>
   );
 }
 
 function RoomScreenContent({
+  sessionId,
   roomTitle = "React 상태관리 심화",
-  prejoinInviteCode,
-}: Pick<RoomScreenProps, "roomTitle" | "prejoinInviteCode">) {
-  const { connectionState, retry } = useRoomConnection();
+  expiresAt,
+}: RoomScreenProps) {
+  const router = useRouter();
+  // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
+  const { sessionExpiresAt } = useRoomConnection();
+  // 입장 전 점검은 초대 코드로 장치를 저장하고, 강의실 경로 파라미터가 그 코드다.
+  const media = useRoomMediaControls(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
-  const [role, setRole] = useState<"instructor" | "student">("instructor");
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
-  const [chatTab, setChatTab] = useState<"public" | "dm">("public");
-  const media = useRoomMediaControls(prejoinInviteCode);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
+  // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기는 아직 fixture(WebSocket 소관).
+  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [promptToast, setPromptToast] = useState<string | null>(null);
   const [alertOpen, setAlertOpen] = useState(false);
+  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const reactionSeq = useRef(0);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const isInstructor = role === "instructor";
+  // 언마운트 시 남아 있는 애니메이션/토스트 타이머를 모두 정리한다.
+  useEffect(
+    () => () => {
+      timers.current.forEach(clearTimeout);
+    },
+    [],
+  );
+
+  const track = useCallback((id: ReturnType<typeof setTimeout>) => {
+    timers.current.push(id);
+  }, []);
+
+  // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
+  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
+  const connected = tileParticipants.length > 0;
+  const isInstructor =
+    !connected ||
+    tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
+
+  // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
+  // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
+  const galleryParticipants = connected ? tileParticipants : participantTiles;
+
+  // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
   const meId = isInstructor ? "p0" : "p7";
-  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  // 갤러리 그리드·참여자 수는 실제 room 참가자(useRoomParticipants), 마이크·카메라는 실제 publish 상태를 쓴다.
-  // 사이드 패널 people/chat과 손들기·반응은 아직 fixture 기반(WebSocket 소관).
-  const count = tileParticipants.length;
-  const messages = chatTab === "public" ? publicMessages : dmMessages;
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
-  const connectionLabel =
-    connectionState === "connecting"
-      ? "연결 중"
-      : connectionState === "connected"
-        ? "LIVE"
-        : "연결 실패";
 
+  const toggleHand = () => setHandRaised((raised) => !raised);
+
+  /** 같은 패널을 다시 누르면 닫고, 다른 패널이면 그쪽으로 전환한다(프로토타입 togglePeople/toggleChat). */
+  const togglePanel = (next: "people" | "chat") => {
+    setPanelOpen((open) => !(open && panel === next));
+    setPanel(next);
+  };
+
+  const addReaction = (emoji: string) => {
+    const key = reactionSeq.current;
+    reactionSeq.current += 1;
+    setReactions((prev) => [...prev, { key, emoji, left: 20 + Math.random() * 60 }]);
+    setReactMenuOpen(false);
+    // zFloat 애니메이션(2.4s)이 끝나면 목록에서 제거한다.
+    track(setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 2400));
+  };
+
+  /**
+   * 나가기. 강사는 수업을 종료하는 것이라 사후 메모 작성으로 넘기고(프로토타입 endRoom),
+   * 학생은 참여했던 강의 목록으로 돌아간다.
+   */
+  const leaveRoom = () => {
+    router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
+  };
+
+  const answerPrompt = (text: string) => {
+    setPromptOpen(false);
+    setPromptToast(text);
+    track(setTimeout(() => setPromptToast(null), 2600));
+  };
 
   return (
-    <div className="flex h-screen flex-col bg-mint-deep text-ink">
+    <div className="relative flex h-screen flex-col bg-stage text-panel-text">
+      {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
+      <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
       {/* 상단 바 */}
-      <div className="relative flex shrink-0 items-center gap-4 border-b border-line bg-surface px-6 py-[13px]">
+      <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
-        <div className="flex items-center gap-[9px] border-l border-line-soft pl-1.5">
-          <span
-            role="status"
-            aria-live="polite"
-            className="inline-flex items-center gap-[5px] text-[12.5px] font-extrabold text-danger"
-          >
-            <span className="size-[7px] animate-[zPulse_1.4s_infinite] rounded-full bg-danger" />
-            {connectionLabel}
-          </span>
-          {connectionState === "error" && (
-            <div
-              role="alert"
-              className="absolute left-1/2 top-full z-10 mt-2 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-danger bg-surface px-4 py-2 text-[13px] text-ink shadow-lg"
-            >
-              <span>실시간 강의 연결에 실패했습니다.</span>
-              <button
-                type="button"
-                onClick={retry}
-                className="cursor-pointer rounded-lg bg-danger px-3 py-1 font-bold text-surface"
-              >
-                다시 연결
-              </button>
-            </div>
-          )}
-          <span className="font-mono text-[13px] text-ink-muted">00:12:04</span>
-        </div>
-
-        <div className="absolute left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-line-primary bg-primary-soft px-[17px] py-2 text-[13px] font-extrabold text-primary">
-          ⧉ 집중 분석 중 📊
-        </div>
-
         <div className="flex-1" />
-        <span className="inline-flex items-center gap-1.5 text-[13.5px] font-bold text-ink-sub">
-          👥 참여자 {count}명
-        </span>
         <button
-          onClick={() => setRole(isInstructor ? "student" : "instructor")}
-          title="역할 전환 (미리보기)"
-          className={`cursor-pointer rounded-full border px-[13px] py-[5px] font-sans text-xs font-extrabold ${
-            isInstructor
-              ? "border-line-primary bg-primary-soft text-primary-deep"
-              : "border-[#cfe0f7] bg-[#eaf3ff] text-info"
-          }`}
+          type="button"
+          onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
+          className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[11px] border border-[#262b42] bg-[#151830] px-4 py-[9px] font-sans text-[13.5px] font-extrabold text-panel-soft transition-colors hover:bg-room-control"
         >
-          {isInstructor ? "강사" : "학생"}
+          ⊞ {view === "gallery" ? "발표자 보기" : "전체 보기"}
         </button>
-        <Link href="/home" className="z-btn z-btn-danger rounded-[11px] px-[18px] py-[9px] text-[13.5px]">
-          나가기
-        </Link>
+        <PanelToggle
+          active={panelOpen && panel === "people"}
+          label="참여자"
+          onClick={() => togglePanel("people")}
+        >
+          <PeopleIcon />
+        </PanelToggle>
+        <PanelToggle
+          active={panelOpen && panel === "chat"}
+          label="채팅"
+          onClick={() => togglePanel("chat")}
+        >
+          <ChatIcon />
+        </PanelToggle>
+        {/*
+          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
+          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
+          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
+        */}
+        {connected && isInstructor && (
+          <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
+        )}
       </div>
 
       {/* 본문 */}
@@ -138,101 +202,110 @@ function RoomScreenContent({
         <div className="flex min-w-0 flex-1 flex-col gap-3.5">
           {/* 스테이지 */}
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-[18px] bg-stage">
-            <div className="absolute left-4 top-4 z-[4] z-stage-chip">
-              ⊞ 참여자 전체 보기 {count}명
-            </div>
-            <div className="absolute right-4 top-4 z-[4] flex gap-2">
-              <button
-                onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
-                className="z-stage-chip cursor-pointer border-0 font-sans"
-              >
-                ⊞ {view === "gallery" ? "발표자 보기" : "갤러리 보기"}
-              </button>
-            </div>
-
-            {view === "gallery" ? (
+            {sharing ? (
+              /* 화면 공유 오버레이 — 갤러리/발표자 보기를 모두 덮는다 */
+              <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
+                <div className="relative m-3.5 flex flex-1 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e2740] bg-[#0f1626]">
+                  <div className="px-5 text-center">
+                    <MonitorIcon className="mx-auto text-[#4a5273]" />
+                    <div className="mt-3.5 text-[15px] font-extrabold text-panel-soft">
+                      내 화면을 공유하고 있어요
+                    </div>
+                    <div className="mt-[5px] text-[13px] text-room-status">
+                      공유된 화면이 여기에 표시됩니다
+                    </div>
+                  </div>
+                  <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                    <span className="size-2 rounded-full bg-primary" />내 화면
+                  </div>
+                </div>
+                <div className="absolute bottom-4 left-1/2 z-[2] -translate-x-1/2">
+                  <button
+                    type="button"
+                    onClick={() => setSharing(false)}
+                    className="z-btn z-btn-danger rounded-full px-5 py-[11px] text-[13.5px]"
+                  >
+                    화면 공유 중지
+                  </button>
+                </div>
+              </div>
+            ) : view === "gallery" ? (
               <ParticipantGrid
-                participants={tileParticipants}
-                currentParticipantId={localParticipantId ?? undefined}
+                participants={galleryParticipants}
+                currentParticipantId={localParticipantId ?? "p0"}
                 isInstructor={isInstructor}
+                narrow={panelOpen}
               />
             ) : (
               <>
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 [background:repeating-linear-gradient(135deg,#12142a,#12142a_20px,#171a34_20px,#171a34_40px)]">
-                  <div className="text-[44px]">🖥️</div>
-                  <div className="text-base font-extrabold text-[#e7e9fb]">
+                <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
+                  <div className="flex size-[150px] items-center justify-center rounded-full bg-[linear-gradient(145deg,#12b585,#0b8a63)] text-[54px] font-extrabold text-[#eafff6] shadow-[0_0_0_12px_#10b98112,0_24px_60px_#10b98130]">
+                    {hostName.charAt(0)}
+                  </div>
+                </div>
+                <div className="pointer-events-none absolute inset-0">
+                  <div className="z-stage-chip absolute left-4 top-4 font-bold">
                     강의: {hostName} 선생님
                   </div>
-                  <div className="font-mono text-[13px] text-panel-muted">발표자 화면</div>
-                </div>
-                <div className="absolute bottom-4 left-4 z-stage-chip font-bold">
-                  📶 {hostName} 선생님
+                  <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
+                    📶 {hostName} 선생님
+                  </div>
                 </div>
               </>
             )}
 
-            {/* 학생 분석 상태 */}
-            {!isInstructor && (
-              <div className="absolute left-4 top-[62px] z-[4] flex items-center gap-[9px] rounded-full border border-room-edge bg-[#1e2138cc] px-3.5 py-[7px] backdrop-blur-lg">
-                <span className="size-2 animate-[zPulse_1.5s_infinite] rounded-full bg-primary" />
-                <span className="text-[12.5px] font-bold text-panel-soft">학습 신호 분석 중</span>
-                <span className="text-[11.5px] text-panel-muted">· 원본 영상은 저장되지 않아요</span>
-              </div>
-            )}
-
-            {/* 카메라 꺼짐 안내 */}
+            {/* 카메라 꺼짐 안내 (학생) */}
             {!isInstructor && meCamOff && (
               <div className="absolute left-1/2 top-[18px] z-[5] -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-[#f3dc90] bg-warn-soft px-[18px] py-[11px] text-[13px] font-bold text-[#836607] shadow-[0_8px_24px_#0004]">
-                📷 카메라가 꺼져 있어요. 켜면 학습 신호 분석에 참여할 수 있어요.
+                📷 카메라가 10분 이상 꺼져 있어요. 켜면 학습 신호 분석에 참여할 수 있어요.{" "}
+                <span className="font-semibold opacity-80">(이후 5분마다 안내)</span>
               </div>
             )}
 
             {/* 집단 알림 (강사) */}
             {isInstructor && alertOpen && (
-              <div className="absolute right-4 top-[62px] z-[5] w-[290px] animate-[zPop_.2s] rounded-[18px] bg-surface p-[18px] text-ink shadow-[0_16px_44px_#0006]">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="z-pill bg-warn-soft px-2.5 py-1 text-[13px] text-warn-text">
+              <div className="absolute right-2.5 top-2 z-[5] w-[290px] animate-[zPop_.2s] rounded-[18px] bg-surface p-[18px] text-ink shadow-[0_16px_44px_#0006]">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className="z-pill bg-warn-soft px-3 py-[5px] text-[13px] text-warn">
                     ⚠ 개념 확인 필요
                   </span>
                   <button
+                    type="button"
                     onClick={() => setAlertOpen(false)}
+                    aria-label="알림 닫기"
                     className="cursor-pointer border-0 bg-transparent text-base text-ink-quiet"
                   >
                     ✕
                   </button>
                 </div>
-                <p className="mb-3 text-[13.5px] leading-[1.55] text-ink-label">
-                  최근 5분간 <b className="text-warn-text">확인 필요 32%</b> — 접속 학생{" "}
-                  <b>24명 중 8명</b>에게서 신호가 나타났어요.
-                </p>
-                <div className="flex flex-col gap-2">
-                  {alertDistribution.map((d) => (
-                    <DistributionBar
-                      key={d.label}
-                      label={d.label}
-                      percent={d.percent}
-                      fill={d.color}
-                      value={d.value}
-                      labelWidth={58}
-                    />
-                  ))}
+                <div className="flex flex-col gap-2.5">
+                  <p className="m-0 text-[13.5px] font-bold leading-[1.5] text-ink">
+                    학생 <b className="text-warn">30%</b>에게서 신호가 나타났어요.
+                  </p>
+                  <p className="m-0 text-[13.5px] leading-[1.5] text-ink-label">
+                    잠시 속도를 늦추거나 짚어주면 좋아요.
+                  </p>
                 </div>
               </div>
             )}
+
+            {/* 플로팅 반응 */}
+            {reactions.map((r) => (
+              <div
+                key={r.key}
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-[90px] animate-[zFloat_2.4s_ease-out_forwards] text-[34px]"
+                style={{ left: `${r.left}%` }}
+              >
+                {r.emoji}
+              </div>
+            ))}
           </div>
 
-          {media.mediaError && (
-            <div
-              role="alert"
-              className="rounded-xl border border-danger bg-danger-softer px-4 py-2 text-[13px] font-bold text-danger"
-            >
-              {media.mediaError}
-            </div>
-          )}
-
           <RoomControlBar
-            isInstructor={isInstructor}
             me={me}
+            sharing={sharing}
+            reactMenuOpen={reactMenuOpen}
             mediaDisabled={!media.ready}
             microphoneBlocked={media.microphoneBlocked}
             cameraBlocked={media.cameraBlocked}
@@ -242,32 +315,28 @@ function RoomScreenContent({
             activeCameraId={media.activeCameraId}
             onSelectMicrophone={media.selectMicrophone}
             onSelectCamera={media.selectCamera}
-            sharing={sharing}
-            reactMenuOpen={reactMenuOpen}
             onToggleMic={media.toggleMicrophone}
             onToggleCam={media.toggleCamera}
             onToggleShare={() => setSharing((v) => !v)}
-            onToggleHand={() => setHandRaised((raised) => !raised)}
+            onToggleHand={toggleHand}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
-            onPreview={() => (isInstructor ? setAlertOpen(true) : setPromptOpen(true))}
+            onReact={addReaction}
+            onLeave={leaveRoom}
           />
         </div>
 
-        {view === "speaker" && (
+        {panelOpen && (
           <RoomSidePanel
             panel={panel}
-            onPanel={setPanel}
-            chatTab={chatTab}
-            onChatTab={setChatTab}
             participants={list}
-            messages={messages}
+            messages={publicMessages}
             meId={meId}
             isInstructor={isInstructor}
           />
         )}
       </div>
 
-      {/* 확인 프롬프트 모달 (학생) */}
+      {/* 확인 프롬프트 (학생) */}
       {promptOpen && (
         <div className="absolute bottom-24 left-1/2 z-50 w-[420px] -translate-x-1/2 animate-[zPop_.2s] rounded-[20px] bg-surface p-[22px] text-ink shadow-[0_20px_50px_#0008]">
           <div className="mb-1.5 flex items-center justify-between">
@@ -281,24 +350,35 @@ function RoomScreenContent({
           </p>
           <div className="flex gap-2.5">
             <button
-              onClick={() => setPromptOpen(false)}
+              type="button"
+              onClick={() => answerPrompt("응답을 보냈어요. 고마워요!")}
               className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#d4f0e5] bg-primary-mint py-3.5 text-primary-dark"
             >
               👍 이해했어요
             </button>
             <button
-              onClick={() => setPromptOpen(false)}
+              type="button"
+              onClick={() => answerPrompt("응답을 보냈어요. 곧 짚어드릴게요.")}
               className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#f6e3a7] bg-warn-soft py-3.5 text-warn-text"
             >
               🤔 헷갈려요
             </button>
             <button
-              onClick={() => setPromptOpen(false)}
+              type="button"
+              onClick={() => answerPrompt("응답을 보냈어요. 관련 구간을 리포트에 담아둘게요.")}
               className="z-btn flex-1 rounded-[14px] border-[1.5px] border-line-muted bg-primary-softer py-3.5 text-ink-muted"
             >
               😅 놓쳤어요
             </button>
           </div>
+        </div>
+      )}
+      {promptToast && (
+        <div
+          role="status"
+          className="absolute bottom-24 left-1/2 z-50 -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-room-edge bg-[#1e2138] px-5 py-3 text-[13px] text-panel-soft"
+        >
+          {promptToast}
         </div>
       )}
     </div>

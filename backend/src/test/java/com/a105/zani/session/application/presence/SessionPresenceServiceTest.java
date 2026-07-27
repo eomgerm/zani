@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -14,6 +15,8 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.session.application.end.EndSessionResult;
+import com.a105.zani.session.application.end.EndSessionUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.port.SessionPresencePort;
@@ -47,9 +50,21 @@ class SessionPresenceServiceTest {
 
     private SessionPresenceService service;
 
+    /** 실제 EndSessionService와 같은 계약: LIVE면 종료·저장, 이미 종료면 멱등 no-op. */
+    private final EndSessionUseCase endSessionUseCase = command -> {
+        Session session = sessionRepository.session;
+        if (session.isEnded()) {
+            return new EndSessionResult(command.sessionId(), session.status(), false);
+        }
+        session.end();
+        sessionRepository.save(session);
+        return new EndSessionResult(command.sessionId(), session.status(), true);
+    };
+
     @BeforeEach
     void setUp() {
-        service = new SessionPresenceService(sessionRepository, participantRepository, presencePort, clock);
+        service = new SessionPresenceService(
+                sessionRepository, participantRepository, presencePort, endSessionUseCase, clock);
         sessionRepository.session = liveSession();
         participantRepository.byUserId.put(
                 INSTRUCTOR_USER,
@@ -83,18 +98,18 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 비멤버면_403_예외() {
+    void throwsForbiddenWhenTheUserIsNotASessionMember() {
         assertThrows(NotSessionMemberException.class, () -> heartbeat(999L, ConnectionState.CONNECTED));
     }
 
     @Test
-    void 종료된_세션이면_409_예외() {
+    void throwsConflictWhenTheSessionHasAlreadyEnded() {
         sessionRepository.session.end();
         assertThrows(SessionAlreadyEndedException.class, () -> heartbeat(STUDENT_USER, ConnectionState.CONNECTED));
     }
 
     @Test
-    void 강사_접속이면_presence를_기록하고_CONNECTED() {
+    void recordsPresenceAndReportsConnectedForAConnectedInstructor() {
         PresenceResult result = heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
 
         assertEquals(ReconnectStatus.CONNECTED, result.reconnectStatus());
@@ -103,7 +118,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 강사_이탈이면_5분_유예를_시작하고_GRACE_PERIOD() {
+    void startsTheFiveMinuteGraceAndReportsGracePeriodWhenTheInstructorDrops() {
         PresenceResult result = heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
 
         assertEquals(ReconnectStatus.GRACE_PERIOD, result.reconnectStatus());
@@ -112,7 +127,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 강사가_유예_안에_복귀하면_RECONNECTED_이고_유예가_해제된다() {
+    void clearsTheGraceAndReportsReconnectedWhenTheInstructorReturnsInTime() {
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
         clock.setInstant(T0.plus(Duration.ofMinutes(2)));
 
@@ -124,7 +139,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 강사_유예가_만료된_뒤_heartbeat가_세션을_종료한다() {
+    void endsTheSessionOnTheFirstHeartbeatAfterTheGraceExpires() {
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
         clock.setInstant(T0.plus(Duration.ofMinutes(6)));
 
@@ -137,7 +152,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 강사_반복_이탈에도_유예_마감시각은_처음_값을_유지한다() {
+    void keepsTheOriginalGraceDeadlineWhenTheInstructorDropsRepeatedly() {
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED); // T0 → 마감 T0+5
         clock.setInstant(T0.plus(Duration.ofMinutes(2)));
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED); // 유예 진행 중이라 갱신 안 됨
@@ -146,7 +161,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 강사가_유예_만료_후_뒤늦게_접속해도_세션은_종료된다() {
+    void stillEndsTheSessionWhenTheInstructorReconnectsAfterTheGraceExpired() {
         heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
         clock.setInstant(T0.plus(Duration.ofMinutes(6)));
 
@@ -159,7 +174,7 @@ class SessionPresenceServiceTest {
     }
 
     @Test
-    void 학생_연결_종료면_presence를_지우고_DISCONNECTED() {
+    void clearsPresenceAndReportsDisconnectedWhenAStudentLeaves() {
         heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
 
         PresenceResult result = heartbeat(STUDENT_USER, ConnectionState.DISCONNECTED);
@@ -247,6 +262,11 @@ class SessionPresenceServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }
@@ -259,6 +279,20 @@ class SessionPresenceServiceTest {
         @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(byUserId.get(userId));
+        }
+
+        @Override
+        public Optional<SessionParticipant> findById(Long id) {
+            return byUserId.values().stream()
+                    .filter(participant -> id.equals(participant.id()))
+                    .findFirst();
+        }
+
+        @Override
+        public List<SessionParticipant> findBySessionId(Long sessionId) {
+            return byUserId.values().stream()
+                    .filter(participant -> sessionId.equals(participant.sessionId()))
+                    .toList();
         }
 
         @Override
