@@ -194,6 +194,38 @@ describe("useRoomMediaControls", () => {
     expect(result.current.microphoneEnabled).toBe(false);
   });
 
+  it("keeps the microphone error while an unrelated camera toggle succeeds", async () => {
+    const room = connectedRoom();
+    room.localParticipant!.microphoneFailure = new Error("device busy");
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+    await act(async () => result.current.toggleMicrophone());
+    const microphoneError = result.current.mediaError;
+    expect(microphoneError).not.toBeNull();
+
+    await act(async () => result.current.toggleCamera());
+
+    expect(result.current.mediaError).toBe(microphoneError);
+  });
+
+  it("keeps a camera switch error until the camera itself works again", async () => {
+    stubMediaDevices([]);
+    const room = connectedRoom();
+    room.switchResult = false;
+    const { result } = renderHook(() => useRoomMediaControls());
+    await act(async () => vi.advanceTimersByTime(0));
+    await act(async () => result.current.selectCamera("cam-2"));
+    expect(result.current.mediaError).not.toBeNull();
+
+    room.switchResult = true;
+    await act(async () => result.current.selectMicrophone("mic-2"));
+    expect(result.current.mediaError).not.toBeNull();
+
+    await act(async () => result.current.selectCamera("cam-3"));
+
+    expect(result.current.mediaError).toBeNull();
+  });
+
   it("re-reads the publish state when a track is muted elsewhere", () => {
     const room = connectedRoom();
     const { result } = renderHook(() => useRoomMediaControls());

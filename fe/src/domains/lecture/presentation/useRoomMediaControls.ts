@@ -31,6 +31,15 @@ const TRACK_SOURCE_MICROPHONE = 2;
 const TOGGLE_FAILURE_MESSAGE = "장치를 사용할 수 없습니다. 연결과 권한을 확인해 주세요.";
 const SWITCH_FAILURE_MESSAGE = "선택한 장치로 바꾸지 못했습니다. 다른 장치를 선택해 주세요.";
 
+/** 마이크·카메라 중 어느 장치의 결과인지. 오류 안내를 장치별로 구분하는 데 쓴다. */
+type MediaKind = "microphone" | "camera";
+
+/** 실패한 장치와 안내 문구. 같은 장치가 성공할 때만 지운다. */
+type MediaFailure = { kind: MediaKind; message: string };
+
+const kindOfDevice = (kind: MediaDeviceKind): MediaKind =>
+  kind === CAMERA_KIND ? "camera" : "microphone";
+
 export type RoomMediaControls = {
   /** 로컬 마이크가 publish 중인지. */
   microphoneEnabled: boolean;
@@ -42,7 +51,7 @@ export type RoomMediaControls = {
   microphoneBlocked: boolean;
   /** 강사 제한 모드: 서버가 카메라 publish 권한을 회수한 상태. */
   cameraBlocked: boolean;
-  /** 장치 조작 실패 안내. 다음 성공 시 null로 돌아간다. */
+  /** 장치 조작 실패 안내. 실패한 장치가 다시 성공할 때만 사라진다(다른 장치 조작에는 영향받지 않는다). */
   mediaError: string | null;
   /** 선택 가능한 마이크 목록. */
   microphones: readonly SelectOption[];
@@ -143,7 +152,13 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
   const [devices, setDevices] = useState<DeviceOptions>(noDeviceOptions);
   const [requestedMicrophoneId, setRequestedMicrophoneId] = useState<string | null>(null);
   const [requestedCameraId, setRequestedCameraId] = useState<string | null>(null);
-  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<MediaFailure | null>(null);
+
+  // 성공한 장치의 안내만 지운다. 마이크 실패 안내가 카메라 조작 성공으로 사라지면 안 된다.
+  const clearFailure = useCallback(
+    (kind: MediaKind) => setFailure((current) => (current?.kind === kind ? null : current)),
+    [],
+  );
   // 진행 중인 요청이 끝난 뒤에도 같은 room인지 확인해, 이미 끊긴 room의 상태를 되살리지 않는다.
   const currentRoom = useRef<Room | null>(null);
   // publish 요청이 끝나기 전 연속 클릭은 무시한다(트랙 상태가 아직 반영되지 않아 반대로 뒤집힌다).
@@ -168,7 +183,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
   }, [room]);
 
   const toggle = useCallback(
-    (kind: "microphone" | "camera") => {
+    (kind: MediaKind) => {
       const local = room?.localParticipant;
       if (!local || inFlight.current.has(kind)) {
         return;
@@ -190,18 +205,18 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
             if (currentRoom.current !== room) {
               return;
             }
-            setMediaError(null);
+            clearFailure(kind);
             setState(snapshot(room));
           },
           () => {
             if (currentRoom.current === room) {
-              setMediaError(TOGGLE_FAILURE_MESSAGE);
+              setFailure({ kind, message: TOGGLE_FAILURE_MESSAGE });
             }
           },
         )
         .finally(() => inFlight.current.delete(kind));
     },
-    [room],
+    [room, clearFailure],
   );
 
   const toggleMicrophone = useCallback(() => toggle("microphone"), [toggle]);
@@ -217,6 +232,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
       } else if (kind === CAMERA_KIND) {
         setRequestedCameraId(deviceId);
       }
+      const mediaKind = kindOfDevice(kind);
       // switchActiveDevice는 실패를 예외가 아니라 false로 알린다(요청 장치를 열지 못해 폴백된 경우).
       void Promise.resolve(room.switchActiveDevice(kind, deviceId)).then(
         (switched) => {
@@ -224,20 +240,20 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
             return;
           }
           if (switched === false) {
-            setMediaError(SWITCH_FAILURE_MESSAGE);
+            setFailure({ kind: mediaKind, message: SWITCH_FAILURE_MESSAGE });
             return;
           }
-          setMediaError(null);
+          clearFailure(mediaKind);
           setState(snapshot(room));
         },
         () => {
           if (currentRoom.current === room) {
-            setMediaError(SWITCH_FAILURE_MESSAGE);
+            setFailure({ kind: mediaKind, message: SWITCH_FAILURE_MESSAGE });
           }
         },
       );
     },
-    [room],
+    [room, clearFailure],
   );
 
   const selectMicrophone = useCallback(
@@ -307,7 +323,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
     ready: state.connected && connectionState === "connected",
     microphoneBlocked: state.microphoneBlocked,
     cameraBlocked: state.cameraBlocked,
-    mediaError,
+    mediaError: failure?.message ?? null,
     ...devices,
     activeMicrophoneId: state.activeMicrophoneId ?? requestedMicrophoneId,
     activeCameraId: state.activeCameraId ?? requestedCameraId,
