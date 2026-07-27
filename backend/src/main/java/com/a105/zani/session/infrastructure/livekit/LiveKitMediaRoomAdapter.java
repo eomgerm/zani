@@ -21,6 +21,11 @@ public class LiveKitMediaRoomAdapter implements MediaRoomPort {
     }
 
     @Override
+    public java.util.Optional<Long> resolveSessionId(String roomName) {
+        return LiveKitRoomNames.parseSessionId(properties.environment(), roomName);
+    }
+
+    @Override
     public MediaServerCredentials credentials() {
         return new MediaServerCredentials(properties.url(), properties.apiKey(), properties.apiSecret());
     }

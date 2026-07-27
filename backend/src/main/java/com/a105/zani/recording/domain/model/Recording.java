@@ -57,6 +57,38 @@ public class Recording {
         return new Recording(id, sessionId, livekitEgressId, recordingType, attemptNumber, status, startedAt, endedAt);
     }
 
+    /** webhook 이벤트에 따른 상태 전이. 중복·역순 이벤트가 상태를 역행시키지 않도록(가이드 §11) 종결 상태(COMPLETE/PARTIAL/FAILED) 이후의 전이는 조용히 무시한다. */
+    public void markRecording() {
+        if (status == RecordingStatus.STARTING) {
+            this.status = RecordingStatus.RECORDING;
+        }
+    }
+
+    /** @return 실제로 전이가 일어났는지. 중복·역순 이벤트로 재호출되면 false를 반환해 파생 작업(파일 저장 등)이 반복되지 않게 한다. */
+    public boolean complete(Instant endedAt) {
+        if (isTerminal()) {
+            return false;
+        }
+        this.status = RecordingStatus.COMPLETE;
+        this.endedAt = endedAt;
+        return true;
+    }
+
+    public boolean fail(Instant endedAt) {
+        if (isTerminal()) {
+            return false;
+        }
+        this.status = RecordingStatus.FAILED;
+        this.endedAt = endedAt;
+        return true;
+    }
+
+    private boolean isTerminal() {
+        return status == RecordingStatus.COMPLETE
+                || status == RecordingStatus.PARTIAL
+                || status == RecordingStatus.FAILED;
+    }
+
     public Long id() {
         return id;
     }

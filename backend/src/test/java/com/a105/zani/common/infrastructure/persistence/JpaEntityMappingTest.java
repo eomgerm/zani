@@ -37,6 +37,7 @@ import com.a105.zani.quiz.infrastructure.persistence.entity.QuizQuestionJpaEntit
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingFileJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingOutboxJpaEntity;
+import com.a105.zani.recording.infrastructure.persistence.entity.RecordingWebhookEventJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.entity.TranscriptJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportInsightJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportJpaEntity;
@@ -84,6 +85,7 @@ class JpaEntityMappingTest {
             Map.entry(ReviewRecommendationJpaEntity.class, "review_recommendations"),
             Map.entry(RecordingJpaEntity.class, "recordings"),
             Map.entry(RecordingOutboxJpaEntity.class, "recording_outbox"),
+            Map.entry(RecordingWebhookEventJpaEntity.class, "recording_webhook_events"),
             Map.entry(RecordingFileJpaEntity.class, "recording_files"),
             Map.entry(TranscriptJpaEntity.class, "transcripts"),
             Map.entry(QuizJpaEntity.class, "quizzes"),
@@ -242,7 +244,7 @@ class JpaEntityMappingTest {
 
     @Test
     void mapsEveryDdlTableToAnExplicitJpaEntity() {
-        assertEquals(28, ENTITY_TABLES.size());
+        assertEquals(29, ENTITY_TABLES.size());
 
         ENTITY_TABLES.forEach((entityClass, expectedTable) -> {
             assertNotNull(entityClass.getAnnotation(Entity.class), entityClass.getSimpleName());
