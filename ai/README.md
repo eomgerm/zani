@@ -157,6 +157,33 @@ npm run dev
 카메라 권한은 버튼을 누른 뒤에만 요청하며 영상과 특징은 서버로 전송하지 않습니다.
 운영 배포에서는 카메라 API를 사용할 수 있도록 HTTPS가 필요합니다.
 
+## 추론 속도 실측
+
+`bench.html`은 내보낸 ONNX의 추론 지연을 execution provider별로 잽니다. 합성 입력을
+쓰므로 특징 파이프라인을 앱에 배선하지 않고도 어떤 모델이든 측정할 수 있고, provider가
+세션 생성에 실패하면 그 자체가 결과입니다 — 해당 백엔드가 지원하지 않는 연산자가
+그래프에 있다는 뜻입니다.
+
+측정할 모델을 `public/models/bench/`에 `<이름>.onnx`와 `<이름>.metadata.json` 쌍으로
+둡니다. 이 파일들은 Git에 포함되지 않습니다.
+
+```bash
+cd web/engagement-demo
+mkdir -p public/models/bench
+cp ../../artifacts/engagement/e0/seed-42/onnx/engagement.onnx public/models/bench/e0.onnx
+cp ../../artifacts/engagement/e0/seed-42/onnx/engagement.metadata.json public/models/bench/e0.metadata.json
+cp ../../artifacts/engagement/e1/seed-42/onnx/engagement.onnx public/models/bench/e1.onnx
+cp ../../artifacts/engagement/e1/seed-42/onnx/engagement.metadata.json public/models/bench/e1.metadata.json
+npm ci
+npm run dev
+```
+
+콘솔에 표시된 주소 뒤에 `/bench.html`을 붙여 엽니다. **`file://`로 직접 열면 동작하지
+않습니다** — TypeScript 변환과 모델 fetch 모두 개발 서버가 필요합니다.
+
+데모는 10초 창을 1초마다 갱신하므로 추론 예산은 1초 미만이고, MediaPipe도 같은 1초를
+나눠 씁니다.
+
 ## 실행
 
 ```powershell
