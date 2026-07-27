@@ -88,6 +88,11 @@ class CreateSessionServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
         public java.util.Optional<Session> findById(Long id) {
             throw new UnsupportedOperationException("not needed for this test");
         }

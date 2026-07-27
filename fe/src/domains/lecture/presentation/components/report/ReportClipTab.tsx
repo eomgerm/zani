@@ -1,3 +1,4 @@
+import { MenuIcon } from "@/shared/ui";
 import { summarySections, transcript } from "../../fixtures";
 
 /** 리포트 탭 1 (수업 클립 / 복습 클립): 강의 영상 + 수업 내용 전사 + AI 요약 문서. */
@@ -36,7 +37,8 @@ export function ReportClipTab({ title }: { title: string }) {
         <div className="relative min-h-[220px]">
           <div className="z-card absolute inset-0 flex flex-col overflow-hidden rounded-2xl">
             <div className="z-section-title shrink-0 border-b border-line-light px-[18px] py-[15px] text-[15px]">
-              ☰ 수업 내용
+              <MenuIcon className="text-primary" />
+              수업 내용
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
               {transcript.map((t, i) => (

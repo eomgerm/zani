@@ -79,6 +79,11 @@ class SessionJoinServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.ofNullable(byInviteCode.get(inviteCode));
         }
@@ -88,6 +93,18 @@ class SessionJoinServiceTest {
 
         private final Map<String, SessionParticipant> store = new HashMap<>();
         private int saveCount = 0;
+
+        @Override
+        public java.util.Optional<SessionParticipant> findById(Long id) {
+            return store.values().stream().filter(p -> id.equals(p.id())).findFirst();
+        }
+
+        @Override
+        public java.util.List<SessionParticipant> findBySessionId(Long sessionId) {
+            return store.values().stream()
+                    .filter(p -> sessionId.equals(p.sessionId()))
+                    .toList();
+        }
 
         @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {

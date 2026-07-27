@@ -1,4 +1,16 @@
-import { ChevronDownIcon, Select, type SelectOption } from "@/shared/ui";
+import type { ReactNode } from "react";
+
+import {
+  CameraIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  HandIcon,
+  MicIcon,
+  ReactionIcon,
+  ScreenShareIcon,
+  Select,
+  type SelectOption,
+} from "@/shared/ui";
 import { reactionEmojis } from "../../fixtures";
 
 interface MeState {
@@ -8,11 +20,10 @@ interface MeState {
 }
 
 interface RoomControlBarProps {
-  isInstructor: boolean;
   me: MeState;
-  /** room에 연결되기 전이라 마이크·카메라를 조작할 수 없는 상태. */
+  /** room 에 연결되기 전이라 마이크·카메라를 조작할 수 없는 상태. */
   mediaDisabled: boolean;
-  /** 강사 제한 모드: 서버가 마이크·카메라 publish 권한을 회수한 상태(각각 따로 제한될 수 있다). */
+  /** 강사 제한 모드: 서버가 해당 source 의 publish 권한을 회수한 상태. */
   microphoneBlocked: boolean;
   cameraBlocked: boolean;
   microphones: readonly SelectOption[];
@@ -28,19 +39,21 @@ interface RoomControlBarProps {
   onToggleShare: () => void;
   onToggleHand: () => void;
   onToggleReactMenu: () => void;
-  onPreview: () => void;
+  onReact: (emoji: string) => void;
+  onLeave: () => void;
 }
 
-/** 컨트롤 버튼 스타일. 활성(끔/공유 등)이면 강조색, 아니면 옅은 배경. */
-function ctlCls(active: boolean, activeCls: string) {
-  return `flex cursor-pointer flex-col items-center gap-[3px] rounded-xl border-0 px-3.5 py-2 font-sans text-[11.5px] font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
-    active ? activeCls : "bg-canvas text-ink-sub"
-  }`;
+/** 52px 원형 버튼. 기본은 room-control, 활성 상태에서만 강조색으로 바뀐다. */
+const circle = "flex size-[52px] cursor-pointer items-center justify-center rounded-full border border-white/10 text-white transition-[filter] hover:brightness-125";
+
+/** 끔(마이크·카메라)은 danger, 그 외 활성은 각자 강조색 */
+function toneCls(active: boolean, activeCls: string) {
+  return `${circle} ${active ? activeCls : "bg-room-control"}`;
 }
 
 /**
- * [아이콘+라벨 토글 | 장치 선택 화살표] 분할 버튼. 입장 전 점검(DevicePreview)과 같은 구성이지만
- * 강의실의 밝은 테마를 따른다. 목록이 비어 있으면 화살표만 비활성화되고 토글은 그대로 쓸 수 있다.
+ * [원형 토글 + 장치 선택 화살표] 묶음. 입장 전 점검(DevicePreview)과 같은 구성이며 강의실 어두운 테마를 따른다.
+ * 목록이 비어 있으면 화살표만 비활성화되고 토글은 그대로 쓸 수 있다.
  */
 function MediaControl({
   toggleTestId,
@@ -49,8 +62,8 @@ function MediaControl({
   enabled,
   disabled,
   onToggle,
+  title,
   icon,
-  label,
   options,
   value,
   onChange,
@@ -61,25 +74,25 @@ function MediaControl({
   enabled: boolean;
   disabled: boolean;
   onToggle: () => void;
-  icon: string;
-  label: string;
+  title: string;
+  icon: ReactNode;
   options: readonly SelectOption[];
   value: string | null;
   onChange: (deviceId: string) => void;
 }) {
-  const tone = enabled ? "bg-canvas text-ink-sub" : "bg-danger-softer text-danger";
   return (
-    <div className={`flex items-center rounded-xl ${tone}`}>
+    <div className="flex items-center gap-1">
       <button
         type="button"
         data-testid={toggleTestId}
-        aria-pressed={enabled}
-        disabled={disabled}
         onClick={onToggle}
-        className="flex cursor-pointer flex-col items-center gap-[3px] rounded-l-xl border-0 bg-transparent px-3.5 py-2 font-sans text-[11.5px] font-bold text-inherit disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        title={title}
+        aria-label={title}
+        aria-pressed={enabled}
+        className={`${toneCls(!enabled, "bg-danger")} disabled:cursor-not-allowed disabled:opacity-50`}
       >
-        <span className="text-[19px]">{icon}</span>
-        {label}
+        {icon}
       </button>
       <Select
         data-testid={selectTestId}
@@ -91,10 +104,10 @@ function MediaControl({
         placement="top"
         trigger={({ open }) => (
           <ChevronDownIcon
-            className={`size-[14px] transition-transform ${open ? "rotate-180" : ""}`}
+            className={`size-[15px] text-white transition-transform ${open ? "rotate-180" : ""}`}
           />
         )}
-        triggerClassName="flex cursor-pointer items-center rounded-r-xl border-0 bg-transparent py-[19px] pl-0.5 pr-2.5 text-inherit disabled:cursor-not-allowed disabled:opacity-40"
+        triggerClassName="flex cursor-pointer items-center rounded-full border-0 bg-transparent p-1 transition-colors hover:bg-room-control disabled:cursor-not-allowed disabled:opacity-40"
         listClassName="left-auto w-56"
       />
     </div>
@@ -109,9 +122,8 @@ function restrictedLabel(microphoneBlocked: boolean, cameraBlocked: boolean): st
   return microphoneBlocked ? "마이크" : "카메라";
 }
 
-/** 강의실 하단 컨트롤 바(밝은 테마). */
+/** 강의실 하단 컨트롤 바(어두운 테마). 라벨 없이 아이콘만 두고 title로 설명한다. */
 export function RoomControlBar({
-  isInstructor,
   me,
   mediaDisabled,
   microphoneBlocked,
@@ -129,10 +141,11 @@ export function RoomControlBar({
   onToggleShare,
   onToggleHand,
   onToggleReactMenu,
-  onPreview,
+  onReact,
+  onLeave,
 }: RoomControlBarProps) {
   return (
-    <div className="relative flex shrink-0 items-center gap-1.5 rounded-2xl border border-line bg-surface px-[18px] py-[11px] shadow-[0_4px_18px_rgba(24,74,62,.05)]">
+    <div className="flex shrink-0 items-center justify-center gap-3.5 pb-0.5 pt-2">
       <MediaControl
         toggleTestId="room-microphone-toggle"
         selectTestId="room-microphone-select"
@@ -140,12 +153,13 @@ export function RoomControlBar({
         enabled={me.mic}
         disabled={mediaDisabled || microphoneBlocked}
         onToggle={onToggleMic}
-        icon={me.mic ? "🎤" : "🔇"}
-        label={me.mic ? "마이크" : "음소거"}
+        title={me.mic ? "마이크 끄기" : "마이크 켜기"}
+        icon={<MicIcon />}
         options={microphones}
         value={activeMicrophoneId}
         onChange={onSelectMicrophone}
       />
+
       <MediaControl
         toggleTestId="room-camera-toggle"
         selectTestId="room-camera-select"
@@ -153,35 +167,57 @@ export function RoomControlBar({
         enabled={me.cam}
         disabled={mediaDisabled || cameraBlocked}
         onToggle={onToggleCam}
-        icon={me.cam ? "🎥" : "📷"}
-        label={me.cam ? "카메라" : "끔"}
+        title={me.cam ? "카메라 끄기" : "카메라 켜기"}
+        icon={<CameraIcon />}
         options={cameras}
         value={activeCameraId}
         onChange={onSelectCamera}
       />
-      <button onClick={onToggleShare} className={ctlCls(sharing, "bg-primary-soft text-primary-deep")}>
-        <span className="text-[19px]">🖥️</span>
-        {sharing ? "공유 중" : "화면 공유"}
+
+      {/* 공유를 멈추는 주 동작은 스테이지 오버레이의 "화면 공유 중지" 버튼이다.
+          여기서는 프로토타입대로 상태만 알리고, 켜짐 여부는 aria-pressed로 전달한다. */}
+      <button
+        type="button"
+        onClick={onToggleShare}
+        title={sharing ? "공유 중" : "화면 공유"}
+        aria-label={sharing ? "공유 중" : "화면 공유"}
+        aria-pressed={sharing}
+        className={toneCls(sharing, "bg-primary")}
+      >
+        <ScreenShareIcon />
       </button>
-      <button onClick={onToggleHand} className={ctlCls(me.hand, "bg-warn-soft text-warn-text")}>
-        <span className="text-[19px]">✋</span>
-        손들기
+
+      <button
+        type="button"
+        onClick={onToggleHand}
+        title="손들기"
+        aria-label="손들기"
+        aria-pressed={me.hand}
+        className={`${circle} ${me.hand ? "bg-warn text-[#372b03]" : "bg-room-control"}`}
+      >
+        <HandIcon />
       </button>
 
       <div className="relative">
         <button
+          type="button"
           onClick={onToggleReactMenu}
-          className={ctlCls(reactMenuOpen, "bg-primary-soft text-primary-deep")}
+          title="반응"
+          aria-label="반응"
+          aria-expanded={reactMenuOpen}
+          className={toneCls(reactMenuOpen, "bg-primary")}
         >
-          <span className="text-[19px]">😊</span>
-          반응
+          <ReactionIcon />
         </button>
         {reactMenuOpen && (
-          <div className="absolute bottom-16 left-1/2 z-10 flex -translate-x-1/2 animate-[zPop_.15s] gap-1 rounded-2xl border border-line-mint bg-surface px-2.5 py-2 shadow-[0_12px_32px_rgba(24,74,62,.18)]">
+          <div className="absolute bottom-16 left-1/2 z-10 flex -translate-x-1/2 animate-[zPop_.15s] gap-1 rounded-2xl border border-room-line bg-panel px-2.5 py-2 shadow-[0_12px_32px_rgba(0,0,0,.4)]">
             {reactionEmojis.map((e) => (
               <button
+                type="button"
                 key={e}
-                className="size-[42px] cursor-pointer rounded-xl border-0 bg-transparent text-[22px] hover:bg-primary-soft"
+                onClick={() => onReact(e)}
+                aria-label={`${e} 반응 보내기`}
+                className="size-[42px] cursor-pointer rounded-xl border-0 bg-transparent text-[22px] hover:bg-[#1e2138]"
               >
                 {e}
               </button>
@@ -191,13 +227,14 @@ export function RoomControlBar({
       </div>
 
       <button
-        onClick={onPreview}
-        className="z-btn ml-1.5 rounded-[11px] border border-line-muted bg-surface px-3.5 py-[9px] text-xs text-ink-faint"
+        type="button"
+        onClick={onLeave}
+        title="나가기"
+        aria-label="나가기"
+        className="flex h-[52px] w-[68px] cursor-pointer items-center justify-center rounded-full border border-white/10 bg-danger text-white transition-[filter] hover:brightness-115"
       >
-        {isInstructor ? "집단 알림 미리보기" : "확인 프롬프트 미리보기"}
+        <CloseIcon />
       </button>
-
-      <div className="flex-1" />
 
       {(microphoneBlocked || cameraBlocked) && (
         <span

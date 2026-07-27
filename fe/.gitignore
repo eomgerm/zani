@@ -19,6 +19,9 @@
 /.next/
 /out/
 
+# attention 판정 자산 (scripts/sync-attention-assets.mjs 가 생성, 모델은 별도 export)
+/public/attention/
+
 # production
 /build
 

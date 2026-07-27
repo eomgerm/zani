@@ -11,7 +11,7 @@ export function SegmentModal({ segment, role, onClose }: SegmentModalProps) {
   const score = role === "instructor" ? segment.fAll : segment.fMine;
   const c = focusColor(score);
   const ev = role === "instructor" ? segment.evAll : segment.evMine;
-  const scopeLabel = role === "instructor" ? "전체 집중" : "내 집중";
+  const scopeLabel = role === "instructor" ? "전체 집중도" : "내 집중도";
 
   return (
     <div onClick={onClose} className="z-backdrop z-[80] animate-[zPop_.16s] bg-[rgba(24,28,52,.5)]">
@@ -61,8 +61,11 @@ export function SegmentModal({ segment, role, onClose }: SegmentModalProps) {
           <div className="mb-2 text-[13.5px] font-extrabold text-ink">이 구간 설명</div>
           <p className="mb-[22px] text-[13.5px] leading-[1.7] text-ink-sub">{segment.desc}</p>
 
-          <button className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-[14.5px]">
-            ↗ {segment.seek} 복습 클립 바로가기
+          <button
+            type="button"
+            className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-[14.5px]"
+          >
+            ↗ {role === "instructor" ? "수업 클립" : "복습 클립"} 바로가기
           </button>
         </div>
       </div>

@@ -12,4 +12,6 @@ public interface SessionParticipantJpaRepository extends JpaRepository<SessionPa
     Optional<SessionParticipantJpaEntity> findBySessionIdAndMemberId(Long sessionId, Long memberId);
 
     List<SessionParticipantJpaEntity> findByMemberId(Long memberId);
+
+    List<SessionParticipantJpaEntity> findBySessionIdOrderByIdAsc(Long sessionId);
 }

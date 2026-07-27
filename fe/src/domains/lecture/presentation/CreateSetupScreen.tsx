@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const INVITE_LINK = "https://zani.app/j/ZANI-8KQ";
+const INVITE_LINK = "https://zani.app/live/ZANI-8KQ";
 
 /**
  * 강의실 만들기 설정. 강의명 입력 + 초대 링크 확인 후 방을 생성한다.

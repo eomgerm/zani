@@ -29,12 +29,10 @@ export function NoteScreen({ lectureId }: { lectureId: string }) {
 
         <div className="z-card-lg px-8 py-[30px]">
           <div className="z-pill mb-4 bg-warn-soft px-3 py-[5px] text-[12.5px] text-warn-text">
-            ✏️ 사후 메모 작성
+            사후 메모 작성
           </div>
           <h1 className="mb-1.5 text-2xl font-extrabold tracking-[-.4px]">{lecture.title}</h1>
-          <p className="mb-[22px] text-sm text-ink-faint">
-            수강생 {lecture.students ?? 0}명 · {lecture.date} · {lecture.dur}
-          </p>
+          <p className="mb-[22px] text-sm text-ink-faint">{lecture.date}</p>
           <p className="mb-3.5 text-sm leading-[1.7] text-ink-sub">
             수업에서 중요하게 설명한 내용, 다시 강조하고 싶은 개념, 수업 중 느낀 점이나 AI가 분석할
             때 참고할 내용을 자유롭게 작성해 주세요.
@@ -48,10 +46,7 @@ export function NoteScreen({ lectureId }: { lectureId: string }) {
           />
 
           <div className="mt-[18px] flex items-center gap-3">
-            <p className="flex-1 text-[12.5px] leading-[1.5] text-ink-ghost">
-              AI가 녹화 영상·전사·수업 이벤트·채팅·학생 반응과 함께 메모를 분석해 관련 영상 구간을
-              자동으로 연결해요.
-            </p>
+            <div className="flex-1" />
             <button
               onClick={() => setConfirmOpen(true)}
               className="z-btn z-btn-primary z-btn-lg whitespace-nowrap"

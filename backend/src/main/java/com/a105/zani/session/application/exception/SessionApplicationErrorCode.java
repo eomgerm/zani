@@ -10,7 +10,9 @@ public enum SessionApplicationErrorCode implements ErrorCode {
     DUPLICATE_INVITE_CODE(ErrorType.CONFLICT, "SESSION_APP_003", "Invite code already in use"),
     INVITE_CODE_GENERATION_FAILED(
             ErrorType.INTERNAL_SERVER_ERROR, "SESSION_APP_004", "Failed to generate a unique invite code"),
-    SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found for the given invite code");
+    SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found"),
+    NOT_SESSION_INSTRUCTOR(
+            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it");
 
     private final ErrorType type;
     private final String code;
