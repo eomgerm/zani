@@ -295,6 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0c", "E0-C", "E0-C (balanced class weights)"),
         ("e0d", "E0-D", "E0-D (sqrt-balanced class weights)"),
         ("e1", "E1", "E1 (ST-GCN)"),
+        ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
     ):
         reproduce = commands.add_parser(
             f"reproduce-{command}",

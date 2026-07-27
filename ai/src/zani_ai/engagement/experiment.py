@@ -83,6 +83,10 @@ class ExperimentSpec:
     learning_rate: float = 1e-4
     batch_size: int = 32
     max_epochs: int = 200
+    # Early-stopping window. Set it to `max_epochs` to disable stopping and run
+    # the full budget, which is what a protocol needs when its learning-rate
+    # schedule only pays off late (E1's decay lands at epoch 100 and 200).
+    patience: int = 20
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
@@ -169,12 +173,44 @@ E1_SPEC = ExperimentSpec(
 )
 
 
+# E1-A restores the training conditions of the paper E1 reproduces
+# (arXiv:2403.17175), which E1 had drifted from.
+#
+# * batch 16 / lr 1e-3 are the paper's values, and were also this experiment's
+#   ticketed plan. Commits bcaeda2 and 4e146e1 raised them to 32 / 2e-3 for
+#   throughput on a 6GB laptop GPU -- a constraint the L40S removed.
+# * `patience == max_epochs` disables early stopping. The paper trains all 300
+#   epochs and decays the learning rate at 100 and 200; E1's measured
+#   best_epochs were 44, 48, 13, 8 and 25, so no seed ever reached the first
+#   decay and half the recipe never ran.
+#
+# The input is still 100 frames at 10 FPS against the paper's 300 at 30 FPS --
+# that needs a new representation and is tracked separately.
+E1A_SPEC = ExperimentSpec(
+    "E1-A",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=GRAPH_VERSION,
+    build_model=stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 100, 78),
+    needs_landmark_graph=True,
+)
+
+
 #: Every reproducible protocol, keyed by the name it is known by on the CLI
 #: and in ``summary.json``. Lets callers dispatch on the protocol string
 #: instead of duplicating a handler per experiment.
 SPECS: dict[str, ExperimentSpec] = {
     spec.protocol: spec
-    for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E0C_SPEC, E0D_SPEC, E1_SPEC)
+    for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E0C_SPEC, E0D_SPEC, E1_SPEC, E1A_SPEC)
 }
 
 
@@ -300,7 +336,7 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
             "early_stopping": {
                 "metric": "validation_macro_f1",
                 "mode": "max",
-                "patience": 20,
+                "patience": spec.patience,
             },
             "class_weighting": _class_weighting_value(spec),
             "model": {
@@ -330,7 +366,7 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
         "early_stopping": {
             "metric": "validation_macro_f1",
             "mode": "max",
-            "patience": 20,
+            "patience": spec.patience,
         },
         "class_weighting": _class_weighting_value(spec),
         "model": spec.model_config.to_dict(),
@@ -786,7 +822,7 @@ def reproduce_experiment(
             max_epochs=spec.max_epochs,
             batch_size=spec.batch_size,
             learning_rate=spec.learning_rate,
-            patience=20,
+            patience=spec.patience,
             seed=seed,
             device=device,
             class_weighting=spec.class_weighting,
@@ -898,15 +934,16 @@ def reproduce_e0(
 
 
 __all__ = [
-    "E0_SEEDS",
-    "E0_SPEC",
     "E0A_SPEC",
     "E0B_SPEC",
     "E0C_SPEC",
     "E0D_SPEC",
-    "E0ExperimentResult",
+    "E0_SEEDS",
+    "E0_SPEC",
+    "E1A_SPEC",
     "E1_SPEC",
     "SPECS",
+    "E0ExperimentResult",
     "ExperimentSpec",
     "reproduce_e0",
     "reproduce_experiment",

@@ -146,6 +146,14 @@ seed마다 실제 실행 환경이 `summary.json`에 기록됩니다.
 크기가 유지되어 학습률을 그대로 쓸 수 있습니다. `class_weighting`은 재현성
 identity에 포함되므로 각각 별도 프로토콜이며 기존 E0 결과는 그대로 남습니다.
 
+`reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
+(arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
+학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고
+`patience=20`으로 조기 종료했는데, 실측 `best_epoch`이 44·48·13·8·25라
+어느 seed도 첫 감쇠에 도달하지 못했습니다. E1-A는 논문값으로 되돌리고
+`patience`를 `max_epochs`와 같게 두어 조기 종료를 끕니다. 체크포인트 선택은
+그대로 Validation Macro-F1 최고점입니다.
+
 E1은 ST-GCN 노드 토폴로지를 정의하는 `landmark_78_v1_graph.npz`가 필요합니다.
 `--graph`, 환경변수 `ZANI_LANDMARK_GRAPH`, `--features` 디렉터리, 그 부모 순으로 찾고,
 찾은 파일의 SHA-256을 `summary.json`의 `inputs.landmark_graph`에 기록합니다.
