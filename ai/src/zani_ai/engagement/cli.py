@@ -36,6 +36,27 @@ def _add_experiment_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--device", type=_device)
 
 
+def _add_parallel_options(parser: argparse.ArgumentParser) -> None:
+    """Options that let one protocol's seeds run as concurrent processes."""
+    parser.add_argument(
+        "--seed",
+        type=int,
+        action="append",
+        default=[],
+        metavar="N",
+        help=(
+            "run only this seed (repeatable). Each process writes its own "
+            "seed directory and leaves summary.json alone, so seeds can run in "
+            "parallel; rebuild the summary afterwards with --collect-only"
+        ),
+    )
+    parser.add_argument(
+        "--collect-only",
+        action="store_true",
+        help="rebuild summary.json from the seed records on disk without training",
+    )
+
+
 def _add_drift_option(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--allow-environment-drift",
@@ -146,22 +167,47 @@ def _reproduce(protocol: str) -> Command:
     """
 
     def handler(args: argparse.Namespace) -> int:
-        from zani_ai.engagement.experiment import SPECS, reproduce_experiment
+        from zani_ai.engagement.experiment import SPECS, collect_only, reproduce_experiment
 
+        shared = {
+            "device": _resolve_device(args),
+            "graph_path": getattr(args, "graph", None),
+            "allow_environment_drift": args.allow_environment_drift,
+        }
+        if args.collect_only:
+            result = collect_only(SPECS[protocol], args.features, args.output, **shared)
+            print(
+                f"{protocol} summary collected "
+                f"| seeds={','.join(map(str, result.completed_seeds))} "
+                f"| {result.summary_path}",
+                flush=True,
+            )
+            return 0
+
+        seeds = tuple(args.seed) or None
         result = reproduce_experiment(
             SPECS[protocol],
             args.features,
             args.output,
-            device=_resolve_device(args),
-            graph_path=getattr(args, "graph", None),
-            allow_environment_drift=args.allow_environment_drift,
+            seeds=seeds,
+            # A subset means this process is one of several running in
+            # parallel, so it must not write the shared summary.
+            collect=seeds is None,
+            **shared,
         )
-        print(
-            f"{protocol} reproduction complete "
-            f"| seeds={','.join(map(str, result.completed_seeds))} "
-            f"| {result.summary_path}",
-            flush=True,
-        )
+        if seeds is None:
+            print(
+                f"{protocol} reproduction complete "
+                f"| seeds={','.join(map(str, result.completed_seeds))} "
+                f"| {result.summary_path}",
+                flush=True,
+            )
+        else:
+            print(
+                f"{protocol} seeds {','.join(map(str, seeds))} done "
+                f"| run --collect-only to rebuild {result.summary_path}",
+                flush=True,
+            )
         return 0
 
     return handler
@@ -303,6 +349,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
         _add_experiment_options(reproduce)
         _add_drift_option(reproduce)
+        _add_parallel_options(reproduce)
         if protocol == "E1":
             reproduce.add_argument(
                 "--graph",

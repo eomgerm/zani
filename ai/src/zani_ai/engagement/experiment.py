@@ -5,7 +5,7 @@ import json
 import os
 import platform
 import statistics
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
@@ -20,6 +20,7 @@ from torch import nn
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
+from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
 from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
 from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
@@ -231,7 +232,8 @@ def _canonical_hash(payload: dict[str, object]) -> str:
 
 def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
+    # The PID keeps concurrent seed processes from sharing a scratch file.
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -730,7 +732,63 @@ def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
     )
 
 
-def reproduce_experiment(
+@dataclass(frozen=True, slots=True)
+class RunContext:
+    """Per-run facts every seed of a protocol must agree on.
+
+    Built once by :func:`prepare_run` and handed to :func:`run_seed`. Parallel
+    seed processes each build their own and must arrive at the same values --
+    that agreement is what makes their records comparable.
+    """
+
+    spec: ExperimentSpec
+    features_root: Path
+    output_dir: Path
+    device: str
+    manifest_path: Path
+    manifest_sha256: str
+    configuration: dict[str, object]
+    environment: dict[str, object]
+    inputs: dict[str, object]
+
+
+def _seed_record_path(output_dir: Path, seed: int) -> Path:
+    return output_dir / f"seed-{seed}" / "record.json"
+
+
+def _read_seed_record(output_dir: Path, seed: int) -> dict[str, object] | None:
+    path = _seed_record_path(output_dir, seed)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _adopt_summary_seed_records(context: RunContext, summary: dict[str, object]) -> None:
+    """Give an older run the per-seed record files it never wrote.
+
+    Seed completion used to live only in ``summary.json``. Concurrent seeds
+    cannot share one file, so the record moved next to its checkpoint. Without
+    this, every run finished under the old layout would look incomplete and
+    retrain from scratch.
+    """
+    for item in cast(list[object], summary.get("seeds") or []):
+        if not isinstance(item, dict):
+            continue
+        seed = item.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            continue
+        if seed not in context.spec.seeds:
+            continue
+        path = _seed_record_path(context.output_dir, seed)
+        if not path.is_file():
+            _write_json_atomic(path, dict(item))
+
+
+def prepare_run(
     spec: ExperimentSpec,
     features_root: Path,
     output_dir: Path,
@@ -738,7 +796,13 @@ def reproduce_experiment(
     device: str,
     graph_path: Path | None = None,
     allow_environment_drift: bool = False,
-) -> E0ExperimentResult:
+) -> RunContext:
+    """Validate the inputs and pin the identity every seed of this run shares.
+
+    Leaves ``summary.json`` alone apart from back-filling per-seed records for
+    a run made before those existed, so concurrent seed processes may all call
+    it.
+    """
     try:
         parse_device(device)
     except ValueError as error:
@@ -758,6 +822,17 @@ def reproduce_experiment(
     _enable_strict_determinism(device)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    context = RunContext(
+        spec=spec,
+        features_root=features_root,
+        output_dir=output_dir,
+        device=device,
+        manifest_path=manifest_path,
+        manifest_sha256=manifest_sha256,
+        configuration=configuration,
+        environment=environment,
+        inputs=inputs,
+    )
     summary_path = output_dir / "summary.json"
     if summary_path.is_file():
         summary = _load_summary(summary_path, spec)
@@ -770,152 +845,270 @@ def reproduce_experiment(
             allow_environment_drift=allow_environment_drift,
         )
         _validate_inputs_identity(summary, inputs, spec)
-        if allow_environment_drift:
-            # Record that the strict check was waived, and keep the latest
-            # environment so the summary describes the run that is continuing.
-            summary["environment_drift_allowed"] = True
-            summary["environment"] = environment
-    else:
-        summary = _empty_summary(
-            manifest_path, manifest_sha256, configuration, environment, spec, inputs
-        )
-        _write_json_atomic(summary_path, summary)
+        _adopt_summary_seed_records(context, summary)
+    return context
 
-    for seed in spec.seeds:
-        existing = _seed_record(summary, seed)
+
+def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str, object]:
+    """Train, export and fingerprint one seed; return its completion record."""
+    spec = context.spec
+    manifest_path = context.manifest_path
+    manifest_sha256 = context.manifest_sha256
+    configuration = context.configuration
+
+    def report_progress(epoch: int, metrics: EvaluationMetrics) -> None:
+        print(
+            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{spec.max_epochs} "
+            f"validation_accuracy={metrics.accuracy:.6f} "
+            f"validation_macro_f1={metrics.macro_f1:.6f}",
+            flush=True,
+        )
+
+    training_config = TrainingConfig(
+        features_root=context.features_root,
+        output_dir=seed_dir,
+        max_epochs=spec.max_epochs,
+        batch_size=spec.batch_size,
+        learning_rate=spec.learning_rate,
+        patience=spec.patience,
+        seed=seed,
+        device=context.device,
+        class_weighting=spec.class_weighting,
+        num_workers=0,
+        deterministic=True,
+        model=spec.model_config,
+        build_model=spec.build_model,
+        needs_feature_stats=spec.needs_feature_stats,
+        lr_step=spec.lr_step,
+        array_key=spec.array_key,
+        array_shape=spec.array_shape,
+    )
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before seed {seed} training", spec
+    )
+    result = train_model(training_config, evaluate_test=False, progress=report_progress)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"after seed {seed} training", spec
+    )
+    metrics_payload = _load_summary(result.metrics_path, spec)
+    metrics_payload["experiment"] = {
+        "protocol": spec.protocol,
+        "seed": seed,
+        "feature_manifest_sha256": manifest_sha256,
+        "configuration": configuration,
+        "configuration_sha256": _canonical_hash(configuration),
+    }
+    metrics_payload["test_evaluation"] = {
+        "status": "deferred",
+        "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
+    }
+    metrics_payload.pop("test", None)
+    _write_json_atomic(result.metrics_path, metrics_payload)
+
+    model = load_checkpoint(result.checkpoint_path)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
+    )
+    export_metadata = (
+        DeploymentMetadata.for_stgcn()
+        if spec.schema is None
+        else DeploymentMetadata.for_schema(spec.schema)
+    )
+    exported = export_onnx(model, export_metadata, seed_dir / "onnx")
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
+    )
+    expected_paths = _seed_paths(context.output_dir, seed)
+    if exported.model_path != expected_paths["onnx_model"]:
+        raise RuntimeError("ONNX exporter returned an unexpected model path")
+    if exported.metadata_path != expected_paths["onnx_metadata"]:
+        raise RuntimeError("ONNX exporter returned an unexpected metadata path")
+    artifacts = _artifact_records(context.output_dir, expected_paths)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
+    )
+    return {
+        "seed": seed,
+        "status": "complete",
+        "feature_manifest_sha256": manifest_sha256,
+        "configuration_sha256": _canonical_hash(configuration),
+        # Per-seed snapshot: with drift allowed, the summary's top-level
+        # environment describes only the most recent run, so this is the
+        # only record of which machine and card produced this checkpoint.
+        "environment": context.environment,
+        "best_epoch": result.best_epoch,
+        "validation": {
+            "accuracy": result.validation.accuracy,
+            "macro_f1": result.validation.macro_f1,
+        },
+        "artifacts": artifacts,
+    }
+
+
+def run_seed(context: RunContext, seed: int) -> bool:
+    """Train one seed unless it is already complete; report whether it ran.
+
+    Writes only inside ``seed-<n>/`` and never touches ``summary.json``, so
+    several seeds can run as concurrent processes against one output
+    directory. Call :func:`collect_summary` once they finish.
+    """
+    spec = context.spec
+    if seed not in spec.seeds:
+        raise ValueError(
+            f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}"
+        )
+    seed_dir = context.output_dir / f"seed-{seed}"
+    lock = DirectoryLock(
+        seed_dir / ".seed.lock",
+        busy_message=(
+            f"{spec.protocol} seed {seed} is already running in {seed_dir}; "
+            "wait for that process or choose another --output"
+        ),
+    )
+    with lock:
+        existing = _read_seed_record(context.output_dir, seed)
         complete, reason = _seed_is_complete(
             existing,
             seed=seed,
-            output_dir=output_dir,
-            manifest_sha256=manifest_sha256,
-            configuration=configuration,
+            output_dir=context.output_dir,
+            manifest_sha256=context.manifest_sha256,
+            configuration=context.configuration,
             spec=spec,
         )
         if complete:
             print(f"{spec.protocol} seed={seed} resume=complete", flush=True)
-            continue
+            return False
         if existing is not None:
             print(f"{spec.protocol} seed={seed} resume=rerun reason={reason}", flush=True)
-            summary["seeds"] = [
-                item
-                for item in cast(list[object], summary["seeds"])
-                if not isinstance(item, dict) or item.get("seed") != seed
-            ]
-            _update_summary(summary, spec)
-            _write_json_atomic(summary_path, summary)
-
-        seed_dir = output_dir / f"seed-{seed}"
-
-        def report_progress(
-            epoch: int, metrics: EvaluationMetrics, _seed: int = seed
-        ) -> None:
-            print(
-                f"{spec.protocol} seed={_seed} epoch={epoch + 1}/{spec.max_epochs} "
-                f"validation_accuracy={metrics.accuracy:.6f} "
-                f"validation_macro_f1={metrics.macro_f1:.6f}",
-                flush=True,
-            )
-
-        training_config = TrainingConfig(
-            features_root=features_root,
-            output_dir=seed_dir,
-            max_epochs=spec.max_epochs,
-            batch_size=spec.batch_size,
-            learning_rate=spec.learning_rate,
-            patience=spec.patience,
-            seed=seed,
-            device=device,
-            class_weighting=spec.class_weighting,
-            num_workers=0,
-            deterministic=True,
-            model=spec.model_config,
-            build_model=spec.build_model,
-            needs_feature_stats=spec.needs_feature_stats,
-            lr_step=spec.lr_step,
-            array_key=spec.array_key,
-            array_shape=spec.array_shape,
-        )
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} training", spec
-        )
-        result = train_model(
-            training_config,
-            evaluate_test=False,
-            progress=report_progress,
-        )
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} training", spec
-        )
-        metrics_payload = _load_summary(result.metrics_path, spec)
-        metrics_payload["experiment"] = {
-            "protocol": spec.protocol,
-            "seed": seed,
-            "feature_manifest_sha256": manifest_sha256,
-            "configuration": configuration,
-            "configuration_sha256": _canonical_hash(configuration),
-        }
-        metrics_payload["test_evaluation"] = {
-            "status": "deferred",
-            "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
-        }
-        metrics_payload.pop("test", None)
-        _write_json_atomic(result.metrics_path, metrics_payload)
-
-        model = load_checkpoint(result.checkpoint_path)
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
-        )
-        export_metadata = (
-            DeploymentMetadata.for_stgcn()
-            if spec.schema is None
-            else DeploymentMetadata.for_schema(spec.schema)
-        )
-        exported = export_onnx(model, export_metadata, seed_dir / "onnx")
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
-        )
-        expected_paths = _seed_paths(output_dir, seed)
-        if exported.model_path != expected_paths["onnx_model"]:
-            raise RuntimeError("ONNX exporter returned an unexpected model path")
-        if exported.metadata_path != expected_paths["onnx_metadata"]:
-            raise RuntimeError("ONNX exporter returned an unexpected metadata path")
-        artifacts = _artifact_records(output_dir, expected_paths)
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
-        )
-        record: dict[str, object] = {
-            "seed": seed,
-            "status": "complete",
-            "feature_manifest_sha256": manifest_sha256,
-            "configuration_sha256": _canonical_hash(configuration),
-            # Per-seed snapshot: with drift allowed, the summary's top-level
-            # environment describes only the most recent run, so this is the
-            # only record of which machine and card produced this checkpoint.
-            "environment": environment,
-            "best_epoch": result.best_epoch,
-            "validation": {
-                "accuracy": result.validation.accuracy,
-                "macro_f1": result.validation.macro_f1,
-            },
-            "artifacts": artifacts,
-        }
-        cast(list[object], summary["seeds"]).append(record)
-        _update_summary(summary, spec)
-        _write_json_atomic(summary_path, summary)
+            _seed_record_path(context.output_dir, seed).unlink(missing_ok=True)
+        record = _train_one_seed(context, seed, seed_dir)
+        _write_json_atomic(_seed_record_path(context.output_dir, seed), record)
+        validation = cast(dict[str, float], record["validation"])
         print(
-            f"{spec.protocol} seed={seed} complete best_epoch={result.best_epoch} "
-            f"validation_macro_f1={result.validation.macro_f1:.6f}",
+            f"{spec.protocol} seed={seed} complete best_epoch={record['best_epoch']} "
+            f"validation_macro_f1={validation['macro_f1']:.6f}",
             flush=True,
         )
+        return True
 
+
+def collect_summary(
+    context: RunContext, *, allow_environment_drift: bool = False
+) -> E0ExperimentResult:
+    """Rebuild ``summary.json`` from the per-seed records currently on disk.
+
+    Safe to call at any point -- seeds still running are simply absent from it.
+    """
+    spec = context.spec
+    summary_path = context.output_dir / "summary.json"
+    if summary_path.is_file():
+        summary = _load_summary(summary_path, spec)
+        _validate_summary_identity(
+            summary,
+            context.manifest_sha256,
+            context.configuration,
+            context.environment,
+            spec,
+            allow_environment_drift=allow_environment_drift,
+        )
+        _validate_inputs_identity(summary, context.inputs, spec)
+        if allow_environment_drift:
+            # Record that the strict check was waived, and keep the latest
+            # environment so the summary describes the run that is continuing.
+            summary["environment_drift_allowed"] = True
+            summary["environment"] = context.environment
+    else:
+        summary = _empty_summary(
+            context.manifest_path,
+            context.manifest_sha256,
+            context.configuration,
+            context.environment,
+            spec,
+            context.inputs,
+        )
+    records: list[object] = []
+    for seed in spec.seeds:
+        record = _read_seed_record(context.output_dir, seed)
+        complete, _ = _seed_is_complete(
+            record,
+            seed=seed,
+            output_dir=context.output_dir,
+            manifest_sha256=context.manifest_sha256,
+            configuration=context.configuration,
+            spec=spec,
+        )
+        if complete and record is not None:
+            records.append(record)
+    summary["seeds"] = records
     _update_summary(summary, spec)
     _write_json_atomic(summary_path, summary)
     completed = tuple(
-        int(item["seed"])
-        for item in cast(list[dict[str, object]], summary["seeds"])
+        int(cast(int, cast(dict[str, object], item)["seed"]))
+        for item in cast(list[object], summary["seeds"])
     )
     return E0ExperimentResult(summary_path, completed)
 
+
+def reproduce_experiment(
+    spec: ExperimentSpec,
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    graph_path: Path | None = None,
+    allow_environment_drift: bool = False,
+    seeds: Sequence[int] | None = None,
+    collect: bool = True,
+) -> E0ExperimentResult:
+    """Run a protocol's seeds in this process and summarize them.
+
+    ``seeds`` restricts the run to a subset -- one seed per process is how
+    parallel execution is driven. Those workers pass ``collect=False`` so they
+    never write ``summary.json``; :func:`collect_only` rebuilds it afterwards.
+    """
+    context = prepare_run(
+        spec,
+        features_root,
+        output_dir,
+        device=device,
+        graph_path=graph_path,
+        allow_environment_drift=allow_environment_drift,
+    )
+    for seed in context.spec.seeds if seeds is None else seeds:
+        run_seed(context, seed)
+        if collect:
+            collect_summary(context, allow_environment_drift=allow_environment_drift)
+    if not collect:
+        return E0ExperimentResult(
+            output_dir / "summary.json",
+            tuple(
+                seed
+                for seed in context.spec.seeds
+                if _read_seed_record(output_dir, seed) is not None
+            ),
+        )
+    return collect_summary(context, allow_environment_drift=allow_environment_drift)
+
+
+def collect_only(
+    spec: ExperimentSpec,
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    graph_path: Path | None = None,
+    allow_environment_drift: bool = False,
+) -> E0ExperimentResult:
+    """Rebuild ``summary.json`` without training, after parallel seeds finish."""
+    context = prepare_run(
+        spec,
+        features_root,
+        output_dir,
+        device=device,
+        graph_path=graph_path,
+        allow_environment_drift=allow_environment_drift,
+    )
+    return collect_summary(context, allow_environment_drift=allow_environment_drift)
 
 def reproduce_e0(
     features_root: Path,
@@ -945,7 +1138,11 @@ __all__ = [
     "SPECS",
     "E0ExperimentResult",
     "ExperimentSpec",
+    "collect_only",
+    "collect_summary",
+    "prepare_run",
     "reproduce_e0",
     "reproduce_experiment",
+    "run_seed",
     "stgcn_model_builder",
 ]
