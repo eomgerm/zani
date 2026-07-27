@@ -15,7 +15,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
-from zani_ai.engagement.contracts import LABELS, SplitName
+from zani_ai.engagement.contracts import CLASS_WEIGHTING_SCHEMES, LABELS, SplitName
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
 from zani_ai.engagement.model import EngagementTransformer, ModelConfig
 
@@ -93,7 +93,8 @@ class TrainingConfig:
     patience: int = 20
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    use_class_weights: bool = False
+    # "none" | "balanced" | "sqrt_balanced"; see CLASS_WEIGHTING_SCHEMES.
+    class_weighting: str = "none"
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -317,11 +318,27 @@ def _loader(
     )
 
 
-def _class_weights(dataset: CachedFeatureDataset, device: torch.device) -> Tensor:
+def _class_weights(
+    dataset: CachedFeatureDataset, device: torch.device, scheme: str = "balanced"
+) -> Tensor:
+    """Per-class loss weights for ``scheme``, normalized to a mean of 1.
+
+    Both schemes satisfy ``sum(count_i * weight_i) == len(dataset)``, so the
+    loss keeps the same scale as unweighted training and the learning rate
+    stays comparable across protocols.
+    """
+    if scheme not in CLASS_WEIGHTING_SCHEMES:
+        raise ValueError(
+            f"class_weighting must be one of {CLASS_WEIGHTING_SCHEMES}, got {scheme!r}"
+        )
     counts = np.bincount([entry.label_index for entry in dataset.entries], minlength=len(LABELS))
     if np.any(counts == 0):
         raise ValueError("class weighting requires every class in the training split")
-    weights = len(dataset) / (len(LABELS) * counts)
+    if scheme == "balanced":
+        weights = len(dataset) / (len(LABELS) * counts)
+    else:  # sqrt_balanced
+        roots = np.sqrt(counts)
+        weights = len(dataset) / (roots * roots.sum())
     return torch.as_tensor(weights, dtype=torch.float32, device=device)
 
 
@@ -565,7 +582,11 @@ def train_model(
     else:
         statistics = None
         model = cast(Callable[..., nn.Module], config.build_model)(statistics=None).to(device)
-    weights = _class_weights(datasets.train, device) if config.use_class_weights else None
+    weights = (
+        _class_weights(datasets.train, device, config.class_weighting)
+        if config.class_weighting != "none"
+        else None
+    )
     model_head = getattr(model.config, "head", "softmax")  # type: ignore[attr-defined]
     objective = make_objective(
         model.config,  # type: ignore[attr-defined]
@@ -654,6 +675,7 @@ def train_model(
 
 
 __all__ = [
+    "CLASS_WEIGHTING_SCHEMES",
     "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",

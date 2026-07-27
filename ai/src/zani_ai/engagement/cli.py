@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from zani_ai.engagement.contracts import (
+    CLASS_WEIGHTING_SCHEMES,
     DatasetContract,
     DatasetContractError,
     load_dataset_contract,
@@ -204,7 +205,7 @@ def _train(args: argparse.Namespace) -> int:
             patience=args.patience,
             seed=args.seed,
             device=_resolve_device(args),
-            use_class_weights=args.class_weights,
+            class_weighting=args.class_weighting,
         )
     )
     if result.test is None:
@@ -279,13 +280,20 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--patience", type=int, default=20)
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--device", type=_device)
-    train.add_argument("--class-weights", action="store_true")
+    train.add_argument(
+        "--class-weighting",
+        choices=CLASS_WEIGHTING_SCHEMES,
+        default="none",
+        help="per-class loss weighting; 'balanced' inverts class frequency",
+    )
     train.set_defaults(handler=_train)
 
     for command, protocol, description in (
         ("e0", "E0", "E0"),
         ("e0a", "E0-A", "E0-A"),
         ("e0b", "E0-B", "E0-B"),
+        ("e0c", "E0-C", "E0-C (balanced class weights)"),
+        ("e0d", "E0-D", "E0-D (sqrt-balanced class weights)"),
         ("e1", "E1", "E1 (ST-GCN)"),
     ):
         reproduce = commands.add_parser(
