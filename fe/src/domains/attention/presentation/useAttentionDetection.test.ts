@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AttentionPrediction } from "../domain/attentionPrediction";
 import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
@@ -9,6 +9,12 @@ import type {
 } from "../infrastructure/attentionInferenceClient";
 import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
 import { useAttentionDetection, type FrameScheduler } from "./useAttentionDetection";
+
+/**
+ * 판정 흐름 자체는 `application/attentionDetectionSession.test.ts` 가 검증한다.
+ * 여기서는 훅이 책임지는 것만 본다 — 카메라 상태에 따른 세션 수명주기, 렌더 상태 파생,
+ * 세션 간 결과 격리, 상위 통지.
+ */
 
 /** 얼굴이 정면을 보는 유효한 MediaPipe 출력 1장. */
 function detectedFace(): FrameLandmarkerValues {
@@ -61,29 +67,29 @@ function readyVideoRef() {
   return { current: video };
 }
 
+const PREDICTION: AttentionPrediction = {
+  label: "Engaged",
+  probabilities: [0.1, 0.1, 0.7, 0.1],
+};
+
 describe("useAttentionDetection", () => {
   let frames: ReturnType<typeof manualScheduler>;
-  let detect: ReturnType<typeof vi.fn>;
   let close: ReturnType<typeof vi.fn>;
-  let submit: ReturnType<typeof vi.fn>;
   let terminate: ReturnType<typeof vi.fn>;
   let createLandmarker: ReturnType<typeof vi.fn>;
+  let onPrediction: ReturnType<typeof vi.fn>;
+  let onStatusChange: ReturnType<typeof vi.fn>;
   let emitPrediction: (prediction: AttentionPrediction) => void;
-  let emitFailure: (failure: AttentionInferenceFailure) => void;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let renderCount: number;
 
   beforeEach(() => {
     frames = manualScheduler();
-    detect = vi.fn(() => detectedFace());
     close = vi.fn();
-    submit = vi.fn();
     terminate = vi.fn();
-    createLandmarker = vi.fn(async () => ({ detect, close }));
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
-  });
-
-  afterEach(() => {
-    fetchSpy.mockRestore();
+    createLandmarker = vi.fn(async () => ({ detect: () => detectedFace(), close }));
+    onPrediction = vi.fn();
+    onStatusChange = vi.fn();
+    renderCount = 0;
   });
 
   function createInferenceClient(handlers: {
@@ -91,33 +97,35 @@ describe("useAttentionDetection", () => {
     onFailure(failure: AttentionInferenceFailure): void;
   }): AttentionInferenceClient {
     emitPrediction = handlers.onPrediction;
-    emitFailure = handlers.onFailure;
-    return { submit, terminate };
+    return { submit: vi.fn(), terminate };
   }
 
   function render(camera: "on" | "off" | "denied" = "on") {
     const videoRef = readyVideoRef();
     return renderHook(
-      (props: { camera: "on" | "off" | "denied" }) =>
-        useAttentionDetection({
+      (props: { camera: "on" | "off" | "denied" }) => {
+        renderCount += 1;
+        return useAttentionDetection({
           videoRef,
           camera: props.camera,
+          onPrediction,
+          onStatusChange,
           scheduler: frames.scheduler,
           createLandmarker,
           createInferenceClient,
-        }),
+        });
+      },
       { initialProps: { camera } },
     );
   }
 
-  /** 지정한 시간만큼 100ms 간격으로 프레임을 흘려보낸다. */
   async function advance(untilMs: number, fromMs = 0) {
     for (let timestamp = fromMs; timestamp <= untilMs; timestamp += 100) {
       await act(async () => frames.tick(timestamp));
     }
   }
 
-  it("stays idle and starts nothing while the camera is off", async () => {
+  it("stays idle and starts no session while the camera is off", async () => {
     const { result } = render("off");
     await act(async () => {});
 
@@ -126,7 +134,7 @@ describe("useAttentionDetection", () => {
     expect(frames.pending).toBe(0);
   });
 
-  it("reports a denied camera permission without starting detection", async () => {
+  it("reports a denied camera permission without starting a session", async () => {
     const { result } = render("denied");
     await act(async () => {});
 
@@ -134,101 +142,64 @@ describe("useAttentionDetection", () => {
     expect(createLandmarker).not.toHaveBeenCalled();
   });
 
-  it("collects the first window before producing anything", async () => {
-    const { result } = render();
-    await act(async () => {});
-    await advance(5_000);
-
-    expect(result.current.status).toBe("collecting");
-    expect(submit).not.toHaveBeenCalled();
-  });
-
-  it("submits a 20×98 token window once ten seconds are collected", async () => {
-    render();
-    await act(async () => {});
-    await advance(10_000);
-
-    expect(submit).toHaveBeenCalledTimes(1);
-    expect(submit.mock.calls[0]?.[0]).toHaveLength(20 * 98);
-  });
-
-  it("keeps producing a judgement every ten seconds", async () => {
-    render();
-    await act(async () => {});
-    // 첫 창은 10초에, 두 번째 창은 그 뒤 다시 10초를 모은 20.1초에 완성된다.
-    await advance(20_100);
-
-    expect(submit).toHaveBeenCalledTimes(2);
-  });
-
-  it("exposes the prediction the worker returns", async () => {
-    const prediction: AttentionPrediction = {
-      label: "Engaged",
-      probabilities: [0.1, 0.1, 0.7, 0.1],
-    };
-    const { result } = render();
-    await act(async () => {});
-    await advance(10_000);
-
-    await act(async () => emitPrediction(prediction));
-
-    expect(result.current.prediction).toEqual(prediction);
-    expect(result.current.status).toBe("measuring");
-  });
-
-  it("never sends frames or landmarks to a server", async () => {
-    render();
-    await act(async () => {});
-    await advance(10_000);
-
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("drops backlogged frames and samples at the configured interval only", async () => {
-    render();
-    await act(async () => {});
-    // 10ms 간격으로 프레임이 밀려 들어와도 100ms 주기로만 표본을 뽑는다.
-    for (let timestamp = 0; timestamp <= 500; timestamp += 10) {
-      await act(async () => frames.tick(timestamp));
-    }
-
-    expect(detect).toHaveBeenCalledTimes(6);
-  });
-
-  it("becomes unmeasurable while no face is detected", async () => {
-    detect.mockReturnValue(null);
+  it("exposes the status the session reports", async () => {
     const { result } = render();
     await act(async () => {});
     await advance(1_000);
 
-    expect(result.current.status).toBe("unmeasurable");
-    expect(submit).not.toHaveBeenCalled();
+    expect(result.current.status).toBe("collecting");
   });
 
-  it("disables judgement but keeps the loop torn down when the model is unavailable", async () => {
+  it("surfaces the judgement the session produces", async () => {
     const { result } = render();
     await act(async () => {});
     await advance(10_000);
 
-    await act(async () => emitFailure({ kind: "modelUnavailable", message: "모델 없음" }));
+    await act(async () => emitPrediction(PREDICTION));
 
-    expect(result.current.status).toBe("unavailable");
-    expect(frames.pending).toBe(0);
+    expect(result.current.prediction).toEqual(PREDICTION);
+    expect(result.current.status).toBe("measuring");
   });
 
-  it("keeps judging after a single failed inference", async () => {
-    const { result } = render();
+  it("notifies the caller of predictions and status changes", async () => {
+    render();
+    await act(async () => {});
+    await advance(1_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
+    expect(onStatusChange).toHaveBeenCalledWith("collecting");
+    expect(onStatusChange).toHaveBeenCalledWith("measuring");
+  });
+
+  it("does not re-render once per sample while the status is unchanged", async () => {
+    render();
+    await act(async () => {});
+    const before = renderCount;
+
+    // 표본 99회. 세션은 표본마다 상태를 보고하지만 값이 그대로면 렌더가 따라 늘면 안 된다.
+    await advance(9_900, 100);
+
+    // React 는 같은 값을 돌려주는 첫 setState 에서 한 번은 렌더하고 그 뒤로 건너뛴다.
+    expect(renderCount - before).toBeLessThanOrEqual(1);
+  });
+
+  it("does not surface the previous session's judgement after the camera is turned back on", async () => {
+    const view = render();
     await act(async () => {});
     await advance(10_000);
+    await act(async () => emitPrediction(PREDICTION));
+    expect(view.result.current.prediction).toEqual(PREDICTION);
 
-    await act(async () => emitFailure({ kind: "inferenceFailed", message: "추론 실패" }));
-    await advance(20_100, 10_100);
+    await act(async () => view.rerender({ camera: "off" }));
+    await act(async () => view.rerender({ camera: "on" }));
 
-    expect(result.current.status).not.toBe("unavailable");
-    expect(submit).toHaveBeenCalledTimes(2);
+    expect(view.result.current.prediction).toBeNull();
+    expect(view.result.current.status).toBe("collecting");
   });
 
-  it("stops detection and releases the worker when the camera is turned off", async () => {
+  it("stops the session when the camera is turned off", async () => {
     const view = render();
     await act(async () => {});
     await advance(1_000);
@@ -241,26 +212,7 @@ describe("useAttentionDetection", () => {
     expect(frames.pending).toBe(0);
   });
 
-  it("does not surface the previous session's judgement after the camera is turned back on", async () => {
-    const prediction: AttentionPrediction = {
-      label: "Engaged",
-      probabilities: [0.1, 0.1, 0.7, 0.1],
-    };
-    const view = render();
-    await act(async () => {});
-    await advance(10_000);
-    await act(async () => emitPrediction(prediction));
-    expect(view.result.current.prediction).toEqual(prediction);
-
-    await act(async () => view.rerender({ camera: "off" }));
-    await act(async () => view.rerender({ camera: "on" }));
-
-    // 껐다 켠 뒤에는 이전 세션의 판정이 최신 판정처럼 보여선 안 된다.
-    expect(view.result.current.prediction).toBeNull();
-    expect(view.result.current.status).toBe("collecting");
-  });
-
-  it("releases MediaPipe and the worker on unmount", async () => {
+  it("stops the session on unmount", async () => {
     const view = render();
     await act(async () => {});
     await advance(1_000);
