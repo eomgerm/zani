@@ -23,7 +23,8 @@ public class SessionExpiryScheduler {
         try {
             expireDueSessionsUseCase.expireDueSessions();
         } catch (RuntimeException exception) {
-            log.warn("Session expiry sweep failed: {}", exception.getMessage());
+            // 스케줄러는 예외를 삼켜 다음 주기를 살리므로, 여기서 스택트레이스를 남기지 않으면 원인이 사라진다.
+            log.warn("Session expiry sweep failed", exception);
         }
     }
 }

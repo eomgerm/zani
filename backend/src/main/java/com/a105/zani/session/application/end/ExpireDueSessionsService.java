@@ -41,7 +41,8 @@ public class ExpireDueSessionsService implements ExpireDueSessionsUseCase {
                     ended++;
                 }
             } catch (RuntimeException exception) {
-                log.error("Failed to end expired session {}: {}", session.id(), exception.getMessage());
+                // 예외 객체를 함께 넘겨 스택트레이스를 남긴다. 한 건 실패의 원인을 로그만으로 추적할 수 있어야 한다.
+                log.error("Failed to end expired session {}", session.id(), exception);
             }
         }
         if (ended > 0) {
