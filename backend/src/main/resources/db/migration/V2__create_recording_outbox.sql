@@ -6,7 +6,7 @@
 CREATE TABLE `recording_outbox` (
     `id`              BIGINT        NOT NULL COMMENT 'TSID 기본키',
     `dedup_key`       VARCHAR(200)  NOT NULL COMMENT '중복 방지 키(예: track:{sessionId}:{trackSid})',
-    `outbox_type`     VARCHAR(40)   NOT NULL COMMENT 'SESSION_RECORDING_ENROLLED 또는 START_TRACK_EGRESS',
+    `outbox_type`     VARCHAR(40)   NOT NULL COMMENT '작업 종류(START_TRACK_EGRESS)',
     `session_id`      BIGINT        NOT NULL COMMENT '대상 세션 ID',
     `payload`         VARCHAR(2000) NOT NULL COMMENT '작업 수행에 필요한 데이터(JSON, 익명 alias만 포함)',
     `status`          VARCHAR(20)   NOT NULL COMMENT 'PENDING, IN_PROGRESS, COMPLETED 또는 FAILED',
