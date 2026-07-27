@@ -1,0 +1,20 @@
+{
+  "schema": "landmark_78_v1",
+  "input_name": "sequence",
+  "input_shape": [
+    "batch",
+    3,
+    100,
+    78
+  ],
+  "output_name": "logits",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "window_seconds": 10.0,
+  "segment_count": 100,
+  "sample_fps": 10.0
+}

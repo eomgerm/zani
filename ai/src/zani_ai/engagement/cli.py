@@ -29,6 +29,21 @@ def _device(value: str) -> str:
     return value
 
 
+def _sample_fps(value: str) -> float:
+    """argparse type for ``--sample-fps``: a positive frame rate.
+
+    10 keeps the original ``raw_frames_v1`` cache; 30 matches the source videos
+    and the paper, and writes its own ``raw_frames_30fps_v1`` cache.
+    """
+    try:
+        rate = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"sample-fps must be a number, got {value!r}") from error
+    if not 0 < rate <= 120:
+        raise argparse.ArgumentTypeError(f"sample-fps must be in (0, 120], got {rate}")
+    return rate
+
+
 def _add_experiment_options(parser: argparse.ArgumentParser) -> None:
     """Options every ``reproduce-*``/``finalize-*`` subcommand shares."""
     parser.add_argument("--features", type=Path, required=True)
@@ -126,6 +141,7 @@ def _extract_raw(args: argparse.Namespace) -> int:
         workers=args.workers,
         progress_every=args.progress_every,
         max_excluded_fraction=args.max_excluded_fraction,
+        sample_fps=args.sample_fps,
     )
     print(
         f"Raw features extracted | included={len(manifest.included)} "
@@ -137,11 +153,20 @@ def _extract_raw(args: argparse.Namespace) -> int:
 def _build_features(args: argparse.Namespace) -> int:
     from zani_ai.engagement import representations
     from zani_ai.engagement.features import get_schema
-    from zani_ai.engagement.representations import TokenRepresentation, LandmarkSequenceRepresentation
+    from zani_ai.engagement.representations import (
+        LandmarkSequenceRepresentation,
+        TokenRepresentation,
+    )
 
     contract = _load_contract(args)
-    if args.schema == "landmark_78_v1":
-        representation = LandmarkSequenceRepresentation()
+    representation: representations.Representation
+    if args.schema.startswith("landmark_78"):
+        representation = LandmarkSequenceRepresentation.for_sample_fps(args.sample_fps)
+        if representation.name != args.schema:
+            raise ValueError(
+                f"--schema {args.schema} does not match --sample-fps {args.sample_fps}, "
+                f"which produces {representation.name}"
+            )
     else:
         representation = TokenRepresentation(get_schema(args.schema))
     manifest_path = representations.build_feature_manifest(
@@ -302,6 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract_raw.add_argument("--face-landmarker-model", type=Path, required=True)
     extract_raw.add_argument("--output", type=Path, required=True)
     extract_raw.add_argument("--workers", type=int, default=4)
+    extract_raw.add_argument("--sample-fps", type=_sample_fps, default=10.0)
     extract_raw.add_argument("--progress-every", type=int, default=25)
     extract_raw.add_argument("--max-excluded-fraction", type=float, default=0.05)
     extract_raw.set_defaults(handler=_extract_raw)
@@ -312,7 +338,20 @@ def build_parser() -> argparse.ArgumentParser:
     build_features.add_argument("--raw-root", type=Path, required=True)
     build_features.add_argument("--output", type=Path, required=True)
     build_features.add_argument(
-        "--schema", choices=("mediapipe_98_v1", "mediapipe_132_v1", "landmark_78_v1"), required=True
+        "--schema",
+        choices=(
+            "mediapipe_98_v1",
+            "mediapipe_132_v1",
+            "landmark_78_v1",
+            "landmark_78_300_v1",
+        ),
+        required=True,
+    )
+    build_features.add_argument(
+        "--sample-fps",
+        type=_sample_fps,
+        default=10.0,
+        help="rate the raw cache was extracted at; must match --schema",
     )
     _add_data_options(build_features)
     build_features.set_defaults(handler=_build_features)
@@ -342,6 +381,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0d", "E0-D", "E0-D (sqrt-balanced class weights)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
+        ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
     ):
         reproduce = commands.add_parser(
             f"reproduce-{command}",

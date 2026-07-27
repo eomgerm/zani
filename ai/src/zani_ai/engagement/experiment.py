@@ -22,6 +22,7 @@ from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
 from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
+from zani_ai.engagement.representations import landmark_sequence_name
 from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
 from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
 from zani_ai.engagement.training import (
@@ -206,12 +207,48 @@ E1A_SPEC = ExperimentSpec(
 )
 
 
+# E1-B adds the paper's temporal resolution on top of E1-A. The paper feeds all
+# 300 frames of a 10s clip at 30 FPS; we sample 10 FPS, keeping one frame in
+# three. Its Table 5 reports 0.7124 -> 0.6813 from subsampling every 2nd frame
+# alone, so this is the largest remaining difference and the last untested one.
+#
+# It needs its own raw cache: SAMPLE_FPS discards frames during extraction, so
+# `raw_frames_v1` physically cannot supply 300 steps and the source videos must
+# be re-extracted at 30 FPS.
+E1B_SPEC = ExperimentSpec(
+    "E1-B",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=landmark_sequence_name(300),
+    build_model=stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 300, 78),
+    needs_landmark_graph=True,
+)
+
+
 #: Every reproducible protocol, keyed by the name it is known by on the CLI
 #: and in ``summary.json``. Lets callers dispatch on the protocol string
 #: instead of duplicating a handler per experiment.
 SPECS: dict[str, ExperimentSpec] = {
     spec.protocol: spec
-    for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E0C_SPEC, E0D_SPEC, E1_SPEC, E1A_SPEC)
+    for spec in (
+        E0_SPEC,
+        E0A_SPEC,
+        E0B_SPEC,
+        E0C_SPEC,
+        E0D_SPEC,
+        E1_SPEC,
+        E1A_SPEC,
+        E1B_SPEC,
+    )
 }
 
 
@@ -1134,6 +1171,7 @@ __all__ = [
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",
+    "E1B_SPEC",
     "E1_SPEC",
     "SPECS",
     "E0ExperimentResult",

@@ -26,6 +26,7 @@ from zani_ai.engagement.experiment import (
     E0D_SPEC,
     E1_SPEC,
     E1A_SPEC,
+    E1B_SPEC,
     SPECS,
     ExperimentSpec,
     _build_configuration,
@@ -52,6 +53,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
     ("E1-A", "cuda"): "5bc0d7f9ae6420c53d3b1a3d107d2a2165b5ee22aa88541a24468051f608d07e",
+    ("E1-B", "cpu"): "f97f99b67dbfcd9175eb4ba5a5a6f0d55af19194c914f9425466b9d458406326",
+    ("E1-B", "cuda"): "b2f2ddf8514256a654ecb15a83c08a6156aef9838dac7939bb2a7c9bae10ef9e",
 }
 
 SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
@@ -62,6 +65,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0D_SPEC,
     E1_SPEC,
     E1A_SPEC,
+    E1B_SPEC,
 )
 
 
@@ -152,6 +156,30 @@ def test_e1a_early_stopping_cannot_fire_before_the_budget_ends() -> None:
 
     assert isinstance(stopping, dict)
     assert stopping["patience"] == E1A_SPEC.max_epochs
+
+
+def test_e1b_differs_from_e1a_only_in_temporal_resolution() -> None:
+    """E1-B is E1-A at the paper's frame rate; nothing else may move.
+
+    The paper feeds all 300 frames of a 10s clip at 30 FPS while we sample 10,
+    and its Table 5 attributes 3.1%p to subsampling alone. Isolating that means
+    every training condition stays exactly as E1-A set it.
+    """
+    e1a = _build_configuration(E1A_SPEC, "cuda")
+    e1b = _build_configuration(E1B_SPEC, "cuda")
+
+    differing = {key for key in e1a | e1b if e1a.get(key) != e1b.get(key)}
+    assert differing == {"representation"}
+    assert E1B_SPEC.array_shape == (3, 300, 78)
+    assert E1A_SPEC.array_shape == (3, 100, 78)
+    for field in ("learning_rate", "batch_size", "max_epochs", "patience", "lr_step"):
+        assert getattr(E1B_SPEC, field) == getattr(E1A_SPEC, field)
+
+
+def test_e1b_reads_its_own_representation() -> None:
+    """A 300-step cache must not be mistaken for E1's 100-step one."""
+    assert E1B_SPEC.schema_name == "landmark_78_300_v1"
+    assert E1B_SPEC.schema_name != E1A_SPEC.schema_name
 
 
 # --- environment drift ------------------------------------------------------
