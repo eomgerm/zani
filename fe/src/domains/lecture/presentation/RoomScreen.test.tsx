@@ -285,4 +285,14 @@ describe("RoomScreen end-session control", () => {
 
     expect(screen.queryByTestId("end-session-button")).toBeNull();
   });
+
+  it("hides the end-class button until the role is confirmed", () => {
+    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 이때 종료 버튼이 보이면 학생에게도 잠시 노출된다.
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("end-session-button")).toBeNull();
+  });
 });

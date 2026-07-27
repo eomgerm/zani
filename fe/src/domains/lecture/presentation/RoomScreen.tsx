@@ -182,8 +182,12 @@ function RoomScreenContent({
         >
           <ChatIcon />
         </PanelToggle>
-        {/* 강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다. */}
-        {isInstructor && (
+        {/*
+          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
+          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
+          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
+        */}
+        {connected && isInstructor && (
           <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
         )}
       </div>
