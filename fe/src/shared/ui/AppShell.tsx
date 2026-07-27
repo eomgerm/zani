@@ -5,52 +5,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
+import { CardsIcon, GearIcon, HomeIcon } from "./icons";
 
 export type AppShellMember = {
   displayName: string;
   email: string;
 };
 
-type IconName = "home" | "cards" | "gear";
-
-const NAV_ITEMS: { label: string; href: string; icon: IconName }[] = [
-  { label: "홈", href: "/home", icon: "home" },
-  { label: "내 강의실", href: "/my-lectures", icon: "cards" },
-  { label: "계정 설정", href: "/settings", icon: "gear" },
+const NAV_ITEMS: { label: string; href: string; Icon: typeof HomeIcon }[] = [
+  { label: "홈", href: "/home", Icon: HomeIcon },
+  { label: "내 강의실", href: "/my-lectures", Icon: CardsIcon },
+  { label: "계정 설정", href: "/settings", Icon: GearIcon },
 ];
-
-function NavIcon({ name }: { name: IconName }) {
-  const common = {
-    width: 18,
-    height: 18,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 2,
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-  if (name === "home")
-    return (
-      <svg {...common}>
-        <path d="M4 11l8-7 8 7" />
-        <path d="M6 10v9h12v-9" />
-      </svg>
-    );
-  if (name === "cards")
-    return (
-      <svg {...common}>
-        <rect x="3" y="4" width="8" height="16" rx="2" />
-        <rect x="13" y="4" width="8" height="9" rx="2" />
-      </svg>
-    );
-  return (
-    <svg {...common}>
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18" />
-    </svg>
-  );
-}
 
 /**
  * 홈/내 강의실/리포트/설정 화면을 감싸는 앱 셸.
@@ -79,20 +45,21 @@ export function AppShell({
         </div>
 
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => {
-            const active = pathname.startsWith(item.href);
+          {NAV_ITEMS.map(({ label, href, Icon }) => {
+            const active = pathname.startsWith(href);
             return (
               <Link
-                key={item.href}
-                href={item.href}
-                className={`flex w-full items-center gap-[11px] whitespace-nowrap rounded-xl px-3 py-[11px] text-[14.5px] no-underline ${
-                  active
-                    ? "bg-primary-soft font-extrabold text-primary"
-                    : "font-semibold text-[#8388a6]"
+                key={href}
+                href={href}
+                className={`flex w-full items-center gap-[13px] whitespace-nowrap rounded-[13px] px-3.5 py-3 text-[14.5px] no-underline ${
+                  active ? "bg-primary-soft font-extrabold text-primary" : "font-bold text-ink-sub"
                 }`}
               >
-                <NavIcon name={item.icon} />
-                {item.label}
+                {/* 비활성 상태에서는 아이콘만 라벨보다 옅게 둔다 */}
+                <span className={`flex shrink-0 ${active ? "" : "text-[#8388a6]"}`}>
+                  <Icon />
+                </span>
+                {label}
               </Link>
             );
           })}
@@ -116,7 +83,7 @@ export function AppShell({
           )}
           <button
             onClick={() => setPopOpen((v) => !v)}
-            className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-line-mint bg-surface p-2 text-left font-sans"
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-line-mint bg-surface p-2 text-left font-sans hover:bg-[#f6f7fd]"
           >
             <Avatar initial={(member?.displayName ?? "?").charAt(0)} size={36} />
             <span className="min-w-0 flex-1">

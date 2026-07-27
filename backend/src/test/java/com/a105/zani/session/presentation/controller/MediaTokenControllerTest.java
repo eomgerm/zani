@@ -37,13 +37,13 @@ class MediaTokenControllerTest {
     }
 
     @Test
-    void 인증이_없으면_401() throws Exception {
+    void respondsUnauthorizedWithoutAuthentication() throws Exception {
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/media-token", MISSING_SESSION_ID))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void 세션_멤버가_아니면_403() throws Exception {
+    void respondsForbiddenWhenTheUserIsNotASessionMember() throws Exception {
         String accessToken =
                 tokenProvider.issueAccessToken(String.valueOf(NON_MEMBER_ID)).value();
 

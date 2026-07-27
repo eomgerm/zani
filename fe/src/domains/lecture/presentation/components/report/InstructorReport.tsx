@@ -47,7 +47,7 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
       </Card>
 
       <Card className="mb-5 px-6 pb-3.5 pt-[22px]">
-        <FocusLegend title="학습 흐름" scope="전체 집중" />
+        <FocusLegend title="학습 흐름" scope="전체 집중도" />
         <FocusFlowChart segments={flow} activeSeg={activeSeg} onSelect={onSelect} />
       </Card>
 
@@ -61,7 +61,7 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
           </span>
         </div>
         <div className="mb-3 mt-1.5 text-xs font-bold text-ink-faint">
-          수업 내용 기반 구간 · 전체 집중 점수 (0–4)
+          수업 내용 기반 구간 · 전체 집중도 점수 (0–4)
         </div>
         <TimelineSegments
           segments={learnSegments}

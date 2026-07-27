@@ -32,6 +32,18 @@ public class SessionParticipantPersistenceAdapter implements SessionParticipantR
     }
 
     @Override
+    public Optional<SessionParticipant> findById(Long id) {
+        return sessionParticipantJpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public java.util.List<SessionParticipant> findBySessionId(Long sessionId) {
+        return sessionParticipantJpaRepository.findBySessionIdOrderByIdAsc(sessionId).stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public SessionParticipant save(SessionParticipant sessionParticipant) {
         try {
             SessionParticipantJpaEntity entity = mapper.toEntity(sessionParticipant);

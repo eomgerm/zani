@@ -40,7 +40,7 @@ public class LiveKitTokenAdapter implements LiveKitTokenPort {
             throw new LiveKitNotConfiguredException();
         }
 
-        String roomName = "zani-" + properties.environment() + "-session-" + request.sessionId();
+        String roomName = LiveKitRoomNames.sessionRoom(properties.environment(), request.sessionId());
 
         AccessToken token = new AccessToken(properties.apiKey(), properties.apiSecret());
         token.setIdentity(request.identity());

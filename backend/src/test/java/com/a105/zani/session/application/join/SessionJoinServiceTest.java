@@ -95,6 +95,18 @@ class SessionJoinServiceTest {
         private int saveCount = 0;
 
         @Override
+        public java.util.Optional<SessionParticipant> findById(Long id) {
+            return store.values().stream().filter(p -> id.equals(p.id())).findFirst();
+        }
+
+        @Override
+        public java.util.List<SessionParticipant> findBySessionId(Long sessionId) {
+            return store.values().stream()
+                    .filter(p -> sessionId.equals(p.sessionId()))
+                    .toList();
+        }
+
+        @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(store.get(key(sessionId, userId)));
         }

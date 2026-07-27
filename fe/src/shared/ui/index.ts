@@ -6,10 +6,36 @@ export { Card } from "./Card";
 export { Select, ChevronDownIcon } from "./Select";
 export type { SelectOption } from "./Select";
 export { StatCard } from "./StatCard";
-export { DistributionBar } from "./DistributionBar";
 export { FocusFlowChart } from "./FocusFlowChart";
 export type { FlowSegment } from "./FocusFlowChart";
 export { EvalDonuts } from "./EvalDonuts";
 export type { EvalDatum } from "./EvalDonuts";
 export { AppShell } from "./AppShell";
 export type { AppShellMember } from "./AppShell";
+export {
+  HomeIcon,
+  CardsIcon,
+  GearIcon,
+  SearchIcon,
+  SortIcon,
+  ListIcon,
+  CalendarIcon,
+  ClockIcon,
+  BookmarkIcon,
+  MenuIcon,
+  DownloadIcon,
+  FileIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PeopleIcon,
+  ChatIcon,
+  MicIcon,
+  MicOffIcon,
+  CameraIcon,
+  ScreenShareIcon,
+  HandIcon,
+  ReactionIcon,
+  CloseIcon,
+  KickIcon,
+  MonitorIcon,
+} from "./icons";

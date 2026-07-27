@@ -8,6 +8,8 @@ import { endSession, EndSessionRequestError, type SessionEnder } from "../../../
 
 type EndSessionButtonProps = {
   sessionId: string;
+  /** 종료 성공 후 이동할 경로. 강사는 사후 메모 작성으로 이어진다. */
+  redirectTo?: string;
   /** 종료 어댑터. 테스트에서 대체한다. */
   endSessionRequest?: SessionEnder;
 };
@@ -28,6 +30,7 @@ function failureMessage(error: unknown): string {
  */
 export function EndSessionButton({
   sessionId,
+  redirectTo = "/home",
   endSessionRequest = endSession,
 }: EndSessionButtonProps) {
   const router = useRouter();
@@ -52,14 +55,14 @@ export function EndSessionButton({
     setError(null);
     try {
       await endSessionRequest(sessionId, accessToken);
-      router.push("/home");
+      router.push(redirectTo);
     } catch (failure) {
       requested.current = false;
       setEnding(false);
       setConfirming(false);
       setError(failureMessage(failure));
     }
-  }, [accessToken, endSessionRequest, router, sessionId]);
+  }, [accessToken, endSessionRequest, redirectTo, router, sessionId]);
 
   if (!confirming) {
     return (

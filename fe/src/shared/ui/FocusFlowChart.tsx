@@ -76,6 +76,8 @@ export function FocusFlowChart({ segments, activeSeg, onSelect }: FocusFlowChart
     <ResponsiveContainer width="100%" height={250}>
       <ComposedChart data={data} margin={{ top: 46, right: 18, left: 4, bottom: 4 }}>
         <defs>
+          {/* 면적 그라디언트만 구 브랜드 그린(#1cdd93)을 유지한다.
+              프로토타입(focus-flow-chart.js)도 이 그라디언트에만 같은 값을 쓰므로 primary 교체 대상이 아니다. */}
           <linearGradient id="flowg" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#1cdd93" stopOpacity={0.2} />
             <stop offset="100%" stopColor="#1cdd93" stopOpacity={0.02} />
@@ -147,7 +149,7 @@ export function FocusFlowChart({ segments, activeSeg, onSelect }: FocusFlowChart
             <ReferenceLine
               key={`c${i}`}
               x={x}
-              stroke={active ? "#1cdd93" : c}
+              stroke={active ? "#10b981" : c}
               strokeWidth={active ? 1.6 : 1}
               strokeDasharray="4 4"
               strokeOpacity={active ? 0.7 : 0.4}
@@ -167,8 +169,8 @@ export function FocusFlowChart({ segments, activeSeg, onSelect }: FocusFlowChart
                       cx={vx}
                       cy={16}
                       r={r}
-                      fill={active ? "#1cdd93" : "#fff"}
-                      stroke="#1cdd93"
+                      fill={active ? "#10b981" : "#fff"}
+                      stroke={active ? "#10b981" : c}
                       strokeWidth={active ? 2.8 : 1.8}
                     />
                     <text
