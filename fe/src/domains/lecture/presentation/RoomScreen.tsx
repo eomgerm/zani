@@ -14,6 +14,7 @@ import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
+import { EndSessionButton } from "./components/room/EndSessionButton";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 
 /**
@@ -30,15 +31,16 @@ type RoomScreenProps = {
 export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent roomTitle={roomTitle} expiresAt={expiresAt} />
+      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} expiresAt={expiresAt} />
     </RoomProvider>
   );
 }
 
 function RoomScreenContent({
+  sessionId,
   roomTitle = "React 상태관리 심화",
   expiresAt,
-}: Pick<RoomScreenProps, "roomTitle" | "expiresAt">) {
+}: Pick<RoomScreenProps, "sessionId" | "roomTitle" | "expiresAt">) {
   const { connectionState, retry } = useRoomConnection();
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [role, setRole] = useState<"instructor" | "student">("instructor");
@@ -123,7 +125,11 @@ function RoomScreenContent({
         >
           {isInstructor ? "강사" : "학생"}
         </button>
-        <Link href="/home" className="z-btn z-btn-danger rounded-[11px] px-[18px] py-[9px] text-[13.5px]">
+        {isInstructor && <EndSessionButton sessionId={sessionId} />}
+        <Link
+          href="/home"
+          className="z-btn rounded-[11px] border border-line-muted bg-surface px-[18px] py-[9px] text-[13.5px] text-ink-sub"
+        >
           나가기
         </Link>
       </div>

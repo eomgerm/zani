@@ -8,6 +8,8 @@ export { RoomProvider, useRoomConnection } from "./presentation/RoomProvider";
 export { useRoomParticipants } from "./presentation/useRoomParticipants";
 export type { UseRoomParticipantsResult } from "./presentation/useRoomParticipants";
 export { useRoomReconnect } from "./presentation/useRoomReconnect";
+export { endSession, EndSessionRequestError } from "./infrastructure/endSessionApi";
+export type { SessionEnder } from "./infrastructure/endSessionApi";
 export { useSessionTimeWarning, WARNING_THRESHOLD_MINUTES } from "./presentation/useSessionTimeWarning";
 export type { SessionTimeWarningState } from "./presentation/useSessionTimeWarning";
 export type {

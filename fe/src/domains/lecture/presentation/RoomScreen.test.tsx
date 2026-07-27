@@ -12,6 +12,11 @@ vi.mock("./RoomProvider", () => ({
   useRoomConnection: () => roomConnection,
 }));
 
+// 강사 종료 버튼이 App Router를 쓰므로, 라우터가 없는 단위 테스트에서는 대체한다.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 import { RoomScreen } from "./RoomScreen";
 
 afterEach(() => {
