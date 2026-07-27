@@ -241,6 +241,25 @@ describe("useEngagementDetection", () => {
     expect(frames.pending).toBe(0);
   });
 
+  it("does not surface the previous session's judgement after the camera is turned back on", async () => {
+    const prediction: EngagementPrediction = {
+      label: "Engaged",
+      probabilities: [0.1, 0.1, 0.7, 0.1],
+    };
+    const view = render();
+    await act(async () => {});
+    await advance(10_000);
+    await act(async () => emitPrediction(prediction));
+    expect(view.result.current.prediction).toEqual(prediction);
+
+    await act(async () => view.rerender({ camera: "off" }));
+    await act(async () => view.rerender({ camera: "on" }));
+
+    // 껐다 켠 뒤에는 이전 세션의 판정이 최신 판정처럼 보여선 안 된다.
+    expect(view.result.current.prediction).toBeNull();
+    expect(view.result.current.status).toBe("collecting");
+  });
+
   it("releases MediaPipe and the worker on unmount", async () => {
     const view = render();
     await act(async () => {});

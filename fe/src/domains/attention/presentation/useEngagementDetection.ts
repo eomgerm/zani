@@ -130,12 +130,9 @@ export function useEngagementDetection(
     let hasPrediction = false;
     const featureWindow = new RollingFeatureWindow();
 
-    /** 이번 카메라 세션의 보고로 상태를 갱신한다. 이전 세션 값은 이어받지 않는다. */
+    /** 이번 카메라 세션의 보고로 상태를 갱신한다. */
     function report(patch: Partial<Omit<ReportedState, "camera">>): void {
-      setReported((current) => {
-        const base = current.camera === camera ? current : INITIAL_REPORT;
-        return { ...base, ...patch, camera };
-      });
+      setReported((current) => ({ ...current, ...patch, camera }));
     }
 
     function stopLoop(): void {
@@ -242,6 +239,10 @@ export function useEngagementDetection(
       landmarker = null;
       inference.terminate();
       featureWindow.clear();
+      // 세션이 끝나는 시점에 보고를 버린다. 카메라를 껐다 켜면 camera 값이 "on" 으로
+      // 되돌아와 세션을 값으로 구분할 수 없으므로, 여기서 지우지 않으면 이전 세션의
+      // 판정이 새 세션의 최신 판정처럼 노출된다.
+      setReported(INITIAL_REPORT);
     };
   }, [camera, videoRef, sampleIntervalMs, createLandmarker, createInferenceClient, scheduler]);
 
