@@ -39,7 +39,7 @@ public class GmsHealthHttpAdapter implements GmsHealthPort {
     }
 
     @Override
-    public boolean isWhisperAvailable() {
+    public boolean isGmsReachable() {
         try {
             gmsRestClient
                     .post()

@@ -18,8 +18,8 @@ public class GmsHealthMockAdapter implements GmsHealthPort {
     private static final Logger log = LoggerFactory.getLogger(GmsHealthMockAdapter.class);
 
     @Override
-    public boolean isWhisperAvailable() {
-        log.info("GMS mock mode: reporting whisper-1 available without a real call");
+    public boolean isGmsReachable() {
+        log.info("GMS mock mode: reporting GMS reachable without a real call");
         return true;
     }
 }

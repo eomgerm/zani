@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GmsHealthMockAdapterTest {
 
     @Test
-    void mockAlwaysReportsAvailableWithoutRealCall() {
-        assertTrue(new GmsHealthMockAdapter().isWhisperAvailable());
+    void mockAlwaysReportsReachableWithoutRealCall() {
+        assertTrue(new GmsHealthMockAdapter().isGmsReachable());
     }
 }

@@ -2,6 +2,7 @@ package com.a105.zani.session.application.create;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -18,6 +19,7 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CreateSessionServiceTest {
 
@@ -49,6 +51,40 @@ class CreateSessionServiceTest {
                 InviteCodeGenerationFailedException.class,
                 () -> service.create(new CreateSessionCommand(INSTRUCTOR_ID, "재시도 실패 테스트")));
         assertEquals(5, repository.attemptCount());
+    }
+
+    @Test
+    void publishesSessionCreatedEventOnSuccess() {
+        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
+        List<Object> published = new ArrayList<>();
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository),
+                new AlwaysAcquireLockPort(),
+                new StubInviteCodeGenerator("CCCCCCCC"),
+                published::add);
+
+        CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "이벤트 발행 테스트"));
+
+        assertEquals(1, published.size());
+        SessionCreatedEvent event = (SessionCreatedEvent) published.get(0);
+        assertEquals(result.sessionId(), event.sessionId());
+        assertEquals(INSTRUCTOR_ID, event.instructorId());
+    }
+
+    @Test
+    void doesNotPublishSessionCreatedEventWhenCreationFails() {
+        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
+        List<Object> published = new ArrayList<>();
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository),
+                new AlwaysAcquireLockPort(),
+                new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA"),
+                published::add);
+
+        assertThrows(
+                InviteCodeGenerationFailedException.class,
+                () -> service.create(new CreateSessionCommand(INSTRUCTOR_ID, "이벤트 미발행 테스트")));
+        assertTrue(published.isEmpty(), "세션 생성이 실패하면 이벤트를 발행하지 않아야 한다");
     }
 
     private static class StubInviteCodeGenerator extends InviteCodeGenerator {

@@ -29,7 +29,7 @@ public class CoachingAvailabilityService implements CheckCoachingAvailabilityUse
     public boolean check(CheckCoachingAvailabilityCommand command) {
         boolean available;
         try {
-            available = gmsHealthPort.isWhisperAvailable();
+            available = gmsHealthPort.isGmsReachable();
         } catch (RuntimeException exception) {
             log.warn("coaching health check failed for session {}: {}", command.sessionId(), exception.toString());
             available = false;
