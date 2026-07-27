@@ -22,6 +22,8 @@ from zani_ai.engagement.experiment import (
     E0_SPEC,
     E0A_SPEC,
     E0B_SPEC,
+    E0C_SPEC,
+    E0D_SPEC,
     E1_SPEC,
     SPECS,
     ExperimentSpec,
@@ -41,11 +43,22 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-A", "cuda"): "cd7933ba51f218cb2129f9e2f985571afa3e78c4a72ce1d0f6444adbcf8b232d",
     ("E0-B", "cpu"): "dec33b146aceae62b693120fb0089e3a5a350b08cbe6b068a8190ada43fd545f",
     ("E0-B", "cuda"): "d0d1162228bcbd42b45045e5a9084ad54e32f2483af47e4982672045c7d4b175",
+    ("E0-C", "cpu"): "45d96d1fac4109e99580586b0c94d84da48b883de1e51e25640ef90aeed839cf",
+    ("E0-C", "cuda"): "05f8a91f2a575c91d4f92c7970d1da589faef497fc210a0e767021a687e41e5b",
+    ("E0-D", "cpu"): "124b3fca0d77a2e2c7e5dbfdae69c8e4f4815069f456499e8c6f2526d4abaf1f",
+    ("E0-D", "cuda"): "7ac3903839d2d583c323aaf376ff1424814753dfe33059a949896525ae4a5049",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
 }
 
-SPECS_TUPLE: tuple[ExperimentSpec, ...] = (E0_SPEC, E0A_SPEC, E0B_SPEC, E1_SPEC)
+SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
+    E0_SPEC,
+    E0A_SPEC,
+    E0B_SPEC,
+    E0C_SPEC,
+    E0D_SPEC,
+    E1_SPEC,
+)
 
 
 @pytest.mark.parametrize("spec", SPECS_TUPLE, ids=lambda spec: spec.protocol)
@@ -80,6 +93,32 @@ def test_every_protocol_is_covered() -> None:
 
 def test_spec_registry_matches_the_pinned_specs() -> None:
     assert {spec.protocol: spec for spec in SPECS_TUPLE} == SPECS
+
+
+@pytest.mark.parametrize("spec", SPECS_TUPLE, ids=lambda spec: spec.protocol)
+def test_unweighted_protocols_keep_the_original_false_literal(spec: ExperimentSpec) -> None:
+    """`class_weighting` was a bool before the weighted protocols existed.
+
+    Emitting the scheme name for unweighted specs too would have rewritten
+    every existing protocol's hash and discarded their completed seeds.
+    """
+    recorded = _build_configuration(spec, "cuda")["class_weighting"]
+
+    if spec.class_weighting == "none":
+        assert recorded is False
+    else:
+        assert recorded == spec.class_weighting
+
+
+def test_weighting_alone_separates_e0_from_its_variants() -> None:
+    """E0-C/E0-D differ from E0 in exactly one field, so the hashes must differ."""
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    for spec in (E0C_SPEC, E0D_SPEC):
+        variant = _build_configuration(spec, "cuda")
+        differing = {k for k in base | variant if base.get(k) != variant.get(k)}
+        assert differing == {"class_weighting"}
+        assert _canonical_hash(variant) != _canonical_hash(base)
 
 
 # --- environment drift ------------------------------------------------------

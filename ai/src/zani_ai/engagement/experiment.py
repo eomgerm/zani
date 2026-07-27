@@ -86,6 +86,9 @@ class ExperimentSpec:
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
+    # Loss weighting; see training.CLASS_WEIGHTING_SCHEMES. Part of the
+    # protocol identity, so changing it defines a new experiment.
+    class_weighting: str = "none"
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -104,6 +107,20 @@ class ExperimentSpec:
 E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
 E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
 E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
+
+# E0-C / E0-D vary only the loss weighting against E0. E0's errors are 89%
+# adjacent-class and its boundaries sit against the majority class
+# (Highly-Engaged is 56% of validation), so the loss -- not the encoder --
+# is what the evidence points at. E0-D softens E0-C in case full inversion
+# overcorrects: with these counts `balanced` spans ~7.7x and
+# `sqrt_balanced` ~2.8x between the largest and smallest weight.
+E0C_SPEC = ExperimentSpec(
+    "E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced"
+)
+E0D_SPEC = ExperimentSpec(
+    "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
+)
+
 
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
@@ -156,7 +173,8 @@ E1_SPEC = ExperimentSpec(
 #: and in ``summary.json``. Lets callers dispatch on the protocol string
 #: instead of duplicating a handler per experiment.
 SPECS: dict[str, ExperimentSpec] = {
-    spec.protocol: spec for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E1_SPEC)
+    spec.protocol: spec
+    for spec in (E0_SPEC, E0A_SPEC, E0B_SPEC, E0C_SPEC, E0D_SPEC, E1_SPEC)
 }
 
 
@@ -251,6 +269,16 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
     return manifest_path, hashlib.sha256(manifest_bytes).hexdigest()
 
 
+def _class_weighting_value(spec: ExperimentSpec) -> object:
+    """The ``class_weighting`` entry of the configuration dict.
+
+    Unweighted protocols keep the literal ``False`` this field has always
+    held, so E0/E0-A/E0-B/E1 hash exactly as before; weighted ones record the
+    scheme name, which gives them a distinct identity.
+    """
+    return False if spec.class_weighting == "none" else spec.class_weighting
+
+
 def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
     # Only the device *type* may enter the identity: `cuda` and `cuda:2` are
     # the same protocol on different cards and must share a hash, or moving a
@@ -274,7 +302,7 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
                 "mode": "max",
                 "patience": 20,
             },
-            "class_weighting": False,
+            "class_weighting": _class_weighting_value(spec),
             "model": {
                 **spec.model_config.to_dict(),
                 "learned_position_count": 20,
@@ -304,7 +332,7 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
             "mode": "max",
             "patience": 20,
         },
-        "class_weighting": False,
+        "class_weighting": _class_weighting_value(spec),
         "model": spec.model_config.to_dict(),
         "device": device,
         "deterministic_algorithms": True,
@@ -761,7 +789,7 @@ def reproduce_experiment(
             patience=20,
             seed=seed,
             device=device,
-            use_class_weights=False,
+            class_weighting=spec.class_weighting,
             num_workers=0,
             deterministic=True,
             model=spec.model_config,
@@ -874,6 +902,8 @@ __all__ = [
     "E0_SPEC",
     "E0A_SPEC",
     "E0B_SPEC",
+    "E0C_SPEC",
+    "E0D_SPEC",
     "E0ExperimentResult",
     "E1_SPEC",
     "SPECS",

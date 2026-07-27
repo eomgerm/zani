@@ -138,6 +138,14 @@ identity(`configuration_sha256`)에 들어가지 않으므로 `cuda`와 `cuda:2`
 PyTorch 버전, CUDA 런타임, `CUBLAS_WORKSPACE_CONFIG`, device 종류는 일치해야 하며,
 seed마다 실제 실행 환경이 `summary.json`에 기록됩니다.
 
+`reproduce-e0c`와 `reproduce-e0d`는 E0와 손실 가중치만 다른 프로토콜입니다. E0의 오분류는
+89%가 인접 등급 한 칸 차이이고 경계가 다수 클래스(Highly-Engaged, Validation의 56%)
+쪽으로 밀려 있어, 인코더가 아니라 손실이 병목으로 보이기 때문입니다. E0-C는
+`balanced`(`N / (4 × n_i)`, 이 데이터에서 최대/최소 약 7.7배), E0-D는 `sqrt_balanced`
+(`w ∝ 1/√n`, 약 2.8배)를 씁니다. 두 스킴 모두 `Σ(n_i × w_i) = N`으로 정규화되므로 손실
+크기가 유지되어 학습률을 그대로 쓸 수 있습니다. `class_weighting`은 재현성
+identity에 포함되므로 각각 별도 프로토콜이며 기존 E0 결과는 그대로 남습니다.
+
 E1은 ST-GCN 노드 토폴로지를 정의하는 `landmark_78_v1_graph.npz`가 필요합니다.
 `--graph`, 환경변수 `ZANI_LANDMARK_GRAPH`, `--features` 디렉터리, 그 부모 순으로 찾고,
 찾은 파일의 SHA-256을 `summary.json`의 `inputs.landmark_graph`에 기록합니다.
