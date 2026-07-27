@@ -12,7 +12,16 @@ dist/
 
 datasets/*
 !datasets/README.md
-artifacts/
+# 실험 기록은 저장소에 남기고 재생성 가능한 바이너리는 제외한다. summary.json 과
+# metrics.json 이 5-seed 프로토콜의 산출물이라, 저장소에 없으면 다른 사람이나 다른
+# 머신에서 돌린 결과와 비교할 수 없다. `artifacts/` 를 통째로 무시하면 git이 하위로
+# 내려가지 않아 예외를 걸 수 없으므로, 파일만 무시하고 디렉터리는 다시 포함시킨다.
+artifacts/**/*
+!artifacts/**/
+!artifacts/**/summary.json
+!artifacts/**/metrics.json
+!artifacts/**/test_results.json
+!artifacts/**/*_reproduction_report.html
 checkpoints/
 runs/
 wandb/

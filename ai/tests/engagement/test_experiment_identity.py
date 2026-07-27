@@ -29,6 +29,7 @@ from zani_ai.engagement.experiment import (
     _canonical_hash,
     _environment_matches,
     _graph_record,
+    _recorded_path,
     _validate_inputs_identity,
     stgcn_model_builder,
 )
@@ -144,6 +145,27 @@ def _graph_file(path: Path, payload: bytes = b"graph") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(payload)
     return path
+
+
+def test_recorded_path_is_relative_when_under_the_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Summaries get committed; an absolute path would land in git history."""
+    monkeypatch.chdir(tmp_path)
+    target = _graph_file(tmp_path / "datasets" / "graph.npz")
+
+    assert _recorded_path(target) == "datasets/graph.npz"
+
+
+def test_recorded_path_falls_back_to_absolute_when_outside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inside = tmp_path / "work"
+    inside.mkdir()
+    monkeypatch.chdir(inside)
+    target = _graph_file(tmp_path / "elsewhere" / "graph.npz")
+
+    assert _recorded_path(target) == str(target.resolve())
 
 
 def test_graph_record_fingerprints_the_file(tmp_path: Path) -> None:

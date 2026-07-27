@@ -363,6 +363,22 @@ def _enable_strict_determinism(device: str) -> None:
         raise RuntimeError("PyTorch strict deterministic execution could not be enabled")
 
 
+def _recorded_path(path: Path) -> str:
+    """A path as written into ``summary.json``, relative to the CWD when possible.
+
+    Summaries are committed, so an absolute path would put the operator's home
+    directory into git history and make two machines produce diffing summaries
+    for an identical run. Nothing reads these strings back -- the SHA-256 next
+    to them is what the identity checks use -- so the relative form costs
+    nothing and stays readable.
+    """
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
 def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
     """Provenance for the landmark graph, which nothing else in the repo records.
 
@@ -374,7 +390,7 @@ def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
     if graph_path is None:
         return None
     return {
-        "path": str(graph_path.resolve()),
+        "path": _recorded_path(graph_path),
         "sha256": _sha256(graph_path),
         "size_bytes": graph_path.stat().st_size,
     }
@@ -416,7 +432,7 @@ def _empty_summary(
         "protocol": spec.protocol,
         "status": "in_progress",
         "feature_manifest": {
-            "path": str(manifest_path.resolve()),
+            "path": _recorded_path(manifest_path),
             "schema": spec.schema_name,
             "sha256": manifest_sha256,
         },
