@@ -13,9 +13,15 @@ import torch
 from numpy.typing import NDArray
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from torch import Tensor, nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
-from zani_ai.engagement.contracts import CLASS_WEIGHTING_SCHEMES, LABELS, SplitName
+from zani_ai.engagement.contracts import (
+    CLASS_WEIGHTING_SCHEMES,
+    LABELS,
+    LOSS_SCHEMES,
+    SAMPLER_SCHEMES,
+    SplitName,
+)
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
 from zani_ai.engagement.model import EngagementTransformer, ModelConfig
 
@@ -95,6 +101,12 @@ class TrainingConfig:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     # "none" | "balanced" | "sqrt_balanced"; see CLASS_WEIGHTING_SCHEMES.
     class_weighting: str = "none"
+    # "cross_entropy" | "focal"; see LOSS_SCHEMES. Ignored by the CORAL head,
+    # which brings its own objective.
+    loss: str = "cross_entropy"
+    focal_gamma: float = 2.0
+    # "none" | "balanced"; see SAMPLER_SCHEMES. Applies to the training split only.
+    sampler: str = "none"
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -301,6 +313,20 @@ def _seed_everything(seed: int, *, deterministic: bool) -> None:
             raise RuntimeError("PyTorch deterministic algorithms could not be enabled")
 
 
+def _balanced_sample_weights(dataset: CachedFeatureDataset) -> Tensor:
+    """Per-*sample* draw weights that give every class the same total mass.
+
+    Unlike :func:`_class_weights`, which scales the loss, these decide how often
+    a sample is drawn. ``w = 1 / count[label]`` makes each class sum to 1, so a
+    ``len(dataset)``-draw epoch is class-uniform in expectation.
+    """
+    counts = np.bincount([entry.label_index for entry in dataset.entries], minlength=len(LABELS))
+    if np.any(counts == 0):
+        raise ValueError("balanced sampling requires every class in the training split")
+    weights = 1.0 / counts[[entry.label_index for entry in dataset.entries]]
+    return torch.as_tensor(weights, dtype=torch.double)
+
+
 def _loader(
     dataset: CachedFeatureDataset,
     config: TrainingConfig,
@@ -308,10 +334,29 @@ def _loader(
     shuffle: bool,
 ) -> DataLoader[tuple[Tensor, Tensor]]:
     generator = torch.Generator().manual_seed(config.seed)
+    if config.sampler not in SAMPLER_SCHEMES:
+        raise ValueError(f"sampler must be one of {SAMPLER_SCHEMES}, got {config.sampler!r}")
+    # Only the training loader is resampled. Reweighting the evaluation splits
+    # would change the distribution Macro F1 is measured on.
+    sampler = (
+        WeightedRandomSampler(
+            # `tolist()` because the sampler is typed for `Sequence[float]`; it
+            # converts straight back to a double tensor, so values are unchanged.
+            _balanced_sample_weights(dataset).tolist(),
+            num_samples=len(dataset),
+            replacement=True,
+            # Drawing with replacement is a random process; without the seeded
+            # generator the protocol would not reproduce across runs.
+            generator=generator,
+        )
+        if shuffle and config.sampler == "balanced"
+        else None
+    )
     return DataLoader(
         dataset,
         batch_size=config.batch_size,
-        shuffle=shuffle,
+        shuffle=shuffle if sampler is None else False,
+        sampler=sampler,
         num_workers=config.num_workers,
         generator=generator,
         pin_memory=torch.cuda.is_available(),
@@ -368,6 +413,43 @@ class SoftmaxObjective:
         return out.softmax(dim=1)
 
 
+class FocalObjective:
+    """Focal loss (Lin et al., 2017) over the same 4-way softmax head as E0.
+
+    ``FL = -alpha_t (1 - p_t)^gamma log(p_t)``. Where ``class_weighting`` scales
+    by class frequency, the ``(1 - p_t)^gamma`` term scales by how confidently
+    the sample is already classified, so the majority class stops dominating the
+    gradient once it is easy. The two are orthogonal and ``alpha`` composes with
+    either scheme.
+
+    Reduction matches ``nn.CrossEntropyLoss(weight=...)`` -- a weighted mean,
+    not a plain one -- so a weighted run keeps the loss scale of an unweighted
+    one and the learning rate carries over.
+    """
+
+    def __init__(self, gamma: float = 2.0, alpha: Tensor | None = None) -> None:
+        if gamma < 0:
+            raise ValueError(f"focal_gamma must be non-negative, got {gamma!r}")
+        self.gamma = gamma
+        self.alpha = alpha
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        cross_entropy = nn.functional.cross_entropy(out, labels, reduction="none")
+        # p_t = exp(-CE) is the probability assigned to the true class.
+        modulation = (1 - torch.exp(-cross_entropy)) ** self.gamma
+        focal = modulation * cross_entropy
+        if self.alpha is None:
+            return focal.mean()
+        weights = self.alpha[labels]
+        return (weights * focal).sum() / weights.sum()
+
+    def predict(self, out: Tensor) -> Tensor:
+        return out.argmax(dim=1)
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        return out.softmax(dim=1)
+
+
 class CoralObjective:
     """CORAL ordinal objective: k=num_classes-1 cumulative threshold logits."""
 
@@ -393,11 +475,22 @@ class CoralObjective:
         return p / p.sum(dim=1, keepdim=True)
 
 
-def make_objective(config: Any, class_weights: Tensor | None = None) -> Objective:
+def make_objective(
+    config: Any,
+    class_weights: Tensor | None = None,
+    *,
+    loss: str = "cross_entropy",
+    focal_gamma: float = 2.0,
+) -> Objective:
     # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
     # attribute); any config without a `head` defaults to softmax.
     if getattr(config, "head", "softmax") == "coral":
+        # CORAL replaces the softmax head itself, so `loss` does not apply.
         return CoralObjective(config.num_classes)
+    if loss not in LOSS_SCHEMES:
+        raise ValueError(f"loss must be one of {LOSS_SCHEMES}, got {loss!r}")
+    if loss == "focal":
+        return FocalObjective(gamma=focal_gamma, alpha=class_weights)
     return SoftmaxObjective(weight=class_weights)
 
 
@@ -591,6 +684,8 @@ def train_model(
     objective = make_objective(
         model.config,  # type: ignore[attr-defined]
         class_weights=weights if model_head == "softmax" else None,
+        loss=config.loss,
+        focal_gamma=config.focal_gamma,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     scheduler = (
@@ -676,9 +771,12 @@ def train_model(
 
 __all__ = [
     "CLASS_WEIGHTING_SCHEMES",
+    "LOSS_SCHEMES",
+    "SAMPLER_SCHEMES",
     "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",
+    "FocalObjective",
     "Objective",
     "SoftmaxObjective",
     "TrainingConfig",
