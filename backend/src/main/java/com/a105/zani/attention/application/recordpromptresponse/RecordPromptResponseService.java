@@ -87,20 +87,23 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
         if (!command.kind().allows(command.answer())) {
             throw new MismatchedPromptAnswerException();
         }
-        validateTimeline(participant.sessionStartedAt(), command);
+        validateTimelineConsistency(participant.sessionStartedAt(), command);
 
         long sessionId = command.sessionId();
         long participantId = participant.participantId();
         long shownOffsetMs = offsetMs(participant.sessionStartedAt(), command.shownAt());
 
+        // 중복은 만료보다 먼저 본다. 이미 기록된 답의 늦은 재시도에 409 를 주면, 성공한 요청을 실패로 알리는 셈이다.
         if (alreadyAnswered(sessionId, participantId, command, shownOffsetMs)) {
             log.debug("이미 답이 있는 프롬프트입니다. sessionId={}, promptId={}", sessionId, command.promptId());
             return RecordPromptResponseResult.alreadyRecorded();
         }
         // 표시만 남고 저장이 되돌아가면, 재시도가 "이미 처리했다"는 거짓 성공을 받고 답이 영영 사라진다.
+        // 아래 만료 거절도 되돌리기 대상이라 표시를 심은 직후에 등록한다.
         clearMarkerUnlessCommitted(sessionId, participantId, command.promptId());
 
         try {
+            rejectIfTooOldToAnswer(command);
             checkPromptRepository.save(CheckPrompt.respond(
                     sessionId,
                     participantId,
@@ -246,18 +249,27 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
     }
 
     /**
-     * 표시·응답 시각이 수업 시간선과 맞는지 본다.
+     * 표시·응답 시각이 수업 시간선과 맞는지 본다. 부작용이 없으므로 가장 먼저 거른다.
      *
      * <p>어긋난 값을 0으로 눌러 담으면 서로 다른 프롬프트가 같은 오프셋을 갖게 되고, 두 번째 답이 중복으로 잡혀 조용히 사라진다. 눌러 담는 대신 거절한다. 미래 쪽도 막는다 — 시계가 하루 빠른
      * 브라우저는 세 시간짜리 수업에 하루치 오프셋을 남기고, 극단적인 값은 오프셋 계산에서 넘쳐 500 이 된다.
      */
-    private void validateTimeline(Instant sessionStartedAt, RecordPromptResponseCommand command) {
+    private void validateTimelineConsistency(Instant sessionStartedAt, RecordPromptResponseCommand command) {
         Instant futureLimit = clock.instant().plus(FUTURE_TOLERANCE);
         if (command.shownAt().isBefore(sessionStartedAt)
                 || command.respondedAt().isBefore(command.shownAt())
                 || command.respondedAt().isAfter(futureLimit)) {
             throw new InvalidPromptTimelineException();
         }
+    }
+
+    /**
+     * 답을 받아 주기에 너무 오래된 프롬프트면 거절한다.
+     *
+     * <p><b>중복 검사 뒤에</b> 둔다. 이미 기록된 답의 재시도가 늦게 도착했을 때 409 를 돌려주면, 실제로는 저장에 성공한 요청을 실패로 알리게 된다. 재시도는 200 duplicate 로
+     * 사실대로 답하고, 처음 보는 답만 나이를 따진다.
+     */
+    private void rejectIfTooOldToAnswer(RecordPromptResponseCommand command) {
         if (command.shownAt().isBefore(clock.instant().minus(ANSWER_ACCEPTANCE_WINDOW))) {
             throw new StalePromptException();
         }

@@ -251,6 +251,37 @@ class RecordPromptResponseServiceTest {
     }
 
     @Test
+    void answersDuplicateRatherThanStaleForALateRetryOfARecordedAnswer() {
+        service.record(command(PromptAnswer.CONFUSED));
+
+        // 답은 이미 기록됐다. 재시도가 만료 창을 넘겨 도착했다고 409 를 주면 성공한 요청을 실패로 알리는 셈이다.
+        RecordPromptResponseService lateService = new RecordPromptResponseService(
+                resolveParticipant,
+                promptRepository,
+                statePort,
+                Clock.fixed(SHOWN_AT.plusSeconds(600), ZoneOffset.UTC));
+
+        RecordPromptResponseResult retry = lateService.record(command(PromptAnswer.CONFUSED));
+
+        assertTrue(retry.duplicate());
+        assertEquals(1, promptRepository.saved.size());
+    }
+
+    @Test
+    void doesNotLeaveAMarkerBehindWhenAFirstAnswerArrivesTooLate() {
+        RecordPromptResponseService lateService = new RecordPromptResponseService(
+                resolveParticipant,
+                promptRepository,
+                statePort,
+                Clock.fixed(SHOWN_AT.plusSeconds(600), ZoneOffset.UTC));
+
+        assertThrows(StalePromptException.class, () -> lateService.record(command(PromptAnswer.CONFUSED)));
+
+        // 만료로 거절하면서 표시만 남기면, 같은 프롬프트를 다시 볼 방법이 사라진다.
+        assertTrue(statePort.markers.isEmpty());
+    }
+
+    @Test
     void refusesAnAnswerToAPromptThatIsTooOldToCount() {
         // 프롬프트는 정상 시점에 떴지만 답이 10분 뒤에야 도착했다. 집계 창(5분)을 벗어나 쓸 수 없다.
         RecordPromptResponseService lateService = new RecordPromptResponseService(
