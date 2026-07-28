@@ -43,6 +43,9 @@ export type AuthProviderProps = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** Access Token 만료 이만큼 전에 미리 갱신해, 사용 중인 요청이 401 을 맞는 일을 막는다. */
+const RENEW_BEFORE_EXPIRY_MS = 60_000;
+
 export function AuthProvider({
   children,
   requestGoogleLoginFn = requestGoogleLogin,
@@ -51,6 +54,7 @@ export function AuthProvider({
   requestLogoutFn = requestLogout,
 }: AuthProviderProps) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [accessTokenExpiresAt, setAccessTokenExpiresAt] = useState<string | null>(null);
   const [member, setMember] = useState<AuthMember | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -66,6 +70,7 @@ export function AuthProvider({
         const currentMember = await requestCurrentMemberFn(session.accessToken);
         if (cancelled) return;
         setAccessToken(session.accessToken);
+        setAccessTokenExpiresAt(session.accessTokenExpiresAt);
         setMember(currentMember);
       } catch {
         // 세션 없음/만료 — 로그아웃 상태를 유지한다.
@@ -81,10 +86,38 @@ export function AuthProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Access Token 은 1시간짜리라, 만료 직전에 refresh 쿠키로 미리 갱신해 사용 중 401 을 막는다.
+  // 갱신 실패는 세션 만료로 보고 로그아웃 상태로 되돌린다 — 인증 가드가 로그인 화면으로 보낸다.
+  useEffect(() => {
+    if (accessToken === null || accessTokenExpiresAt === null) return;
+
+    let cancelled = false;
+    const delay = Math.max(Date.parse(accessTokenExpiresAt) - Date.now() - RENEW_BEFORE_EXPIRY_MS, 0);
+    const timer = setTimeout(async () => {
+      try {
+        const session = await requestRefreshSessionFn();
+        if (cancelled) return;
+        setAccessToken(session.accessToken);
+        setAccessTokenExpiresAt(session.accessTokenExpiresAt);
+      } catch {
+        if (cancelled) return;
+        setAccessToken(null);
+        setAccessTokenExpiresAt(null);
+        setMember(null);
+      }
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [accessToken, accessTokenExpiresAt, requestRefreshSessionFn]);
+
   const loginWithGoogle = useCallback(
     async (idToken: string) => {
       const result = await requestGoogleLoginFn(idToken);
       setAccessToken(result.accessToken);
+      setAccessTokenExpiresAt(result.accessTokenExpiresAt);
       setMember({
         email: result.email,
         displayName: result.displayName,
@@ -97,6 +130,7 @@ export function AuthProvider({
 
   const logout = useCallback(() => {
     setAccessToken(null);
+    setAccessTokenExpiresAt(null);
     setMember(null);
     requestLogoutFn().catch(() => {
       // 서버 로그아웃 실패는 조용히 무시한다 — 로컬 상태는 이미 정리됐고 수업/화면 흐름을 막지 않는다.

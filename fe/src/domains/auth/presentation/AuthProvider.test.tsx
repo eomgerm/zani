@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GoogleLoginResult } from "../infrastructure/googleLoginApi";
 import type { CurrentMember } from "../infrastructure/getCurrentMemberApi";
@@ -19,9 +19,12 @@ function Probe({ idTokenToSubmit }: { idTokenToSubmit?: string }) {
   );
 }
 
+/** 만료 임박 자동 갱신 타이머가 테스트 중에 발화하지 않도록, 만료 시각은 항상 충분히 먼 미래로 둔다. */
+const inOneHour = () => new Date(Date.now() + 3_600_000).toISOString();
+
 const loginResult: GoogleLoginResult = {
   accessToken: "signed-access-token",
-  accessTokenExpiresAt: "2026-07-24T05:00:00Z",
+  accessTokenExpiresAt: inOneHour(),
   email: "user@example.com",
   displayName: "테스트 사용자",
   profileImageUrl: "https://example.com/pic.png",
@@ -37,6 +40,10 @@ const restoredMember: CurrentMember = {
 // 세션 복원 부트 effect가 기본으로 실행되므로, 복원 자체를 테스트하지 않는 케이스에서는
 // 항상 거부되는 스텁을 명시해 실제 fetch 호출·불필요한 act 경고를 피한다.
 const noSession = () => vi.fn().mockRejectedValue(new Error("no session"));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("AuthProvider", () => {
   it("starts initializing, then settles unauthenticated once restore fails", async () => {
@@ -59,7 +66,7 @@ describe("AuthProvider", () => {
   it("restores the session on boot when a valid refresh cookie exists", async () => {
     const requestRefreshSessionFn = vi
       .fn()
-      .mockResolvedValue({ accessToken: "restored-access-token", accessTokenExpiresAt: "2026-07-24T06:00:00Z" });
+      .mockResolvedValue({ accessToken: "restored-access-token", accessTokenExpiresAt: inOneHour() });
     const requestCurrentMemberFn = vi.fn().mockResolvedValue(restoredMember);
 
     render(
@@ -155,6 +162,81 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
     });
+  });
+
+  it("renews the access token before it expires", async () => {
+    vi.useFakeTimers();
+    const requestRefreshSessionFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        accessToken: "restored-access-token",
+        accessTokenExpiresAt: new Date(Date.now() + 120_000).toISOString(),
+      })
+      .mockResolvedValueOnce({
+        accessToken: "renewed-access-token",
+        accessTokenExpiresAt: new Date(Date.now() + 3_720_000).toISOString(),
+      });
+    const requestCurrentMemberFn = vi.fn().mockResolvedValue(restoredMember);
+
+    render(
+      <AuthProvider
+        requestGoogleLoginFn={vi.fn()}
+        requestRefreshSessionFn={requestRefreshSessionFn}
+        requestCurrentMemberFn={requestCurrentMemberFn}
+      >
+        <Probe />
+      </AuthProvider>,
+    );
+
+    // 부트 복원 완료
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("access-token")).toHaveTextContent("restored-access-token");
+
+    // 만료 60초 전(발급 60초 후) 시점에 자동 갱신된다.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(requestRefreshSessionFn).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("access-token")).toHaveTextContent("renewed-access-token");
+    expect(screen.getByTestId("is-authenticated")).toHaveTextContent("true");
+    // 회원 정보는 갱신 과정에서 유지된다.
+    expect(screen.getByTestId("display-name")).toHaveTextContent("복원된 사용자");
+  });
+
+  it("settles logged out when the renewal fails because the session expired", async () => {
+    vi.useFakeTimers();
+    const requestRefreshSessionFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        accessToken: "restored-access-token",
+        accessTokenExpiresAt: new Date(Date.now() + 120_000).toISOString(),
+      })
+      .mockRejectedValueOnce(new Error("session expired"));
+    const requestCurrentMemberFn = vi.fn().mockResolvedValue(restoredMember);
+
+    render(
+      <AuthProvider
+        requestGoogleLoginFn={vi.fn()}
+        requestRefreshSessionFn={requestRefreshSessionFn}
+        requestCurrentMemberFn={requestCurrentMemberFn}
+      >
+        <Probe />
+      </AuthProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("is-authenticated")).toHaveTextContent("true");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
+    expect(screen.getByTestId("access-token")).toHaveTextContent("");
+    expect(screen.getByTestId("display-name")).toHaveTextContent("");
   });
 
   it("throws when useAuth is used outside an AuthProvider", () => {
