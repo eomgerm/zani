@@ -3,8 +3,8 @@ package com.a105.zani.session.application.issuemediatoken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.a105.zani.member.domain.model.Member;
-import com.a105.zani.member.domain.repository.MemberRepository;
+import com.a105.zani.member.application.get.GetMemberDisplayNameQuery;
+import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
@@ -25,17 +25,17 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
-    private final MemberRepository memberRepository;
+    private final GetMemberDisplayNameUseCase getMemberDisplayNameUseCase;
     private final LiveKitTokenPort liveKitTokenPort;
 
     public IssueMediaTokenService(
             SessionRepository sessionRepository,
             SessionParticipantRepository participantRepository,
-            MemberRepository memberRepository,
+            GetMemberDisplayNameUseCase getMemberDisplayNameUseCase,
             LiveKitTokenPort liveKitTokenPort) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
-        this.memberRepository = memberRepository;
+        this.getMemberDisplayNameUseCase = getMemberDisplayNameUseCase;
         this.liveKitTokenPort = liveKitTokenPort;
     }
 
@@ -53,16 +53,22 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
             throw new SessionAlreadyEndedException();
         }
 
-        String displayName = memberRepository
-                .findById(command.userId())
-                .map(Member::displayName)
+        // 표시 이름은 member 도메인의 읽기 UseCase로만 조회한다(크로스도메인은 공개 API 경유).
+        String displayName = getMemberDisplayNameUseCase
+                .getDisplayName(new GetMemberDisplayNameQuery(command.userId()))
                 .orElse(DEFAULT_DISPLAY_NAME);
         String identity = "p-" + participant.id();
 
         IssuedMediaToken issued =
                 liveKitTokenPort.issue(new MediaTokenRequest(identity, displayName, participant.role(), session.id()));
 
+        // 강의실은 진입 시 이 응답만 받으므로, 자동 종료 예정 시각도 함께 알려 종료 임박 안내를 띄울 수 있게 한다.
         return new IssueMediaTokenResult(
-                issued.liveKitUrl(), issued.accessToken(), issued.roomName(), identity, issued.expiresAt());
+                issued.liveKitUrl(),
+                issued.accessToken(),
+                issued.roomName(),
+                identity,
+                issued.expiresAt(),
+                session.expiresAt());
     }
 }

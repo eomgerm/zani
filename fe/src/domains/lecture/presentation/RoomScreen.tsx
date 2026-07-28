@@ -12,7 +12,12 @@ import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
-import { RoomProvider } from "./RoomProvider";
+import { RoomProvider, useRoomConnection } from "./RoomProvider";
+import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
+import { EndSessionButton } from "./components/room/EndSessionButton";
+import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
+import { useRoomMediaControls } from "./useRoomMediaControls";
+import { useSessionPresence } from "./useSessionPresence";
 
 /**
  * SC-09 실시간 강의실 (어두운 테마). LiveKit room connection is attached here;
@@ -21,6 +26,16 @@ import { RoomProvider } from "./RoomProvider";
 type RoomScreenProps = {
   sessionId: string;
   roomTitle?: string;
+  /**
+   * 종료 예정 시각(ISO-8601) 강제 지정. 평소에는 미디어 토큰 응답이 준 값을 쓰므로 넘길 필요가 없고,
+   * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
+   */
+  expiresAt?: string;
+  /**
+   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
+   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
+   */
+  prejoinInviteCode?: string;
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
@@ -55,21 +70,38 @@ function PanelToggle({
   );
 }
 
-export function RoomScreen({ sessionId, roomTitle }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent sessionId={sessionId} roomTitle={roomTitle} />
+      <RoomScreenContent
+        sessionId={sessionId}
+        roomTitle={roomTitle}
+        expiresAt={expiresAt}
+        prejoinInviteCode={prejoinInviteCode ?? sessionId}
+      />
     </RoomProvider>
   );
 }
 
-function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" }: RoomScreenProps) {
+function RoomScreenContent({
+  sessionId,
+  roomTitle = "React 상태관리 심화",
+  expiresAt,
+  prejoinInviteCode,
+}: RoomScreenProps) {
   const router = useRouter();
+  // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
+  const { sessionExpiresAt } = useRoomConnection();
+  const media = useRoomMediaControls(prejoinInviteCode);
+  // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
+  const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [me, setMe] = useState({ mic: true, cam: true, hand: false });
+  const [handRaised, setHandRaised] = useState(false);
+  // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기는 아직 fixture(WebSocket 소관).
+  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -108,7 +140,7 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
 
-  const toggleMe = (k: "mic" | "cam" | "hand") => setMe((p) => ({ ...p, [k]: !p[k] }));
+  const toggleHand = () => setHandRaised((raised) => !raised);
 
   /** 같은 패널을 다시 누르면 닫고, 다른 패널이면 그쪽으로 전환한다(프로토타입 togglePeople/toggleChat). */
   const togglePanel = (next: "people" | "chat") => {
@@ -141,6 +173,14 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
 
   return (
     <div className="relative flex h-screen flex-col bg-stage text-panel-text">
+      {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
+      <SessionPresenceNotice
+        reconnectStatus={presence.reconnectStatus}
+        sessionEnded={presence.sessionEnded}
+        error={presence.error}
+      />
+      {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
+      <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
@@ -167,6 +207,14 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
         >
           <ChatIcon />
         </PanelToggle>
+        {/*
+          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
+          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
+          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
+        */}
+        {connected && isInstructor && (
+          <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
+        )}
       </div>
 
       {/* 본문 */}
@@ -278,10 +326,19 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
             me={me}
             sharing={sharing}
             reactMenuOpen={reactMenuOpen}
-            onToggleMic={() => toggleMe("mic")}
-            onToggleCam={() => toggleMe("cam")}
+            mediaDisabled={!media.ready}
+            microphoneBlocked={media.microphoneBlocked}
+            cameraBlocked={media.cameraBlocked}
+            microphones={media.microphones}
+            cameras={media.cameras}
+            activeMicrophoneId={media.activeMicrophoneId}
+            activeCameraId={media.activeCameraId}
+            onSelectMicrophone={media.selectMicrophone}
+            onSelectCamera={media.selectCamera}
+            onToggleMic={media.toggleMicrophone}
+            onToggleCam={media.toggleCamera}
             onToggleShare={() => setSharing((v) => !v)}
-            onToggleHand={() => toggleMe("hand")}
+            onToggleHand={toggleHand}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onReact={addReaction}
             onLeave={leaveRoom}

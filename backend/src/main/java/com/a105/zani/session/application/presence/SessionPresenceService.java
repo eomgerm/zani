@@ -7,6 +7,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.a105.zani.session.application.end.EndSessionCommand;
+import com.a105.zani.session.application.end.EndSessionUseCase;
+import com.a105.zani.session.application.end.SessionEndReason;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
@@ -37,6 +40,7 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
     private final SessionPresencePort presencePort;
+    private final EndSessionUseCase endSessionUseCase;
     private final Clock clock;
 
     // 흔한 heartbeat 경로는 Redis 읽기·쓰기뿐이라 DB 트랜잭션으로 감싸지 않는다(잦은 heartbeat가 Redis 지연 동안
@@ -59,7 +63,7 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         // 유예 만료 여부는 이번 heartbeat가 presence 상태를 바꾸기 전에 판단한다. 그래야 유예가 이미 지난 뒤
         // 강사가 뒤늦게 접속해도 자신의 heartbeat로 종료를 취소하지 못한다(수용 기준: 5분 미복귀 → 종료).
         if (isInstructorGraceExpired(sessionId)) {
-            endSession(sessionId, session);
+            endSession(sessionId);
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
 
@@ -98,13 +102,11 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                 .orElse(false);
     }
 
-    private void endSession(long sessionId, Session session) {
+    private void endSession(long sessionId) {
+        // 종료는 단일 유스케이스로만 수행한다(가이드 §12: 강사 명시 종료·3시간·강사 미복귀가 같은 경로).
         // DB의 ENDED 상태가 유일한 진실이다. 종료 이후 heartbeat는 위의 isEnded 가드에서 409로 막혀 유예를 다시 평가하지 않으므로,
-        // 남은 유예·presence 키는 그대로 두어도 무해하며 각자의 TTL로 자연 소멸한다. 트랜잭션 안에서 Redis까지 함께 지우면
-        // 커밋 성패와 두 저장소 상태가 어긋날 수 있어(리뷰 지적), 종료 경로에서는 Redis를 건드리지 않는다.
-        session.end();
-        sessionRepository.save(session);
-        log.info("Session {} ended: instructor did not return within the grace period", sessionId);
+        // 남은 유예·presence 키는 그대로 두어도 무해하며 각자의 TTL로 자연 소멸한다.
+        endSessionUseCase.end(new EndSessionCommand(sessionId, SessionEndReason.INSTRUCTOR_ABSENT));
     }
 
     private PresenceResult result(

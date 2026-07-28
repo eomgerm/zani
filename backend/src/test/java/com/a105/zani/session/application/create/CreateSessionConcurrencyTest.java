@@ -111,6 +111,11 @@ class CreateSessionConcurrencyTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))

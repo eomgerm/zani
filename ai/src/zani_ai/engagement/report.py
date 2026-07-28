@@ -17,6 +17,7 @@ import torch
 
 from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.experiment import E0_SPEC, E0A_SPEC, ExperimentSpec
+from zani_ai.engagement.runtime import parse_device
 from zani_ai.engagement.training import (
     TrainingConfig,
     _load_feature_datasets,
@@ -129,9 +130,11 @@ def evaluate_frozen_checkpoints(
     """
 
     protocol = f"{spec.protocol}-fixed-checkpoint-test"
-    if device not in {"cpu", "cuda"}:
-        raise ValueError(f"{spec.protocol} evaluation device must be 'cpu' or 'cuda'")
-    if device == "cuda" and not torch.cuda.is_available():
+    try:
+        kind, _ = parse_device(device)
+    except ValueError as error:
+        raise ValueError(f"{spec.protocol} evaluation {error}") from error
+    if kind == "cuda" and not torch.cuda.is_available():
         raise RuntimeError(f"{spec.protocol} Test evaluation requested CUDA, but CUDA is unavailable")
     summary_path = output_dir / "summary.json"
     manifest_path = features_root / "manifest.json"
@@ -182,7 +185,11 @@ def evaluate_frozen_checkpoints(
             continue
         if datasets is None:
             datasets = _load_feature_datasets(
-                features_root, include_test=True, expected_schema=spec.schema.name
+                features_root,
+                include_test=True,
+                expected_schema=spec.schema_name,
+                array_key=spec.array_key,
+                array_shape=spec.array_shape,
             )
         if datasets.test is None:
             raise RuntimeError("Test feature split is unavailable")
@@ -194,6 +201,8 @@ def evaluate_frozen_checkpoints(
             device=device,
             num_workers=0,
             deterministic=True,
+            array_key=spec.array_key,
+            array_shape=spec.array_shape,
         )
         model = load_checkpoint(checkpoint_path, device)
         metrics = evaluate_model(
@@ -307,8 +316,18 @@ def generate_html_report(
     threshold_manifest: Path | None = None,
 ) -> Path:
     schema = spec.schema
-    token_feature_count = schema.token_feature_count
-    blendshape_count = len(schema.blendshape_names)
+    if schema is not None:
+        token_feature_count = schema.token_feature_count
+        blendshape_count = len(schema.blendshape_names)
+        title_family = "MediaPipe"
+        model_title = "Transformer"
+        eyebrow_label = f"MEDIAPIPE {token_feature_count}D"
+    else:
+        token_feature_count = None
+        blendshape_count = None
+        title_family = "ST-GCN"
+        model_title = "ST-GCN"
+        eyebrow_label = f"ST-GCN · {spec.schema_name}"
     report_filename = f"engagenet_{spec.protocol.lower().replace('-', '')}_reproduction_report.html"
     summary = _load_json(output_dir / "summary.json")
     results = _load_json(output_dir / RESULTS_FILENAME)
@@ -383,18 +402,39 @@ def generate_html_report(
         environment_rows.append(["Face Landmarker 모델 SHA-256", _sha256(face_landmarker_model)])
         environment_rows.append(["Face Landmarker 모델 크기", f"{face_landmarker_model.stat().st_size:,} bytes"])
 
+    if schema is not None:
+        adaptation_section = (
+            f"<h2>MediaPipe {token_feature_count}D 적응점</h2>"
+            f"<section class=\"panel\">{_table(['단계', '구성', '차원'], [['프레임 Gaze', '양안 iris 상대 위치·평균·차이', str(schema.gaze_dim)], ['프레임 Head Pose', 'yaw/pitch/roll, nose x/y, inverse interocular', str(schema.head_dim)], ['프레임 얼굴 동작', f'MediaPipe blendshape {blendshape_count}종', str(blendshape_count)], ['프레임 합계', f'{schema.gaze_dim} + {schema.head_dim} + {blendshape_count}', str(schema.raw_feature_count)], ['시간 집계', '10 FPS, 10초, 20구간별 평균+모표준편차', f'20 × {token_feature_count}']])}"
+            f"<p>Transformer는 {token_feature_count}→256 투영, learned position 20개, encoder 4층·8 heads, max pooling, 256→128→4 분류기를 사용했다. 원 논문의 OpenFace 특징과 의미·스케일이 동일하지 않은 적응형 재현이다.</p></section>"
+        )
+    else:
+        adaptation_section = (
+            "<h2>ST-GCN 입력 표현</h2>"
+            f"<section class=\"panel\">{_table(['단계', '구성', '차원'], [['채널', 'xyz 정규화 좌표', '3'], ['시간 스텝', '10 FPS, 10초 시퀀스', '100'], ['랜드마크 노드', f'MediaPipe landmark 그래프 ({spec.schema_name})', '78'], ['입력 shape', '[채널, 시간, 노드]', '[3, 100, 78]']])}"
+            "<p>모델은 ST-GCN(spatial-configuration, 3블록 64→128→256 채널)을 사용해 시공간 그래프 컨볼루션으로 분류했다. "
+            "원 논문의 OpenFace Gaze·Head Pose·AU 특징과는 표현 형식이 근본적으로 다른 적응형 재현이며, 토큰 기반 차원 수치는 없다.</p></section>"
+        )
     report_path = output_dir / report_filename
     generated = datetime.now().astimezone().isoformat(timespec="seconds")
     delta_validation = float(validation["validation_accuracy"]["mean"]) - paper_validation
     delta_test = float(test_accuracy["mean"]) - paper_test
-    conclusion = (
-        f"MediaPipe {token_feature_count}D 적응형 {spec.protocol}는 원 논문보다 낮은 정확도를 보였다. "
-        "특히 원 논문의 OpenFace 계열 Gaze·Head Pose·AU와 MediaPipe 랜드마크·블렌드셰이프는 의미가 완전히 같지 않고, "
-        "얼굴 검출 실패 제외 및 subject provenance 불일치가 있어 직접적인 수치 동등 재현으로 해석하면 안 된다."
-    )
+    if schema is not None:
+        conclusion = (
+            f"MediaPipe {token_feature_count}D 적응형 {spec.protocol}는 원 논문보다 낮은 정확도를 보였다. "
+            "특히 원 논문의 OpenFace 계열 Gaze·Head Pose·AU와 MediaPipe 랜드마크·블렌드셰이프는 의미가 완전히 같지 않고, "
+            "얼굴 검출 실패 제외 및 subject provenance 불일치가 있어 직접적인 수치 동등 재현으로 해석하면 안 된다."
+        )
+    else:
+        conclusion = (
+            f"ST-GCN 기반 {spec.protocol}({spec.schema_name})는 원 논문보다 낮은 정확도를 보였다. "
+            "원 논문의 OpenFace 계열 Gaze·Head Pose·AU 특징이 아니라 MediaPipe 랜드마크 시퀀스를 "
+            "공간-시간 그래프로 학습했으므로 의미가 완전히 같지 않고, "
+            "얼굴 검출 실패 제외 및 subject provenance 불일치가 있어 직접적인 수치 동등 재현으로 해석하면 안 된다."
+        )
     document = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EngageNet {html.escape(spec.protocol)} MediaPipe 재현 보고서</title>
+<title>EngageNet {html.escape(spec.protocol)} {title_family} 재현 보고서</title>
 <style>
 :root{{--bg:#07111f;--panel:#0d1b2d;--panel2:#13243a;--text:#e8f0fa;--muted:#9fb0c4;--accent:#52d3b7;--warn:#ffbf69;--line:#29415e}}
 *{{box-sizing:border-box}} body{{margin:0;background:linear-gradient(145deg,#06101c,#0b1930 55%,#102743);color:var(--text);font:15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}}
@@ -402,14 +442,14 @@ main{{max-width:1180px;margin:auto;padding:46px 24px 80px}} h1{{font-size:clamp(
 .kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:22px 0}} .kpi{{padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:16px}} .kpi span{{display:block;color:var(--muted)}} .kpi strong{{font-size:28px;color:var(--accent)}}
 .panel{{padding:22px;background:rgba(13,27,45,.9);border:1px solid var(--line);border-radius:18px;margin:14px 0}} .callout{{border-left:4px solid var(--warn);padding:14px 18px;background:#2a231c;color:#ffe0b5;border-radius:8px}} .table-wrap{{overflow:auto}} table{{width:100%;border-collapse:collapse;background:var(--panel)}} th,td{{padding:11px 12px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}} th:first-child,td:first-child{{text-align:left}} th{{color:#b9cbe0;background:var(--panel2)}} code{{white-space:normal;word-break:break-all;color:#b9f7ea}} ul{{color:var(--muted)}} footer{{margin-top:44px;color:var(--muted)}}
 </style></head><body><main>
-<section class="hero"><div class="eyebrow">ENGAGENET {html.escape(spec.protocol)} · MEDIAPIPE {token_feature_count}D</div><h1>Transformer 재현 실험 보고서</h1><p>Validation-only 모델 선택 뒤 고정된 5개 체크포인트를 Test에 각 1회 평가했다. 생성: {html.escape(generated)}</p></section>
+<section class="hero"><div class="eyebrow">ENGAGENET {html.escape(spec.protocol)} · {html.escape(eyebrow_label)}</div><h1>{model_title} 재현 실험 보고서</h1><p>Validation-only 모델 선택 뒤 고정된 5개 체크포인트를 Test에 각 1회 평가했다. 생성: {html.escape(generated)}</p></section>
 <section class="kpis"><article class="kpi"><span>학습 가능 클립</span><strong>{len(included):,}</strong></article><article class="kpi"><span>제외 클립</span><strong>{len(excluded):,}</strong></article><article class="kpi"><span>Validation Accuracy</span><strong>{_pct(float(validation['validation_accuracy']['mean']))}</strong></article><article class="kpi"><span>Test Accuracy</span><strong>{_pct(float(test_accuracy['mean']))}</strong></article></section>
 <h2>결론</h2><section class="panel"><p>{html.escape(conclusion)}</p></section>
 <h2>원 논문과 비교</h2><section class="panel">{_table(['지표','원 논문 Transformer','현재 5-seed 평균','차이'], [['Validation Accuracy',_pct(paper_validation),_mean_std(validation['validation_accuracy']),f'{delta_validation*100:+.2f}%p'],['Test Accuracy',_pct(paper_test),_mean_std(test_accuracy),f'{delta_test*100:+.2f}%p'],['Validation Macro F1','미보고',_mean_std(validation['validation_macro_f1']),'비교 불가'],['Test Macro F1','미보고',_mean_std(test_macro_f1),'비교 불가']])}<p>원 논문의 Gaze + Head Pose + AU Transformer 기준은 Validation {_pct(paper_validation)}, Test {_pct(paper_test)}다.</p></section>
 <h2>5-seed 결과</h2><section class="panel">{_table(['Seed','Best epoch','Val Accuracy','Val Macro F1','Test Accuracy','Test Macro F1'],seed_rows)}</section>
 <h2>혼동행렬</h2><section class="panel"><p>행=정답, 열=예측. 5개 seed의 Test 혼동행렬을 합산했으므로 각 샘플이 seed별로 5회 포함된다.</p>{_table(['정답 \\ 예측',*LABELS],confusion_rows)}</section>
 <h2>클래스별 Test 지표</h2><section class="panel">{_table(['클래스','Precision 평균±표준편차','Recall 평균±표준편차','F1 평균±표준편차','Seed당 support'],class_rows)}</section>
-<h2>MediaPipe {token_feature_count}D 적응점</h2><section class="panel">{_table(['단계','구성','차원'],[['프레임 Gaze','양안 iris 상대 위치·평균·차이',str(schema.gaze_dim)],['프레임 Head Pose','yaw/pitch/roll, nose x/y, inverse interocular',str(schema.head_dim)],['프레임 얼굴 동작',f'MediaPipe blendshape {blendshape_count}종',str(blendshape_count)],['프레임 합계',f'{schema.gaze_dim} + {schema.head_dim} + {blendshape_count}',str(schema.raw_feature_count)],['시간 집계','10 FPS, 10초, 20구간별 평균+모표준편차',f'20 × {token_feature_count}']])}<p>Transformer는 {token_feature_count}→256 투영, learned position 20개, encoder 4층·8 heads, max pooling, 256→128→4 분류기를 사용했다. 원 논문의 OpenFace 특징과 의미·스케일이 동일하지 않은 적응형 재현이다.</p></section>
+{adaptation_section}
 <h2>데이터와 제외</h2><section class="panel">{_table(['Split','포함','제외','합계'],split_rows)}<p>최초 전체 추출은 기본 최대 제외율 5%를 넘겨 실패 상태로 보존됐다: {original_excluded:,}/{original_total:,} ({original_fraction*100:.2f}%). 캐시 재검증 후 최종 포함 {len(included):,}, 제외 {len(excluded):,} ({len(excluded)/len(included+excluded)*100:.2f}%). 제외 사유를 숨기지 않고 아래에 집계했다.</p>{_table(['제외 사유','클립 수'],_counter_rows(excluded_reason))}</section>
 <h2>Subject provenance</h2><section class="panel"><div class="callout">공식 설명은 Train 90명·전체 127명이나 현재 제공 데이터는 Train 91명·전체 128명이다. 분할 간 subject 중복은 없지만, 공개 저장소에 원 split 파일이 없어 추가 1명의 정체를 검증하거나 임의 삭제하지 않았다.</div>{_table(['출처','Train','Validation','Test','전체'],provenance_rows)}</section>
 <h2>실험 환경</h2><section class="panel">{_table(['항목','값'],environment_rows)}</section>

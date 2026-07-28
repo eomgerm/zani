@@ -49,6 +49,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Egress가 강사 오디오를 raw PCM으로 밀어 넣는 내부 WebSocket 수신용.
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'io.hypersistence:hypersistence-tsid:2.1.4'
     compileOnly 'org.projectlombok:lombok'
