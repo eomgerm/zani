@@ -133,6 +133,19 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
+    void keepsTheEventRecordedWhenOnlyTheTriggerMarkFailed() {
+        statePort.failSignificantWrite = true;
+
+        assertThrows(IllegalStateException.class, () -> service.collect(command(AttentionState.CONFUSED, "event-1")));
+
+        // 상태는 이미 남았다. 표시까지 지우면 뒤늦은 재시도가 그 사이 도착한 더 최신 판정을 덮어쓴다.
+        assertTrue(statePort.seenEvents.contains(SESSION_ID + ":" + STUDENT_PARTICIPANT + ":event-1"));
+        assertEquals(
+                AttentionState.CONFUSED,
+                statePort.currentState.get(STUDENT_PARTICIPANT).state());
+    }
+
+    @Test
     void rejectsAnEventFromSomeoneWhoIsNotASessionMember() {
         resolveParticipant.failure = new NotSessionMemberException();
 
@@ -175,6 +188,7 @@ class CollectAttentionEventServiceTest {
         private Duration currentStateTtl;
         private Duration significantWindow;
         private boolean failCurrentStateWrite;
+        private boolean failSignificantWrite;
 
         private static String eventKey(long sessionId, long participantId, String clientEventId) {
             return sessionId + ":" + participantId + ":" + clientEventId;
@@ -201,6 +215,9 @@ class CollectAttentionEventServiceTest {
 
         @Override
         public void markSignificant(long sessionId, long participantId, AttentionState state, Duration window) {
+            if (failSignificantWrite) {
+                throw new IllegalStateException("redis down");
+            }
             significant.add(state);
             significantWindow = window;
         }

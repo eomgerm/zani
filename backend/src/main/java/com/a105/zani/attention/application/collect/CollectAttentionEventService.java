@@ -55,6 +55,7 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
             return CollectAttentionEventResult.alreadyRecorded();
         }
 
+        boolean stateRecorded = false;
         try {
             // 기록 시각은 서버 시계를 쓴다. 클라이언트 시계가 틀어져 있으면 집계 창이 통째로 어긋난다.
             attentionStatePort.recordCurrentState(
@@ -62,14 +63,19 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                     participantId,
                     new AttentionSnapshot(command.state(), command.signalQuality(), clock.instant()),
                     CURRENT_STATE_TTL);
+            stateRecorded = true;
 
             // 트리거 분자는 "5분 안에 한 번이라도"라서 현재 상태와 보관 기간이 다르다. 별도 흔적을 남긴다.
             if (command.state().isSignificant()) {
                 attentionStatePort.markSignificant(sessionId, participantId, command.state(), SIGNIFICANT_WINDOW);
             }
         } catch (RuntimeException exception) {
-            // 반영에 실패했는데 멱등 표시만 남으면, 재시도가 "이미 처리했다"는 거짓 응답을 받고 그 창의 판정이 영영 사라진다.
-            clearEventQuietly(sessionId, participantId, command.clientEventId());
+            // 아무것도 못 쓴 채 멱등 표시만 남으면, 재시도가 "이미 처리했다"는 거짓 응답을 받고 그 창의 판정이 영영 사라진다.
+            // 반대로 상태를 이미 쓴 뒤라면 표시를 남긴다. 지웠다가는 뒤늦게 도착한 재시도가
+            // 그 사이 들어온 더 최신 판정을 옛 판정으로 덮어쓴다. 유의 흔적 한 건을 잃는 쪽이 낫다.
+            if (!stateRecorded) {
+                clearEventQuietly(sessionId, participantId, command.clientEventId());
+            }
             throw exception;
         }
 
