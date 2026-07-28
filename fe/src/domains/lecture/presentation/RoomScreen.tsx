@@ -16,6 +16,7 @@ import { RoomProvider, useRoomConnection } from "./RoomProvider";
 import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
+import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -173,6 +174,21 @@ function RoomScreenContent({
 
   return (
     <div className="relative flex h-screen flex-col bg-stage text-panel-text">
+      {/*
+        참여도 판정은 학생 화면에서만 돌린다. 강사는 집계를 보는 쪽이라 판정 대상이 아니다.
+        역할이 확인되기 전에는 isInstructor 가 true 라, 판정이 켜지지 않는 쪽이 기본값이다.
+
+        수업별 분석 동의는 아직 코드에 없다. 지금은 판정 결과가 기기 밖으로 나가지 않아
+        문제되지 않지만, 판정 이벤트 전송을 붙이는 사람은 전송에 조건을 거는 것으로 끝내지 말고
+        이 마운트 조건에 동의 여부를 반드시 함께 넣어야 한다. 그러지 않으면 동의하지 않은
+        학생의 기기에서도 판정이 계속 돌아간다.
+      */}
+      {!isInstructor && (
+        <AttentionCameraSource
+          active={media.ready && media.cameraEnabled}
+          denied={media.cameraPermissionDenied}
+        />
+      )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
       <SessionPresenceNotice
         reconnectStatus={presence.reconnectStatus}
