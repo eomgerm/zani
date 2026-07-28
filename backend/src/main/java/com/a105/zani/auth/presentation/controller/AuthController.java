@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginCommand;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginResult;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginUseCase;
+import com.a105.zani.auth.application.logout.LogoutCommand;
+import com.a105.zani.auth.application.logout.LogoutUseCase;
 import com.a105.zani.auth.application.refresh.RotateRefreshTokenCommand;
 import com.a105.zani.auth.application.refresh.RotateRefreshTokenResult;
 import com.a105.zani.auth.application.refresh.RotateRefreshTokenUseCase;
@@ -32,14 +34,17 @@ public class AuthController {
 
     private final GoogleLoginUseCase googleLoginUseCase;
     private final RotateRefreshTokenUseCase rotateRefreshTokenUseCase;
+    private final LogoutUseCase logoutUseCase;
     private final RefreshTokenCookieManager refreshTokenCookieManager;
 
     public AuthController(
             GoogleLoginUseCase googleLoginUseCase,
             RotateRefreshTokenUseCase rotateRefreshTokenUseCase,
+            LogoutUseCase logoutUseCase,
             RefreshTokenCookieManager refreshTokenCookieManager) {
         this.googleLoginUseCase = googleLoginUseCase;
         this.rotateRefreshTokenUseCase = rotateRefreshTokenUseCase;
+        this.logoutUseCase = logoutUseCase;
         this.refreshTokenCookieManager = refreshTokenCookieManager;
     }
 
@@ -95,5 +100,23 @@ public class AuthController {
                 refreshTokenCookieManager.find(request).orElse(null)));
         refreshTokenCookieManager.write(response, result.refreshToken());
         return ApiResponse.success(RotateRefreshTokenResponse.from(result));
+    }
+
+    @Operation(summary = "로그아웃", description = """
+                    현재 세션을 끝냅니다. `refresh_token` 쿠키로 식별한 세션을 서버에서 지우고, 쿠키 자체도 지웁니다.
+
+                    - 쿠키가 없거나 이미 무효한 토큰이어도 실패하지 않습니다. 어차피 도달하려는 상태(로그아웃됨)는 이미 달성된 것이기 때문입니다.
+                    - 이 호출 이후에는 이전 Refresh Token 으로 `/refresh` 를 호출해도 새 Access Token 을 받을 수 없습니다.
+                    """)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃 완료(항상 성공)")
+    })
+    @SecurityRequirements
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        logoutUseCase.logout(
+                new LogoutCommand(refreshTokenCookieManager.find(request).orElse(null)));
+        refreshTokenCookieManager.clear(response);
+        return ApiResponse.success();
     }
 }

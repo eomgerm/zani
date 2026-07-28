@@ -63,6 +63,15 @@ public class RefreshSessionRedisAdapter implements RefreshSessionPort {
         }
     }
 
+    @Override
+    public void revoke(String subject, String tokenId) {
+        try {
+            redisTemplate.delete(key(subject, tokenId));
+        } catch (DataAccessException exception) {
+            throw new RefreshSessionUnavailableException(exception);
+        }
+    }
+
     private String key(String subject, String tokenId) {
         return KEY_PREFIX + "{" + subject + "}:" + tokenId;
     }

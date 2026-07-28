@@ -49,7 +49,11 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh", "/api/v1/auth/login/google")
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/login/google",
+                                "/api/v1/auth/logout")
                         .permitAll()
                         // LiveKit webhook은 사용자 JWT가 아니라 LiveKit 서명 토큰으로 인증한다(컨트롤러에서 검증, 불일치 401).
                         .requestMatchers(HttpMethod.POST, "/api/v1/internal/recordings/webhook")

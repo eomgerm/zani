@@ -1,0 +1,100 @@
+package com.a105.zani.member.presentation.controller;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.WebApplicationContext;
+
+import com.a105.zani.auth.application.port.TokenProvider;
+
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 내 정보 조회 컨트롤러의 웹 레이어 검증. 실제 서명 JWT로 인증 필터 체인을 통과시켜 인증 주체 파싱과 예외별 HTTP 상태·응답 형식을 확인한다. 로컬 MySQL/Redis가 떠 있어야 통과하며, 테스트
+ * 트랜잭션은 종료 시 롤백되어 데이터를 남기지 않는다.
+ */
+@SpringBootTest
+class MemberControllerTest {
+
+    private static final long MEMBER_ID = 9_600_001L;
+    private static final long MISSING_MEMBER_ID = 9_600_900L;
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private TokenProvider tokenProvider;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply(springSecurity())
+                .build();
+    }
+
+    /** Hibernate가 UTC로 저장하므로 직접 INSERT 할 때도 UTC 기준 시각을 넣는다. */
+    private static LocalDateTime utc(Instant instant) {
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private String tokenOf(long memberId) {
+        return tokenProvider.issueAccessToken(String.valueOf(memberId)).value();
+    }
+
+    private void insertMember() {
+        LocalDateTime now = utc(Instant.now());
+        jdbcTemplate.update(
+                "INSERT IGNORE INTO members (id, google_subject, email, display_name, profile_image_url,"
+                        + " created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                MEMBER_ID,
+                "google-" + MEMBER_ID,
+                MEMBER_ID + "@example.com",
+                "내 정보 테스트 회원",
+                "https://pic.example.com/me.png",
+                now,
+                now);
+    }
+
+    @Test
+    void respondsUnauthorizedWithoutAuthentication() throws Exception {
+        mockMvc.perform(get("/api/v1/members/me")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Transactional
+    void returnsTheProfileOfTheAuthenticatedMember() throws Exception {
+        insertMember();
+
+        mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + tokenOf(MEMBER_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isSuccess").value(true))
+                .andExpect(jsonPath("$.data.email").value(MEMBER_ID + "@example.com"))
+                .andExpect(jsonPath("$.data.displayName").value("내 정보 테스트 회원"))
+                .andExpect(jsonPath("$.data.profileImageUrl").value("https://pic.example.com/me.png"));
+    }
+
+    @Test
+    void respondsNotFoundWhenTheTokenMemberNoLongerExists() throws Exception {
+        mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + tokenOf(MISSING_MEMBER_ID)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MEMBER_APP_002"));
+    }
+}
