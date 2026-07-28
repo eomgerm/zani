@@ -15,6 +15,7 @@ import {
   getCurrentMember as requestCurrentMember,
   type CurrentMemberRequester,
 } from "../infrastructure/getCurrentMemberApi";
+import { logout as requestLogout, type LogoutRequester } from "../infrastructure/logoutApi";
 
 export type AuthMember = {
   email: string;
@@ -37,6 +38,7 @@ export type AuthProviderProps = {
   requestGoogleLoginFn?: GoogleLoginRequester;
   requestRefreshSessionFn?: RefreshSessionRequester;
   requestCurrentMemberFn?: CurrentMemberRequester;
+  requestLogoutFn?: LogoutRequester;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -46,6 +48,7 @@ export function AuthProvider({
   requestGoogleLoginFn = requestGoogleLogin,
   requestRefreshSessionFn = requestRefreshSession,
   requestCurrentMemberFn = requestCurrentMember,
+  requestLogoutFn = requestLogout,
 }: AuthProviderProps) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [member, setMember] = useState<AuthMember | null>(null);
@@ -95,7 +98,10 @@ export function AuthProvider({
   const logout = useCallback(() => {
     setAccessToken(null);
     setMember(null);
-  }, []);
+    requestLogoutFn().catch(() => {
+      // 서버 로그아웃 실패는 조용히 무시한다 — 로컬 상태는 이미 정리됐고 수업/화면 흐름을 막지 않는다.
+    });
+  }, [requestLogoutFn]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

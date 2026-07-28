@@ -42,7 +42,8 @@ google:
 auth:
   cookie:
     refresh-token-name: refresh_token
-    refresh-token-path: /api/v1/auth/refresh
+    # /refresh 뿐 아니라 /logout 에도 쿠키가 실려야 하므로 auth 하위 전체로 스코프한다.
+    refresh-token-path: /api/v1/auth
 
 springdoc:
   swagger-ui:

@@ -99,11 +99,16 @@ describe("AuthProvider", () => {
     expect(requestGoogleLoginFn).toHaveBeenCalledWith("raw-id-token");
   });
 
-  it("clears the access token and member profile on logout", async () => {
+  it("clears the access token and member profile on logout and tells the server", async () => {
     const requestGoogleLoginFn = vi.fn().mockResolvedValue(loginResult);
+    const requestLogoutFn = vi.fn().mockResolvedValue(undefined);
 
     render(
-      <AuthProvider requestGoogleLoginFn={requestGoogleLoginFn} requestRefreshSessionFn={noSession()}>
+      <AuthProvider
+        requestGoogleLoginFn={requestGoogleLoginFn}
+        requestRefreshSessionFn={noSession()}
+        requestLogoutFn={requestLogoutFn}
+      >
         <Probe idTokenToSubmit="raw-id-token" />
       </AuthProvider>,
     );
@@ -115,11 +120,41 @@ describe("AuthProvider", () => {
 
     screen.getByRole("button", { name: "logout" }).click();
 
+    // 로컬 상태는 서버 응답을 기다리지 않고 지운다.
     await waitFor(() => {
       expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
     });
     expect(screen.getByTestId("access-token")).toHaveTextContent("");
     expect(screen.getByTestId("display-name")).toHaveTextContent("");
+    await waitFor(() => {
+      expect(requestLogoutFn).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not throw or restore state when the server logout call fails", async () => {
+    const requestGoogleLoginFn = vi.fn().mockResolvedValue(loginResult);
+    const requestLogoutFn = vi.fn().mockRejectedValue(new Error("network down"));
+
+    render(
+      <AuthProvider
+        requestGoogleLoginFn={requestGoogleLoginFn}
+        requestRefreshSessionFn={noSession()}
+        requestLogoutFn={requestLogoutFn}
+      >
+        <Probe idTokenToSubmit="raw-id-token" />
+      </AuthProvider>,
+    );
+
+    screen.getByRole("button", { name: "login" }).click();
+    await waitFor(() => {
+      expect(screen.getByTestId("is-authenticated")).toHaveTextContent("true");
+    });
+
+    expect(() => screen.getByRole("button", { name: "logout" }).click()).not.toThrow();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("is-authenticated")).toHaveTextContent("false");
+    });
   });
 
   it("throws when useAuth is used outside an AuthProvider", () => {
