@@ -44,7 +44,9 @@ public class AttentionEventController {
                 responseCode = "400",
                 description = "필수 값 누락·범위 위반, 또는 계약에 없는 필드가 포함됨"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "해당 세션의 멤버가 아님"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "해당 세션의 멤버가 아니거나, 판정을 보낼 수 없는 역할(강사)임"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "세션을 찾을 수 없음"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",

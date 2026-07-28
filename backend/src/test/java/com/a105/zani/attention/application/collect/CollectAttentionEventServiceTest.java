@@ -12,6 +12,7 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.attention.application.exception.NotSessionStudentException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.domain.model.AttentionState;
@@ -146,6 +147,19 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
+    void rejectsAnEventFromAnInstructorBecauseOnlyStudentsAreJudged() {
+        resolveParticipant.role = SessionParticipantRole.INSTRUCTOR;
+
+        assertThrows(
+                NotSessionStudentException.class, () -> service.collect(command(AttentionState.CONFUSED, "event-1")));
+
+        // 강사 이벤트가 섞이면 코칭 비율의 분자에만 끼어 실제보다 높게 나온다.
+        assertTrue(statePort.currentState.isEmpty());
+        assertTrue(statePort.significant.isEmpty());
+        assertTrue(statePort.seenEvents.isEmpty());
+    }
+
+    @Test
     void rejectsAnEventFromSomeoneWhoIsNotASessionMember() {
         resolveParticipant.failure = new NotSessionMemberException();
 
@@ -170,13 +184,14 @@ class CollectAttentionEventServiceTest {
     private static final class StubResolveSessionParticipant implements ResolveSessionParticipantUseCase {
 
         private RuntimeException failure;
+        private SessionParticipantRole role = SessionParticipantRole.STUDENT;
 
         @Override
         public ResolveSessionParticipantResult resolve(ResolveSessionParticipantQuery query) {
             if (failure != null) {
                 throw failure;
             }
-            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, SessionParticipantRole.STUDENT);
+            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, role);
         }
     }
 

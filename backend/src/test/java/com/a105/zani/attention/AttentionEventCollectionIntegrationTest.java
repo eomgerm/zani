@@ -38,6 +38,7 @@ class AttentionEventCollectionIntegrationTest {
     private static final long STUDENT_ID = 9_100_911L;
     private static final long SESSION_ID = 9_100_912L;
     private static final long PARTICIPANT_ID = 9_100_913L;
+    private static final long INSTRUCTOR_PARTICIPANT_ID = 9_100_914L;
     private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
     private static final String STATE_KEY = "attention:" + SESSION_ID + ":state:" + PARTICIPANT_ID;
@@ -78,6 +79,7 @@ class AttentionEventCollectionIntegrationTest {
         insertMember(STUDENT_ID, "판정 수집 테스트 학생");
         insertLiveSession();
         insertStudentParticipant();
+        insertInstructorParticipant();
     }
 
     @AfterEach
@@ -89,6 +91,7 @@ class AttentionEventCollectionIntegrationTest {
         redisTemplate.delete(eventKey("integration-1"));
         redisTemplate.delete(eventKey("integration-2"));
         jdbcTemplate.update("DELETE FROM session_participants WHERE id = ?", PARTICIPANT_ID);
+        jdbcTemplate.update("DELETE FROM session_participants WHERE id = ?", INSTRUCTOR_PARTICIPANT_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
     }
 
@@ -159,6 +162,26 @@ class AttentionEventCollectionIntegrationTest {
         assertNull(redisTemplate.opsForValue().get(STATE_KEY));
     }
 
+    @Test
+    void refusesAJudgementSentByTheInstructor() throws Exception {
+        String body = """
+                {"type":"CONFUSED","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",                "durationSec":10,"signalQuality":0.92,"clientEventId":"integration-1"}""";
+
+        mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", SESSION_ID)
+                        .header(
+                                "Authorization",
+                                "Bearer "
+                                        + tokenProvider
+                                                .issueAccessToken(String.valueOf(INSTRUCTOR_ID))
+                                                .value())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ATTENTION_EVENT_001"));
+
+        assertNull(redisTemplate.opsForValue().get("attention:" + SESSION_ID + ":state:" + INSTRUCTOR_PARTICIPANT_ID));
+    }
+
     /** 저장된 현재 상태가 이 상태로 시작하는지. 값은 {@code 상태|비율|시각} 형식이다. */
     private boolean startsWithState(String state) {
         String stored = redisTemplate.opsForValue().get(STATE_KEY);
@@ -201,6 +224,21 @@ class AttentionEventCollectionIntegrationTest {
                 INSTRUCTOR_ID,
                 "판정 수집 테스트",
                 "ATTEN910",
+                utc(NOW),
+                utc(NOW),
+                utc(NOW));
+    }
+
+    private void insertInstructorParticipant() {
+        jdbcTemplate.update("DELETE FROM session_participants WHERE id = ?", INSTRUCTOR_PARTICIPANT_ID);
+        jdbcTemplate.update(
+                "INSERT INTO session_participants (id, session_id, member_id, role, first_joined_at,"
+                        + " last_accessed_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, 'INSTRUCTOR', ?, ?, ?, ?)",
+                INSTRUCTOR_PARTICIPANT_ID,
+                SESSION_ID,
+                INSTRUCTOR_ID,
+                utc(NOW),
                 utc(NOW),
                 utc(NOW),
                 utc(NOW));

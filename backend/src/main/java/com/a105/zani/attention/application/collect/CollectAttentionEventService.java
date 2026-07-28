@@ -7,16 +7,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.a105.zani.attention.application.exception.NotSessionStudentException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantResult;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantUseCase;
+import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
  * 학생 브라우저가 보낸 10초 판정을 받아 Redis 현재 상태로 반영한다.
  *
- * <p>세션 멤버십 확인은 session 도메인의 읽기 유스케이스에 맡긴다(비멤버 403, 종료된 세션 409). 같은 clientEventId가 다시 오면 상태를 건드리지 않고 멱등하게 성공으로 응답한다.
+ * <p>세션 멤버십 확인은 session 도메인의 읽기 유스케이스에 맡긴다(비멤버 403, 종료된 세션 409). 판정을 만드는 쪽은 학생뿐이라 강사 참가자는 거절한다. 같은 clientEventId가 다시 오면
+ * 상태를 건드리지 않고 멱등하게 성공으로 응답한다.
  */
 @Slf4j
 @Service
@@ -45,6 +48,11 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
     public CollectAttentionEventResult collect(CollectAttentionEventCommand command) {
         ResolveSessionParticipantResult participant = resolveSessionParticipantUseCase.resolve(
                 new ResolveSessionParticipantQuery(command.sessionId(), command.userId()));
+
+        // 판정은 학생만 만든다(확정 문서 §1). 강사 이벤트가 섞이면 분자에만 끼어 코칭 비율이 부풀어 오른다.
+        if (participant.role() != SessionParticipantRole.STUDENT) {
+            throw new NotSessionStudentException();
+        }
 
         long sessionId = command.sessionId();
         long participantId = participant.participantId();
