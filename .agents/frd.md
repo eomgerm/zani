@@ -331,7 +331,7 @@ ZANI는 참여 상태를 약한 신호로만 사용한다. 학생에게 제공�
 
 층위가 둘이다.
 
-**검출기 출력** — 브라우저 안에서만 쓰는 값. 카메라·MediaPipe·모델을 묶은 검출기가 10초마다 내놓는다. 4단계와 `UNMEASURABLE`·`CAMERA_OFF`·`DETECTOR_UNAVAILABLE` 을 합쳐 7종이며, 어느 값을 낼지 정하는 순서가 있다.
+**검출기 출력** — 브라우저가 만드는 관측값. 카메라·MediaPipe·모델을 묶은 검출기가 10초마다 내놓고, 프롬프트 발동 판단에 쓰이며 그대로 서버로 전송된다(§11.8). 4단계와 `UNMEASURABLE`·`CAMERA_OFF`·`DETECTOR_UNAVAILABLE` 을 합쳐 7종이며, 어느 값을 낼지 정하는 순서가 있다.
 
 **참여 상태** — 집계에 쓰는 값. `GOOD` · `CONFUSED` · `MISSED` · `NON_RESPONSE` · `UNMEASURABLE` · `CAMERA_OFF` 여섯 가지다. 표기는 언더스코어로 통일한다. 서버로 직접 보내는 값이 아니라, 서버가 받은 두 스트림(10초 검출기 출력, 프롬프트 응답)에서 도출한다.
 
