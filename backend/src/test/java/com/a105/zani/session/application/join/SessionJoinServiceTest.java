@@ -79,6 +79,11 @@ class SessionJoinServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.ofNullable(byInviteCode.get(inviteCode));
         }

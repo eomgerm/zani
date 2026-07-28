@@ -46,4 +46,15 @@ public class RefreshTokenCookieManager {
                 .build();
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
     }
+
+    public void clear(HttpServletResponse response) {
+        ResponseCookie cookie = ResponseCookie.from(properties.refreshTokenName(), "")
+                .httpOnly(true)
+                .secure(properties.secure())
+                .sameSite(properties.sameSite())
+                .path(properties.refreshTokenPath())
+                .maxAge(Duration.ZERO)
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
 }

@@ -42,11 +42,23 @@ google:
 auth:
   cookie:
     refresh-token-name: refresh_token
-    refresh-token-path: /api/v1/auth/refresh
+    # /refresh 뿐 아니라 /logout 에도 쿠키가 실려야 하므로 auth 하위 전체로 스코프한다.
+    refresh-token-path: /api/v1/auth
 
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+session:
+  # 최대 수업 시간(3시간) 초과 세션을 정리하는 주기(ISO-8601 duration).
+  expiry-sweep-delay: ${SESSION_EXPIRY_SWEEP_DELAY:PT1M}
+
+gms:
+  base-url: ${GMS_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com}
+  api-key: ${GMS_API_KEY:}
+  mock-enabled: ${GMS_MOCK_ENABLED:true}
+  read-timeout: ${GMS_READ_TIMEOUT:10s}
+  connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
 
 livekit:
   url: ${LIVEKIT_URL:}
@@ -161,3 +173,6 @@ auth:
 cors:
   allowed-origins:
     - ${FRONTEND_ORIGIN}
+
+gms:
+  mock-enabled: ${GMS_MOCK_ENABLED:false}

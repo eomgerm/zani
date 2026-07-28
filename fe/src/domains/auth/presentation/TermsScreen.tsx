@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { TERMS, type TermDef } from "./fixtures";
+import { useAuth } from "./AuthProvider";
 
 type TermKey = TermDef["key"];
 
@@ -25,6 +26,7 @@ function CheckBox({ on }: { on: boolean }) {
  */
 export function TermsScreen() {
   const router = useRouter();
+  const { logout } = useAuth();
   const [checks, setChecks] = useState<Record<TermKey, boolean>>({ a: false, b: false, c: false });
   const [detail, setDetail] = useState<TermDef | null>(null);
 
@@ -32,6 +34,15 @@ export function TermsScreen() {
   const toggle = (k: TermKey) => setChecks((p) => ({ ...p, [k]: !p[k] }));
   const toggleAll = () =>
     setChecks(allOn ? { a: false, b: false, c: false } : { a: true, b: true, c: true });
+
+  /**
+   * 약관에 동의하지 않고 나가면 방금 로그인으로 만들어진 세션이 살아있으면 안 된다 —
+   * 그대로 두면 필수 약관 동의를 건너뛴 채로 로그인 상태가 남아 인증 가드를 우회할 수 있다.
+   */
+  const backToLogin = () => {
+    logout();
+    router.push("/login");
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#f1f5f4] p-6">
@@ -73,7 +84,7 @@ export function TermsScreen() {
 
         <div className="mt-[26px] flex gap-3">
           <button
-            onClick={() => router.push("/login")}
+            onClick={backToLogin}
             className="z-btn z-btn-outline flex-1 rounded-[14px] py-3.5 font-bold"
           >
             돌아가기

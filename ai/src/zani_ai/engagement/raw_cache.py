@@ -37,6 +37,7 @@ from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import asdict, dataclass
+from functools import partial
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import metadata
@@ -77,6 +78,22 @@ from zani_ai.engagement.features import BLENDSHAPE_NAMES_132, InvalidFrameFeatur
 type RawFrameSource = Callable[[Path], Iterator[VideoFrame]]
 
 RAW_SCHEMA_NAME = "raw_frames_v1"
+
+
+def raw_schema_name(sample_fps: float = SAMPLE_FPS) -> str:
+    """The raw cache schema for a sampling rate.
+
+    10 FPS keeps the bare ``raw_frames_v1`` name so the caches extracted before
+    the rate was configurable stay valid. Other rates get their own name, which
+    also gives them their own directory -- two rates must never share one,
+    because a clip's npz would otherwise be reused across them.
+    """
+    if sample_fps == SAMPLE_FPS:
+        return RAW_SCHEMA_NAME
+    rate = int(sample_fps) if float(sample_fps).is_integer() else sample_fps
+    return f"raw_frames_{rate}fps_v1"
+
+
 RAW_LANDMARK_COUNT = 478
 RAW_BLENDSHAPE_COUNT = len(BLENDSHAPE_NAMES_132)
 RAW_STORED_KEYS: tuple[str, ...] = (
@@ -287,13 +304,14 @@ def _cached_raw_clip(
     record: ClipRecord,
     fingerprint: str,
     extraction_fingerprint: str | None = None,
+    schema: str = RAW_SCHEMA_NAME,
 ) -> RawIncludedClip | None:
     feature_path = raw_root / record.split / f"{record.clip_id}.npz"
     if not feature_path.is_file():
         return None
     try:
         with np.load(feature_path, allow_pickle=False) as cache:
-            if cache["schema"].item() != RAW_SCHEMA_NAME:
+            if cache["schema"].item() != schema:
                 return None
             if cache["source_fingerprint"].item() != fingerprint:
                 return None
@@ -337,6 +355,7 @@ def _save_raw_clip(
     clip: RawClip,
     fingerprint: str,
     extraction_fingerprint: str,
+    schema: str = RAW_SCHEMA_NAME,
 ) -> RawIncludedClip:
     directory = raw_root / record.split
     directory.mkdir(parents=True, exist_ok=True)
@@ -351,7 +370,7 @@ def _save_raw_clip(
                 blendshapes=clip.blendshapes,
                 valid_mask=clip.valid_mask,
                 timestamps_ms=clip.timestamps_ms,
-                schema=np.asarray(RAW_SCHEMA_NAME),
+                schema=np.asarray(schema),
                 source_fingerprint=np.asarray(fingerprint),
                 extraction_fingerprint=np.asarray(extraction_fingerprint),
             )
@@ -422,6 +441,7 @@ def _build_raw_provenance(
     *,
     workers: int,
     max_excluded_fraction: float,
+    sample_fps: float = SAMPLE_FPS,
 ) -> RawProvenance:
     model_sha256 = _file_sha256(model_asset_path)
     model_size = model_asset_path.stat().st_size
@@ -440,12 +460,12 @@ def _build_raw_provenance(
         "inclusion_rule": _source_sha256(is_clip_included, "canonical inclusion rule"),
     }
     fingerprint_payload = {
-        "schema": RAW_SCHEMA_NAME,
+        "schema": raw_schema_name(sample_fps),
         "mediapipe_version": mediapipe_version,
         "opencv_version": opencv_version,
         "face_landmarker_model_sha256": model_sha256,
         "face_landmarker_model_size_bytes": model_size,
-        "sample_fps": SAMPLE_FPS,
+        "sample_fps": sample_fps,
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
         "minimum_valid_frames": MINIMUM_VALID_FRAMES,
@@ -470,7 +490,7 @@ def _build_raw_provenance(
         opencv_version=opencv_version,
         face_landmarker_model_sha256=model_sha256,
         face_landmarker_model_size_bytes=model_size,
-        sample_fps=SAMPLE_FPS,
+        sample_fps=sample_fps,
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
@@ -491,6 +511,10 @@ class _RawWorkerTask:
     raw_root: Path
     source_fingerprint: str
     extraction_fingerprint: str
+    # Carried per task so a spawned worker samples at the run's rate and
+    # stamps the matching schema, instead of the module defaults.
+    sample_fps: float = SAMPLE_FPS
+    schema: str = RAW_SCHEMA_NAME
 
 
 _raw_worker_landmarker: FrameLandmarker | None = None
@@ -518,7 +542,11 @@ def _extract_raw_worker(task: _RawWorkerTask) -> RawIncludedClip | ExcludedClip:
     if _source_fingerprint(record.video_path) != task.source_fingerprint:
         raise OSError("source video changed before extraction started")
     try:
-        clip = _process_raw_clip(record.video_path, _raw_worker_landmarker)
+        clip = _process_raw_clip(
+            record.video_path,
+            _raw_worker_landmarker,
+            frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
+        )
     except (
         InvalidFrameFeaturesError,
         InsufficientRawCoverageError,
@@ -534,6 +562,7 @@ def _extract_raw_worker(task: _RawWorkerTask) -> RawIncludedClip | ExcludedClip:
         clip,
         task.source_fingerprint,
         task.extraction_fingerprint,
+        schema=task.schema,
     )
 
 
@@ -545,6 +574,7 @@ def extract_raw_contract_parallel(
     workers: int = DEFAULT_RAW_WORKERS,
     progress_every: int = DEFAULT_PROGRESS_EVERY,
     max_excluded_fraction: float = 0.05,
+    sample_fps: float = SAMPLE_FPS,
 ) -> RawManifest:
     """Extract and cache raw per-frame MediaPipe output for a whole contract.
 
@@ -569,13 +599,15 @@ def extract_raw_contract_parallel(
     if not model_asset_path.is_file():
         raise FileNotFoundError(f"Face Landmarker model not found: {model_asset_path}")
 
-    raw_root = output_root / RAW_SCHEMA_NAME
+    schema = raw_schema_name(sample_fps)
+    raw_root = output_root / schema
     records = tuple(record for split in contract.splits.values() for record in split)
     _validate_unique_records(records)
     provenance = _build_raw_provenance(
         model_asset_path,
         workers=workers,
         max_excluded_fraction=max_excluded_fraction,
+        sample_fps=sample_fps,
     )
     total = len(records)
     included: dict[tuple[SplitName, str], RawIncludedClip] = {}
@@ -603,7 +635,7 @@ def extract_raw_contract_parallel(
         included_values = ordered_values(included)
         excluded_values = ordered_values(excluded)
         return RawManifest(
-            RAW_SCHEMA_NAME,
+            schema,
             tuple(item for item in included_values if isinstance(item, RawIncludedClip)),
             tuple(item for item in excluded_values if isinstance(item, ExcludedClip)),
             status=status,
@@ -670,6 +702,7 @@ def extract_raw_contract_parallel(
                     record,
                     source_fingerprint,
                     provenance.extraction_fingerprint,
+                    schema=schema,
                 )
                 if cached is not None:
                     included[key] = cached
@@ -681,6 +714,8 @@ def extract_raw_contract_parallel(
                             raw_root,
                             source_fingerprint,
                             provenance.extraction_fingerprint,
+                            sample_fps=sample_fps,
+                            schema=schema,
                         )
                     )
                 scanned_count += 1
@@ -765,6 +800,7 @@ __all__ = [
     "RAW_BLENDSHAPE_COUNT",
     "RAW_LANDMARK_COUNT",
     "RAW_SCHEMA_NAME",
+    "raw_schema_name",
     "RAW_STORED_KEYS",
     "InsufficientRawCoverageError",
     "RawClip",

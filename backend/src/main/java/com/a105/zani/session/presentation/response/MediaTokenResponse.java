@@ -20,8 +20,15 @@ public record MediaTokenResponse(
         @Schema(description = "참가자 identity", example = "p-456")
         String participantIdentity,
 
-        @Schema(description = "토큰 만료 시각(UTC, TTL 10분)", example = "2026-07-24T12:30:00Z")
-        Instant expiresAt) {
+        @Schema(
+                description = "LiveKit 토큰 만료 시각(UTC, TTL 10분). 이 값이 지나면 토큰을 다시 발급받아야 한다.",
+                example = "2026-07-24T12:30:00Z")
+        Instant expiresAt,
+
+        @Schema(
+                description = "최대 수업 시간(3시간)에 도달해 수업이 자동 종료될 시각(UTC). 강의실은 이 값으로 종료 10분 전 안내를 띄운다.",
+                example = "2026-07-24T15:00:00Z")
+        Instant sessionExpiresAt) {
 
     public static MediaTokenResponse from(IssueMediaTokenResult result) {
         return new MediaTokenResponse(
@@ -29,6 +36,7 @@ public record MediaTokenResponse(
                 result.accessToken(),
                 result.roomName(),
                 result.participantIdentity(),
-                result.expiresAt());
+                result.expiresAt(),
+                result.sessionExpiresAt());
     }
 }

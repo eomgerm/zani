@@ -5,7 +5,8 @@ import json
 import os
 import platform
 import statistics
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -14,12 +15,19 @@ from typing import cast
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
 import torch
+from torch import nn
 
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
+from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
+from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
+from zani_ai.engagement.representations import landmark_sequence_name
+from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
+from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
 from zani_ai.engagement.training import (
     EvaluationMetrics,
+    FeatureStatistics,
     TrainingConfig,
     load_checkpoint,
     train_model,
@@ -30,6 +38,16 @@ E0_SEEDS = (42, 43, 44, 45, 46)
 _SPLITS = {"train", "valid", "test"}
 _CUBLAS_CONFIGS = {":4096:8", ":16:8"}
 
+#: Environment keys that still must match exactly under
+#: ``allow_environment_drift``. These change the numerics; the rest (Python
+#: patch level, which physical card was allocated) only change the label.
+_NUMERIC_ENVIRONMENT_KEYS = (
+    "pytorch",
+    "cuda_runtime",
+    "cublas_workspace_config",
+    "requested_device",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class E0ExperimentResult:
@@ -39,17 +57,250 @@ class E0ExperimentResult:
 
 @dataclass(frozen=True, slots=True)
 class ExperimentSpec:
-    """Fully describes a reproducible experiment protocol (e.g. E0, E0-A)."""
+    """Fully describes a reproducible experiment protocol (e.g. E0, E0-A, E1).
+
+    ``schema`` is a token-based ``FeatureSchema`` for the Transformer family
+    (E0/E0-A/E0-B); non-token representations (e.g. E1's ST-GCN landmark
+    sequences) have no ``FeatureSchema`` and pass ``schema=None`` together
+    with ``representation_name`` instead. Use :attr:`schema_name` to get the
+    manifest/summary schema string regardless of which one is set.
+
+    The fields below ``seeds`` are all optional and default to the existing
+    Transformer behavior, so E0/E0-A/E0-B (which only pass ``protocol``,
+    ``schema`` and ``model_config``) are completely unaffected.
+
+    None of these fields may leak into ``_build_configuration``: that dict is
+    the reproducibility identity, and ``graph_path`` in particular is a
+    per-machine location, not part of the protocol.
+    """
 
     protocol: str
-    schema: FeatureSchema
-    model_config: ModelConfig
+    schema: FeatureSchema | None
+    model_config: ModelConfig | STGCNConfig
     seeds: tuple[int, ...] = E0_SEEDS
+    # E1 (non-Transformer) hooks; None/defaults reproduce the Transformer path.
+    representation_name: str | None = None
+    build_model: Callable[..., nn.Module] | None = None
+    needs_feature_stats: bool = True
+    learning_rate: float = 1e-4
+    batch_size: int = 32
+    max_epochs: int = 200
+    # Early-stopping window. Set it to `max_epochs` to disable stopping and run
+    # the full budget, which is what a protocol needs when its learning-rate
+    # schedule only pays off late (E1's decay lands at epoch 100 and 200).
+    patience: int = 20
+    lr_step: int | None = None
+    array_key: str = "tokens"
+    array_shape: tuple[int, ...] | None = None
+    # Loss weighting; see training.CLASS_WEIGHTING_SCHEMES. Part of the
+    # protocol identity, so changing it defines a new experiment.
+    class_weighting: str = "none"
+    # Loss shape and training-split sampling; see training.LOSS_SCHEMES and
+    # training.SAMPLER_SCHEMES. Also part of the identity.
+    loss: str = "cross_entropy"
+    focal_gamma: float = 2.0
+    sampler: str = "none"
+    # ST-GCN specs read a landmark graph file whose location varies per machine.
+    # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
+    needs_landmark_graph: bool = False
+    graph_path: Path | None = None
+
+    @property
+    def schema_name(self) -> str:
+        """The manifest/summary schema name, for token and non-token specs alike."""
+        if self.representation_name is not None:
+            return self.representation_name
+        if self.schema is None:
+            raise ValueError(f"{self.protocol} spec has neither schema nor representation_name")
+        return self.schema.name
 
 
 E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
 E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
 E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
+
+# E0-C / E0-D vary only the loss weighting against E0. E0's errors are 89%
+# adjacent-class and its boundaries sit against the majority class
+# (Highly-Engaged is 56% of validation), so the loss -- not the encoder --
+# is what the evidence points at. E0-D softens E0-C in case full inversion
+# overcorrects: with these counts `balanced` spans ~7.7x and
+# `sqrt_balanced` ~2.8x between the largest and smallest weight.
+E0C_SPEC = ExperimentSpec(
+    "E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced"
+)
+E0D_SPEC = ExperimentSpec(
+    "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
+)
+
+# E0-E / E0-F pick up where E0-D stopped: it beat E0 by only +0.49%p Validation
+# Macro F1, short of the +1.0%p bar. Both remaining levers act on the imbalance
+# without touching the encoder, and each isolates one variable.
+#
+# E0-E keeps E0-D's sqrt_balanced weights and changes only the loss shape, so
+# any difference is the focal term alone. Frequency weighting cannot tell an
+# easy majority sample from a hard one; `(1 - p_t)^2` can, which matters here
+# because 89% of E0's errors are one adjacent grade away.
+#
+# E0-F moves the correction from the loss to the batch and therefore reverts to
+# E0's unweighted loss -- keeping sqrt_balanced weights on top of a balanced
+# sampler would correct the same imbalance twice.
+E0E_SPEC = ExperimentSpec(
+    "E0-E",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    class_weighting="sqrt_balanced",
+    loss="focal",
+    focal_gamma=2.0,
+)
+E0F_SPEC = ExperimentSpec(
+    "E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced"
+)
+
+# E0-G is the baseline reset after E0-C..E0-F all died of the same cause: with
+# patience 20 their best_epoch landed at 0-4, so no loss or sampler change had
+# the epochs it needed to reshape a decision boundary. Applying an oracle logit
+# adjustment (thresholds chosen on Test itself, a cheating upper bound) to the
+# saved logits bought at most ~+0.4%p, which says the logits themselves have to
+# change, not the decision rule on top of them.
+#
+# Following the E1-A precedent, the training schedule moves as one variable
+# group: slow the optimizer 10x, disable early stopping, and add the decay
+# stage E0 never survived long enough to reach.
+E0G_SPEC = ExperimentSpec(
+    "E0-G",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    learning_rate=1e-5,
+    patience=200,
+    lr_step=100,
+)
+
+
+def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
+    """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
+
+    The inner function is deliberately named ``build_stgcn_model``:
+    ``training.train_model`` records ``build_model.__name__`` in
+    ``metrics.json``, so an anonymous closure would write a machine-specific
+    ``repr`` (absolute paths included) into every run's metrics.
+
+    ``graph_path`` is ``None`` only on the module-level spec, which exists
+    before any features root is known; ``reproduce_experiment`` rebinds it.
+    """
+
+    def build_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
+        """Ignores ``statistics``: ST-GCN needs no feature normalization stats.
+
+        See ``ExperimentSpec.needs_feature_stats=False`` on ``E1_SPEC``.
+        """
+        del statistics
+        if graph_path is None:
+            raise RuntimeError(
+                "E1 landmark graph is unresolved; run through reproduce_experiment "
+                "or set ExperimentSpec.graph_path"
+            )
+        _, partitions = load_graph(graph_path)
+        return EngagementSTGCN(torch.as_tensor(partitions), STGCNConfig())
+
+    return build_stgcn_model
+
+
+E1_SPEC = ExperimentSpec(
+    "E1",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=GRAPH_VERSION,
+    build_model=stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=2e-3,
+    batch_size=32,
+    max_epochs=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 100, 78),
+    needs_landmark_graph=True,
+)
+
+
+# E1-A restores the training conditions of the paper E1 reproduces
+# (arXiv:2403.17175), which E1 had drifted from.
+#
+# * batch 16 / lr 1e-3 are the paper's values, and were also this experiment's
+#   ticketed plan. Commits bcaeda2 and 4e146e1 raised them to 32 / 2e-3 for
+#   throughput on a 6GB laptop GPU -- a constraint the L40S removed.
+# * `patience == max_epochs` disables early stopping. The paper trains all 300
+#   epochs and decays the learning rate at 100 and 200; E1's measured
+#   best_epochs were 44, 48, 13, 8 and 25, so no seed ever reached the first
+#   decay and half the recipe never ran.
+#
+# The input is still 100 frames at 10 FPS against the paper's 300 at 30 FPS --
+# that needs a new representation and is tracked separately.
+E1A_SPEC = ExperimentSpec(
+    "E1-A",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=GRAPH_VERSION,
+    build_model=stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 100, 78),
+    needs_landmark_graph=True,
+)
+
+
+# E1-B adds the paper's temporal resolution on top of E1-A. The paper feeds all
+# 300 frames of a 10s clip at 30 FPS; we sample 10 FPS, keeping one frame in
+# three. Its Table 5 reports 0.7124 -> 0.6813 from subsampling every 2nd frame
+# alone, so this is the largest remaining difference and the last untested one.
+#
+# It needs its own raw cache: SAMPLE_FPS discards frames during extraction, so
+# `raw_frames_v1` physically cannot supply 300 steps and the source videos must
+# be re-extracted at 30 FPS.
+E1B_SPEC = ExperimentSpec(
+    "E1-B",
+    None,
+    STGCNConfig(),
+    seeds=E0_SEEDS,
+    representation_name=landmark_sequence_name(300),
+    build_model=stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 300, 78),
+    needs_landmark_graph=True,
+)
+
+
+#: Every reproducible protocol, keyed by the name it is known by on the CLI
+#: and in ``summary.json``. Lets callers dispatch on the protocol string
+#: instead of duplicating a handler per experiment.
+SPECS: dict[str, ExperimentSpec] = {
+    spec.protocol: spec
+    for spec in (
+        E0_SPEC,
+        E0A_SPEC,
+        E0B_SPEC,
+        E0C_SPEC,
+        E0D_SPEC,
+        E0E_SPEC,
+        E0F_SPEC,
+        E0G_SPEC,
+        E1_SPEC,
+        E1A_SPEC,
+        E1B_SPEC,
+    )
+}
 
 
 def _sha256(path: Path) -> str:
@@ -69,7 +320,8 @@ def _canonical_hash(payload: dict[str, object]) -> str:
 
 def _write_json_atomic(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
+    # The PID keeps concurrent seed processes from sharing a scratch file.
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -90,8 +342,8 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
         raise ValueError(f"invalid feature manifest JSON: {manifest_path}") from error
     if not isinstance(payload, dict):
         raise ValueError("feature manifest must be a JSON object")
-    if payload.get("schema") != spec.schema.name:
-        raise ValueError(f"feature manifest schema must be {spec.schema.name}")
+    if payload.get("schema") != spec.schema_name:
+        raise ValueError(f"feature manifest schema must be {spec.schema_name}")
     included, excluded = validate_manifest_completion(payload)
     splits: set[str] = set()
     for index, item in enumerate(included):
@@ -143,45 +395,122 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
     return manifest_path, hashlib.sha256(manifest_bytes).hexdigest()
 
 
-def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
-    configuration: dict[str, object] = {
-        "feature_schema": spec.schema.name,
-        "input_shape": ["batch", 20, spec.schema.token_feature_count],
-        "seeds": list(spec.seeds),
-        "optimizer": "Adam",
-        "learning_rate": 1e-4,
-        "batch_size": 32,
-        "maximum_epochs": 200,
-        "early_stopping": {
-            "metric": "validation_macro_f1",
-            "mode": "max",
-            "patience": 20,
-        },
-        "class_weighting": False,
-        "model": {
-            **spec.model_config.to_dict(),
-            "learned_position_count": 20,
-            "pooling": "max",
-            "classifier_dimensions": [256, 128, 4],
-        },
-        "device": device,
-        "deterministic_algorithms": True,
-        "num_workers": 0,
-    }
-    if spec.model_config.head == "coral":
+def _class_weighting_value(spec: ExperimentSpec) -> object:
+    """The ``class_weighting`` entry of the configuration dict.
+
+    Unweighted protocols keep the literal ``False`` this field has always
+    held, so E0/E0-A/E0-B/E1 hash exactly as before; weighted ones record the
+    scheme name, which gives them a distinct identity.
+    """
+    return False if spec.class_weighting == "none" else spec.class_weighting
+
+
+def _apply_loss_and_sampling(
+    configuration: dict[str, object], spec: ExperimentSpec
+) -> dict[str, object]:
+    """Record the loss shape and sampler, but only when they leave the default.
+
+    Emitting these keys unconditionally would rewrite the hash of every protocol
+    that predates them and discard its completed seeds, so a plain
+    cross-entropy, unsampled spec must produce the dict it always has.
+    """
+    if getattr(spec.model_config, "head", "softmax") == "coral":
+        # CORAL replaces the head, so its loss is fixed regardless of spec.loss.
         configuration["loss"] = "coral_bce"
+    elif spec.loss != "cross_entropy":
+        configuration["loss"] = spec.loss
+        configuration["focal_gamma"] = spec.focal_gamma
+    if spec.sampler != "none":
+        configuration["sampler"] = spec.sampler
     return configuration
 
 
+def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]:
+    # Only the device *type* may enter the identity: `cuda` and `cuda:2` are
+    # the same protocol on different cards and must share a hash, or moving a
+    # run between GPUs would discard every completed seed.
+    device = device_type(device)
+    if spec.build_model is None:
+        # Transformer path (E0/E0-A/E0-B). `spec.learning_rate`/`batch_size`/
+        # `max_epochs` default to the exact literals this used to hardcode, so
+        # this dict (and its hash) is byte-identical to before for those specs.
+        assert spec.schema is not None
+        configuration: dict[str, object] = {
+            "feature_schema": spec.schema.name,
+            "input_shape": ["batch", 20, spec.schema.token_feature_count],
+            "seeds": list(spec.seeds),
+            "optimizer": "Adam",
+            "learning_rate": spec.learning_rate,
+            "batch_size": spec.batch_size,
+            "maximum_epochs": spec.max_epochs,
+            "early_stopping": {
+                "metric": "validation_macro_f1",
+                "mode": "max",
+                "patience": spec.patience,
+            },
+            "class_weighting": _class_weighting_value(spec),
+            "model": {
+                **spec.model_config.to_dict(),
+                "learned_position_count": 20,
+                "pooling": "max",
+                "classifier_dimensions": [256, 128, 4],
+            },
+            "device": device,
+            "deterministic_algorithms": True,
+            "num_workers": 0,
+        }
+        # `lr_step` originated on the ST-GCN path, so recording it
+        # unconditionally would rewrite the hash of every existing Transformer
+        # protocol and discard its completed seeds. Only specs that actually
+        # run a decay schedule record it.
+        if spec.lr_step is not None:
+            configuration["lr_step"] = spec.lr_step
+        return _apply_loss_and_sampling(configuration, spec)
+
+    # ST-GCN path (E1 and other non-token representations).
+    return _apply_loss_and_sampling(
+        {
+            "representation": spec.schema_name,
+            "model_family": "stgcn",
+            "seeds": list(spec.seeds),
+            "optimizer": "Adam",
+            "learning_rate": spec.learning_rate,
+            "batch_size": spec.batch_size,
+            "maximum_epochs": spec.max_epochs,
+            "lr_step": spec.lr_step,
+            "early_stopping": {
+                "metric": "validation_macro_f1",
+                "mode": "max",
+                "patience": spec.patience,
+            },
+            "class_weighting": _class_weighting_value(spec),
+            "model": spec.model_config.to_dict(),
+            "device": device,
+            "deterministic_algorithms": True,
+            "num_workers": 0,
+        },
+        spec,
+    )
+
+
 def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
+    kind, requested_index = parse_device(device)
     cuda_available = torch.cuda.is_available()
-    if device == "cuda" and not cuda_available:
+    if kind == "cuda" and not cuda_available:
         raise RuntimeError(
-            f"{spec.protocol} requested device=cuda, but PyTorch reports CUDA unavailable"
+            f"{spec.protocol} requested device={device}, but PyTorch reports CUDA unavailable"
         )
     cuda_device: dict[str, object] | None = None
-    if device == "cuda":
-        index = torch.cuda.current_device()
+    if kind == "cuda":
+        # An unqualified `cuda` follows PyTorch's current device, which is what
+        # CUDA_VISIBLE_DEVICES already narrows for us on a shared server.
+        index = torch.cuda.current_device() if requested_index is None else requested_index
+        if not 0 <= index < torch.cuda.device_count():
+            raise RuntimeError(
+                f"{spec.protocol} requested device={device}, but only "
+                f"{torch.cuda.device_count()} CUDA device(s) are visible; "
+                "check CUDA_VISIBLE_DEVICES"
+            )
         cuda_device = {
             "index": index,
             "name": torch.cuda.get_device_name(index),
@@ -192,7 +521,8 @@ def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
         "pytorch": str(torch.__version__),
         "cuda_runtime": torch.version.cuda,
         "cuda_available": cuda_available,
-        "requested_device": device,
+        # Normalized so a card index shows up once, in `cuda_device.index`.
+        "requested_device": kind,
         "cuda_device": cuda_device,
         "cublas_workspace_config": os.environ.get("CUBLAS_WORKSPACE_CONFIG"),
     }
@@ -200,7 +530,7 @@ def _environment(device: str, spec: ExperimentSpec) -> dict[str, object]:
 
 def _enable_strict_determinism(device: str) -> None:
     cublas_config = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
-    if device == "cuda" and cublas_config not in _CUBLAS_CONFIGS:
+    if device_type(device) == "cuda" and cublas_config not in _CUBLAS_CONFIGS:
         raise RuntimeError(
             "strict CUDA determinism requires CUBLAS_WORKSPACE_CONFIG=:4096:8 or :16:8"
         )
@@ -214,21 +544,64 @@ def _enable_strict_determinism(device: str) -> None:
         raise RuntimeError("PyTorch strict deterministic execution could not be enabled")
 
 
+def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
+    """Provenance for the landmark graph, which nothing else in the repo records.
+
+    The graph defines the ST-GCN node topology, so two runs that used different
+    graphs are not comparable even with an identical ``configuration``. There
+    is no CLI that regenerates it, which makes the fingerprint the only link
+    between a summary and the file it was trained against.
+    """
+    if graph_path is None:
+        return None
+    return {
+        "path": str(graph_path.resolve()),
+        "sha256": _sha256(graph_path),
+        "size_bytes": graph_path.stat().st_size,
+    }
+
+
+def _validate_inputs_identity(
+    summary: dict[str, object], inputs: dict[str, object], spec: ExperimentSpec
+) -> None:
+    recorded = summary.get("inputs")
+    if not isinstance(recorded, dict):
+        # Summary predates input fingerprinting; adopt the current one.
+        summary["inputs"] = inputs
+        return
+    for name, current in inputs.items():
+        previous = recorded.get(name)
+        if previous is None:
+            continue
+        if (
+            isinstance(previous, dict)
+            and isinstance(current, dict)
+            and previous.get("sha256") != current.get("sha256")
+        ):
+            raise ValueError(
+                f"existing {spec.protocol} summary used a different {name}; "
+                "choose a new output directory"
+            )
+    summary["inputs"] = {**recorded, **inputs}
+
+
 def _empty_summary(
     manifest_path: Path,
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
     spec: ExperimentSpec,
+    inputs: dict[str, object],
 ) -> dict[str, object]:
     return {
         "protocol": spec.protocol,
         "status": "in_progress",
         "feature_manifest": {
             "path": str(manifest_path.resolve()),
-            "schema": spec.schema.name,
+            "schema": spec.schema_name,
             "sha256": manifest_sha256,
         },
+        "inputs": inputs,
         "configuration": configuration,
         "configuration_sha256": _canonical_hash(configuration),
         "environment": environment,
@@ -251,12 +624,31 @@ def _load_summary(path: Path, spec: ExperimentSpec) -> dict[str, object]:
     return cast(dict[str, object], payload)
 
 
+def _environment_matches(
+    recorded: object, current: dict[str, object], *, allow_drift: bool
+) -> bool:
+    """Whether a recorded environment may continue into ``current``.
+
+    Strict by default: an exact match, as before. Under ``allow_drift`` only
+    the keys that change results are compared, so a run may resume on another
+    machine or another card -- each seed still records the environment it
+    actually ran in, so what happened stays reconstructible.
+    """
+    if not allow_drift:
+        return recorded == current
+    if not isinstance(recorded, dict):
+        return False
+    return all(recorded.get(key) == current.get(key) for key in _NUMERIC_ENVIRONMENT_KEYS)
+
+
 def _validate_summary_identity(
     summary: dict[str, object],
     manifest_sha256: str,
     configuration: dict[str, object],
     environment: dict[str, object],
     spec: ExperimentSpec,
+    *,
+    allow_environment_drift: bool = False,
 ) -> None:
     manifest = summary.get("feature_manifest")
     actual_manifest_hash = manifest.get("sha256") if isinstance(manifest, dict) else None
@@ -274,10 +666,12 @@ def _validate_summary_identity(
         raise ValueError(
             f"existing {spec.protocol} summary has an invalid configuration fingerprint"
         )
-    if summary.get("environment") != environment:
+    if not _environment_matches(
+        summary.get("environment"), environment, allow_drift=allow_environment_drift
+    ):
         raise ValueError(
             f"existing {spec.protocol} summary was created in a different runtime environment; "
-            "choose a new output directory"
+            "choose a new output directory or pass --allow-environment-drift"
         )
     seeds = summary.get("seeds")
     if not isinstance(seeds, list):
@@ -418,11 +812,20 @@ def _seed_is_complete(
 def _aggregate(seed_records: list[dict[str, object]]) -> dict[str, object]:
     accuracies: list[float] = []
     macro_f1s: list[float] = []
+    within_ones: list[float] = []
+    kappas: list[float] = []
     for record in seed_records:
         validation = record.get("validation")
         if isinstance(validation, dict):
             accuracies.append(float(validation["accuracy"]))
             macro_f1s.append(float(validation["macro_f1"]))
+            # The ordinal metrics arrived later. Seed records completed before
+            # them come back unchanged through the resume path, so a missing
+            # entry has to be tolerated instead of failing the aggregate.
+            if "within_one_accuracy" in validation:
+                within_ones.append(float(validation["within_one_accuracy"]))
+            if "quadratic_weighted_kappa" in validation:
+                kappas.append(float(validation["quadratic_weighted_kappa"]))
 
     def summarize(values: list[float]) -> dict[str, float | None]:
         return {
@@ -430,11 +833,16 @@ def _aggregate(seed_records: list[dict[str, object]]) -> dict[str, object]:
             "sample_standard_deviation": statistics.stdev(values) if len(values) >= 2 else None,
         }
 
-    return {
+    aggregate: dict[str, object] = {
         "completed_seed_count": len(seed_records),
         "validation_accuracy": summarize(accuracies),
         "validation_macro_f1": summarize(macro_f1s),
     }
+    if within_ones:
+        aggregate["validation_within_one_accuracy"] = summarize(within_ones)
+    if kappas:
+        aggregate["validation_quadratic_weighted_kappa"] = summarize(kappas)
+    return aggregate
 
 
 def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
@@ -453,160 +861,423 @@ def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
     )
 
 
-def reproduce_experiment(
-    spec: ExperimentSpec, features_root: Path, output_dir: Path, *, device: str
-) -> E0ExperimentResult:
-    if device not in {"cpu", "cuda"}:
-        raise ValueError(f"{spec.protocol} device must be 'cpu' or 'cuda'")
+@dataclass(frozen=True, slots=True)
+class RunContext:
+    """Per-run facts every seed of a protocol must agree on.
+
+    Built once by :func:`prepare_run` and handed to :func:`run_seed`. Parallel
+    seed processes each build their own and must arrive at the same values --
+    that agreement is what makes their records comparable.
+    """
+
+    spec: ExperimentSpec
+    features_root: Path
+    output_dir: Path
+    device: str
+    manifest_path: Path
+    manifest_sha256: str
+    configuration: dict[str, object]
+    environment: dict[str, object]
+    inputs: dict[str, object]
+
+
+def _seed_record_path(output_dir: Path, seed: int) -> Path:
+    return output_dir / f"seed-{seed}" / "record.json"
+
+
+def _read_seed_record(output_dir: Path, seed: int) -> dict[str, object] | None:
+    path = _seed_record_path(output_dir, seed)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _adopt_summary_seed_records(context: RunContext, summary: dict[str, object]) -> None:
+    """Give an older run the per-seed record files it never wrote.
+
+    Seed completion used to live only in ``summary.json``. Concurrent seeds
+    cannot share one file, so the record moved next to its checkpoint. Without
+    this, every run finished under the old layout would look incomplete and
+    retrain from scratch.
+    """
+    for item in cast(list[object], summary.get("seeds") or []):
+        if not isinstance(item, dict):
+            continue
+        seed = item.get("seed")
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            continue
+        if seed not in context.spec.seeds:
+            continue
+        path = _seed_record_path(context.output_dir, seed)
+        if not path.is_file():
+            _write_json_atomic(path, dict(item))
+
+
+def prepare_run(
+    spec: ExperimentSpec,
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    graph_path: Path | None = None,
+    allow_environment_drift: bool = False,
+) -> RunContext:
+    """Validate the inputs and pin the identity every seed of this run shares.
+
+    Leaves ``summary.json`` alone apart from back-filling per-seed records for
+    a run made before those existed, so concurrent seed processes may all call
+    it.
+    """
+    try:
+        parse_device(device)
+    except ValueError as error:
+        raise ValueError(f"{spec.protocol} {error}") from error
     manifest_path, manifest_sha256 = _validate_manifest(features_root, spec)
+    if spec.needs_landmark_graph:
+        resolved_graph = resolve_landmark_graph(features_root, graph_path or spec.graph_path)
+        spec = replace(
+            spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
+        )
+    inputs: dict[str, object] = {}
+    graph_record = _graph_record(spec.graph_path)
+    if graph_record is not None:
+        inputs["landmark_graph"] = graph_record
     configuration = _build_configuration(spec, device)
     environment = _environment(device, spec)
     _enable_strict_determinism(device)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    context = RunContext(
+        spec=spec,
+        features_root=features_root,
+        output_dir=output_dir,
+        device=device,
+        manifest_path=manifest_path,
+        manifest_sha256=manifest_sha256,
+        configuration=configuration,
+        environment=environment,
+        inputs=inputs,
+    )
     summary_path = output_dir / "summary.json"
     if summary_path.is_file():
         summary = _load_summary(summary_path, spec)
-        _validate_summary_identity(summary, manifest_sha256, configuration, environment, spec)
-    else:
-        summary = _empty_summary(
-            manifest_path, manifest_sha256, configuration, environment, spec
+        _validate_summary_identity(
+            summary,
+            manifest_sha256,
+            configuration,
+            environment,
+            spec,
+            allow_environment_drift=allow_environment_drift,
         )
-        _write_json_atomic(summary_path, summary)
+        _validate_inputs_identity(summary, inputs, spec)
+        _adopt_summary_seed_records(context, summary)
+    return context
 
-    for seed in spec.seeds:
-        existing = _seed_record(summary, seed)
+
+def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str, object]:
+    """Train, export and fingerprint one seed; return its completion record."""
+    spec = context.spec
+    manifest_path = context.manifest_path
+    manifest_sha256 = context.manifest_sha256
+    configuration = context.configuration
+
+    def report_progress(epoch: int, metrics: EvaluationMetrics) -> None:
+        print(
+            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{spec.max_epochs} "
+            f"validation_accuracy={metrics.accuracy:.6f} "
+            f"validation_macro_f1={metrics.macro_f1:.6f}",
+            flush=True,
+        )
+
+    training_config = TrainingConfig(
+        features_root=context.features_root,
+        output_dir=seed_dir,
+        max_epochs=spec.max_epochs,
+        batch_size=spec.batch_size,
+        learning_rate=spec.learning_rate,
+        patience=spec.patience,
+        seed=seed,
+        device=context.device,
+        class_weighting=spec.class_weighting,
+        loss=spec.loss,
+        focal_gamma=spec.focal_gamma,
+        sampler=spec.sampler,
+        num_workers=0,
+        deterministic=True,
+        model=spec.model_config,
+        build_model=spec.build_model,
+        needs_feature_stats=spec.needs_feature_stats,
+        lr_step=spec.lr_step,
+        array_key=spec.array_key,
+        array_shape=spec.array_shape,
+    )
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before seed {seed} training", spec
+    )
+    result = train_model(training_config, evaluate_test=False, progress=report_progress)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"after seed {seed} training", spec
+    )
+    metrics_payload = _load_summary(result.metrics_path, spec)
+    metrics_payload["experiment"] = {
+        "protocol": spec.protocol,
+        "seed": seed,
+        "feature_manifest_sha256": manifest_sha256,
+        "configuration": configuration,
+        "configuration_sha256": _canonical_hash(configuration),
+    }
+    metrics_payload["test_evaluation"] = {
+        "status": "deferred",
+        "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
+    }
+    metrics_payload.pop("test", None)
+    _write_json_atomic(result.metrics_path, metrics_payload)
+
+    model = load_checkpoint(result.checkpoint_path)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
+    )
+    export_metadata = (
+        DeploymentMetadata.for_stgcn()
+        if spec.schema is None
+        else DeploymentMetadata.for_schema(spec.schema)
+    )
+    exported = export_onnx(model, export_metadata, seed_dir / "onnx")
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
+    )
+    expected_paths = _seed_paths(context.output_dir, seed)
+    if exported.model_path != expected_paths["onnx_model"]:
+        raise RuntimeError("ONNX exporter returned an unexpected model path")
+    if exported.metadata_path != expected_paths["onnx_metadata"]:
+        raise RuntimeError("ONNX exporter returned an unexpected metadata path")
+    artifacts = _artifact_records(context.output_dir, expected_paths)
+    _assert_manifest_unchanged(
+        manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
+    )
+    return {
+        "seed": seed,
+        "status": "complete",
+        "feature_manifest_sha256": manifest_sha256,
+        "configuration_sha256": _canonical_hash(configuration),
+        # Per-seed snapshot: with drift allowed, the summary's top-level
+        # environment describes only the most recent run, so this is the
+        # only record of which machine and card produced this checkpoint.
+        "environment": context.environment,
+        "best_epoch": result.best_epoch,
+        "validation": {
+            "accuracy": result.validation.accuracy,
+            "macro_f1": result.validation.macro_f1,
+            "within_one_accuracy": result.validation.within_one_accuracy,
+            "quadratic_weighted_kappa": result.validation.quadratic_weighted_kappa,
+        },
+        "artifacts": artifacts,
+    }
+
+
+def run_seed(context: RunContext, seed: int) -> bool:
+    """Train one seed unless it is already complete; report whether it ran.
+
+    Writes only inside ``seed-<n>/`` and never touches ``summary.json``, so
+    several seeds can run as concurrent processes against one output
+    directory. Call :func:`collect_summary` once they finish.
+    """
+    spec = context.spec
+    if seed not in spec.seeds:
+        raise ValueError(
+            f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}"
+        )
+    seed_dir = context.output_dir / f"seed-{seed}"
+    lock = DirectoryLock(
+        seed_dir / ".seed.lock",
+        busy_message=(
+            f"{spec.protocol} seed {seed} is already running in {seed_dir}; "
+            "wait for that process or choose another --output"
+        ),
+    )
+    with lock:
+        existing = _read_seed_record(context.output_dir, seed)
         complete, reason = _seed_is_complete(
             existing,
             seed=seed,
-            output_dir=output_dir,
-            manifest_sha256=manifest_sha256,
-            configuration=configuration,
+            output_dir=context.output_dir,
+            manifest_sha256=context.manifest_sha256,
+            configuration=context.configuration,
             spec=spec,
         )
         if complete:
             print(f"{spec.protocol} seed={seed} resume=complete", flush=True)
-            continue
+            return False
         if existing is not None:
             print(f"{spec.protocol} seed={seed} resume=rerun reason={reason}", flush=True)
-            summary["seeds"] = [
-                item
-                for item in cast(list[object], summary["seeds"])
-                if not isinstance(item, dict) or item.get("seed") != seed
-            ]
-            _update_summary(summary, spec)
-            _write_json_atomic(summary_path, summary)
-
-        seed_dir = output_dir / f"seed-{seed}"
-
-        def report_progress(
-            epoch: int, metrics: EvaluationMetrics, _seed: int = seed
-        ) -> None:
-            print(
-                f"{spec.protocol} seed={_seed} epoch={epoch + 1}/200 "
-                f"validation_accuracy={metrics.accuracy:.6f} "
-                f"validation_macro_f1={metrics.macro_f1:.6f}",
-                flush=True,
-            )
-
-        training_config = TrainingConfig(
-            features_root=features_root,
-            output_dir=seed_dir,
-            max_epochs=200,
-            batch_size=32,
-            learning_rate=1e-4,
-            patience=20,
-            seed=seed,
-            device=device,
-            use_class_weights=False,
-            num_workers=0,
-            deterministic=True,
-            model=spec.model_config,
-        )
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} training", spec
-        )
-        result = train_model(
-            training_config,
-            evaluate_test=False,
-            progress=report_progress,
-        )
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} training", spec
-        )
-        metrics_payload = _load_summary(result.metrics_path, spec)
-        metrics_payload["experiment"] = {
-            "protocol": spec.protocol,
-            "seed": seed,
-            "feature_manifest_sha256": manifest_sha256,
-            "configuration": configuration,
-            "configuration_sha256": _canonical_hash(configuration),
-        }
-        metrics_payload["test_evaluation"] = {
-            "status": "deferred",
-            "reason": f"Test evaluation is deferred by the {spec.protocol} protocol.",
-        }
-        metrics_payload.pop("test", None)
-        _write_json_atomic(result.metrics_path, metrics_payload)
-
-        model = load_checkpoint(result.checkpoint_path)
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
-        )
-        exported = export_onnx(model, DeploymentMetadata.for_schema(spec.schema), seed_dir / "onnx")
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"after seed {seed} ONNX export", spec
-        )
-        expected_paths = _seed_paths(output_dir, seed)
-        if exported.model_path != expected_paths["onnx_model"]:
-            raise RuntimeError("ONNX exporter returned an unexpected model path")
-        if exported.metadata_path != expected_paths["onnx_metadata"]:
-            raise RuntimeError("ONNX exporter returned an unexpected metadata path")
-        artifacts = _artifact_records(output_dir, expected_paths)
-        _assert_manifest_unchanged(
-            manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
-        )
-        record: dict[str, object] = {
-            "seed": seed,
-            "status": "complete",
-            "feature_manifest_sha256": manifest_sha256,
-            "configuration_sha256": _canonical_hash(configuration),
-            "best_epoch": result.best_epoch,
-            "validation": {
-                "accuracy": result.validation.accuracy,
-                "macro_f1": result.validation.macro_f1,
-            },
-            "artifacts": artifacts,
-        }
-        cast(list[object], summary["seeds"]).append(record)
-        _update_summary(summary, spec)
-        _write_json_atomic(summary_path, summary)
+            _seed_record_path(context.output_dir, seed).unlink(missing_ok=True)
+        record = _train_one_seed(context, seed, seed_dir)
+        _write_json_atomic(_seed_record_path(context.output_dir, seed), record)
+        validation = cast(dict[str, float], record["validation"])
         print(
-            f"{spec.protocol} seed={seed} complete best_epoch={result.best_epoch} "
-            f"validation_macro_f1={result.validation.macro_f1:.6f}",
+            f"{spec.protocol} seed={seed} complete best_epoch={record['best_epoch']} "
+            f"validation_macro_f1={validation['macro_f1']:.6f}",
             flush=True,
         )
+        return True
 
+
+def collect_summary(
+    context: RunContext, *, allow_environment_drift: bool = False
+) -> E0ExperimentResult:
+    """Rebuild ``summary.json`` from the per-seed records currently on disk.
+
+    Safe to call at any point -- seeds still running are simply absent from it.
+    """
+    spec = context.spec
+    summary_path = context.output_dir / "summary.json"
+    if summary_path.is_file():
+        summary = _load_summary(summary_path, spec)
+        _validate_summary_identity(
+            summary,
+            context.manifest_sha256,
+            context.configuration,
+            context.environment,
+            spec,
+            allow_environment_drift=allow_environment_drift,
+        )
+        _validate_inputs_identity(summary, context.inputs, spec)
+        if allow_environment_drift:
+            # Record that the strict check was waived, and keep the latest
+            # environment so the summary describes the run that is continuing.
+            summary["environment_drift_allowed"] = True
+            summary["environment"] = context.environment
+    else:
+        summary = _empty_summary(
+            context.manifest_path,
+            context.manifest_sha256,
+            context.configuration,
+            context.environment,
+            spec,
+            context.inputs,
+        )
+    records: list[object] = []
+    for seed in spec.seeds:
+        record = _read_seed_record(context.output_dir, seed)
+        complete, _ = _seed_is_complete(
+            record,
+            seed=seed,
+            output_dir=context.output_dir,
+            manifest_sha256=context.manifest_sha256,
+            configuration=context.configuration,
+            spec=spec,
+        )
+        if complete and record is not None:
+            records.append(record)
+    summary["seeds"] = records
     _update_summary(summary, spec)
     _write_json_atomic(summary_path, summary)
     completed = tuple(
-        int(item["seed"])
-        for item in cast(list[dict[str, object]], summary["seeds"])
+        int(cast(int, cast(dict[str, object], item)["seed"]))
+        for item in cast(list[object], summary["seeds"])
     )
     return E0ExperimentResult(summary_path, completed)
 
 
-def reproduce_e0(features_root: Path, output_dir: Path, *, device: str) -> E0ExperimentResult:
-    return reproduce_experiment(E0_SPEC, features_root, output_dir, device=device)
+def reproduce_experiment(
+    spec: ExperimentSpec,
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    graph_path: Path | None = None,
+    allow_environment_drift: bool = False,
+    seeds: Sequence[int] | None = None,
+    collect: bool = True,
+) -> E0ExperimentResult:
+    """Run a protocol's seeds in this process and summarize them.
+
+    ``seeds`` restricts the run to a subset -- one seed per process is how
+    parallel execution is driven. Those workers pass ``collect=False`` so they
+    never write ``summary.json``; :func:`collect_only` rebuilds it afterwards.
+    """
+    context = prepare_run(
+        spec,
+        features_root,
+        output_dir,
+        device=device,
+        graph_path=graph_path,
+        allow_environment_drift=allow_environment_drift,
+    )
+    for seed in context.spec.seeds if seeds is None else seeds:
+        run_seed(context, seed)
+        if collect:
+            collect_summary(context, allow_environment_drift=allow_environment_drift)
+    if not collect:
+        return E0ExperimentResult(
+            output_dir / "summary.json",
+            tuple(
+                seed
+                for seed in context.spec.seeds
+                if _read_seed_record(output_dir, seed) is not None
+            ),
+        )
+    return collect_summary(context, allow_environment_drift=allow_environment_drift)
+
+
+def collect_only(
+    spec: ExperimentSpec,
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    graph_path: Path | None = None,
+    allow_environment_drift: bool = False,
+) -> E0ExperimentResult:
+    """Rebuild ``summary.json`` without training, after parallel seeds finish."""
+    context = prepare_run(
+        spec,
+        features_root,
+        output_dir,
+        device=device,
+        graph_path=graph_path,
+        allow_environment_drift=allow_environment_drift,
+    )
+    return collect_summary(context, allow_environment_drift=allow_environment_drift)
+
+def reproduce_e0(
+    features_root: Path,
+    output_dir: Path,
+    *,
+    device: str,
+    allow_environment_drift: bool = False,
+) -> E0ExperimentResult:
+    return reproduce_experiment(
+        E0_SPEC,
+        features_root,
+        output_dir,
+        device=device,
+        allow_environment_drift=allow_environment_drift,
+    )
 
 
 __all__ = [
-    "E0_SEEDS",
-    "E0_SPEC",
     "E0A_SPEC",
     "E0B_SPEC",
+    "E0C_SPEC",
+    "E0D_SPEC",
+    "E0_SEEDS",
+    "E0_SPEC",
+    "E1A_SPEC",
+    "E1B_SPEC",
+    "E1_SPEC",
+    "SPECS",
     "E0ExperimentResult",
     "ExperimentSpec",
+    "collect_only",
+    "collect_summary",
+    "prepare_run",
     "reproduce_e0",
     "reproduce_experiment",
+    "run_seed",
+    "stgcn_model_builder",
 ]

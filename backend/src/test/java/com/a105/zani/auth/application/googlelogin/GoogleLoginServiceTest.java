@@ -159,6 +159,11 @@ class GoogleLoginServiceTest {
             throw new UnsupportedOperationException("not needed for this test");
         }
 
+        @Override
+        public void revoke(String subject, String tokenId) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
         RefreshSession createdSession() {
             return created.get(0);
         }

@@ -30,7 +30,12 @@ public class GoogleIdTokenVerifierAdapter implements GoogleIdentityPort {
 
         String subject = jwt.getSubject();
         String email = jwt.getClaimAsString("email");
-        if (subject == null || subject.isBlank() || email == null || email.isBlank()) {
+        Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
+        if (subject == null
+                || subject.isBlank()
+                || email == null
+                || email.isBlank()
+                || !Boolean.TRUE.equals(emailVerified)) {
             throw new InvalidGoogleIdTokenException();
         }
 
