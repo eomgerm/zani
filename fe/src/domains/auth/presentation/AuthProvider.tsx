@@ -1,12 +1,20 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
   loginWithGoogle as requestGoogleLogin,
   type GoogleLoginRequester,
 } from "../infrastructure/googleLoginApi";
+import {
+  refreshSession as requestRefreshSession,
+  type RefreshSessionRequester,
+} from "../infrastructure/refreshSessionApi";
+import {
+  getCurrentMember as requestCurrentMember,
+  type CurrentMemberRequester,
+} from "../infrastructure/getCurrentMemberApi";
 
 export type AuthMember = {
   email: string;
@@ -18,6 +26,8 @@ export type AuthContextValue = {
   accessToken: string | null;
   member: AuthMember | null;
   isAuthenticated: boolean;
+  /** 부트 시 세션 복원을 시도하는 동안 true. 이 동안은 로그인 여부를 아직 알 수 없다. */
+  isInitializing: boolean;
   loginWithGoogle: (idToken: string) => Promise<{ newMember: boolean }>;
   logout: () => void;
 };
@@ -25,13 +35,48 @@ export type AuthContextValue = {
 export type AuthProviderProps = {
   children: ReactNode;
   requestGoogleLoginFn?: GoogleLoginRequester;
+  requestRefreshSessionFn?: RefreshSessionRequester;
+  requestCurrentMemberFn?: CurrentMemberRequester;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children, requestGoogleLoginFn = requestGoogleLogin }: AuthProviderProps) {
+export function AuthProvider({
+  children,
+  requestGoogleLoginFn = requestGoogleLogin,
+  requestRefreshSessionFn = requestRefreshSession,
+  requestCurrentMemberFn = requestCurrentMember,
+}: AuthProviderProps) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [member, setMember] = useState<AuthMember | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // 앱 부트 시 1회, HttpOnly refresh 쿠키로 세션 복원을 시도한다. 로그인한 적 없거나
+  // 세션이 만료된 경우 실패하는 게 정상이라 조용히 로그아웃 상태를 유지한다.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const session = await requestRefreshSessionFn();
+        if (cancelled) return;
+        const currentMember = await requestCurrentMemberFn(session.accessToken);
+        if (cancelled) return;
+        setAccessToken(session.accessToken);
+        setMember(currentMember);
+      } catch {
+        // 세션 없음/만료 — 로그아웃 상태를 유지한다.
+      } finally {
+        if (!cancelled) setIsInitializing(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // 부트 시 한 번만 시도한다. 함수 identity 변화로 재시도하지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loginWithGoogle = useCallback(
     async (idToken: string) => {
@@ -53,8 +98,15 @@ export function AuthProvider({ children, requestGoogleLoginFn = requestGoogleLog
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ accessToken, member, isAuthenticated: accessToken !== null, loginWithGoogle, logout }),
-    [accessToken, member, loginWithGoogle, logout],
+    () => ({
+      accessToken,
+      member,
+      isAuthenticated: accessToken !== null,
+      isInitializing,
+      loginWithGoogle,
+      logout,
+    }),
+    [accessToken, member, isInitializing, loginWithGoogle, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
