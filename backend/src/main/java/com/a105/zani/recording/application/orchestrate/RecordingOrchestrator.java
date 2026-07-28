@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.OrphanedTrackEgressException;
+import com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort;
 import com.a105.zani.recording.application.port.AudioStreamEgressRequest;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
@@ -59,6 +60,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     private final RecordingOutboxPort outboxStore;
     private final TrackEgressPort trackEgressPort;
     private final RecordingRepository recordingRepository;
+    private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
     private final Clock clock;
 
     @Override
@@ -187,6 +189,8 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
         String egressId = trackEgressPort
                 .startAudioStream(new AudioStreamEgressRequest(message.sessionId(), payload.trackSid()))
                 .egressId();
+        // recordings 행이 없는 Egress 라, webhook 이 "녹화 미준비"로 오해하지 않도록 종류를 표시해 둔다.
+        audioStreamEgressRegistry.remember(egressId, message.sessionId());
         log.info(
                 "Instructor audio stream egress {} started: session={}, trackSid={}",
                 egressId,

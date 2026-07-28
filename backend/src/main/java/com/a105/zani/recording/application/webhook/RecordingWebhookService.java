@@ -13,6 +13,7 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
+import com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort;
 import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
 import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
@@ -48,6 +49,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private final RecordingFileRepository recordingFileRepository;
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository sessionParticipantRepository;
+    private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
     private final Clock clock;
 
     @Override
@@ -59,6 +61,14 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         }
         if (!eventStore.begin(event.eventId(), event.type().name(), body)) {
             log.debug("Duplicate webhook event {} ignored", event.eventId());
+            return;
+        }
+        // 코칭용 스트림 Egress 는 파일을 만들지 않아 recordings 행이 없다. 아래 egress 처리는 행이 없으면
+        // "아직 커밋 전"으로 보고 5xx 를 돌려주므로, 표시해 둔 스트림 Egress 는 여기서 걸러야 LiveKit 이
+        // 무한히 재전송하지 않는다.
+        if (audioStreamEgressRegistry.isAudioStream(event.egressId())) {
+            log.debug("Audio stream egress event {} needs no recording handling", event.eventId());
+            eventStore.markProcessed(event.eventId());
             return;
         }
         switch (event.type()) {

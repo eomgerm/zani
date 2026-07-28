@@ -192,8 +192,25 @@ class RecordingWebhookServiceTest {
                 fileRepository,
                 sessionRepository,
                 participantRepository,
+                audioStreamRegistry,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
+
+    /** 코칭용 스트림 Egress 표시. 테스트가 직접 등록해 webhook 분기를 검증한다. */
+    private final java.util.Set<String> audioStreamEgressIds = new java.util.HashSet<>();
+
+    private final com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort audioStreamRegistry =
+            new com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort() {
+                @Override
+                public void remember(String egressId, long sessionId) {
+                    audioStreamEgressIds.add(egressId);
+                }
+
+                @Override
+                public boolean isAudioStream(String egressId) {
+                    return audioStreamEgressIds.contains(egressId);
+                }
+            };
 
     private void addParticipant(long id, SessionParticipantRole role) {
         participantsById.put(
@@ -329,6 +346,38 @@ class RecordingWebhookServiceTest {
         assertTrue(seenEvents.contains("EV_6"));
         // 처리 실패 → PROCESSED로 남지 않아 재전송에서 재처리된다.
         assertEquals(0, processedEvents.size());
+    }
+
+    @Test
+    void 코칭용_스트림_egress_이벤트는_녹화_처리_없이_종결한다() {
+        // 스트림 Egress 는 파일을 만들지 않아 recordings 행이 없다. 위 테스트처럼 재전송을 유도하면
+        // 행이 영원히 생기지 않아 LiveKit 이 무한 재전송한다.
+        audioStreamEgressIds.add("EG_ws");
+        nextEvent = egressEvent("EV_ws_1", RecordingWebhookEventType.EGRESS_STARTED, "EG_ws", null, List.of());
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_1"), "재전송되지 않도록 PROCESSED로 종결해야 한다");
+    }
+
+    @Test
+    void 코칭용_스트림_egress_종료_이벤트도_파일을_만들지_않는다() {
+        audioStreamEgressIds.add("EG_ws");
+        nextEvent = egressEvent(
+                "EV_ws_2",
+                RecordingWebhookEventType.EGRESS_ENDED,
+                "EG_ws",
+                Boolean.TRUE,
+                List.of(new EgressFileResult(
+                        "/srv/zani/recordings/100/raw/instructor/x.ogg",
+                        SESSION_START.toEpochMilli(),
+                        SESSION_START.plusSeconds(10).toEpochMilli(),
+                        1_000L)));
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_2"));
+        assertTrue(savedFiles.isEmpty(), "스트림 Egress 는 녹화 파일을 남기지 않는다");
     }
 
     @Test

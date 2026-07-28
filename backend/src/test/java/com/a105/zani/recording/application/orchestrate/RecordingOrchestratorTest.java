@@ -41,8 +41,9 @@ class RecordingOrchestratorTest {
     private final InMemoryOutboxStore outbox = new InMemoryOutboxStore();
     private final FakeTrackEgressPort egressPort = new FakeTrackEgressPort();
     private final InMemoryRecordingRepository recordings = new InMemoryRecordingRepository();
-    private final RecordingOrchestrator orchestrator =
-            new RecordingOrchestrator(outbox, egressPort, recordings, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final InMemoryAudioStreamEgressRegistry audioStreamRegistry = new InMemoryAudioStreamEgressRegistry();
+    private final RecordingOrchestrator orchestrator = new RecordingOrchestrator(
+            outbox, egressPort, recordings, audioStreamRegistry, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private RequestTrackEgressCommand command(
             SessionParticipantRole role, TrackSource source, boolean approved, String trackSid) {
@@ -367,6 +368,22 @@ class RecordingOrchestratorTest {
 
         String errorOf(String dedupKey) {
             return rows.get(dedupKey).lastError;
+        }
+    }
+
+    private static final class InMemoryAudioStreamEgressRegistry
+            implements com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort {
+
+        private final java.util.Set<String> egressIds = new java.util.HashSet<>();
+
+        @Override
+        public void remember(String egressId, long sessionId) {
+            egressIds.add(egressId);
+        }
+
+        @Override
+        public boolean isAudioStream(String egressId) {
+            return egressIds.contains(egressId);
         }
     }
 
