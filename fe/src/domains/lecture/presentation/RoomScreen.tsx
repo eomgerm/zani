@@ -144,8 +144,9 @@ function RoomScreenContent({ sessionId, roomTitle = "React 상태관리 심화" 
     router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
   };
 
-  const answerPrompt = (value: UnderstandingCheckResponse) => {
-    understandingCheck.respond(value);
+  const answerPrompt = async (value: UnderstandingCheckResponse) => {
+    const sent = await understandingCheck.respond(value);
+    if (!sent) return; // 전송 실패 — 조용히 넘어간다(수업 진행 우선).
     setPromptToast(UNDERSTANDING_CHECK_FEEDBACK[value]);
     track(setTimeout(() => setPromptToast(null), 2600));
   };

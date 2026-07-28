@@ -35,7 +35,8 @@ export interface UseUnderstandingCheckPromptResult {
   readonly prompt: UnderstandingCheckPrompt | null;
   /** 판정 파이프라인(75)이 "이해 확인이 필요하다"고 알릴 때 호출한다. */
   trigger(promptId: string): void;
-  respond(value: PromptResponseValue): void;
+  /** 전송 성공 여부를 반환한다(reject 하지 않음 — 실패해도 수업 화면을 막지 않는다). */
+  respond(value: PromptResponseValue): Promise<boolean>;
 }
 
 /**
@@ -83,14 +84,18 @@ export function useUnderstandingCheckPrompt(
   }, []);
 
   const respond = useCallback(
-    (value: PromptResponseValue) => {
+    async (value: PromptResponseValue): Promise<boolean> => {
       const currentPromptId = promptIdRef.current;
-      if (answeredRef.current || currentPromptId === null) return; // 중복 응답 방지.
+      if (answeredRef.current || currentPromptId === null) return false; // 중복 응답 방지.
       answeredRef.current = true;
       close();
-      sendResponse(sessionId, currentPromptId, value).catch(() => {
-        // 전송 실패는 수업 화면을 막지 않는다 — 조용히 무시한다.
-      });
+      try {
+        await sendResponse(sessionId, currentPromptId, value);
+        return true;
+      } catch {
+        // 전송 실패는 수업 화면을 막지 않는다 — 호출자가 조용히 넘어갈 수 있도록 false 만 반환한다.
+        return false;
+      }
     },
     [close, sendResponse, sessionId],
   );

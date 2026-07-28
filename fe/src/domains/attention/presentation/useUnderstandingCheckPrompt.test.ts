@@ -33,7 +33,7 @@ describe("useUnderstandingCheckPrompt", () => {
     });
   });
 
-  it("closes and reports the response when the student answers before the deadline", () => {
+  it("closes and reports the response when the student answers before the deadline", async () => {
     const sendResponse = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),
@@ -41,8 +41,12 @@ describe("useUnderstandingCheckPrompt", () => {
 
     act(() => result.current.trigger("prompt-1"));
     act(() => vi.advanceTimersByTime(8_000));
-    act(() => result.current.respond("CONFUSED"));
+    let sent: boolean | undefined;
+    await act(async () => {
+      sent = await result.current.respond("CONFUSED");
+    });
 
+    expect(sent).toBe(true);
     expect(result.current.prompt).toBeNull();
     expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", "CONFUSED");
   });
@@ -62,15 +66,19 @@ describe("useUnderstandingCheckPrompt", () => {
     expect(sendResponse).not.toHaveBeenCalled();
   });
 
-  it("ignores a second response to the same prompt", () => {
+  it("ignores a second response to the same prompt", async () => {
     const sendResponse = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),
     );
 
     act(() => result.current.trigger("prompt-1"));
-    act(() => result.current.respond("UNDERSTOOD"));
-    act(() => result.current.respond("MISSED"));
+    await act(async () => {
+      await result.current.respond("UNDERSTOOD");
+    });
+    await act(async () => {
+      await result.current.respond("MISSED");
+    });
 
     expect(sendResponse).toHaveBeenCalledTimes(1);
     expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", "UNDERSTOOD");
@@ -87,44 +95,69 @@ describe("useUnderstandingCheckPrompt", () => {
     expect(result.current.prompt?.promptId).toBe("prompt-1");
   });
 
-  it("ignores a retrigger within the 5-minute cooldown after the last prompt closed", () => {
+  it("ignores a retrigger within the 5-minute cooldown after the last prompt closed", async () => {
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse: vi.fn().mockResolvedValue(undefined) }),
     );
 
     act(() => result.current.trigger("prompt-1"));
-    act(() => result.current.respond("UNDERSTOOD"));
+    await act(async () => {
+      await result.current.respond("UNDERSTOOD");
+    });
     act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS - 1));
     act(() => result.current.trigger("prompt-2"));
 
     expect(result.current.prompt).toBeNull();
   });
 
-  it("allows a retrigger once the 5-minute cooldown has passed", () => {
+  it("allows a retrigger once the 5-minute cooldown has passed", async () => {
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse: vi.fn().mockResolvedValue(undefined) }),
     );
 
     act(() => result.current.trigger("prompt-1"));
-    act(() => result.current.respond("UNDERSTOOD"));
+    await act(async () => {
+      await result.current.respond("UNDERSTOOD");
+    });
     act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS));
     act(() => result.current.trigger("prompt-2"));
 
     expect(result.current.prompt?.promptId).toBe("prompt-2");
   });
 
-  it("does not throw when sending the response fails", async () => {
+  it("resolves to false instead of throwing when sending the response fails", async () => {
     const sendResponse = vi.fn().mockRejectedValue(new Error("network down"));
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),
     );
 
     act(() => result.current.trigger("prompt-1"));
-    expect(() => act(() => result.current.respond("MISSED"))).not.toThrow();
-
-    // 거부된 프라미스가 처리될 시간을 준다.
+    let sent: boolean | undefined;
     await act(async () => {
-      await Promise.resolve();
+      sent = await result.current.respond("MISSED");
     });
+
+    expect(sent).toBe(false);
+    expect(result.current.prompt).toBeNull();
+  });
+
+  it("resolves to false for a duplicate response instead of sending again", async () => {
+    const sendResponse = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),
+    );
+
+    act(() => result.current.trigger("prompt-1"));
+    await act(async () => {
+      await result.current.respond("UNDERSTOOD");
+    });
+
+    let secondAttempt: boolean | undefined;
+    await act(async () => {
+      secondAttempt = await result.current.respond("MISSED");
+    });
+
+    expect(secondAttempt).toBe(false);
+    expect(sendResponse).toHaveBeenCalledTimes(1);
   });
 });
