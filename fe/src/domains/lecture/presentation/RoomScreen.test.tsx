@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const roomConnection = vi.hoisted(() => ({
-  connectionState: "connected" as "connecting" | "connected" | "error",
+  connectionState: "connected" as const,
   error: null,
   room: null,
   sessionExpiresAt: null as string | null,
@@ -27,7 +27,6 @@ const media = vi.hoisted(() => ({
   microphoneBlocked: false,
   cameraBlocked: false,
   mediaError: null as string | null,
-  cameraPermissionDenied: false,
   microphones: [] as { value: string; label: string }[],
   cameras: [] as { value: string; label: string }[],
   activeMicrophoneId: null as string | null,
@@ -40,17 +39,6 @@ const media = vi.hoisted(() => ({
 
 vi.mock("./useRoomMediaControls", () => ({
   useRoomMediaControls: () => media,
-}));
-
-// 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
-const attentionSource = vi.hoisted(() => ({
-  props: [] as { active: boolean; denied?: boolean }[],
-}));
-vi.mock("./components/room/AttentionCameraSource", () => ({
-  AttentionCameraSource: (props: { active: boolean; denied?: boolean }) => {
-    attentionSource.props.push(props);
-    return <div data-testid="attention-camera-source" />;
-  },
 }));
 
 const roomParticipants = vi.hoisted(() => ({
@@ -111,10 +99,6 @@ afterEach(() => {
   roomConnection.sessionExpiresAt = null;
   media.cameraEnabled = true;
   media.microphoneEnabled = true;
-  media.ready = true;
-  media.cameraBlocked = false;
-  media.cameraPermissionDenied = false;
-  attentionSource.props = [];
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
   vi.useRealTimers();
@@ -346,71 +330,5 @@ describe("RoomScreen end-session control", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("end-session-button")).toBeNull();
-  });
-});
-
-describe("RoomScreen attention wiring", () => {
-  /** 판정 소스가 마지막으로 받은 props. */
-  const lastProps = () => attentionSource.props.at(-1);
-
-  it("mounts the attention camera source for a student", () => {
-    asStudent();
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(screen.getByTestId("attention-camera-source")).toBeInTheDocument();
-  });
-
-  it("runs detection while the student camera is publishing on a usable room", () => {
-    asStudent();
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(lastProps()).toEqual({ active: true, denied: false });
-  });
-
-  it("stops detection when the student turns the camera off", () => {
-    asStudent();
-    media.cameraEnabled = false;
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(lastProps()?.active).toBe(false);
-  });
-
-  it("stops detection while the room is reconnecting", () => {
-    asStudent();
-    media.ready = false;
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(lastProps()?.active).toBe(false);
-  });
-
-  it("reports a camera the browser denied apart from one the student turned off", () => {
-    asStudent();
-    media.cameraPermissionDenied = true;
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(lastProps()?.denied).toBe(true);
-  });
-
-  it("never analyses the instructor own camera", () => {
-    asInstructor();
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(screen.queryByTestId("attention-camera-source")).not.toBeInTheDocument();
-    expect(attentionSource.props).toHaveLength(0);
-  });
-
-  it("holds detection back until the role is known", () => {
-    // 역할은 참가자 목록에서 파생한다. 아직 아무도 잡히지 않았으면 판정을 시작하지 않는다.
-    roomParticipants.participants = [];
-
-    render(<RoomScreen sessionId="123" />);
-
-    expect(screen.queryByTestId("attention-camera-source")).not.toBeInTheDocument();
   });
 });
