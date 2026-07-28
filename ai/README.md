@@ -146,6 +146,42 @@ seed마다 실제 실행 환경이 `summary.json`에 기록됩니다.
 크기가 유지되어 학습률을 그대로 쓸 수 있습니다. `class_weighting`은 재현성
 identity에 포함되므로 각각 별도 프로토콜이며 기존 E0 결과는 그대로 남습니다.
 
+`reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
+(arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
+학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고
+`patience=20`으로 조기 종료했는데, 실측 `best_epoch`이 44·48·13·8·25라
+어느 seed도 첫 감쇠에 도달하지 못했습니다. E1-A는 논문값으로 되돌리고
+`patience`를 `max_epochs`와 같게 두어 조기 종료를 끕니다. 체크포인트 선택은
+그대로 Validation Macro-F1 최고점입니다.
+
+`reproduce-e1b`는 E1-A에 논문의 시간 해상도를 더합니다. 논문은 10초 클립의 30fps
+300프레임을 전부 쓰는데 우리는 10fps로 3프레임 중 하나만 씁니다. 논문 Table 5는
+2프레임마다로만 성겨져도 0.7124 → 0.6813으로 3.1%p 떨어진다고 보고하므로, 이것이
+남은 차이 중 가장 큽니다.
+
+`SAMPLE_FPS`가 **추출 단계에서** 프레임을 버리므로 `raw_frames_v1`로는 300스텝을 만들
+수 없습니다. 원본 영상에서 30fps로 다시 추출해야 합니다. `sample_fps`는 해시되는
+extraction fingerprint에 포함되어 있어 rate가 다른 캐시가 조용히 섞이지 않고,
+10fps는 `raw_frames_v1`/`landmark_78_v1` 이름을 그대로 유지하므로 기존 캐시와
+체크포인트가 살아 있습니다.
+
+```bash
+uv run python -m zani_ai engagement extract-raw \
+  --data-root datasets/raw/engagenet \
+  --face-landmarker-model models/face_landmarker.task \
+  --output datasets/processed/engagenet \
+  --sample-fps 30 --workers 64
+
+uv run python -m zani_ai engagement build-features \
+  --data-root datasets/raw/engagenet \
+  --raw-root datasets/processed/engagenet/raw_frames_30fps_v1 \
+  --output datasets/processed/engagenet/e1b \
+  --schema landmark_78_300_v1 --sample-fps 30
+```
+
+`landmark_78_v1_graph.npz`는 재사용합니다. 노드 평균 위치는 프레임 수와 무관하게
+사실상 같고, 변수를 하나로 묶어두는 편이 비교에 유리합니다.
+
 E1은 ST-GCN 노드 토폴로지를 정의하는 `landmark_78_v1_graph.npz`가 필요합니다.
 `--graph`, 환경변수 `ZANI_LANDMARK_GRAPH`, `--features` 디렉터리, 그 부모 순으로 찾고,
 찾은 파일의 SHA-256을 `summary.json`의 `inputs.landmark_graph`에 기록합니다.

@@ -37,6 +37,7 @@ from numpy.typing import NDArray
 from zani_ai.engagement.contracts import DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
     SAMPLE_FPS,
+    WINDOW_SECONDS,
     SEGMENT_COUNT,
     ExcludedClip,
     ExtractionManifest,
@@ -47,19 +48,29 @@ from zani_ai.engagement.extraction import (
 from zani_ai.engagement.features import (
     BLENDSHAPE_NAMES_132,
     FeatureSchema,
-    InvalidFrameFeaturesError,
     extract_frame_features,
 )
 from zani_ai.engagement.landmark_graph import LANDMARK_78_INDICES
 from zani_ai.engagement.raw_cache import RAW_SCHEMA_NAME, RawClip
 from zani_ai.engagement.segments import (
-    InsufficientFaceCoverageError,
     TimedFeatures,
     aggregate_segments,
 )
 
 LANDMARK_SEQUENCE_NAME = "landmark_78_v1"
 LANDMARK_SEQUENCE_SHAPE: tuple[int, int, int] = (3, 100, 78)
+
+
+def landmark_sequence_name(step_count: int) -> str:
+    """The landmark-sequence schema for a step count.
+
+    100 steps keeps the bare ``landmark_78_v1`` name so E1's existing feature
+    cache and checkpoints stay valid; other lengths get their own name, and
+    therefore their own cache directory and manifest schema.
+    """
+    if step_count == LANDMARK_SEQUENCE_SHAPE[1]:
+        return LANDMARK_SEQUENCE_NAME
+    return f"landmark_78_{step_count}_v1"
 
 
 class Representation(Protocol):
@@ -130,11 +141,11 @@ class TokenRepresentation:
 class LandmarkSequenceRepresentation:
     """Raw 78-landmark-sequence representation for the E1 ST-GCN pipeline.
 
-    Aligns each raw clip to the fixed 100-step, 10 FPS / 10s sampling grid
-    (timestamps 0, 100, 200, ..., 9900 ms -- the same grid `iter_sampled_frames`
-    produces), and for each grid step selects the raw frame whose
-    `timestamps_ms` matches that step and is `valid_mask`-valid, taking its
-    `landmarks[LANDMARK_78_INDICES, :3]` (`[78, 3]`).
+    Aligns each raw clip to a `sample_fps` x 10s grid -- 100 steps at 10 FPS,
+    300 at 30 FPS, matching whatever rate the raw cache was extracted at -- and
+    for each grid step selects the raw frame landing on it that is
+    `valid_mask`-valid, taking its `landmarks[LANDMARK_78_INDICES, :3]`
+    (`[78, 3]`).
 
     A grid step with no matching valid raw frame (a dropped/undecodable
     sample, a no-face frame, or a clip shorter than 10s) is forward-filled
@@ -148,10 +159,25 @@ class LandmarkSequenceRepresentation:
     name: str = LANDMARK_SEQUENCE_NAME
     output_shape: tuple[int, int, int] = LANDMARK_SEQUENCE_SHAPE
     array_key: str = "sequence"
+    #: Must equal the rate the raw cache was extracted at, or grid steps will
+    #: not line up with the cached timestamps.
+    sample_fps: float = SAMPLE_FPS
+
+    @classmethod
+    def for_sample_fps(
+        cls, sample_fps: float, *, window_seconds: float = WINDOW_SECONDS
+    ) -> LandmarkSequenceRepresentation:
+        """Build the representation matching a raw cache's sampling rate."""
+        step_count = round(window_seconds * sample_fps)
+        _, _, node_count = LANDMARK_SEQUENCE_SHAPE
+        return cls(
+            name=landmark_sequence_name(step_count),
+            output_shape=(3, step_count, node_count),
+            sample_fps=sample_fps,
+        )
 
     def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
         _, step_count, node_count = self.output_shape
-        grid_step_ms = round(1000.0 / SAMPLE_FPS)
         landmark_indices = np.asarray(LANDMARK_78_INDICES, dtype=np.intp)
 
         # Map each grid step (0..step_count-1) to the raw frame index that
@@ -161,7 +187,12 @@ class LandmarkSequenceRepresentation:
         for frame_index in range(raw_clip.timestamps_ms.shape[0]):
             if not raw_clip.valid_mask[frame_index]:
                 continue
-            step = round(float(raw_clip.timestamps_ms[frame_index]) / grid_step_ms)
+            # Scale by the rate rather than dividing by a rounded step size:
+            # at 30 FPS a 33ms step accumulates error until the last frames
+            # fall outside the grid entirely (step 299 would land on 302).
+            step = round(
+                float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0
+            )
             if 0 <= step < step_count and step not in frame_index_by_step:
                 frame_index_by_step[step] = frame_index
 
@@ -351,6 +382,7 @@ def build_feature_manifest(
 
 __all__ = [
     "LANDMARK_SEQUENCE_NAME",
+    "landmark_sequence_name",
     "LANDMARK_SEQUENCE_SHAPE",
     "LandmarkSequenceRepresentation",
     "Representation",

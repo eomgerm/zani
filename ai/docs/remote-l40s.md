@@ -141,6 +141,37 @@ L40S 한 장에서 E1을 batch 32로 순차 실행할 때 측정한 값입니다
 `configuration_sha256`만 깨집니다. 처리량을 더 원한다면 남은 레버는 정밀도(TF32 / BF16)뿐이며,
 결과 수치가 바뀌므로 새 프로토콜로 다뤄야 합니다.
 
+## seed 병렬 실행
+
+한 프로토콜의 seed들은 서로 독립이므로 별도 프로세스로 동시에 돌릴 수 있습니다.
+각 프로세스는 자기 `seed-<n>/` 안에만 쓰고 `summary.json`은 건드리지 않으며,
+끝난 뒤 `--collect-only`가 seed별 `record.json`을 모아 summary를 만듭니다.
+**결과는 순차 실행과 동일합니다.**
+
+```bash
+cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 setsid nohup scripts/run_seeds_parallel.sh e1a datasets/processed/engagenet/e1 artifacts/engagement/e1a 42 43 44 45 46 > ~/e1a.log 2>&1 < /dev/null & echo "PID=$!"
+```
+
+동시 실행 수는 `MAX_PARALLEL`로 제한합니다. GPU가 이미 포화라면 동시에 여러 개를
+얹어도 시분할일 뿐이니, [성능 특성](#성능-특성)의 전력 수치로 먼저 판단하세요.
+
+```bash
+MAX_PARALLEL=2 CUDA_VISIBLE_DEVICES=2 scripts/run_seeds_parallel.sh e1a <features> <output> 42 43 44 45 46
+```
+
+수동으로 하려면 seed별로 `--seed`를 주고 마지막에 한 번 모으면 됩니다.
+
+```bash
+uv run python -m zani_ai engagement reproduce-e1a --features <root> --output <dir> --device cuda --seed 42
+```
+
+```bash
+uv run python -m zani_ai engagement reproduce-e1a --features <root> --output <dir> --device cuda --collect-only
+```
+
+같은 seed를 두 프로세스가 잡으면 `seed-<n>/.seed.lock`이 두 번째를 즉시 거부합니다.
+중단 후 재실행하면 완료된 seed는 그대로 재사용됩니다.
+
 ## landmark graph 경로
 
 E1은 ST-GCN 노드 토폴로지를 정의하는 `landmark_78_v1_graph.npz`가 필요합니다. 찾는 순서는
