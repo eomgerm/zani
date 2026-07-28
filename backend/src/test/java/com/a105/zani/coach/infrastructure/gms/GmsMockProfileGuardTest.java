@@ -11,9 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class GmsMockProfileGuardTest {
 
     private GmsProperties props(boolean mockEnabled) {
+        return props(mockEnabled, "key");
+    }
+
+    private GmsProperties props(boolean mockEnabled, String apiKey) {
         return new GmsProperties(
                 "https://gms.test",
-                "key",
+                apiKey,
                 "whisper-1",
                 "gpt-4.1-nano",
                 mockEnabled,
@@ -40,5 +44,20 @@ class GmsMockProfileGuardTest {
     @Test
     void allowsMockEnabledInLocal() {
         assertDoesNotThrow(() -> new GmsMockProfileGuard(environment("local"), props(true)));
+    }
+
+    @Test
+    void failsFastWhenApiKeyIsMissingInProd() {
+        assertThrows(IllegalStateException.class, () -> new GmsMockProfileGuard(environment("prod"), props(false, "")));
+        assertThrows(
+                IllegalStateException.class, () -> new GmsMockProfileGuard(environment("prod"), props(false, "   ")));
+        assertThrows(
+                IllegalStateException.class, () -> new GmsMockProfileGuard(environment("prod"), props(false, null)));
+    }
+
+    @Test
+    void allowsMissingApiKeyOutsideProd() {
+        assertDoesNotThrow(() -> new GmsMockProfileGuard(environment("local"), props(false, "")));
+        assertDoesNotThrow(() -> new GmsMockProfileGuard(environment("dev"), props(false, "")));
     }
 }
