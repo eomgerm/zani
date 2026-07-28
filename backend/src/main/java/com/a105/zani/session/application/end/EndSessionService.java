@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
@@ -15,6 +16,7 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 public class EndSessionService implements EndSessionUseCase {
 
     private final SessionRepository sessionRepository;
+    private final ReleaseInstructorAudioUseCase releaseInstructorAudioUseCase;
 
     @Override
     @Transactional
@@ -26,6 +28,9 @@ public class EndSessionService implements EndSessionUseCase {
         }
         session.end();
         Session ended = sessionRepository.save(session);
+        // 코칭 오디오 버퍼는 세션당 수십 MB를 잡고 있어 종료 시 반납해야 한다. 메모리 조작뿐이라
+        // 실패해도 종료를 되돌릴 이유가 없고, 되돌아가더라도 스트림이 다시 채운다.
+        releaseInstructorAudioUseCase.release(ended.id());
         log.info("Session {} ended: reason={}", ended.id(), command.reason());
         return new EndSessionResult(ended.id(), ended.status(), true);
     }

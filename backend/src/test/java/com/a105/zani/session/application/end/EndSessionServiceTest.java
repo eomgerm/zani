@@ -23,7 +23,20 @@ class EndSessionServiceTest {
     private static final Instant STARTED_AT = Instant.parse("2026-07-26T00:00:00Z");
 
     private final FakeSessionRepository sessionRepository = new FakeSessionRepository();
-    private final EndSessionService service = new EndSessionService(sessionRepository);
+    private final RecordingReleaseUseCase audioRelease = new RecordingReleaseUseCase();
+    private final EndSessionService service = new EndSessionService(sessionRepository, audioRelease);
+
+    /** 반납 호출 여부만 기록하는 페이크. 코칭 오디오 버퍼는 세션당 수십 MB라 종료 시 반드시 반납돼야 한다. */
+    private static final class RecordingReleaseUseCase
+            implements com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase {
+
+        private final java.util.List<Long> released = new java.util.ArrayList<>();
+
+        @Override
+        public void release(long sessionId) {
+            released.add(sessionId);
+        }
+    }
 
     private static Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
@@ -40,6 +53,8 @@ class EndSessionServiceTest {
         assertEquals(SessionStatus.ENDED, result.status());
         assertTrue(sessionRepository.session.isEnded());
         assertEquals(1, sessionRepository.saveCount);
+        // 코칭 오디오 버퍼(세션당 수십 MB)를 반납하지 않으면 수업이 끝나도 메모리가 남는다.
+        assertEquals(java.util.List.of(SESSION_ID), audioRelease.released);
     }
 
     @Test
@@ -51,6 +66,8 @@ class EndSessionServiceTest {
         assertFalse(result.ended());
         assertEquals(SessionStatus.ENDED, result.status());
         assertEquals(0, sessionRepository.saveCount);
+        // 이미 끝난 세션의 버퍼는 첫 종료에서 이미 반납됐다. 중복 호출하지 않는다.
+        assertTrue(audioRelease.released.isEmpty());
     }
 
     @Test
