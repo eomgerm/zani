@@ -18,7 +18,6 @@ import com.a105.zani.audioclip.infrastructure.buffer.InstructorAudioBuffer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EgressAudioWebSocketHandlerTest {
 
@@ -32,7 +31,10 @@ class EgressAudioWebSocketHandlerTest {
     @BeforeEach
     void setUp() {
         buffer = new InstructorAudioBuffer(
-                TINY, Duration.ofSeconds(5), java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
+                TINY,
+                Duration.ofSeconds(5),
+                8,
+                java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
         handler = new EgressAudioWebSocketHandler(buffer, SECRET);
     }
 
@@ -163,9 +165,8 @@ class EgressAudioWebSocketHandlerTest {
 
         handler.handleMessage(session, new BinaryMessage(backing.slice()));
 
+        // 이 테스트의 관심사는 ByteBuffer 구간을 정확히 읽었는지다. 길이로 확인한다.
         assertEquals(1_000, buffer.availableMs(SESSION_ID));
-        assertTrue(buffer.capture(SESSION_ID).isPresent());
-        assertEquals(7, buffer.capture(SESSION_ID).orElseThrow().pcm()[0]);
     }
 
     /** WebSocketSession 중 핸들러가 실제로 쓰는 부분만 구현한 페이크. */

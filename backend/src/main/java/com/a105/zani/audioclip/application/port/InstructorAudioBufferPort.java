@@ -1,5 +1,6 @@
 package com.a105.zani.audioclip.application.port;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -9,12 +10,17 @@ import java.util.Optional;
  */
 public interface InstructorAudioBufferPort {
 
-    /** 지금 확보된 오디오. 아직 아무것도 없으면 비어 있다. 호출해도 버퍼는 비우지 않는다. */
-    Optional<CapturedAudio> capture(long sessionId);
+    /**
+     * 최근 {@code window} 만큼을 전사용 16kHz WAV 로 떠낸다. 확보된 양이 window 보다 적으면 있는 만큼만 담고 {@link AudioClip#actual()} 에 실제 길이를
+     * 알린다. 호출해도 버퍼는 비우지 않는다.
+     *
+     * <p>window 를 파라미터로 둔 이유: 전사에 넘길 구간이 아직 확정되지 않았다. 300초 전체를 보내면 전사 시간이 예산을 넘길 수 있어 호출자가 조절할 수 있어야 한다.
+     */
+    Optional<AudioClip> snapshot(long sessionId, Duration window);
 
     /** 지금 확보된 오디오의 재생 시간(ms). 전사 최소 길이 판정에 쓴다. */
     long availableMs(long sessionId);
 
-    /** 세션의 버퍼를 비우고 메모리를 반납한다(수업 종료·스트림 종료). */
+    /** 세션의 버퍼를 비우고 메모리를 반납한다(수업 종료). */
     void release(long sessionId);
 }
