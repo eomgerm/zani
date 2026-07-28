@@ -15,6 +15,7 @@ import com.a105.zani.attention.domain.model.AttentionState;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 판정 상태 Redis 어댑터의 키·TTL·멱등 동작 검증. 로컬 Redis가 떠 있어야 통과한다. */
@@ -27,6 +28,7 @@ class AttentionStateRedisAdapterTest {
     private static final Instant RECORDED_AT = Instant.parse("2026-07-28T09:00:10Z");
 
     private static final String STATE_KEY = "attention:" + SESSION_ID + ":state:" + PARTICIPANT_ID;
+    private static final String EXCLUDED_KEY = "attention:" + SESSION_ID + ":excluded:" + PARTICIPANT_ID;
     private static final String EVENT_KEY = "attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:redis-adapter-1";
 
     @Autowired
@@ -43,6 +45,7 @@ class AttentionStateRedisAdapterTest {
     void clearKeys() {
         redisTemplate.delete(STATE_KEY);
         redisTemplate.delete(EVENT_KEY);
+        redisTemplate.delete(EXCLUDED_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
         }
@@ -137,5 +140,24 @@ class AttentionStateRedisAdapterTest {
         // 팁 유형 선택은 유형별 비율을 각각 요구한다. 한 학생이 두 유형을 겪었으면 둘 다 남아야 한다.
         assertEquals("1", redisTemplate.opsForValue().get(significantKey(AttentionState.CONFUSED)));
         assertEquals("1", redisTemplate.opsForValue().get(significantKey(AttentionState.UNMEASURABLE)));
+    }
+
+    @Test
+    void marksAStudentAsOutOfTheDenominatorWithAnArmedTtl() {
+        adapter.excludeFromDenominator(SESSION_ID, PARTICIPANT_ID, Duration.ofHours(3));
+
+        assertEquals("1", redisTemplate.opsForValue().get(EXCLUDED_KEY));
+        Long ttl = redisTemplate.getExpire(EXCLUDED_KEY);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 10_800, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void bringsAStudentBackIntoTheDenominator() {
+        adapter.excludeFromDenominator(SESSION_ID, PARTICIPANT_ID, Duration.ofHours(3));
+
+        adapter.includeInDenominator(SESSION_ID, PARTICIPANT_ID);
+
+        assertNull(redisTemplate.opsForValue().get(EXCLUDED_KEY));
     }
 }
