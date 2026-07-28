@@ -3,6 +3,13 @@ spring:
     name: ZANI-BE
   profiles:
     default: local
+  task:
+    scheduling:
+      # 기본값 1이면 @Scheduled 작업들이 스레드 하나를 공유한다. 녹화 outbox 릴레이는 한 번에 최대 20건을
+      # 처리하고 건마다 LiveKit 호출이 최대 60초 매달릴 수 있어, 100ms 주기인 강사 오디오 무음 패딩이
+      # 그동안 굶는다. 현재 스케줄 작업은 3개(무음 패딩·outbox 릴레이·세션 만료)라 여유 1개를 더 둔다.
+      pool:
+        size: 4
   jpa:
     open-in-view: false
     properties:
