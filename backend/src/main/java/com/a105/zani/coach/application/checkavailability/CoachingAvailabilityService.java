@@ -8,7 +8,7 @@ import com.a105.zani.coach.application.port.CoachingAvailabilityPort;
 import com.a105.zani.coach.application.port.GmsHealthPort;
 
 /**
- * 수업 시작 시 GMS whisper-1 헬스체크로 코칭 가용 여부를 판정해 저장한다. (S15P11A105-202)
+ * 수업 시작 시 GMS 도달 가능성을 확인해 코칭 가용 여부를 판정하고 저장한다. (S15P11A105-202)
  *
  * <p>헬스체크 실패는 코칭 비활성(false)으로 흡수하며, 수업 진행을 막지 않는다. Redis 만 사용하는 기술 상태 변경이라 트랜잭션을 걸지 않는다. (ddd-development-guide §6.1)
  */

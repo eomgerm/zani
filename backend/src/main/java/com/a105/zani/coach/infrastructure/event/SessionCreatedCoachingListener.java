@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import com.a105.zani.coach.application.checkavailability.CheckCoachingAvailabilityCommand;
 import com.a105.zani.coach.application.checkavailability.CheckCoachingAvailabilityUseCase;
+import com.a105.zani.coach.infrastructure.CoachingAsyncConfig;
 import com.a105.zani.session.application.create.SessionCreatedEvent;
 
 /**
@@ -26,7 +27,7 @@ public class SessionCreatedCoachingListener {
         this.checkCoachingAvailabilityUseCase = checkCoachingAvailabilityUseCase;
     }
 
-    @Async
+    @Async(CoachingAsyncConfig.COACHING_TASK_EXECUTOR)
     @EventListener
     public void onSessionCreated(SessionCreatedEvent event) {
         try {
