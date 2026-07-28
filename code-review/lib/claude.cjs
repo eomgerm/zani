@@ -29,6 +29,7 @@ function buildPrompt({ context, deterministicFindings, repositoryContext }) {
     '- 실제 버그, 보안, 오류 처리, 테스트 누락과 유지보수 위험을 검토합니다.',
     '- 확실한 병합 차단 문제만 blocker, 확인이 필요한 문제는 warning, 참고는 info로 분류합니다.',
     '- 변경된 줄에 근거가 있을 때만 file과 line을 작성합니다.',
+    '- 변경 파일 전체 내용이 첨부되어 있으니 diff와 함께 읽되, 이번 변경과 무관한 기존 결함은 지적하지 않습니다.',
     '- Every AI finding must include an integer confidence score from 0 to 100.',
     '- Return only findings with confidence 80 or higher. If evidence is insufficient, omit the finding.',
     '- Do not suggest a reusable component unless the supplied context proves it exists and is applicable.',
@@ -49,7 +50,7 @@ function buildPrompt({ context, deterministicFindings, repositoryContext }) {
     '변경 diff:',
     diff,
     '',
-    repositoryContext?.markdown || '## Reusable repository context\nNo bounded candidate files were found.',
+    repositoryContext?.markdown || '## Changed files\nNo changed file content was attached.',
     '',
     '지정된 JSON Schema에 맞는 결과만 반환하세요.',
   ].join('\n');

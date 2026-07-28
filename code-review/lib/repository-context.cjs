@@ -1,12 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_LIMITS = Object.freeze({
-  maxFiles: 12,
-  maxBytes: 120 * 1024,
-  maxFileBytes: 32 * 1024,
-});
-
 const COMPONENT_BY_NATIVE_TAG = Object.freeze({
   button: 'Button',
   dialog: 'Dialog',
@@ -83,61 +77,110 @@ function candidatePaths(context, files = listSourceFiles(context.repositoryRoot)
     });
 }
 
-function renderContext(files, limits, totalBytes, truncated) {
-  const lines = [
-    '## Reusable repository context',
-    `Read-only candidate files: ${files.length}/${limits.maxFiles}, ${totalBytes}/${limits.maxBytes} bytes.`,
-    'These files are evidence for reuse/duplication suggestions. Do not infer that an unlisted component exists.',
-  ];
-  if (truncated) lines.push('The candidate list was truncated by the configured safety limit.');
+// 변경 파일에는 .md처럼 자체 코드 펜스를 가진 파일도 포함되므로, 내용보다 긴 펜스를 사용해
+// 첨부한 파일이 문맥 구조를 깨지 않게 한다.
+function fenceFor(content) {
+  const runs = String(content).matchAll(/`{3,}/gu);
+  let longest = 2;
+  for (const [run] of runs) longest = Math.max(longest, run.length);
+  return '`'.repeat(longest + 1);
+}
 
-  for (const file of files) {
-    lines.push('', `### \`${file.path}\``, '```', file.content, '```');
+function readFileEntry(repositoryRoot, relativePath, kind) {
+  const absolutePath = path.resolve(repositoryRoot, relativePath);
+  if (!isInsideRepository(repositoryRoot, absolutePath)) {
+    return { path: relativePath, reason: 'outside the repository root' };
   }
+
+  let buffer;
+  try {
+    buffer = fs.readFileSync(absolutePath);
+  } catch (error) {
+    return { path: relativePath, reason: 'deleted or unreadable' };
+  }
+
+  // NUL 바이트가 있으면 텍스트가 아니다. 이미지·모델 가중치 같은 파일은 첨부해도 검토에 쓸 수 없다.
+  if (buffer.includes(0)) return { path: relativePath, reason: 'binary' };
+
+  return {
+    path: relativePath,
+    kind,
+    content: buffer.toString('utf8'),
+    bytes: buffer.byteLength,
+  };
+}
+
+function renderFiles(files) {
+  return files.flatMap((file) => {
+    const fence = fenceFor(file.content);
+    return ['', `### \`${file.path}\``, fence, file.content, fence];
+  });
+}
+
+function renderContext(files, skipped) {
+  const changed = files.filter((file) => file.kind === 'changed');
+  const candidates = files.filter((file) => file.kind === 'candidate');
+  const lines = [
+    '## Changed files',
+    `Read-only full content of every changed file: ${changed.length} files, ${changed.reduce((total, file) => total + file.bytes, 0)} bytes.`,
+    'No file-count or size limit is applied. Review these files together with the diff.',
+  ];
+
+  if (changed.length === 0) lines.push('No readable changed file was available.');
+  lines.push(...renderFiles(changed));
+
+  lines.push(
+    '',
+    '## Reusable repository context',
+    `Read-only candidate files: ${candidates.length}, ${candidates.reduce((total, file) => total + file.bytes, 0)} bytes.`,
+    'These files are evidence for reuse/duplication suggestions. Do not infer that an unlisted component exists.',
+  );
+
+  if (candidates.length === 0) lines.push('No candidate file was found.');
+  lines.push(...renderFiles(candidates));
+
+  if (skipped.length > 0) {
+    lines.push('', '## Skipped files');
+    lines.push('These changed files were not attached, so do not assume their content.');
+    for (const file of skipped) lines.push(`- \`${file.path}\`: ${file.reason}`);
+  }
+
   return lines.join('\n');
 }
 
 function collectReviewContext(context, options = {}) {
-  const limits = { ...DEFAULT_LIMITS, ...options };
+  const changedPaths = [...new Set((context.changedFiles || []).map(normalizePath))];
   const candidates = candidatePaths(context, options.files);
-  const selected = [];
+  const requested = [
+    ...changedPaths.map((file) => ({ path: file, kind: 'changed' })),
+    ...candidates.map((file) => ({ path: file, kind: 'candidate' })),
+  ];
+
+  const files = [];
+  const skipped = [];
   let totalBytes = 0;
-  let truncated = false;
 
-  for (const candidate of candidates) {
-    if (selected.length >= limits.maxFiles) {
-      truncated = true;
-      break;
-    }
-
-    const absolutePath = path.resolve(context.repositoryRoot, candidate);
-    if (!isInsideRepository(context.repositoryRoot, absolutePath)) {
-      truncated = true;
+  for (const request of requested) {
+    const entry = readFileEntry(context.repositoryRoot, request.path, request.kind);
+    if (entry.reason) {
+      skipped.push(entry);
       continue;
     }
-
-    const content = fs.readFileSync(absolutePath, 'utf8');
-    const bytes = Buffer.byteLength(content, 'utf8');
-    if (bytes > limits.maxFileBytes || totalBytes + bytes > limits.maxBytes) {
-      truncated = true;
-      continue;
-    }
-
-    selected.push({ path: candidate, content, bytes });
-    totalBytes += bytes;
+    files.push(entry);
+    totalBytes += entry.bytes;
   }
 
   return {
-    files: selected,
+    files,
+    skipped,
     totalBytes,
-    truncated,
-    markdown: renderContext(selected, limits, totalBytes, truncated),
+    markdown: renderContext(files, skipped),
   };
 }
 
 module.exports = {
-  DEFAULT_LIMITS,
   candidatePaths,
   collectReviewContext,
+  fenceFor,
   requestedComponentNames,
 };
