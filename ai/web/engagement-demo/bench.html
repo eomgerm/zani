@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ONNX 추론 속도 실측</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        max-width: 60rem;
+        line-height: 1.6;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-top: 1rem;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 0.4rem 0.6rem;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      th:first-child,
+      td:first-child,
+      td.detail {
+        text-align: left;
+      }
+      th {
+        background: #f4f4f5;
+      }
+      .good {
+        color: #15803d;
+        font-weight: 600;
+      }
+      .bad {
+        color: #b91c1c;
+        font-weight: 600;
+      }
+      .detail {
+        font-size: 0.8rem;
+        color: #666;
+        max-width: 22rem;
+        word-break: break-word;
+      }
+      #status {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ONNX 추론 속도 실측</h1>
+    <p>
+      데모는 10초 창을 1초마다 갱신하므로 모델 추론 예산은 1초 미만입니다. MediaPipe도 같은
+      1초를 나눠 쓰므로 실제 여유는 더 작습니다.
+    </p>
+    <p>
+      <code>public/models/bench/</code>에 <code>e0.onnx</code>, <code>e0.metadata.json</code>,
+      <code>e1.onnx</code>, <code>e1.metadata.json</code>을 두고 실행하세요.
+    </p>
+    <button id="run" type="button">측정 시작</button>
+    <p id="status">대기 중</p>
+    <div id="output"></div>
+    <script type="module">
+      import { runBenchmark } from "./src/bench.ts";
+
+      const button = document.getElementById("run");
+      const output = document.getElementById("output");
+      const status = document.getElementById("status");
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          await runBenchmark(output, status);
+        } catch (error) {
+          status.textContent = `오류: ${String(error)}`;
+          console.error("BENCH fatal", error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
