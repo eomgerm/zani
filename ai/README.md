@@ -166,6 +166,24 @@ Macro F1을 재는 분포 자체가 바뀌므로 적용하지 않습니다. 복�
 프로토콜에서만 `configuration`에 기록되므로, 이들이 없던 기존 8개 프로토콜의
 `configuration_sha256`은 바뀌지 않고 완료된 seed도 그대로 재사용됩니다.
 
+`reproduce-e0g`는 손실·샘플링이 아니라 학습 일정을 정비한 baseline 재설정입니다.
+E0 계열은 patience 20에 `best_epoch`이 0~4로, 어떤 보정도 결정 경계를 재형성할
+시간을 얻지 못했습니다. E0-G는 lr 1e-5(10배 인하), 조기 종료 해제
+(patience = max_epochs = 200), 100 epoch에서 0.1배 감쇠를 하나의 변수군으로
+적용합니다. 선택 지표는 그대로 Validation Macro-F1이며, 이때부터 모든 평가에
+within-1 정확도와 quadratic weighted kappa가 함께 기록됩니다(선택에는 미사용).
+
+`lr_step`은 원래 ST-GCN 경로에만 있던 키라, Transformer 경로에서는 스케줄을 실제로
+쓰는 스펙에서만 `configuration`에 기록됩니다. E0-G 이전 Transformer 프로토콜의
+`configuration_sha256`은 그대로입니다.
+
+순서 지표는 `metrics.json`의 `validation`·`test`, `summary.json`의 seed 레코드와
+`aggregate`, `test_results.json`의 `aggregate`까지 흐릅니다. `metrics.json`에는
+epoch별 Validation Macro-F1·QWK 궤적이 `validation_history`로 함께 남아, "QWK로
+골랐다면 다른 epoch이 뽑혔을까"를 재학습 없이 사후 분석할 수 있습니다. 지표 도입
+전에 완료된 seed 레코드가 재개 경로로 돌아와도 집계는 깨지지 않고, 해당 지표만
+빠진 채 집계됩니다.
+
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
 학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고

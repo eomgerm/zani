@@ -14,6 +14,7 @@ leaked an environment detail (a path, a device index, a hostname) into
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ from zani_ai.engagement.experiment import (
     E0D_SPEC,
     E0E_SPEC,
     E0F_SPEC,
+    E0G_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -55,6 +57,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-E", "cuda"): "c7a6f7eeaf431e0ec0831c756105ac80fd678a65185b2b9261f9e377449d887b",
     ("E0-F", "cpu"): "aa041c0b0abad3f9d89e9e66d8b0ba7896596672230a5f01db23c16cfb4a6810",
     ("E0-F", "cuda"): "32fa6faa58b51f2b1d6ac71ca54605b6a4e1f1910aecac071925b9a270decdca",
+    ("E0-G", "cpu"): "5886db84162b0342eb4805c0b1b49ce953b5f10d74dbcf07b750d98bf502c471",
+    ("E0-G", "cuda"): "ddf2e00582eaa1c5b7d38220c0622f8a5b6f8acbc042aae9a32fc6d3283ddea8",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -71,6 +75,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0D_SPEC,
     E0E_SPEC,
     E0F_SPEC,
+    E0G_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -135,6 +140,30 @@ def test_weighting_alone_separates_e0_from_its_variants() -> None:
         differing = {k for k in base | variant if base.get(k) != variant.get(k)}
         assert differing == {"class_weighting"}
         assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_schedule_alone_separates_e0g_from_e0() -> None:
+    """E0-G moves only the training-schedule group: lr, early stopping, decay."""
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    variant = _build_configuration(E0G_SPEC, "cuda")
+
+    differing = {k for k in base | variant if base.get(k) != variant.get(k)}
+    assert differing == {"learning_rate", "early_stopping", "lr_step"}
+    assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_training_schedule_fields_enter_the_identity_only_when_set() -> None:
+    """patience and lr_step enter the identity, but a default spec stays as it was."""
+    tuned = replace(E0_SPEC, protocol="E0-tuned", patience=200, lr_step=100)
+
+    configuration = _build_configuration(tuned, "cuda")
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    early_stopping = configuration["early_stopping"]
+    assert isinstance(early_stopping, dict) and early_stopping["patience"] == 200
+    assert configuration["lr_step"] == 100
+    assert "lr_step" not in base
 
 
 def test_e1a_restores_the_paper_training_conditions() -> None:

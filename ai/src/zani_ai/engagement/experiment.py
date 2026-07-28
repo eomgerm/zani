@@ -156,6 +156,25 @@ E0F_SPEC = ExperimentSpec(
     "E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced"
 )
 
+# E0-G is the baseline reset after E0-C..E0-F all died of the same cause: with
+# patience 20 their best_epoch landed at 0-4, so no loss or sampler change had
+# the epochs it needed to reshape a decision boundary. Applying an oracle logit
+# adjustment (thresholds chosen on Test itself, a cheating upper bound) to the
+# saved logits bought at most ~+0.4%p, which says the logits themselves have to
+# change, not the decision rule on top of them.
+#
+# Following the E1-A precedent, the training schedule moves as one variable
+# group: slow the optimizer 10x, disable early stopping, and add the decay
+# stage E0 never survived long enough to reach.
+E0G_SPEC = ExperimentSpec(
+    "E0-G",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    learning_rate=1e-5,
+    patience=200,
+    lr_step=100,
+)
+
 
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
@@ -276,6 +295,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0D_SPEC,
         E0E_SPEC,
         E0F_SPEC,
+        E0G_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -439,6 +459,12 @@ def _build_configuration(spec: ExperimentSpec, device: str) -> dict[str, object]
             "deterministic_algorithms": True,
             "num_workers": 0,
         }
+        # `lr_step` originated on the ST-GCN path, so recording it
+        # unconditionally would rewrite the hash of every existing Transformer
+        # protocol and discard its completed seeds. Only specs that actually
+        # run a decay schedule record it.
+        if spec.lr_step is not None:
+            configuration["lr_step"] = spec.lr_step
         return _apply_loss_and_sampling(configuration, spec)
 
     # ST-GCN path (E1 and other non-token representations).
@@ -786,11 +812,20 @@ def _seed_is_complete(
 def _aggregate(seed_records: list[dict[str, object]]) -> dict[str, object]:
     accuracies: list[float] = []
     macro_f1s: list[float] = []
+    within_ones: list[float] = []
+    kappas: list[float] = []
     for record in seed_records:
         validation = record.get("validation")
         if isinstance(validation, dict):
             accuracies.append(float(validation["accuracy"]))
             macro_f1s.append(float(validation["macro_f1"]))
+            # The ordinal metrics arrived later. Seed records completed before
+            # them come back unchanged through the resume path, so a missing
+            # entry has to be tolerated instead of failing the aggregate.
+            if "within_one_accuracy" in validation:
+                within_ones.append(float(validation["within_one_accuracy"]))
+            if "quadratic_weighted_kappa" in validation:
+                kappas.append(float(validation["quadratic_weighted_kappa"]))
 
     def summarize(values: list[float]) -> dict[str, float | None]:
         return {
@@ -798,11 +833,16 @@ def _aggregate(seed_records: list[dict[str, object]]) -> dict[str, object]:
             "sample_standard_deviation": statistics.stdev(values) if len(values) >= 2 else None,
         }
 
-    return {
+    aggregate: dict[str, object] = {
         "completed_seed_count": len(seed_records),
         "validation_accuracy": summarize(accuracies),
         "validation_macro_f1": summarize(macro_f1s),
     }
+    if within_ones:
+        aggregate["validation_within_one_accuracy"] = summarize(within_ones)
+    if kappas:
+        aggregate["validation_quadratic_weighted_kappa"] = summarize(kappas)
+    return aggregate
 
 
 def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
@@ -1032,6 +1072,8 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         "validation": {
             "accuracy": result.validation.accuracy,
             "macro_f1": result.validation.macro_f1,
+            "within_one_accuracy": result.validation.within_one_accuracy,
+            "quadratic_weighted_kappa": result.validation.quadratic_weighted_kappa,
         },
         "artifacts": artifacts,
     }

@@ -111,13 +111,24 @@ def _aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             for metric in ("precision", "recall", "f1-score")
         }
         per_class[label]["support_per_seed"] = int(reports[0]["support"])
-    return {
+    result: dict[str, Any] = {
         "completed_seed_count": len(records),
         "test_accuracy": _summarize(accuracies),
         "test_macro_f1": _summarize(macro_f1s),
         "pooled_confusion_matrix": pooled.tolist(),
         "per_class": per_class,
     }
+    # `metrics.to_dict()` picks the new fields up automatically, so finalize
+    # output always carries them. Aggregating only when every seed has them
+    # rules out mixing with a test_results written before they existed.
+    if all("within_one_accuracy" in item["test"] for item in records):
+        result["test_within_one_accuracy"] = _summarize(
+            [float(item["test"]["within_one_accuracy"]) for item in records]
+        )
+        result["test_quadratic_weighted_kappa"] = _summarize(
+            [float(item["test"]["quadratic_weighted_kappa"]) for item in records]
+        )
+    return result
 
 
 def evaluate_frozen_checkpoints(

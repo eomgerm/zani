@@ -19,6 +19,7 @@ from zani_ai.engagement.training import (
     _class_weights,
     _loader,
     compute_feature_statistics,
+    ordinal_quality,
     train_model,
 )
 
@@ -84,6 +85,12 @@ def test_train_model_writes_best_checkpoint_and_test_metrics(tmp_path: Path) -> 
     metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
     assert metrics["selection_metric"] == "validation_macro_f1"
     assert len(metrics["test"]["confusion_matrix"]) == 4
+    assert 0.0 <= metrics["validation"]["within_one_accuracy"] <= 1.0
+    assert "quadratic_weighted_kappa" in metrics["test"]
+    assert len(metrics["validation_history"]) >= 1
+    assert {"epoch", "macro_f1", "quadratic_weighted_kappa"} <= set(
+        metrics["validation_history"][0]
+    )
 
 
 def _run_tiny_training(
@@ -351,3 +358,28 @@ def test_unknown_sampler_scheme_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="sampler must be one of"):
         _loader(dataset, _sampler_config(tmp_path, sampler="oversample"), shuffle=True)
+
+
+# --- ordinal quality metrics --------------------------------------------------
+
+
+def test_ordinal_quality_hand_computed_values() -> None:
+    """truth 0,1,2,3 / pred 0,2,0,3: distances 0,1,2,0 -> within-1 = 3/4.
+
+    QWK by hand: observed disagreement sum(w*O) = 1 + 4 = 5 (w = squared
+    distance), expected disagreement sum(w*E) = 12 (truth marginals uniform,
+    pred marginals [2,0,1,1]).
+    """
+    within_one, kappa = ordinal_quality([0, 1, 2, 3], [0, 2, 0, 3])
+
+    assert within_one == pytest.approx(0.75)
+    assert kappa == pytest.approx(1 - 5 / 12)
+
+
+def test_ordinal_quality_degenerate_split_is_zero_not_nan() -> None:
+    """A single class on both sides has zero chance-correction variance, so
+    sklearn returns NaN."""
+    within_one, kappa = ordinal_quality([2, 2], [2, 2])
+
+    assert within_one == 1.0
+    assert kappa == 0.0
