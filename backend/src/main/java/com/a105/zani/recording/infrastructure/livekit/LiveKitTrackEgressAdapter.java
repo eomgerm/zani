@@ -34,10 +34,13 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
 
     /**
      * LiveKit 호출 1건의 상한. 재시도·리다이렉트를 포함한 전체 호출 시간을 제한한다. 이 값은 릴레이의 claim lease(
-     * {@code RecordingOrchestrator.CLAIM_LEASE})보다 반드시 작아야 한다. 호출이 lease보다 오래 매달리면 아직 진행 중인 작업이 만료 처리되어 다른 인스턴스가 같은 트랙에
-     * Egress를 중복 시작할 수 있다.
+     * {@code RecordingOrchestrator.CLAIM_LEASE} = 2분)보다 반드시 작아야 한다. 호출이 lease보다 오래 매달리면 아직 진행 중인 작업이 만료 처리되어 다른 인스턴스가
+     * 같은 트랙에 Egress를 중복 시작할 수 있다.
+     *
+     * <p>20초에서 60초로 올렸다. 부하 검증(phase-5 §11)에서 연속 시작 시 8건 중 1건이 timeout으로 실패했고, 강사 마이크는 아카이브·코칭 두 Egress 를 시작하므로 요청이 더
+     * 몰린다.
      */
-    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration CALL_TIMEOUT = Duration.ofSeconds(60);
 
     private final MediaRoomPort mediaRoomPort;
     private final RecordingProperties recordingProperties;
