@@ -5,6 +5,7 @@ import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 import com.a105.zani.auth.application.exception.InvalidRefreshTokenException;
+import com.a105.zani.auth.application.exception.RefreshSessionUnavailableException;
 import com.a105.zani.auth.application.port.IssuedToken;
 import com.a105.zani.auth.application.port.RefreshSession;
 import com.a105.zani.auth.application.port.RefreshSessionPort;
@@ -49,6 +50,15 @@ class LogoutServiceTest {
 
         assertEquals("7", refreshSessionPort.revokedSubject());
         assertEquals("token-id-1", refreshSessionPort.revokedTokenId());
+    }
+
+    @Test
+    void succeedsEvenWhenTheSessionStoreIsUnavailable() {
+        TokenClaims claims = new TokenClaims(
+                "7", "token-id-1", TokenType.REFRESH, Instant.now().plusSeconds(2_592_000));
+        LogoutService service = new LogoutService(new StubTokenProvider(claims), new UnavailableRefreshSessionPort());
+
+        assertDoesNotThrow(() -> service.logout(new LogoutCommand("valid-refresh-token")));
     }
 
     @Test
@@ -117,6 +127,24 @@ class LogoutServiceTest {
 
         String revokedTokenId() {
             return revokedTokenId;
+        }
+    }
+
+    private static class UnavailableRefreshSessionPort implements RefreshSessionPort {
+
+        @Override
+        public void create(RefreshSession session) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
+        public boolean rotate(String currentTokenId, String subject, RefreshSession replacement) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
+        public void revoke(String subject, String tokenId) {
+            throw new RefreshSessionUnavailableException(new RuntimeException("redis down"));
         }
     }
 }

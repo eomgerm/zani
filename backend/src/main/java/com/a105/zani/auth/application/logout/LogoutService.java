@@ -1,8 +1,11 @@
 package com.a105.zani.auth.application.logout;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.a105.zani.auth.application.exception.InvalidRefreshTokenException;
+import com.a105.zani.auth.application.exception.RefreshSessionUnavailableException;
 import com.a105.zani.auth.application.port.RefreshSessionPort;
 import com.a105.zani.auth.application.port.TokenClaims;
 import com.a105.zani.auth.application.port.TokenProvider;
@@ -10,6 +13,8 @@ import com.a105.zani.auth.application.port.TokenType;
 
 @Service
 public class LogoutService implements LogoutUseCase {
+
+    private static final Logger log = LoggerFactory.getLogger(LogoutService.class);
 
     private final TokenProvider tokenProvider;
     private final RefreshSessionPort refreshSessionPort;
@@ -33,6 +38,9 @@ public class LogoutService implements LogoutUseCase {
             }
         } catch (InvalidRefreshTokenException ignored) {
             // 이미 만료·위조된 토큰 — 어차피 무효하므로 무시한다.
+        } catch (RefreshSessionUnavailableException exception) {
+            // 세션은 지우지 못했지만 쿠키는 지워지고 세션도 TTL 로 소멸하므로 로그아웃은 성공으로 처리한다.
+            log.warn("Redis 장애로 refresh 세션을 무효화하지 못했습니다.", exception);
         }
     }
 }
