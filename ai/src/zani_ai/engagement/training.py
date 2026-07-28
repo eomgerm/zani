@@ -11,7 +11,13 @@ from typing import Any, Protocol, cast
 import numpy as np
 import torch
 from numpy.typing import NDArray
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    cohen_kappa_score,
+    confusion_matrix,
+    f1_score,
+)
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
@@ -122,6 +128,8 @@ class TrainingConfig:
 class EvaluationMetrics:
     accuracy: float
     macro_f1: float
+    within_one_accuracy: float
+    quadratic_weighted_kappa: float
     confusion_matrix: list[list[int]]
     classification_report: dict[str, object]
 
@@ -509,6 +517,27 @@ def _train_epoch(
         optimizer.step()
 
 
+def ordinal_quality(expected: list[int], predicted: list[int]) -> tuple[float, float]:
+    """(within-one accuracy, quadratic weighted kappa) -- ordinal-grade quality.
+
+    An exact-match metric treats a one-grade miss the same as a three-grade
+    one, but EngageNet's grades are ordered and its labels are subjective
+    (annotators agree exactly only ~46% of the time). within-1 forgives
+    adjacent-grade confusion; QWK penalizes by squared grade distance while
+    correcting for chance agreement.
+    """
+    differences = np.abs(np.asarray(expected) - np.asarray(predicted))
+    within_one = float(np.mean(differences <= 1))
+    kappa = float(
+        cohen_kappa_score(
+            expected, predicted, labels=list(range(len(LABELS))), weights="quadratic"
+        )
+    )
+    # A degenerate input (both sides a single class) leaves the chance-correction
+    # denominator at zero, which sklearn reports as NaN.
+    return within_one, 0.0 if math.isnan(kappa) else kappa
+
+
 def evaluate_model(
     model: nn.Module,
     loader: DataLoader[tuple[Tensor, Tensor]],
@@ -531,9 +560,12 @@ def evaluate_model(
         output_dict=True,
         zero_division=0,
     )
+    within_one, kappa = ordinal_quality(expected, predicted)
     return EvaluationMetrics(
         accuracy=float(accuracy_score(expected, predicted)),
         macro_f1=float(f1_score(expected, predicted, labels=list(range(4)), average="macro")),
+        within_one_accuracy=within_one,
+        quadratic_weighted_kappa=kappa,
         confusion_matrix=confusion_matrix(expected, predicted, labels=list(range(4))).tolist(),
         classification_report=cast(dict[str, object], report),
     )
@@ -700,9 +732,20 @@ def train_model(
     best_epoch = -1
     stale_epochs = 0
     best_validation: EvaluationMetrics | None = None
+    # Selection stays on macro-F1, but QWK is recorded per epoch so "would QWK
+    # have picked another epoch?" can be answered after the fact, without
+    # retraining and without making the selection metric itself ambiguous.
+    validation_history: list[dict[str, object]] = []
     for epoch in range(config.max_epochs):
         _train_epoch(model, train_loader, optimizer, objective, device)
         validation = evaluate_model(model, valid_loader, device)
+        validation_history.append(
+            {
+                "epoch": epoch,
+                "macro_f1": validation.macro_f1,
+                "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+            }
+        )
         if progress is not None:
             progress(epoch, validation)
         if scheduler is not None:
@@ -754,6 +797,7 @@ def train_model(
         "best_epoch": best_epoch,
         "model_family": model_family,
         "validation": best_validation.to_dict(),
+        "validation_history": validation_history,
         "training": training_payload,
     }
     if test_metrics is None:
@@ -785,6 +829,7 @@ __all__ = [
     "evaluate_model",
     "load_checkpoint",
     "make_objective",
+    "ordinal_quality",
     "train_model",
     "validate_manifest_completion",
 ]
