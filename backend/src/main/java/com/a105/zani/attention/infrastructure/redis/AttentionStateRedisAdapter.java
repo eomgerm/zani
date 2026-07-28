@@ -13,7 +13,7 @@ import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.domain.model.AttentionState;
 
 /**
- * 참여도 판정 상태를 Redis에 보관한다. 세 종류의 키를 쓰고 모두 TTL로 자연 소멸한다.
+ * 참여도 판정 상태를 Redis에 보관한다. 네 종류의 키를 쓰며 모두 TTL로 자연 소멸한다.
  *
  * <ul>
  *   <li>{@code attention:{sessionId}:{participantId}:event:{clientEventId}} — 멱등 판정용 표시(SETNX)
@@ -85,6 +85,24 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
                 + snapshot.recordedAt().toEpochMilli();
     }
 
+    @Override
+    public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
+        try {
+            redisTemplate.opsForValue().set(excludedKey(sessionId, participantId), MARKER_VALUE, ttl);
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void includeInDenominator(long sessionId, long participantId) {
+        try {
+            redisTemplate.delete(excludedKey(sessionId, participantId));
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
     private String eventKey(long sessionId, long participantId, String clientEventId) {
         return "attention:" + sessionId + ":" + participantId + ":event:" + clientEventId;
     }
@@ -95,5 +113,9 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
 
     private String significantKey(long sessionId, long participantId, AttentionState state) {
         return "attention:" + sessionId + ":significant:" + state.name() + ":" + participantId;
+    }
+
+    private String excludedKey(long sessionId, long participantId) {
+        return "attention:" + sessionId + ":excluded:" + participantId;
     }
 }

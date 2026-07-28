@@ -79,4 +79,14 @@ class AttentionStateRedisFailureTest {
                 () -> adapter.markSignificant(
                         SESSION_ID, PARTICIPANT_ID, AttentionState.CONFUSED, Duration.ofMinutes(5)));
     }
+
+    @Test
+    void reportsTheStoreAsUnavailableWhenTheDenominatorCannotBeChanged() {
+        assertThrows(
+                AttentionStateUnavailableException.class,
+                () -> adapter.excludeFromDenominator(SESSION_ID, PARTICIPANT_ID, Duration.ofHours(3)));
+        assertThrows(
+                AttentionStateUnavailableException.class,
+                () -> adapter.includeInDenominator(SESSION_ID, PARTICIPANT_ID));
+    }
 }

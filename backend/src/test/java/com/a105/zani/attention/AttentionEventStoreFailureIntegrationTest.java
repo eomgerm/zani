@@ -79,6 +79,16 @@ class AttentionEventStoreFailureIntegrationTest {
                 public void markSignificant(long sessionId, long participantId, AttentionState state, Duration window) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
+
+                @Override
+                public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
+
+                @Override
+                public void includeInDenominator(long sessionId, long participantId) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
             };
         }
     }

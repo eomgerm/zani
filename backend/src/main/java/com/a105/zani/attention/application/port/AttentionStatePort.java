@@ -36,4 +36,14 @@ public interface AttentionStatePort {
      * 넘긴다. 유형별 비율(팁 선택)만 상태별로 따로 센다.
      */
     void markSignificant(long sessionId, long participantId, AttentionState state, Duration window);
+
+    /**
+     * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 카메라 확인 프롬프트에 "예"(연결이 어렵다)라고 답한 학생이 대상이다(확정 문서 §1).
+     *
+     * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다. 세션이 끝날 때까지 유지되므로 TTL 은 세션 최대 길이에 맞춘다.
+     */
+    void excludeFromDenominator(long sessionId, long participantId, Duration ttl);
+
+    /** 분모 제외를 되돌린다. 카메라를 다시 쓸 수 있게 된 학생은 곧바로 분모로 돌아온다(확정 문서 §8). */
+    void includeInDenominator(long sessionId, long participantId);
 }
