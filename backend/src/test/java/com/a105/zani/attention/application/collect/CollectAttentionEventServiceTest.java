@@ -191,7 +191,8 @@ class CollectAttentionEventServiceTest {
             if (failure != null) {
                 throw failure;
             }
-            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, role, ENDED_AT.minusSeconds(600));
+            return new ResolveSessionParticipantResult(
+                    STUDENT_PARTICIPANT, role, ENDED_AT.minusSeconds(600), ENDED_AT.plusSeconds(600));
         }
     }
 

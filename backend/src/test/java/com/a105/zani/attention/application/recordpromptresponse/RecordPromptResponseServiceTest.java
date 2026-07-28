@@ -49,6 +49,7 @@ class RecordPromptResponseServiceTest {
     private static final Instant SHOWN_AT = SESSION_STARTED_AT.plusSeconds(60);
     private static final Instant RESPONDED_AT = SHOWN_AT.plusSeconds(8);
     private static final Instant SERVER_NOW = SESSION_STARTED_AT.plusSeconds(70);
+    private static final Instant SESSION_EXPIRES_AT = SESSION_STARTED_AT.plus(Duration.ofHours(3));
 
     private final InMemoryAttentionStatePort statePort = new InMemoryAttentionStatePort();
     private final InMemoryCheckPromptRepository promptRepository = new InMemoryCheckPromptRepository();
@@ -135,6 +136,8 @@ class RecordPromptResponseServiceTest {
                 RESPONDED_AT));
 
         assertTrue(statePort.excluded.contains(STUDENT_PARTICIPANT));
+        // 제외는 그 수업 동안만 뜻이 있다. 상수를 베끼지 않고 남은 수업 시간에서 파생한다.
+        assertEquals(Duration.between(SERVER_NOW, SESSION_EXPIRES_AT), statePort.exclusionTtl);
         // 카메라 확인은 참여 상태를 정하지 않는다. 분모에서 빠질 뿐이다.
         assertTrue(statePort.currentState.isEmpty());
     }
@@ -371,7 +374,8 @@ class RecordPromptResponseServiceTest {
             if (failure != null) {
                 throw failure;
             }
-            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, role, SESSION_STARTED_AT);
+            return new ResolveSessionParticipantResult(
+                    STUDENT_PARTICIPANT, role, SESSION_STARTED_AT, SESSION_EXPIRES_AT);
         }
     }
 
@@ -406,6 +410,7 @@ class RecordPromptResponseServiceTest {
         private final Map<Long, AttentionSnapshot> currentState = new HashMap<>();
         private final Set<AttentionState> significant = new HashSet<>();
         private final Set<Long> excluded = new HashSet<>();
+        private Duration exclusionTtl;
         private boolean failWrites;
 
         private final Set<String> markers = new HashSet<>();
@@ -440,6 +445,7 @@ class RecordPromptResponseServiceTest {
         public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
             failFast();
             excluded.add(participantId);
+            exclusionTtl = ttl;
         }
 
         @Override

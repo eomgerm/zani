@@ -53,6 +53,8 @@ class ResolveSessionParticipantServiceTest {
         assertEquals(STUDENT_PARTICIPANT, result.participantId());
         assertEquals(SessionParticipantRole.STUDENT, result.role());
         assertEquals(T0, result.sessionStartedAt());
+        // 수업이 끝나면 의미가 없어지는 값의 보관 기간을 이 시각에 맞춘다.
+        assertEquals(T0.plus(Session.ACTIVE_DURATION), result.sessionExpiresAt());
     }
 
     @Test

@@ -60,11 +60,8 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
     /** 클라이언트 시계가 조금 빠른 것은 받아 준다. 이보다 미래면 시간선이 깨진 것으로 본다. */
     private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(1);
 
-    /**
-     * 분모 제외 표시를 유지하는 기간. {@code Session.ACTIVE_DURATION}(수업 최대 길이)과 같은 값을 의도한 것이지만, 다른 도메인의 상수를 끌어오지 않으려고 여기에 따로 둔다.
-     * 그쪽이 바뀌면 이 값도 손으로 맞춰야 한다.
-     */
-    private static final Duration EXCLUSION_TTL = Duration.ofHours(3);
+    /** 분모 제외 표시의 최소 보관 기간. 이미 만료 시각을 지난 세션이라도 키를 심을 수 있어야 한다. */
+    private static final Duration MINIMUM_EXCLUSION_TTL = Duration.ofMinutes(1);
 
     /** 멱등 표시 보관 기간. 답을 받아 주는 창보다 넉넉히 잡아 늦은 재시도도 걸러낸다. */
     private static final Duration PROMPT_MARKER_TTL = Duration.ofMinutes(10);
@@ -119,15 +116,19 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
             throw exception;
         }
 
-        reflectOnCoachingStateAfterCommit(sessionId, participantId, command);
+        reflectOnCoachingStateAfterCommit(
+                sessionId, participantId, command, remainingSessionTime(participant.sessionExpiresAt()));
         return RecordPromptResponseResult.recorded();
     }
 
     /**
      * 이 프롬프트에 이미 답이 있는지.
      *
-     * <p>1차 방어는 Redis의 원자적 표시다. 서버에는 프롬프트 표시 시점의 행이 없어 DB 조회만으로는 동시에 들어온 재시도 둘이 모두 통과할 수 있다. Redis를 쓸 수 없으면 DB 조회로 물러선다
-     * — 답은 반드시 남아야 하므로, 저장소 장애를 이유로 요청을 거절하지는 않는다.
+     * <p><b>두 겹을 매번 다 본다.</b> Redis 의 원자적 표시는 동시에 들어온 재시도를 하나만 통과시키고(서버에는 프롬프트 표시 시점의 행이 없어 DB 조회만으로는 둘 다 통과한다), DB 조회는
+     * <b>표시는 없는데 행은 있는</b> 경우를 잡는다. Redis 가 잠시 죽은 동안 저장된 답이 그렇다 — 그때는 표시를 못 남기고 행만 생기므로, 복구 뒤 재시도가 표시 검사만 통과해 같은 답을 두 번
+     * 기록하게 된다.
+     *
+     * <p>프롬프트 응답은 학생당 몇 분에 한 번이라, 조회 한 번을 아끼는 것보다 이 자가 복구가 값지다. 저장소 장애를 이유로 요청을 거절하지도 않는다 — 답은 반드시 남아야 한다.
      */
     private boolean alreadyAnswered(
             long sessionId, long participantId, RecordPromptResponseCommand command, long shownOffsetMs) {
@@ -174,23 +175,24 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
      * 않는다.
      */
     private void reflectOnCoachingStateAfterCommit(
-            long sessionId, long participantId, RecordPromptResponseCommand command) {
+            long sessionId, long participantId, RecordPromptResponseCommand command, Duration exclusionTtl) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            reflectOnCoachingState(sessionId, participantId, command);
+            reflectOnCoachingState(sessionId, participantId, command, exclusionTtl);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                reflectOnCoachingState(sessionId, participantId, command);
+                reflectOnCoachingState(sessionId, participantId, command, exclusionTtl);
             }
         });
     }
 
     /** 저장소가 죽어도 예외를 밖으로 내보내지 않는다. 답은 이미 커밋됐고, 코칭만 잠시 멈춘다. */
-    private void reflectOnCoachingState(long sessionId, long participantId, RecordPromptResponseCommand command) {
+    private void reflectOnCoachingState(
+            long sessionId, long participantId, RecordPromptResponseCommand command, Duration exclusionTtl) {
         try {
-            applyDenominatorChange(sessionId, participantId, command.answer());
+            applyDenominatorChange(sessionId, participantId, command.answer(), exclusionTtl);
             if (isTooOldToSteerCoaching(command)) {
                 // 지나간 답을 지금 상태로 찍으면 관찰 창이 새로 연장돼 옛 신호가 트리거를 계속 끌고 간다.
                 log.debug("코칭에 반영하기에는 오래된 답입니다. sessionId={}, promptId={}", sessionId, command.promptId());
@@ -218,13 +220,24 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
     }
 
     /** 카메라를 켤 수 없다고 답하면 분모에서 빼고, 켤 수 있다고 답하면 되돌린다(확정 문서 §8). */
-    private void applyDenominatorChange(long sessionId, long participantId, PromptAnswer answer) {
+    private void applyDenominatorChange(
+            long sessionId, long participantId, PromptAnswer answer, Duration exclusionTtl) {
         if (answer.excludesFromDenominator()) {
             // 카메라를 켤 수 없는 학생을 분모에 남기면, 무엇을 하든 비율이 낮아져 어려움을 겪는 학생들이 가려진다.
-            attentionStatePort.excludeFromDenominator(sessionId, participantId, EXCLUSION_TTL);
+            attentionStatePort.excludeFromDenominator(sessionId, participantId, exclusionTtl);
         } else if (answer == PromptAnswer.CAMERA_AVAILABLE) {
             attentionStatePort.includeInDenominator(sessionId, participantId);
         }
+    }
+
+    /**
+     * 세션이 자동 종료될 때까지 남은 시간.
+     *
+     * <p>분모 제외는 그 수업 동안만 뜻이 있다(확정 문서 §8). 수업 최대 길이를 상수로 베껴 두면 세션 도메인이 값을 바꿀 때 조용히 어긋나므로, 세션이 알려 준 만료 시각에서 그때그때 계산한다.
+     */
+    private Duration remainingSessionTime(Instant sessionExpiresAt) {
+        Duration remaining = Duration.between(clock.instant(), sessionExpiresAt);
+        return remaining.compareTo(MINIMUM_EXCLUSION_TTL) > 0 ? remaining : MINIMUM_EXCLUSION_TTL;
     }
 
     /** 답이 코칭 신호로 쓰기에는 너무 오래됐는지. */

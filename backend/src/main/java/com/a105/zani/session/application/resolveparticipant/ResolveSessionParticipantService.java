@@ -32,6 +32,7 @@ public class ResolveSessionParticipantService implements ResolveSessionParticipa
             throw new SessionAlreadyEndedException();
         }
 
-        return new ResolveSessionParticipantResult(participant.id(), participant.role(), session.startedAt());
+        return new ResolveSessionParticipantResult(
+                participant.id(), participant.role(), session.startedAt(), session.expiresAt());
     }
 }
