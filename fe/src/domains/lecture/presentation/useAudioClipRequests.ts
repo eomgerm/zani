@@ -201,7 +201,8 @@ export function useAudioClipRequests(
       const { buffer: currentBuffer } = latestRef.current;
       const availableMs = currentBuffer.availableMs();
 
-      if (currentBuffer.captureState === "idle") {
+      // idle(마이크 미게시)·unavailable(캡처 불가) 모두 지금 올릴 오디오가 없다.
+      if (currentBuffer.captureState === "idle" || currentBuffer.captureState === "unavailable") {
         await report(run, "CAPTURE_UNAVAILABLE", availableMs);
         return;
       }

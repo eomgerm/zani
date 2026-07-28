@@ -22,7 +22,16 @@ const SNAPSHOT_REQUEST_DATA_TIMEOUT_MS = 250;
 
 const PREFERRED_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm"] as const;
 
-export type AudioCaptureState = "idle" | "recording" | "paused";
+/**
+ * 캡처 상태.
+ *
+ * - `idle` — 아직 캡처하지 않는다(마이크 미게시, Room 미연결). 게시되면 회복된다.
+ * - `recording` / `paused` — 캡처 중 / 음소거로 일시 중지.
+ * - `unavailable` — 이 브라우저·세션에서 캡처가 불가능하다(MediaRecorder 미지원·코덱
+ *   없음·recorder 오류). 상위는 이 신호로 코칭 기능을 끄고 수업은 계속 진행한다.
+ *   `idle` 과 구분하는 이유는 후자가 곧 회복될 수 있는 정상 상태이기 때문이다.
+ */
+export type AudioCaptureState = "idle" | "recording" | "paused" | "unavailable";
 
 export interface UseInstructorAudioBufferOptions {
   /** 첫 렌더에서만 읽는다. 이후 변경은 무시된다. */
@@ -60,8 +69,11 @@ function pickSupportedMimeType(): string | null {
  *   LiveKit mute(enabled=false)와 분리돼, 일시정지 처리가 어긋나면 음소거 중 실제
  *   음성이 녹음되는 프라이버시 사고가 된다. 같은 트랙은 mute 시 무음이 되므로
  *   일시정지와 이중 방어가 된다.
- * - 장치 전환(TrackEvent.Restarted)·트랙 종료 시 recorder 와 버퍼를 함께 재시작한다.
- *   서로 다른 인코더 초기화 구간의 조각은 한 파일로 이어붙일 수 없기 때문이다.
+ * - 트랙 종료(장치 분리)·마이크 unpublish 는 음소거와 같이 "수집 중지, 버퍼 유지"로
+ *   다룬다. 그 사이 클립 요청이 와도 직전까지의 오디오를 그대로 쓸 수 있고, 오래된
+ *   조각은 시간 기준으로 알아서 만료된다.
+ * - 반대로 새 recorder 가 붙는 순간(장치 전환·재게시)에는 버퍼를 버린다. 인코더가
+ *   바뀌면 초기화 구간(헤더)이 달라져 옛 조각과 한 파일로 이어붙일 수 없기 때문이다.
  */
 export function useInstructorAudioBuffer(
   room: Room | null,
@@ -135,7 +147,15 @@ export function useInstructorAudioBuffer(
         .finally(drainWaiters);
     };
 
-    function stopRecorder() {
+    /**
+     * recorder 를 정지한다.
+     *
+     * `discardBuffer` 는 이후 새 recorder 가 붙을 때만 true 다 — 인코더가 바뀌면 초기화
+     * 구간(헤더)이 달라져 옛 조각과 한 파일로 이어붙일 수 없기 때문이다. 반대로 장치가
+     * 빠지거나 마이크를 내린 경우에는 유지한다. 그 사이 클립 요청이 와도 직전까지의
+     * 오디오는 그대로 쓸 수 있고, 오래된 조각은 시간 기준으로 알아서 만료된다.
+     */
+    function stopRecorder(discardBuffer: boolean) {
       generation += 1;
       if (observedTrack !== null) {
         observedTrack.off(TrackEvent.Restarted, handleTrackRestarted);
@@ -151,14 +171,17 @@ export function useInstructorAudioBuffer(
       }
       recorder = null;
       recorderRef.current = null;
-      headerReady = false;
-      buffer.reset();
+      if (discardBuffer) {
+        headerReady = false;
+        buffer.reset();
+      }
       // recorder 가 사라지면 dataavailable 도 오지 않으므로 스냅샷 대기자를 깨워 준다.
       drainWaiters();
     }
 
     function startRecorder() {
-      stopRecorder();
+      // 새 recorder 는 새 헤더를 만든다. 옛 조각과 섞이지 않도록 여기서만 버퍼를 버린다.
+      stopRecorder(true);
 
       const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
       const track = getMicrophoneTrack();
@@ -175,14 +198,23 @@ export function useInstructorAudioBuffer(
 
       const mimeType = pickSupportedMimeType();
       if (mimeType === null || typeof MediaStream === "undefined") {
-        setCaptureState("idle");
+        setCaptureState("unavailable");
         return;
       }
 
-      const created = new MediaRecorder(new MediaStream([mediaStreamTrack]), {
-        mimeType,
-        audioBitsPerSecond: RECORDER_AUDIO_BITS_PER_SECOND,
-      });
+      let created: MediaRecorder;
+      try {
+        created = new MediaRecorder(new MediaStream([mediaStreamTrack]), {
+          mimeType,
+          audioBitsPerSecond: RECORDER_AUDIO_BITS_PER_SECOND,
+        });
+      } catch (error) {
+        // 캡처 실패가 수업을 중단시켜서는 안 된다. 코칭만 끄고 계속 진행한다.
+        console.warn("[audio-clip] 오디오 버퍼를 시작할 수 없어 코칭을 비활성화합니다.", error);
+        setCaptureState("unavailable");
+        return;
+      }
+
       const chunkGeneration = generation;
       created.ondataavailable = (event: BlobEvent) => {
         // 교체된 recorder가 stop 직후 내보내는 잔여 조각이 새 recorder 의 경계를 흔들지 않게 한다.
@@ -193,6 +225,15 @@ export function useInstructorAudioBuffer(
         const startMs = boundaryRef.current;
         boundaryRef.current = endMs;
         enqueueChunk(event.data, startMs, endMs, chunkGeneration);
+      };
+      created.onerror = (event) => {
+        if (chunkGeneration !== generation) {
+          return;
+        }
+        // 인코더가 깨진 뒤의 조각은 컨테이너 정합성을 보장할 수 없어 버퍼째 버린다.
+        console.warn("[audio-clip] recorder 오류로 코칭을 비활성화합니다.", event);
+        stopRecorder(true);
+        setCaptureState("unavailable");
       };
 
       observedTrack = track;
@@ -218,8 +259,9 @@ export function useInstructorAudioBuffer(
     }
 
     function handleTrackEnded() {
-      stopRecorder();
-      setCaptureState("idle");
+      // 장치 분리·연결 끊김: 수집만 멈추고 직전까지의 오디오는 남긴다.
+      stopRecorder(false);
+      setCaptureState("paused");
     }
 
     const isLocalMicrophone = (publication: TrackPublication, participant: Participant) =>
@@ -233,8 +275,9 @@ export function useInstructorAudioBuffer(
 
     const handleLocalTrackUnpublished = (publication: TrackPublication) => {
       if (publication.source === Track.Source.Microphone) {
-        stopRecorder();
-        setCaptureState("idle");
+        // 마이크를 내린 것도 "수집 중지, 버퍼 유지"다(음소거와 같은 취급).
+        stopRecorder(false);
+        setCaptureState("paused");
       }
     };
 
@@ -284,7 +327,8 @@ export function useInstructorAudioBuffer(
       room.off(RoomEvent.LocalTrackUnpublished, handleLocalTrackUnpublished);
       room.off(RoomEvent.TrackMuted, handleTrackMuted);
       room.off(RoomEvent.TrackUnmuted, handleTrackUnmuted);
-      stopRecorder();
+      // Room 교체·언마운트: 이 세션의 오디오는 더 쓰이지 않으므로 메모리를 즉시 반납한다.
+      stopRecorder(true);
       setCaptureState("idle");
     };
   }, [room, buffer, now]);

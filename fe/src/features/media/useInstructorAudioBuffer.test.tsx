@@ -98,11 +98,13 @@ class FakeMediaStream {
 class FakeMediaRecorder {
   static instances: FakeMediaRecorder[] = [];
 
-  static isTypeSupported = (type: string) => type === "audio/webm;codecs=opus";
+  static isTypeSupported: (type: string) => boolean = (type) => type === "audio/webm;codecs=opus";
 
   state: "inactive" | "recording" | "paused" = "inactive";
 
   ondataavailable: ((event: BlobEvent) => void) | null = null;
+
+  onerror: ((event: Event) => void) | null = null;
 
   readonly mimeType: string;
 
@@ -141,6 +143,11 @@ class FakeMediaRecorder {
   emitChunk(bytes: Uint8Array<ArrayBuffer>) {
     const blob = new Blob([bytes], { type: this.mimeType });
     this.ondataavailable?.({ data: blob } as unknown as BlobEvent);
+  }
+
+  /** 실제 MediaRecorder 처럼 오류 이벤트를 낸다(인코더 실패·장치 오류 등). */
+  emitError() {
+    this.onerror?.(new Event("error"));
   }
 
   static last(): FakeMediaRecorder {
@@ -352,34 +359,75 @@ describe("useInstructorAudioBuffer", () => {
     expect(clip?.capturedFromMs).toBe(1_000);
   });
 
-  it("트랙이 끝나면(장치 분리) idle로 내려가고 버퍼를 비운다", async () => {
+  it("트랙이 끝나면(장치 분리) 수집만 멈추고 버퍼는 유지한다", async () => {
     const { clock, track, result } = setup();
     const recorder = FakeMediaRecorder.last();
 
     clock.nowMs = 1_000;
     recorder.emitChunk(firstChunkBytes(50));
     await flushAsync();
-    expect(result.current.availableMs()).toBe(1_000);
 
     act(() => {
       track.emit(TrackEvent.Ended);
     });
 
-    expect(result.current.captureState).toBe("idle");
+    expect(result.current.captureState).toBe("paused");
     expect(recorder.state).toBe("inactive");
-    expect(result.current.availableMs()).toBe(0);
-    expect(await result.current.snapshot()).toBeNull();
+    // 장치가 빠져도 직전까지의 오디오는 여전히 업로드할 가치가 있다.
+    expect(result.current.availableMs()).toBe(1_000);
+    expect(await result.current.snapshot()).not.toBeNull();
   });
 
-  it("마이크 unpublish면 idle, 다시 publish되면 새 recorder로 재개한다", () => {
-    const { publication, room, result } = setup();
+  it("장치가 빠진 동안에도 유지된 버퍼는 시간이 지나면 만료된다", async () => {
+    const { clock, track, result } = setup({ windowMs: 5_000 });
+    const recorder = FakeMediaRecorder.last();
+
+    clock.nowMs = 1_000;
+    recorder.emitChunk(firstChunkBytes(50));
+    await flushAsync();
+    act(() => {
+      track.emit(TrackEvent.Ended);
+    });
+    expect(result.current.availableMs()).toBe(1_000);
+
+    clock.nowMs = 60_000;
+    expect(result.current.availableMs()).toBe(0);
+  });
+
+  it("새 트랙으로 재개하면 헤더 불일치를 피해 유지하던 버퍼를 비운다", async () => {
+    const { clock, track, publication, room, result } = setup();
+
+    clock.nowMs = 1_000;
+    FakeMediaRecorder.last().emitChunk(firstChunkBytes(50));
+    await flushAsync();
+    act(() => {
+      track.emit(TrackEvent.Ended);
+    });
+    expect(result.current.availableMs()).toBe(1_000);
+
+    act(() => {
+      room.emit(RoomEvent.LocalTrackPublished, publication, room.localParticipant);
+    });
+
+    expect(result.current.captureState).toBe("recording");
+    // 인코더 초기화 구간이 다른 조각은 한 파일로 이어붙일 수 없다.
+    expect(result.current.availableMs()).toBe(0);
+  });
+
+  it("마이크 unpublish면 수집을 멈추되 버퍼는 유지하고, 다시 publish되면 새 recorder로 재개한다", async () => {
+    const { clock, publication, room, result } = setup();
+
+    clock.nowMs = 1_000;
+    FakeMediaRecorder.last().emitChunk(firstChunkBytes(50));
+    await flushAsync();
 
     act(() => {
       room.localParticipant.micPublication = null;
       room.emit(RoomEvent.LocalTrackUnpublished, publication, room.localParticipant);
     });
-    expect(result.current.captureState).toBe("idle");
+    expect(result.current.captureState).toBe("paused");
     expect(FakeMediaRecorder.instances[0].state).toBe("inactive");
+    expect(result.current.availableMs()).toBe(1_000);
 
     act(() => {
       room.localParticipant.micPublication = publication;
@@ -425,11 +473,71 @@ describe("useInstructorAudioBuffer", () => {
     expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
 
-  it("MediaRecorder를 지원하지 않는 환경이면 idle이다", () => {
+  it("MediaRecorder를 지원하지 않는 환경이면 코칭 비활성 신호(unavailable)를 낸다", () => {
     vi.stubGlobal("MediaRecorder", undefined);
     const { result } = setup();
 
-    expect(result.current.captureState).toBe("idle");
+    // idle(마이크 미게시, 회복 가능)과 구분돼야 상위가 코칭을 끌 수 있다.
+    expect(result.current.captureState).toBe("unavailable");
+  });
+
+  it("지원 코덱이 없으면 unavailable이다", () => {
+    // 공유 FakeMediaRecorder 를 변형하면 뒤 테스트로 새므로 별도 클래스를 쓴다.
+    class UnsupportedMediaRecorder extends FakeMediaRecorder {
+      static isTypeSupported = () => false;
+    }
+    vi.stubGlobal("MediaRecorder", UnsupportedMediaRecorder);
+    const { result } = setup();
+
+    expect(result.current.captureState).toBe("unavailable");
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+  });
+
+  it("MediaRecorder 생성이 실패하면 unavailable로 내려가고 수업은 계속된다", () => {
+    class ThrowingMediaRecorder {
+      static isTypeSupported = () => true;
+      constructor() {
+        throw new DOMException("NotSupportedError", "NotSupportedError");
+      }
+    }
+    vi.stubGlobal("MediaRecorder", ThrowingMediaRecorder);
+
+    // 훅이 예외를 밖으로 던지면 방 전체가 죽는다 — 삼켜야 한다.
+    expect(() => setup()).not.toThrow();
+  });
+
+  it("녹음 중 recorder 오류가 나면 unavailable로 전환하고 버퍼를 비운다", async () => {
+    const { clock, result } = setup();
+    const recorder = FakeMediaRecorder.last();
+
+    clock.nowMs = 1_000;
+    recorder.emitChunk(firstChunkBytes(50));
+    await flushAsync();
+    expect(result.current.availableMs()).toBe(1_000);
+
+    act(() => {
+      recorder.emitError();
+    });
+
+    expect(result.current.captureState).toBe("unavailable");
+    expect(recorder.state).toBe("inactive");
+    // 오류 시점의 조각은 신뢰할 수 없다(헤더/컨테이너 손상 가능).
+    expect(result.current.availableMs()).toBe(0);
+    expect(await result.current.snapshot()).toBeNull();
+  });
+
+  it("오류 후에도 마이크를 다시 게시하면 캡처가 회복된다", () => {
+    const { publication, room, result } = setup();
+    act(() => {
+      FakeMediaRecorder.last().emitError();
+    });
+    expect(result.current.captureState).toBe("unavailable");
+
+    act(() => {
+      room.emit(RoomEvent.LocalTrackPublished, publication, room.localParticipant);
+    });
+
+    expect(result.current.captureState).toBe("recording");
   });
 
   it("unmount 시 room·track 리스너를 모두 해제하고 recorder를 정지한다", () => {
