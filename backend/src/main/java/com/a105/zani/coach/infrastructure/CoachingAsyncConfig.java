@@ -32,7 +32,8 @@ public class CoachingAsyncConfig {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(10);
-        executor.initialize();
+        // initialize() 는 호출하지 않는다. ThreadPoolTaskExecutor 는 InitializingBean 이라
+        // Spring 이 afterPropertiesSet() 에서 초기화하며, 수동 호출은 이중 초기화가 된다.
         return executor;
     }
 }
