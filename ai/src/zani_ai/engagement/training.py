@@ -15,7 +15,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset
 
-from zani_ai.engagement.contracts import LABELS, SplitName
+from zani_ai.engagement.contracts import CLASS_WEIGHTING_SCHEMES, LABELS, SplitName
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
 from zani_ai.engagement.model import EngagementTransformer, ModelConfig
 
@@ -40,27 +40,40 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
         entries: tuple[FeatureEntry, ...],
         *,
         token_feature_count: int = TOKEN_FEATURE_COUNT,
+        array_key: str = "tokens",
+        array_shape: tuple[int, ...] | None = None,
     ) -> None:
         if not entries:
             raise ValueError("feature split is empty")
         self.entries = entries
         self.token_feature_count = token_feature_count
+        self.array_key = array_key
+        # Default preserves the existing (20, token_feature_count) token-path check.
+        self.array_shape = array_shape if array_shape is not None else (20, token_feature_count)
+        # Lazy in-memory cache: each sample's feature tensor is loaded from disk once and
+        # reused across epochs, so training is not bottlenecked on per-epoch npz I/O (keeps the
+        # GPU fed). Returns the identical tensor data, so results/determinism are unchanged.
+        self._feature_cache: list[Tensor | None] = [None] * len(entries)
 
     def __len__(self) -> int:
         return len(self.entries)
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
         entry = self.entries[index]
-        with np.load(entry.feature_path, allow_pickle=False) as cache:
-            tokens = np.asarray(cache["tokens"], dtype=np.float32)
-        if tokens.shape != (20, self.token_feature_count) or not np.isfinite(tokens).all():
-            raise ValueError(f"invalid cached tokens: {entry.feature_path}")
-        return torch.from_numpy(tokens), torch.tensor(entry.label_index, dtype=torch.long)
+        cached = self._feature_cache[index]
+        if cached is None:
+            with np.load(entry.feature_path, allow_pickle=False) as cache:
+                array = np.asarray(cache[self.array_key], dtype=np.float32)
+            if array.shape != self.array_shape or not np.isfinite(array).all():
+                raise ValueError(f"invalid cached {self.array_key}: {entry.feature_path}")
+            cached = torch.from_numpy(array)
+            self._feature_cache[index] = cached
+        return cached, torch.tensor(entry.label_index, dtype=torch.long)
 
     def token_arrays(self) -> Iterator[NDArray[np.float32]]:
         for entry in self.entries:
             with np.load(entry.feature_path, allow_pickle=False) as cache:
-                yield np.asarray(cache["tokens"], dtype=np.float32)
+                yield np.asarray(cache[self.array_key], dtype=np.float32)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,10 +93,17 @@ class TrainingConfig:
     patience: int = 20
     seed: int = 42
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    use_class_weights: bool = False
+    # "none" | "balanced" | "sqrt_balanced"; see CLASS_WEIGHTING_SCHEMES.
+    class_weighting: str = "none"
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
+    # E1 (non-Transformer) hooks. Defaults reproduce the Transformer path exactly.
+    build_model: Callable[..., nn.Module] | None = None
+    needs_feature_stats: bool = True
+    lr_step: int | None = None
+    array_key: str = "tokens"
+    array_shape: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,7 +219,12 @@ def compute_feature_statistics(
 
 
 def _load_feature_datasets(
-    root: Path, *, include_test: bool = True, expected_schema: str = SCHEMA_NAME
+    root: Path,
+    *,
+    include_test: bool = True,
+    expected_schema: str = SCHEMA_NAME,
+    array_key: str = "tokens",
+    array_shape: tuple[int, ...] | None = None,
 ) -> FeatureDatasets:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
@@ -210,7 +235,15 @@ def _load_feature_datasets(
         raise ValueError(
             f"feature manifest schema must be {expected_schema!r}, got {manifest_schema!r}"
         )
-    token_feature_count = get_schema(expected_schema).token_feature_count
+    # `get_schema` only knows token FeatureSchemas; when an explicit
+    # `array_shape` is supplied (e.g. E1/ST-GCN's landmark schemas), it fully
+    # determines the cached-array shape and `token_feature_count` is unused,
+    # so skip the FeatureSchema lookup entirely for that path.
+    token_feature_count = (
+        get_schema(expected_schema).token_feature_count
+        if array_shape is None
+        else TOKEN_FEATURE_COUNT
+    )
     included, _ = validate_manifest_completion(payload)
     grouped: dict[str, list[FeatureEntry]] = {"train": [], "valid": [], "test": []}
     for item_value in cast(list[dict[str, Any]], included):
@@ -231,9 +264,24 @@ def _load_feature_datasets(
             )
         )
     return FeatureDatasets(
-        CachedFeatureDataset(tuple(grouped["train"]), token_feature_count=token_feature_count),
-        CachedFeatureDataset(tuple(grouped["valid"]), token_feature_count=token_feature_count),
-        CachedFeatureDataset(tuple(grouped["test"]), token_feature_count=token_feature_count)
+        CachedFeatureDataset(
+            tuple(grouped["train"]),
+            token_feature_count=token_feature_count,
+            array_key=array_key,
+            array_shape=array_shape,
+        ),
+        CachedFeatureDataset(
+            tuple(grouped["valid"]),
+            token_feature_count=token_feature_count,
+            array_key=array_key,
+            array_shape=array_shape,
+        ),
+        CachedFeatureDataset(
+            tuple(grouped["test"]),
+            token_feature_count=token_feature_count,
+            array_key=array_key,
+            array_shape=array_shape,
+        )
         if include_test
         else None,
     )
@@ -266,14 +314,31 @@ def _loader(
         shuffle=shuffle,
         num_workers=config.num_workers,
         generator=generator,
+        pin_memory=torch.cuda.is_available(),
     )
 
 
-def _class_weights(dataset: CachedFeatureDataset, device: torch.device) -> Tensor:
+def _class_weights(
+    dataset: CachedFeatureDataset, device: torch.device, scheme: str = "balanced"
+) -> Tensor:
+    """Per-class loss weights for ``scheme``, normalized to a mean of 1.
+
+    Both schemes satisfy ``sum(count_i * weight_i) == len(dataset)``, so the
+    loss keeps the same scale as unweighted training and the learning rate
+    stays comparable across protocols.
+    """
+    if scheme not in CLASS_WEIGHTING_SCHEMES:
+        raise ValueError(
+            f"class_weighting must be one of {CLASS_WEIGHTING_SCHEMES}, got {scheme!r}"
+        )
     counts = np.bincount([entry.label_index for entry in dataset.entries], minlength=len(LABELS))
     if np.any(counts == 0):
         raise ValueError("class weighting requires every class in the training split")
-    weights = len(dataset) / (len(LABELS) * counts)
+    if scheme == "balanced":
+        weights = len(dataset) / (len(LABELS) * counts)
+    else:  # sqrt_balanced
+        roots = np.sqrt(counts)
+        weights = len(dataset) / (roots * roots.sum())
     return torch.as_tensor(weights, dtype=torch.float32, device=device)
 
 
@@ -328,14 +393,16 @@ class CoralObjective:
         return p / p.sum(dim=1, keepdim=True)
 
 
-def make_objective(config: ModelConfig, class_weights: Tensor | None = None) -> Objective:
-    if config.head == "coral":
+def make_objective(config: Any, class_weights: Tensor | None = None) -> Objective:
+    # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
+    # attribute); any config without a `head` defaults to softmax.
+    if getattr(config, "head", "softmax") == "coral":
         return CoralObjective(config.num_classes)
     return SoftmaxObjective(weight=class_weights)
 
 
 def _train_epoch(
-    model: EngagementTransformer,
+    model: nn.Module,
     loader: DataLoader[tuple[Tensor, Tensor]],
     optimizer: torch.optim.Optimizer,
     objective: Objective,
@@ -350,12 +417,12 @@ def _train_epoch(
 
 
 def evaluate_model(
-    model: EngagementTransformer,
+    model: nn.Module,
     loader: DataLoader[tuple[Tensor, Tensor]],
     device: torch.device,
 ) -> EvaluationMetrics:
     model.eval()
-    objective = make_objective(model.config)
+    objective = make_objective(model.config)  # type: ignore[attr-defined]
     expected: list[int] = []
     predicted: list[int] = []
     with torch.inference_mode():
@@ -381,39 +448,67 @@ def evaluate_model(
 
 def _save_checkpoint(
     path: Path,
-    model: EngagementTransformer,
+    model: nn.Module,
     config: TrainingConfig,
-    statistics: FeatureStatistics,
+    statistics: FeatureStatistics | None,
     epoch: int,
     validation: EvaluationMetrics,
     *,
     schema: str = SCHEMA_NAME,
 ) -> None:
-    torch.save(
+    is_transformer = isinstance(model, EngagementTransformer)
+    payload: dict[str, Any] = {
+        "model_state": model.state_dict(),
+        "model_config": model.config.to_dict(),  # type: ignore[attr-defined]
+    }
+    if is_transformer:
+        if statistics is None:
+            raise ValueError("transformer checkpoints require feature statistics")
+        payload["feature_mean"] = statistics.mean
+        payload["feature_std"] = statistics.std
+    else:
+        # ST-GCN's adjacency `partitions` buffer is fixed but not learned, so it
+        # is not part of `model_state`'s gradient-bearing parameters logically;
+        # store it explicitly so the checkpoint is self-contained.
+        payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
+    payload.update(
         {
-            "model_state": model.state_dict(),
-            "model_config": config.model.to_dict(),
-            "feature_mean": statistics.mean,
-            "feature_std": statistics.std,
             "epoch": epoch,
             "validation": validation.to_dict(),
             "schema": schema,
             "labels": LABELS,
-        },
-        path,
+            "model_family": "transformer" if is_transformer else "stgcn",
+        }
     )
+    torch.save(payload, path)
 
 
-def load_checkpoint(path: Path, device: str = "cpu") -> EngagementTransformer:
+def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     checkpoint = cast(dict[str, Any], torch.load(path, map_location=device, weights_only=False))
     checkpoint_schema = checkpoint.get("schema")
     if not isinstance(checkpoint_schema, str):
         raise ValueError("checkpoint is missing a schema name")
+    # Absent `model_family` means a pre-E1 checkpoint (E0/E0-A/E0-B): always Transformer.
+    model_family = checkpoint.get("model_family", "transformer")
+    cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
+    if model_family == "stgcn":
+        from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+
+        if "channels" in cfg_dict:
+            cfg_dict["channels"] = tuple(cfg_dict["channels"])
+        stgcn_config = STGCNConfig(**cfg_dict)
+        stgcn_model = EngagementSTGCN(torch.as_tensor(checkpoint["partitions"]), stgcn_config)
+        stgcn_model.load_state_dict(checkpoint["model_state"])
+        return stgcn_model.to(device)
+    if model_family != "transformer":
+        raise ValueError(f"checkpoint has unknown model_family: {model_family!r}")
+    # `get_schema` only knows token FeatureSchemas, so this validation only
+    # applies to the Transformer family (the ST-GCN branch above has already
+    # returned for non-token schemas like `landmark_78_v1`).
     try:
         get_schema(checkpoint_schema)
     except ValueError as error:
         raise ValueError(f"checkpoint schema is unknown: {checkpoint_schema!r}") from error
-    cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
     cfg_dict.setdefault("head", "softmax")
     config = ModelConfig(**cfg_dict)
     model = EngagementTransformer(
@@ -441,30 +536,68 @@ def train_model(
     manifest_schema_name = manifest_payload.get("schema")
     if not isinstance(manifest_schema_name, str):
         raise ValueError("feature manifest is missing a schema name")
-    schema = get_schema(manifest_schema_name)
-    if schema.token_feature_count != config.model.input_dim:
+    # `get_schema` only knows token FeatureSchemas (Transformer manifests).
+    # ST-GCN manifests (e.g. `landmark_78_v1`) aren't FeatureSchemas and skip
+    # feature statistics entirely, so only look the schema up when it's
+    # actually needed.
+    schema = get_schema(manifest_schema_name) if config.needs_feature_stats else None
+    # This consistency check only makes sense for the default Transformer build
+    # path (a custom `build_model` owns its own input-shape validation).
+    if (
+        schema is not None
+        and config.build_model is None
+        and schema.token_feature_count != config.model.input_dim
+    ):
         raise ValueError(
             "feature manifest token dimension "
             f"({schema.token_feature_count}) does not match ModelConfig.input_dim "
             f"({config.model.input_dim}); set ModelConfig.input_dim to match the "
             f"'{manifest_schema_name}' schema"
         )
+    if config.build_model is None and not config.needs_feature_stats:
+        raise ValueError("config.build_model is required when needs_feature_stats is False")
     datasets = _load_feature_datasets(
-        config.features_root, include_test=evaluate_test, expected_schema=manifest_schema_name
+        config.features_root,
+        include_test=evaluate_test,
+        expected_schema=manifest_schema_name,
+        array_key=config.array_key,
+        array_shape=config.array_shape,
     )
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    statistics = compute_feature_statistics(
-        datasets.train.token_arrays(), token_feature_count=schema.token_feature_count
-    )
     device = torch.device(config.device)
-    model = EngagementTransformer(
-        torch.from_numpy(statistics.mean), torch.from_numpy(statistics.std), config=config.model
-    ).to(device)
-    weights = _class_weights(datasets.train, device) if config.use_class_weights else None
+    statistics: FeatureStatistics | None
+    if config.needs_feature_stats:
+        assert schema is not None  # guaranteed by the `needs_feature_stats` guard above
+        statistics = compute_feature_statistics(
+            datasets.train.token_arrays(), token_feature_count=schema.token_feature_count
+        )
+        if config.build_model is None:
+            model: nn.Module = EngagementTransformer(
+                torch.from_numpy(statistics.mean),
+                torch.from_numpy(statistics.std),
+                config=config.model,
+            ).to(device)
+        else:
+            model = config.build_model(statistics=statistics).to(device)
+    else:
+        statistics = None
+        model = cast(Callable[..., nn.Module], config.build_model)(statistics=None).to(device)
+    weights = (
+        _class_weights(datasets.train, device, config.class_weighting)
+        if config.class_weighting != "none"
+        else None
+    )
+    model_head = getattr(model.config, "head", "softmax")  # type: ignore[attr-defined]
     objective = make_objective(
-        config.model, class_weights=weights if config.model.head == "softmax" else None
+        model.config,  # type: ignore[attr-defined]
+        class_weights=weights if model_head == "softmax" else None,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    scheduler = (
+        torch.optim.lr_scheduler.StepLR(optimizer, step_size=config.lr_step, gamma=0.1)
+        if config.lr_step
+        else None
+    )
     train_loader = _loader(datasets.train, config, shuffle=True)
     valid_loader = _loader(datasets.valid, config, shuffle=False)
     checkpoint_path = config.output_dir / "best.pt"
@@ -477,6 +610,8 @@ def train_model(
         validation = evaluate_model(model, valid_loader, device)
         if progress is not None:
             progress(epoch, validation)
+        if scheduler is not None:
+            scheduler.step()
         if validation.macro_f1 > best_score:
             best_score = validation.macro_f1
             best_epoch = epoch
@@ -506,18 +641,25 @@ def train_model(
             best_model, _loader(datasets.test, config, shuffle=False), device
         )
     metrics_path = config.output_dir / "metrics.json"
+    training_payload = dict(asdict(config))
+    training_payload["features_root"] = str(config.features_root)
+    training_payload["output_dir"] = str(config.output_dir)
+    training_payload["model"] = model.config.to_dict()  # type: ignore[attr-defined]
+    if training_payload.get("build_model") is not None:
+        # `build_model` is a callable and not JSON-serializable; record a
+        # human-readable name instead of the raw function/object.
+        training_payload["build_model"] = getattr(
+            config.build_model, "__name__", repr(config.build_model)
+        )
+    model_family = "transformer" if isinstance(model, EngagementTransformer) else "stgcn"
     payload = {
         "schema": manifest_schema_name,
         "labels": LABELS,
         "selection_metric": "validation_macro_f1",
         "best_epoch": best_epoch,
+        "model_family": model_family,
         "validation": best_validation.to_dict(),
-        "training": {
-            **asdict(config),
-            "features_root": str(config.features_root),
-            "output_dir": str(config.output_dir),
-            "model": config.model.to_dict(),
-        },
+        "training": training_payload,
     }
     if test_metrics is None:
         payload["test_evaluation"] = {
@@ -533,6 +675,7 @@ def train_model(
 
 
 __all__ = [
+    "CLASS_WEIGHTING_SCHEMES",
     "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",
