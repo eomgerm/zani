@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.env.StandardEnvironment;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GmsMockProfileGuardTest {
 
@@ -47,6 +49,15 @@ class GmsMockProfileGuardTest {
                 IllegalStateException.class, () -> new GmsMockProfileGuard(environment("prod"), props(false, "   ")));
         assertThrows(
                 IllegalStateException.class, () -> new GmsMockProfileGuard(environment("prod"), props(false, null)));
+    }
+
+    @Test
+    void toStringMasksApiKey() {
+        String dumped = props(false, "super-secret-key").toString();
+        assertFalse(dumped.contains("super-secret-key"), "설정 덤프에 API key 가 노출되면 안 된다: " + dumped);
+        assertTrue(dumped.contains("****"));
+        assertTrue(props(false, "").toString().contains("(unset)"));
+        assertTrue(props(false, null).toString().contains("(unset)"));
     }
 
     @Test

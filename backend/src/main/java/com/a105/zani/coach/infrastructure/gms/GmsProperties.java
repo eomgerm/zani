@@ -18,4 +18,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "gms")
 public record GmsProperties(
-        String baseUrl, String apiKey, boolean mockEnabled, Duration readTimeout, Duration connectTimeout) {}
+        String baseUrl, String apiKey, boolean mockEnabled, Duration readTimeout, Duration connectTimeout) {
+
+    /** record 기본 구현은 apiKey 를 그대로 출력한다. 설정 덤프·예외 메시지로 키가 새지 않도록 마스킹한다. */
+    @Override
+    public String toString() {
+        return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s]"
+                .formatted(
+                        baseUrl,
+                        apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
+                        mockEnabled,
+                        readTimeout,
+                        connectTimeout);
+    }
+}
