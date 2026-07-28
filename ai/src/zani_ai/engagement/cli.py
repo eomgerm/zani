@@ -382,6 +382,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0e", "E0-E", "E0-E (focal loss on sqrt-balanced weights)"),
         ("e0f", "E0-F", "E0-F (balanced sampler, unweighted loss)"),
         ("e0g", "E0-G", "E0-G (aligned training schedule)"),
+        ("e0h", "E0-H", "E0-H (SORD soft ordinal targets)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),

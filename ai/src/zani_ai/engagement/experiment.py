@@ -100,6 +100,12 @@ class ExperimentSpec:
     loss: str = "cross_entropy"
     focal_gamma: float = 2.0
     sampler: str = "none"
+    # Target encoding for the softmax head; see training.TARGET_ENCODINGS.
+    # ``sord_alpha`` decides how much probability reaches the neighbouring
+    # grades, so it defines the protocol as much as the encoding name does and
+    # both enter the identity together.
+    target_encoding: str = "one_hot"
+    sord_alpha: float = 2.0
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -173,6 +179,53 @@ E0G_SPEC = ExperimentSpec(
     learning_rate=1e-5,
     patience=200,
     lr_step=100,
+)
+
+
+# E0-H attacks the adjacent-grade confusion that survived every correction so
+# far: Test errors stayed 79.2-80.4% one grade away across E0..E0-F, and an
+# oracle logit adjustment measured on Test itself bought at most +0.4%p, so the
+# decision rule is not what is wrong -- the target the loss is fitted to is.
+#
+# SORD (Diaz & Marathe, CVPR 2019) replaces the one-hot target with
+# `target_j ∝ exp(-alpha (i - j)^2)`, leaving probability on the neighbouring
+# grades. Where E0-B also used the grade order and failed (macro-F1 0.5185), it
+# swapped the softmax head for cumulative threshold logits; SORD keeps the head
+# and the argmax decoding untouched, so its failure mode is a different one.
+# Label subjectivity points the same way: annotators agree exactly 46.25% of the
+# time but within one grade 88.75%, which a neighbour-weighted target describes
+# better than a one-hot one.
+#
+# It is built on E0, not on E0-G, which ticket 210 had pre-registered as the
+# base. Three things moved that decision, and none of them is "E0-G failed":
+#
+# * Cost asymmetry. E0-G disables early stopping, so it runs 200 epochs x 5
+#   seeds = 1000; E0 stops at best_epoch + 20, which its measured best_epochs
+#   [1, 3, 1, 2, 9] put at 116. Trying the cheap base first costs +12% if it
+#   fails and saves 88% if it does not.
+# * Comparison family. SORD changes the loss target, the same axis as E0-C/E0-D
+#   (weights) and E0-E (focal). On E0 it joins that four-way comparison; on
+#   E0-G it would only be comparable to E0-G.
+# * E0-G is not established as the better baseline: all three metrics came back
+#   statistically indistinguishable from E0 (Welch t = +0.40 / -0.92 / -1.42,
+#   n = 5 + 5), so promoting it would rest on nothing measured.
+#
+# What E0-G ruled out is the schedule's *main effect* -- it changed the schedule
+# under a plain CE loss. "A changed loss needs more epochs to pay off" is an
+# interaction and remains untested; if E0-H fails here, re-running it on E0-G's
+# schedule is exactly that test, so this ordering defers the question instead of
+# discarding it.
+#
+# So the schedule stays at E0's lr 1e-4 / patience 20 / no decay, the target
+# encoding is the single variable, and the comparison is against E0 directly.
+# Class weighting stays off -- see SordObjective, whose spread target has no
+# hard label for a per-class weight to act on.
+E0H_SPEC = ExperimentSpec(
+    "E0-H",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    target_encoding="sord",
+    sord_alpha=2.0,
 )
 
 
@@ -296,6 +349,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0E_SPEC,
         E0F_SPEC,
         E0G_SPEC,
+        E0H_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -408,11 +462,12 @@ def _class_weighting_value(spec: ExperimentSpec) -> object:
 def _apply_loss_and_sampling(
     configuration: dict[str, object], spec: ExperimentSpec
 ) -> dict[str, object]:
-    """Record the loss shape and sampler, but only when they leave the default.
+    """Record the loss shape, target encoding and sampler, but only when they
+    leave the default.
 
     Emitting these keys unconditionally would rewrite the hash of every protocol
     that predates them and discard its completed seeds, so a plain
-    cross-entropy, unsampled spec must produce the dict it always has.
+    cross-entropy, one-hot, unsampled spec must produce the dict it always has.
     """
     if getattr(spec.model_config, "head", "softmax") == "coral":
         # CORAL replaces the head, so its loss is fixed regardless of spec.loss.
@@ -422,6 +477,9 @@ def _apply_loss_and_sampling(
         configuration["focal_gamma"] = spec.focal_gamma
     if spec.sampler != "none":
         configuration["sampler"] = spec.sampler
+    if spec.target_encoding != "one_hot":
+        configuration["target_encoding"] = spec.target_encoding
+        configuration["sord_alpha"] = spec.sord_alpha
     return configuration
 
 
@@ -1006,6 +1064,8 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         loss=spec.loss,
         focal_gamma=spec.focal_gamma,
         sampler=spec.sampler,
+        target_encoding=spec.target_encoding,
+        sord_alpha=spec.sord_alpha,
         num_workers=0,
         deterministic=True,
         model=spec.model_config,
