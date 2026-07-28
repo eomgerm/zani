@@ -18,6 +18,7 @@ import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,6 +70,21 @@ class CreateSessionServiceTest {
         SessionCreatedEvent event = (SessionCreatedEvent) published.get(0);
         assertEquals(result.sessionId(), event.sessionId());
         assertEquals(INSTRUCTOR_ID, event.instructorId());
+    }
+
+    @Test
+    void returnsResultEvenWhenEventPublishingFails() {
+        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
+        AlwaysAcquireLockPort lockPort = new AlwaysAcquireLockPort();
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository), lockPort, new StubInviteCodeGenerator("DDDDDDDD"), event -> {
+                    throw new IllegalStateException("listener boom");
+                });
+
+        CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "발행 실패 테스트"));
+
+        assertEquals("DDDDDDDD", result.inviteCode());
+        assertFalse(lockPort.released(), "이미 저장된 세션의 활성화 락을 해제하면 안 된다");
     }
 
     @Test
@@ -141,12 +157,20 @@ class CreateSessionServiceTest {
 
     private static class AlwaysAcquireLockPort implements SessionActivationLockPort {
 
+        private boolean released = false;
+
         @Override
         public boolean tryAcquire(long instructorId, Duration ttl) {
             return true;
         }
 
         @Override
-        public void release(long instructorId) {}
+        public void release(long instructorId) {
+            released = true;
+        }
+
+        boolean released() {
+            return released;
+        }
     }
 }
