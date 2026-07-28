@@ -2,9 +2,6 @@ package com.a105.zani.session.application.create;
 
 import java.time.Instant;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -18,24 +15,19 @@ import com.a105.zani.session.domain.model.Session;
 @Service
 public class CreateSessionService implements CreateSessionUseCase {
 
-    private static final Logger log = LoggerFactory.getLogger(CreateSessionService.class);
-
     private static final int MAX_INVITE_CODE_ATTEMPTS = 5;
 
     private final NewSessionSaver newSessionSaver;
     private final SessionActivationLockPort activationLockPort;
     private final InviteCodeGenerator inviteCodeGenerator;
-    private final ApplicationEventPublisher eventPublisher;
 
     public CreateSessionService(
             NewSessionSaver newSessionSaver,
             SessionActivationLockPort activationLockPort,
-            InviteCodeGenerator inviteCodeGenerator,
-            ApplicationEventPublisher eventPublisher) {
+            InviteCodeGenerator inviteCodeGenerator) {
         this.newSessionSaver = newSessionSaver;
         this.activationLockPort = activationLockPort;
         this.inviteCodeGenerator = inviteCodeGenerator;
-        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -44,9 +36,9 @@ public class CreateSessionService implements CreateSessionUseCase {
             throw new ActiveSessionExistsException();
         }
 
-        Session saved;
         try {
-            saved = saveWithInviteCodeRetry(command);
+            Session saved = saveWithInviteCodeRetry(command);
+            return new CreateSessionResult(saved.id(), saved.inviteCode(), saved.status(), saved.expiresAt());
         } catch (RuntimeException exception) {
             try {
                 activationLockPort.release(command.instructorId());
@@ -55,16 +47,6 @@ public class CreateSessionService implements CreateSessionUseCase {
             }
             throw exception;
         }
-
-        // 세션 저장이 끝난 뒤 발행한다. 구독자(코칭 헬스체크 등)는 부가 기능이므로
-        // 발행 실패가 이미 성공한 수업 생성을 되돌리거나 실패로 보이게 하지 않는다.
-        try {
-            eventPublisher.publishEvent(new SessionCreatedEvent(saved.id(), command.instructorId()));
-        } catch (RuntimeException exception) {
-            log.warn("failed to publish SessionCreatedEvent for session {}", saved.id(), exception);
-        }
-
-        return new CreateSessionResult(saved.id(), saved.inviteCode(), saved.status(), saved.expiresAt());
     }
 
     private Session saveWithInviteCodeRetry(CreateSessionCommand command) {

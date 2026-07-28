@@ -55,10 +55,8 @@ session:
 gms:
   base-url: ${GMS_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com}
   api-key: ${GMS_API_KEY:}
-  stt-model: ${GMS_STT_MODEL:whisper-1}
-  health-model: ${GMS_HEALTH_MODEL:gpt-4.1-nano}
   mock-enabled: ${GMS_MOCK_ENABLED:true}
-  health-timeout: ${GMS_HEALTH_TIMEOUT:3s}
+  read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
 
 livekit:

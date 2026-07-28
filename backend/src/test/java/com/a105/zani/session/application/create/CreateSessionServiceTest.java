@@ -2,7 +2,6 @@ package com.a105.zani.session.application.create;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -18,9 +17,7 @@ import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CreateSessionServiceTest {
 
@@ -31,8 +28,8 @@ class CreateSessionServiceTest {
         Set<String> takenCodes = new HashSet<>(List.of("AAAAAAAA"));
         StubInviteCodeGenerator codeGenerator = new StubInviteCodeGenerator("AAAAAAAA", "BBBBBBBB");
         RecordingSessionRepository repository = new RecordingSessionRepository(takenCodes);
-        CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator, event -> {});
+        CreateSessionService service =
+                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
 
         CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "재시도 테스트"));
 
@@ -45,62 +42,13 @@ class CreateSessionServiceTest {
         StubInviteCodeGenerator codeGenerator =
                 new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA");
         RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
-        CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator, event -> {});
+        CreateSessionService service =
+                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
 
         assertThrows(
                 InviteCodeGenerationFailedException.class,
                 () -> service.create(new CreateSessionCommand(INSTRUCTOR_ID, "재시도 실패 테스트")));
         assertEquals(5, repository.attemptCount());
-    }
-
-    @Test
-    void publishesSessionCreatedEventOnSuccess() {
-        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
-        List<Object> published = new ArrayList<>();
-        CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository),
-                new AlwaysAcquireLockPort(),
-                new StubInviteCodeGenerator("CCCCCCCC"),
-                published::add);
-
-        CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "이벤트 발행 테스트"));
-
-        assertEquals(1, published.size());
-        SessionCreatedEvent event = (SessionCreatedEvent) published.get(0);
-        assertEquals(result.sessionId(), event.sessionId());
-        assertEquals(INSTRUCTOR_ID, event.instructorId());
-    }
-
-    @Test
-    void returnsResultEvenWhenEventPublishingFails() {
-        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
-        AlwaysAcquireLockPort lockPort = new AlwaysAcquireLockPort();
-        CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository), lockPort, new StubInviteCodeGenerator("DDDDDDDD"), event -> {
-                    throw new IllegalStateException("listener boom");
-                });
-
-        CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "발행 실패 테스트"));
-
-        assertEquals("DDDDDDDD", result.inviteCode());
-        assertFalse(lockPort.released(), "이미 저장된 세션의 활성화 락을 해제하면 안 된다");
-    }
-
-    @Test
-    void doesNotPublishSessionCreatedEventWhenCreationFails() {
-        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
-        List<Object> published = new ArrayList<>();
-        CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository),
-                new AlwaysAcquireLockPort(),
-                new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA"),
-                published::add);
-
-        assertThrows(
-                InviteCodeGenerationFailedException.class,
-                () -> service.create(new CreateSessionCommand(INSTRUCTOR_ID, "이벤트 미발행 테스트")));
-        assertTrue(published.isEmpty(), "세션 생성이 실패하면 이벤트를 발행하지 않아야 한다");
     }
 
     private static class StubInviteCodeGenerator extends InviteCodeGenerator {
@@ -157,20 +105,12 @@ class CreateSessionServiceTest {
 
     private static class AlwaysAcquireLockPort implements SessionActivationLockPort {
 
-        private boolean released = false;
-
         @Override
         public boolean tryAcquire(long instructorId, Duration ttl) {
             return true;
         }
 
         @Override
-        public void release(long instructorId) {
-            released = true;
-        }
-
-        boolean released() {
-            return released;
-        }
+        public void release(long instructorId) {}
     }
 }
