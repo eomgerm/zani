@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { AudioRingBuffer, MIN_UPLOADABLE_MS, canUploadClip } from "./audioRingBuffer";
+import {
+  AUDIO_CLIP_WINDOW_MS,
+  AudioRingBuffer,
+  MIN_UPLOADABLE_MS,
+  canUploadClip,
+} from "./audioRingBuffer";
 
 const mimeType = "audio/webm;codecs=opus";
 
@@ -128,6 +133,40 @@ describe("AudioRingBuffer", () => {
     expect(canUploadClip(59_999)).toBe(false);
     expect(canUploadClip(MIN_UPLOADABLE_MS)).toBe(true);
     expect(canUploadClip(180_000)).toBe(true);
+  });
+
+  it("60분을 수집해도 버퍼가 창 크기 이상으로 커지지 않는다", () => {
+    // 실제 운영 값(창 300초, 1초 timeslice, 32kbps Opus ≈ 4KB/s)으로 60분을 시뮬레이션한다.
+    const clock = { nowMs: 0 };
+    const windowMs = AUDIO_CLIP_WINDOW_MS;
+    const buffer = new AudioRingBuffer({ windowMs, now: () => clock.nowMs });
+    buffer.setHeader(blobOf(HEADER_SIZE));
+
+    const chunkMs = 1_000;
+    const chunkBytes = 4_000;
+    const totalChunks = (60 * 60_000) / chunkMs;
+    // 만료는 조각 단위라 창을 최대 한 조각만큼 넘을 수 있다.
+    const maxRetainedMs = windowMs + chunkMs;
+    let peakAvailableMs = 0;
+    let peakBlobBytes = 0;
+
+    for (let i = 0; i < totalChunks; i += 1) {
+      const startMs = i * chunkMs;
+      clock.nowMs = startMs + chunkMs;
+      buffer.append(blobOf(chunkBytes), startMs, clock.nowMs);
+      peakAvailableMs = Math.max(peakAvailableMs, buffer.availableMs());
+
+      // blob 조립은 비싸므로 10분마다만 확인한다.
+      if (i % 600 === 0) {
+        peakBlobBytes = Math.max(peakBlobBytes, buffer.snapshot()?.blob.size ?? 0);
+      }
+    }
+    peakBlobBytes = Math.max(peakBlobBytes, buffer.snapshot()?.blob.size ?? 0);
+
+    expect(peakAvailableMs).toBeLessThanOrEqual(maxRetainedMs);
+    expect(peakBlobBytes).toBeLessThanOrEqual(HEADER_SIZE + (maxRetainedMs / chunkMs) * chunkBytes);
+    // 만료가 없었다면 60분 = 14.4MB. 창 유지가 실제로 동작하는지 절대값으로도 못 박는다.
+    expect(peakBlobBytes).toBeLessThan(1_500_000);
   });
 
   it("snapshot은 버퍼를 비우지 않는다 — 연속 두 번 호출해도 같은 클립을 만든다", () => {

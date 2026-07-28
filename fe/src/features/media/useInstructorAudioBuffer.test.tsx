@@ -540,6 +540,50 @@ describe("useInstructorAudioBuffer", () => {
     expect(result.current.captureState).toBe("recording");
   });
 
+  it("수집·음소거·스냅샷 전 과정에서 어떤 네트워크 API도 호출하지 않는다", async () => {
+    // 버퍼는 메모리 전용이라는 약속을 감시한다. 상위 업로드 계층이 실수로 여기에
+    // 섞여 들어오면(또는 진단용 전송이 추가되면) 이 테스트가 먼저 깨진다.
+    const fetchSpy = vi.fn(async () => new Response(null));
+    const sendSpy = vi.fn();
+    const beaconSpy = vi.fn(() => true);
+    const socketSpy = vi.fn();
+    class SpyXhr {
+      open = vi.fn();
+      send = sendSpy;
+      setRequestHeader = vi.fn();
+    }
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubGlobal("XMLHttpRequest", SpyXhr);
+    vi.stubGlobal("WebSocket", socketSpy);
+    vi.stubGlobal("navigator", { ...globalThis.navigator, sendBeacon: beaconSpy });
+
+    const { clock, publication, room, result } = setup();
+    const recorder = FakeMediaRecorder.last();
+
+    clock.nowMs = 1_000;
+    recorder.emitChunk(firstChunkBytes(50));
+    await flushAsync();
+    clock.nowMs = 2_000;
+    recorder.emitChunk(payload(4_000));
+    await flushAsync();
+
+    act(() => {
+      room.emit(RoomEvent.TrackMuted, publication, room.localParticipant);
+    });
+    act(() => {
+      room.emit(RoomEvent.TrackUnmuted, publication, room.localParticipant);
+    });
+
+    // 스냅샷(업로드 직전 단계)까지 만들어도 전송은 상위 계층 몫이라 여기선 나가지 않는다.
+    const clip = await result.current.snapshot();
+    expect(clip).not.toBeNull();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(beaconSpy).not.toHaveBeenCalled();
+    expect(socketSpy).not.toHaveBeenCalled();
+  });
+
   it("unmount 시 room·track 리스너를 모두 해제하고 recorder를 정지한다", () => {
     const { room, track, unmount } = setup();
     expect(room.handlerCount()).toBeGreaterThan(0);
