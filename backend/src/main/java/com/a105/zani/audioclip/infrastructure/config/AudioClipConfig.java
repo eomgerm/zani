@@ -42,8 +42,10 @@ public class AudioClipConfig implements WebSocketConfigurer {
     }
 
     @Bean
-    public EgressAudioWebSocketHandler egressAudioWebSocketHandler(InstructorAudioBuffer buffer) {
-        return new EgressAudioWebSocketHandler(buffer, properties.streamSecret());
+    public EgressAudioWebSocketHandler egressAudioWebSocketHandler(
+            InstructorAudioBuffer buffer,
+            com.a105.zani.audioclip.infrastructure.websocket.AudioStreamEndpoint endpoint) {
+        return new EgressAudioWebSocketHandler(buffer, endpoint);
     }
 
     /**

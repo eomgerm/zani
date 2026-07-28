@@ -41,6 +41,8 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
 
     private final MediaRoomPort mediaRoomPort;
     private final RecordingProperties recordingProperties;
+    /** 코칭 오디오 수신 경로는 audioclip 이 소유한다. 자격이 포함된 주소라 이쪽에서 만들지 않는다. */
+    private final com.a105.zani.audioclip.application.port.AudioStreamEndpointPort audioStreamEndpointPort;
     /** Retrofit/OkHttp 풀을 재사용하기 위해 클라이언트는 한 번만 만든다. */
     private volatile EgressServiceClient client;
 
@@ -54,7 +56,7 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
         String roomName = mediaRoomPort.roomName(request.sessionId());
         // 파일 출력과 WebSocket 출력은 proto 상 oneof 라 한 Egress 가 둘 다 낼 수 없다. 이 실행은 코칭 버퍼
         // 전용이며 녹화용 파일 Egress 와 별개로 동작한다.
-        String streamUrl = recordingProperties.audioStreamUrlFor(request.sessionId());
+        String streamUrl = audioStreamEndpointPort.streamUrlFor(request.sessionId());
         try {
             Response<LivekitEgress.EgressInfo> response = egressClient(credentials)
                     .startTrackEgress(roomName, streamUrl, request.trackSid())

@@ -22,10 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class EgressAudioWebSocketHandlerTest {
 
     private static final long SESSION_ID = 100L;
-    private static final String SECRET = "s3cr3t";
     private static final PcmAudioFormat TINY = new PcmAudioFormat(50, 1, 16);
 
     private InstructorAudioBuffer buffer;
+    private AudioStreamEndpoint endpoint;
     private EgressAudioWebSocketHandler handler;
 
     @BeforeEach
@@ -35,7 +35,10 @@ class EgressAudioWebSocketHandlerTest {
                 Duration.ofSeconds(5),
                 8,
                 java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
-        handler = new EgressAudioWebSocketHandler(buffer, SECRET);
+        // 자격은 엔드포인트가 기동 시 만들어 갖고 있다. 테스트도 발급된 주소를 그대로 쓴다.
+        endpoint = new AudioStreamEndpoint(new com.a105.zani.audioclip.infrastructure.config.AudioClipProperties(
+                null, null, null, null, "ws://backend/internal/audio/{sessionId}"));
+        handler = new EgressAudioWebSocketHandler(buffer, endpoint);
     }
 
     private static byte[] pcm(int length, int value) {
@@ -48,8 +51,8 @@ class EgressAudioWebSocketHandlerTest {
         return new FakeWebSocketSession(URI.create(uri));
     }
 
-    private static FakeWebSocketSession authorized() {
-        return session("ws://backend/internal/audio/" + SESSION_ID + "?key=" + SECRET);
+    private FakeWebSocketSession authorized() {
+        return session(endpoint.streamUrlFor(SESSION_ID));
     }
 
     @Test
@@ -97,7 +100,8 @@ class EgressAudioWebSocketHandlerTest {
 
     @Test
     void 세션ID를_파싱할_수_없으면_연결을_거부한다() throws Exception {
-        FakeWebSocketSession session = session("ws://backend/internal/audio/not-a-number?key=" + SECRET);
+        FakeWebSocketSession session =
+                session(endpoint.streamUrlFor(SESSION_ID).replace("/" + SESSION_ID + "?", "/not-a-number?"));
 
         handler.afterConnectionEstablished(session);
 

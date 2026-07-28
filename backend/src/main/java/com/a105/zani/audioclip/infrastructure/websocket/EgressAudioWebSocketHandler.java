@@ -29,11 +29,11 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
     private static final String SECRET_QUERY_KEY = "key=";
 
     private final InstructorAudioBuffer buffer;
-    private final String sharedSecret;
+    private final AudioStreamEndpoint endpoint;
 
-    public EgressAudioWebSocketHandler(InstructorAudioBuffer buffer, String sharedSecret) {
+    public EgressAudioWebSocketHandler(InstructorAudioBuffer buffer, AudioStreamEndpoint endpoint) {
         this.buffer = buffer;
-        this.sharedSecret = sharedSecret;
+        this.endpoint = endpoint;
     }
 
     @Override
@@ -91,11 +91,7 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
         for (String parameter : query.split("&")) {
             if (parameter.startsWith(SECRET_QUERY_KEY)) {
-                return java.security.MessageDigest.isEqual(
-                        parameter
-                                .substring(SECRET_QUERY_KEY.length())
-                                .getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                        sharedSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                return endpoint.matches(parameter.substring(SECRET_QUERY_KEY.length()));
             }
         }
         return false;

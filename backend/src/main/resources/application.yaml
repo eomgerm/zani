@@ -68,17 +68,13 @@ audio-clip:
   sample-rate: ${AUDIO_CLIP_SAMPLE_RATE:48000}
   # 버퍼를 동시에 들 수 있는 세션 수. 상한이 없으면 OOM으로 진행 중인 모든 강의가 끊긴다.
   max-sessions: ${AUDIO_CLIP_MAX_SESSIONS:8}
-  # Egress만 아는 공유 시크릿. 내부 수신 경로 인증에 쓰므로 로그·응답에 남기지 않는다.
-  stream-secret: ${AUDIO_CLIP_STREAM_SECRET:}
+  # Egress가 오디오를 밀어 넣을 주소. Egress가 host 네트워크라 기본값(루프백)으로 도달한다.
+  # 접속 자격은 서버가 기동 시 만들어 덧붙이므로 설정할 값이 없다.
+  stream-url-template: ${AUDIO_CLIP_STREAM_URL_TEMPLATE:ws://127.0.0.1:18080/internal/audio/{sessionId}}
 
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
-  # 강사 오디오 실시간 전달용 WebSocket 수신 주소. Egress 노드에서 도달 가능해야 한다.
-  # 예) ws://172.17.0.1:18080/internal/audio/{sessionId}?key={secret}
-  audio-stream-url-template: ${AUDIO_CLIP_STREAM_URL_TEMPLATE:}
-  # 수신 측(audio-clip.stream-secret)과 같은 값이어야 한다.
-  audio-stream-secret: ${AUDIO_CLIP_STREAM_SECRET:}
   # outbox 릴레이 주기(ISO-8601 duration).
   outbox-relay-delay: ${RECORDING_OUTBOX_RELAY_DELAY:PT5S}
 

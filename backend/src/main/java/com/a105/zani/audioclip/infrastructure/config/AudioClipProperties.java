@@ -11,11 +11,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param minTranscribable 이보다 짧게 확보됐으면 전사를 시도하지 않는다
  * @param sampleRate Egress WebSocket 출력의 샘플레이트. LiveKit 은 들어오는 트랙을 따르며 보통 48kHz 다
  * @param maxSessions 버퍼를 동시에 들 수 있는 세션 수. 세션당 window×sampleRate×2바이트를 차지하므로 상한이 없으면 컨테이너가 OOM 으로 죽어 진행 중인 모든 강의가 끊긴다
- * @param streamSecret Egress 만 아는 공유 시크릿. 내부 WebSocket 경로 인증에 쓴다(주소 구성은 recording 소관)
+ * @param streamUrlTemplate Egress 가 접속할 수신 주소. Egress 노드에서 도달 가능해야 한다. 접속 자격은 {@code AudioStreamEndpoint} 가 기동 시 만들어
+ *     덧붙이므로 여기에 담지 않는다
  */
 @ConfigurationProperties(prefix = "audio-clip")
 public record AudioClipProperties(
-        Duration window, Duration minTranscribable, Integer sampleRate, Integer maxSessions, String streamSecret) {
+        Duration window, Duration minTranscribable, Integer sampleRate, Integer maxSessions, String streamUrlTemplate) {
 
     public AudioClipProperties {
         if (window == null) {
@@ -30,6 +31,10 @@ public record AudioClipProperties(
         if (maxSessions == null || maxSessions <= 0) {
             // 48kHz 5분 = 세션당 약 29MB. 8개면 약 230MB로, 동시 강의 수와 힙 여유 사이의 기본 절충이다.
             maxSessions = 8;
+        }
+        if (streamUrlTemplate == null || streamUrlTemplate.isBlank()) {
+            // Egress 컨테이너가 host 네트워크라 백엔드의 게시 포트(127.0.0.1:18080)에 루프백으로 직결된다.
+            streamUrlTemplate = "ws://127.0.0.1:18080/internal/audio/{sessionId}";
         }
     }
 }
