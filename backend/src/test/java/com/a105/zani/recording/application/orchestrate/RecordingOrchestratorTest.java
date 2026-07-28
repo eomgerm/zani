@@ -124,7 +124,8 @@ class RecordingOrchestratorTest {
 
         int processed = orchestrator.relayPendingOutbox();
 
-        assertEquals(1, processed);
+        // 강사 마이크는 파일 Egress 와 코칭 스트림 Egress 두 작업을 만든다.
+        assertEquals(2, processed);
         assertEquals(1, egressPort.requests.size());
         assertEquals("TR_m", egressPort.requests.get(0).trackSid());
         Recording saved = recordings.saved.get(0);
@@ -133,6 +134,30 @@ class RecordingOrchestratorTest {
         assertEquals(1, saved.attemptNumber());
         assertEquals(NOW, saved.startedAt());
         assertEquals("COMPLETED", outbox.statusOf("track:100:TR_m"));
+    }
+
+    @Test
+    void 강사_마이크는_코칭용_오디오_스트림_Egress도_시작한다() {
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_m"));
+
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.audioStreamRequests.size());
+        assertEquals("TR_m", egressPort.audioStreamRequests.get(0).trackSid());
+        assertEquals("COMPLETED", outbox.statusOf("audio-stream:100:TR_m"));
+        // 녹화 행은 파일 Egress 한 건만 남는다. 스트림은 메모리 버퍼로 흘러가 남길 산출물이 없다.
+        assertEquals(1, recordings.saved.size());
+    }
+
+    @Test
+    void 강사_카메라와_학생_마이크는_오디오_스트림_Egress를_만들지_않는다() {
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_c"));
+        orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.MICROPHONE, false, "TR_s"));
+
+        orchestrator.relayPendingOutbox();
+
+        // 코칭은 강사 발화만 대상으로 한다.
+        assertEquals(0, egressPort.audioStreamRequests.size());
     }
 
     @Test
@@ -348,8 +373,20 @@ class RecordingOrchestratorTest {
     private static final class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
+        private final List<com.a105.zani.recording.application.port.AudioStreamEgressRequest> audioStreamRequests =
+                new ArrayList<>();
         private final Map<String, String> egressByTrackSid = new HashMap<>();
         private RuntimeException failWith;
+
+        @Override
+        public IssuedTrackEgress startAudioStream(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            if (failWith != null) {
+                throw failWith;
+            }
+            audioStreamRequests.add(request);
+            return new IssuedTrackEgress("EG_WS_" + audioStreamRequests.size());
+        }
 
         @Override
         public IssuedTrackEgress start(TrackEgressRequest request) {

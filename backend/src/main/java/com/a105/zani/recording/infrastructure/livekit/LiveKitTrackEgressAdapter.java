@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import retrofit2.Response;
 
 import com.a105.zani.recording.application.exception.TrackEgressUnavailableException;
+import com.a105.zani.recording.application.port.AudioStreamEgressRequest;
 import com.a105.zani.recording.application.port.IssuedTrackEgress;
 import com.a105.zani.recording.application.port.TrackEgressPort;
 import com.a105.zani.recording.application.port.TrackEgressRequest;
@@ -42,6 +43,39 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
     private final RecordingProperties recordingProperties;
     /** Retrofit/OkHttp 풀을 재사용하기 위해 클라이언트는 한 번만 만든다. */
     private volatile EgressServiceClient client;
+
+    @Override
+    public IssuedTrackEgress startAudioStream(AudioStreamEgressRequest request) {
+        MediaServerCredentials credentials = mediaRoomPort.credentials();
+        if (!credentials.isConfigured()) {
+            throw new TrackEgressUnavailableException(new IllegalStateException("LiveKit is not configured"));
+        }
+
+        String roomName = mediaRoomPort.roomName(request.sessionId());
+        // 파일 출력과 WebSocket 출력은 proto 상 oneof 라 한 Egress 가 둘 다 낼 수 없다. 이 실행은 코칭 버퍼
+        // 전용이며 녹화용 파일 Egress 와 별개로 동작한다.
+        String streamUrl = recordingProperties.audioStreamUrlFor(request.sessionId());
+        try {
+            Response<LivekitEgress.EgressInfo> response = egressClient(credentials)
+                    .startTrackEgress(roomName, streamUrl, request.trackSid())
+                    .execute();
+            if (!response.isSuccessful()) {
+                String errorBody =
+                        response.errorBody() == null ? "" : response.errorBody().string();
+                // 주소에 시크릿이 들어 있으므로 URL 은 로그에 남기지 않는다.
+                throw new TrackEgressUnavailableException(new IllegalStateException(
+                        "Audio stream egress start failed with HTTP " + response.code() + ": " + errorBody));
+            }
+            LivekitEgress.EgressInfo info = response.body();
+            if (info == null || info.getEgressId().isBlank()) {
+                throw new TrackEgressUnavailableException(
+                        new IllegalStateException("Audio stream egress start returned no egress id"));
+            }
+            return new IssuedTrackEgress(info.getEgressId());
+        } catch (IOException exception) {
+            throw new TrackEgressUnavailableException(exception);
+        }
+    }
 
     @Override
     public IssuedTrackEgress start(TrackEgressRequest request) {

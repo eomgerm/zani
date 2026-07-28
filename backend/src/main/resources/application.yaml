@@ -74,6 +74,11 @@ audio-clip:
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
+  # 강사 오디오 실시간 전달용 WebSocket 수신 주소. Egress 노드에서 도달 가능해야 한다.
+  # 예) ws://172.17.0.1:18080/internal/audio/{sessionId}?key={secret}
+  audio-stream-url-template: ${AUDIO_CLIP_STREAM_URL_TEMPLATE:}
+  # 수신 측(audio-clip.stream-secret)과 같은 값이어야 한다.
+  audio-stream-secret: ${AUDIO_CLIP_STREAM_SECRET:}
   # outbox 릴레이 주기(ISO-8601 duration).
   outbox-relay-delay: ${RECORDING_OUTBOX_RELAY_DELAY:PT5S}
 
