@@ -59,6 +59,18 @@ livekit:
   environment: ${LIVEKIT_ENVIRONMENT:local}
   token-ttl: ${LIVEKIT_TOKEN_TTL:PT10M}
 
+audio-clip:
+  # 강사 마이크 링버퍼가 유지하는 최근 구간. 서버 메모리에만 두고 저장하지 않는다.
+  window: ${AUDIO_CLIP_WINDOW:PT5M}
+  # 이보다 짧게 확보됐으면 전사를 시도하지 않는다(수업 시작 직후 등).
+  min-transcribable: ${AUDIO_CLIP_MIN_TRANSCRIBABLE:PT1M}
+  # Egress WebSocket 출력의 샘플레이트(s16le 모노). LiveKit은 들어오는 트랙을 따르며 보통 48kHz다.
+  sample-rate: ${AUDIO_CLIP_SAMPLE_RATE:48000}
+  # Egress만 아는 공유 시크릿. 내부 수신 경로 인증에 쓰므로 로그·응답에 남기지 않는다.
+  stream-secret: ${AUDIO_CLIP_STREAM_SECRET:}
+  # Egress가 접속할 수신 주소. Egress 노드에서 도달 가능한 주소여야 한다.
+  stream-url-template: ${AUDIO_CLIP_STREAM_URL_TEMPLATE:}
+
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
