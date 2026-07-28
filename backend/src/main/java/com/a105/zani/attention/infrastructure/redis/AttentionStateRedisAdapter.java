@@ -19,6 +19,7 @@ import com.a105.zani.attention.domain.model.AttentionState;
  *   <li>{@code attention:{sessionId}:{participantId}:event:{clientEventId}} — 멱등 판정용 표시(SETNX)
  *   <li>{@code attention:{sessionId}:state:{participantId}} — 현재 판정 상태
  *   <li>{@code attention:{sessionId}:significant:{state}:{participantId}} — 최근 5분 유의 상태 흔적
+ *   <li>{@code attention:{sessionId}:excluded:{participantId}} — 집단 비율 분모 제외 표시
  * </ul>
  *
  * <p>현재 상태는 해시가 아니라 문자열 한 개로 쓴다. 해시(HSET)는 TTL을 유지하지 않아 EXPIRE를 따로 걸어야 하는데, 그 사이에 연결이 끊기면 TTL 없는 키가 남아 떠난 학생이 영원히 "측정
