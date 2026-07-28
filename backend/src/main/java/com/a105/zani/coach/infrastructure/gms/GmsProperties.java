@@ -7,28 +7,41 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * SSAFY GMS 접속 설정. API key 는 환경 변수에서만 읽고 응답·로그에 남기지 않는다.
  *
- * <p>202 범위가 쓰는 값만 둔다. 모델 이름은 실제 호출이 생기는 티켓에서 추가한다 — 전사 모델(whisper-1)은 203, 팁 모델(gpt-5.4-mini)은 204.
- * (ddd-development-guide ARCH-008)
+ * <p>모델 이름은 실제 호출이 생기는 티켓에서 추가한다 — 전사 모델은 203, 팁 모델(gpt-5.4-mini)은 204. (ddd-development-guide ARCH-008)
  *
  * @param baseUrl GMS 프록시 base URL. 예: https://gms.ssafy.io/gmsapi/api.openai.com
  * @param apiKey GMS API key (Bearer)
  * @param mockEnabled true 면 실제 GMS 를 호출하지 않는다. 운영 프로파일에서 금지
- * @param readTimeout 응답 대기 기본값. 호출별 요구(전사 10초·팁 6초)가 다르면 해당 어댑터가 자기 client 를 구성한다
+ * @param readTimeout 응답 대기 기본값. 호출별 요구가 다른 어댑터는 자기 client 를 구성한다
  * @param connectTimeout 연결 timeout
+ * @param sttModel 전사 모델. 기본 whisper-1
+ * @param transcribeTimeout 전사 호출 timeout. 재시도가 없으므로 초과하면 해당 트리거를 포기한다
+ * @param transcribeLanguage 전사 언어. 한국어 강의를 전제로 기본값은 ko 다. 비우면 GMS 가 자동 감지한다
  */
 @ConfigurationProperties(prefix = "gms")
 public record GmsProperties(
-        String baseUrl, String apiKey, boolean mockEnabled, Duration readTimeout, Duration connectTimeout) {
+        String baseUrl,
+        String apiKey,
+        boolean mockEnabled,
+        Duration readTimeout,
+        Duration connectTimeout,
+        String sttModel,
+        Duration transcribeTimeout,
+        String transcribeLanguage) {
 
     /** record 기본 구현은 apiKey 를 그대로 출력한다. 설정 덤프·예외 메시지로 키가 새지 않도록 마스킹한다. */
     @Override
     public String toString() {
-        return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s]"
-                .formatted(
-                        baseUrl,
-                        apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
-                        mockEnabled,
-                        readTimeout,
-                        connectTimeout);
+        return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s,"
+                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s]"
+                        .formatted(
+                                baseUrl,
+                                apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
+                                mockEnabled,
+                                readTimeout,
+                                connectTimeout,
+                                sttModel,
+                                transcribeTimeout,
+                                transcribeLanguage);
     }
 }

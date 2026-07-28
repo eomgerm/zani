@@ -18,7 +18,14 @@ class GmsMockProfileGuardTest {
 
     private GmsProperties props(boolean mockEnabled, String apiKey) {
         return new GmsProperties(
-                "https://gms.test", apiKey, mockEnabled, Duration.ofSeconds(10), Duration.ofSeconds(2));
+                "https://gms.test",
+                apiKey,
+                mockEnabled,
+                Duration.ofSeconds(10),
+                Duration.ofSeconds(2),
+                "whisper-1",
+                Duration.ofSeconds(10),
+                "ko");
     }
 
     private StandardEnvironment environment(String... activeProfiles) {

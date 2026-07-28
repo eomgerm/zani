@@ -66,6 +66,9 @@ gms:
   mock-enabled: ${GMS_MOCK_ENABLED:true}
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
+  stt-model: ${GMS_STT_MODEL:whisper-1}
+  transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:10s}
+  transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
 
 livekit:
   url: ${LIVEKIT_URL:}
