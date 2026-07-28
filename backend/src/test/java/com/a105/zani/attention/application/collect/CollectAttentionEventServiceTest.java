@@ -191,7 +191,7 @@ class CollectAttentionEventServiceTest {
             if (failure != null) {
                 throw failure;
             }
-            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, role);
+            return new ResolveSessionParticipantResult(STUDENT_PARTICIPANT, role, ENDED_AT.minusSeconds(600));
         }
     }
 
@@ -200,6 +200,7 @@ class CollectAttentionEventServiceTest {
         private final Set<String> seenEvents = new HashSet<>();
         private final Map<Long, AttentionSnapshot> currentState = new HashMap<>();
         private final Set<AttentionState> significant = new HashSet<>();
+        private final Set<Long> excluded = new HashSet<>();
         private Duration currentStateTtl;
         private Duration significantWindow;
         private boolean failCurrentStateWrite;
@@ -235,6 +236,16 @@ class CollectAttentionEventServiceTest {
             }
             significant.add(state);
             significantWindow = window;
+        }
+
+        @Override
+        public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
+            excluded.add(participantId);
+        }
+
+        @Override
+        public void includeInDenominator(long sessionId, long participantId) {
+            excluded.remove(participantId);
         }
     }
 }

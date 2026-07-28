@@ -52,6 +52,7 @@ class ResolveSessionParticipantServiceTest {
 
         assertEquals(STUDENT_PARTICIPANT, result.participantId());
         assertEquals(SessionParticipantRole.STUDENT, result.role());
+        assertEquals(T0, result.sessionStartedAt());
     }
 
     @Test
