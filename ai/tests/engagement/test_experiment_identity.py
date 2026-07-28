@@ -24,6 +24,8 @@ from zani_ai.engagement.experiment import (
     E0B_SPEC,
     E0C_SPEC,
     E0D_SPEC,
+    E0E_SPEC,
+    E0F_SPEC,
     E1_SPEC,
     SPECS,
     ExperimentSpec,
@@ -47,6 +49,10 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-C", "cuda"): "05f8a91f2a575c91d4f92c7970d1da589faef497fc210a0e767021a687e41e5b",
     ("E0-D", "cpu"): "124b3fca0d77a2e2c7e5dbfdae69c8e4f4815069f456499e8c6f2526d4abaf1f",
     ("E0-D", "cuda"): "7ac3903839d2d583c323aaf376ff1424814753dfe33059a949896525ae4a5049",
+    ("E0-E", "cpu"): "3c41d0abab8cf00e5b321976496df47389d85a9251910316019c7c9a9784d436",
+    ("E0-E", "cuda"): "c7a6f7eeaf431e0ec0831c756105ac80fd678a65185b2b9261f9e377449d887b",
+    ("E0-F", "cpu"): "aa041c0b0abad3f9d89e9e66d8b0ba7896596672230a5f01db23c16cfb4a6810",
+    ("E0-F", "cuda"): "32fa6faa58b51f2b1d6ac71ca54605b6a4e1f1910aecac071925b9a270decdca",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
 }
@@ -57,6 +63,8 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0B_SPEC,
     E0C_SPEC,
     E0D_SPEC,
+    E0E_SPEC,
+    E0F_SPEC,
     E1_SPEC,
 )
 
@@ -119,6 +127,41 @@ def test_weighting_alone_separates_e0_from_its_variants() -> None:
         differing = {k for k in base | variant if base.get(k) != variant.get(k)}
         assert differing == {"class_weighting"}
         assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_focal_protocol_isolates_the_loss_against_e0d() -> None:
+    """E0-E keeps E0-D's sqrt_balanced weights and changes only the loss shape,
+    so the comparison attributes any difference to the focal term alone."""
+    base = _build_configuration(E0D_SPEC, "cuda")
+
+    variant = _build_configuration(E0E_SPEC, "cuda")
+
+    differing = {k for k in base | variant if base.get(k) != variant.get(k)}
+    assert differing == {"loss", "focal_gamma"}
+    assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_sampler_protocol_isolates_the_sampling_against_e0() -> None:
+    """E0-F moves the correction from the loss to the sampler, so it must carry
+    E0's unweighted loss and differ from E0 in the sampler alone."""
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    variant = _build_configuration(E0F_SPEC, "cuda")
+
+    differing = {k for k in base | variant if base.get(k) != variant.get(k)}
+    assert differing == {"sampler"}
+    assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_unweighted_and_unsampled_protocols_record_no_extra_keys() -> None:
+    """Adding `loss`/`focal_gamma`/`sampler` unconditionally would have rewritten
+    every existing protocol's hash and discarded its completed seeds."""
+    for spec in (E0_SPEC, E0A_SPEC, E0C_SPEC, E0D_SPEC, E1_SPEC):
+        configuration = _build_configuration(spec, "cuda")
+
+        assert "focal_gamma" not in configuration
+        assert "sampler" not in configuration
+        assert "loss" not in configuration
 
 
 # --- environment drift ------------------------------------------------------
