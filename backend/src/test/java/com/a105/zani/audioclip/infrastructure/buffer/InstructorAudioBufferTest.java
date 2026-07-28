@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.audioclip.application.port.AudioClip;
 import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
-import com.a105.zani.audioclip.domain.model.WavEncoder;
+import com.a105.zani.audioclip.infrastructure.encoding.PassThroughAudioEncoder;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +29,9 @@ class InstructorAudioBufferTest {
 
     private InstructorAudioBuffer buffer() {
         // 이 클래스는 바이트 산술만 검증한다. 벽시계 패딩은 SilencePaddingTest 소관이라 시계를 멈춰 둔다.
-        return new InstructorAudioBuffer(FORMAT, WINDOW, 8, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+        // 인코더는 항등이라 스냅샷 바이트를 넣은 값과 그대로 대조할 수 있다.
+        return new InstructorAudioBuffer(
+                FORMAT, WINDOW, 8, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), new PassThroughAudioEncoder());
     }
 
     /** value 로 채운 seconds 초 분량. 어느 구간이 남았는지 눈으로 확인하려고 쓴다. */
@@ -39,9 +41,9 @@ class InstructorAudioBufferTest {
         return bytes;
     }
 
-    /** WAV 헤더를 뗀 실제 오디오 바이트. */
+    /** 항등 인코더를 끼웠으므로 클립 바이트가 곧 떠낸 PCM 이다. */
     private static byte[] pcmOf(AudioClip clip) {
-        return Arrays.copyOfRange(clip.wav(), WavEncoder.HEADER_BYTES, clip.wav().length);
+        return clip.audio();
     }
 
     private static AudioClip snapshot(InstructorAudioBuffer buffer, long sessionId) {
@@ -147,7 +149,7 @@ class InstructorAudioBufferTest {
         AudioClip first = snapshot(buffer, SESSION_ID);
         AudioClip second = snapshot(buffer, SESSION_ID);
 
-        assertArrayEquals(first.wav(), second.wav());
+        assertArrayEquals(first.audio(), second.audio());
         assertEquals(3_000, buffer.availableMs(SESSION_ID));
     }
 
@@ -177,8 +179,8 @@ class InstructorAudioBufferTest {
     @Test
     void 슬롯_상한을_넘는_세션은_버퍼_없이_진행한다() {
         // 상한이 없으면 세션당 수십 MB가 쌓여 컨테이너가 OOM으로 죽고 진행 중인 강의가 전부 끊긴다.
-        InstructorAudioBuffer buffer =
-                new InstructorAudioBuffer(FORMAT, WINDOW, 2, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+        InstructorAudioBuffer buffer = new InstructorAudioBuffer(
+                FORMAT, WINDOW, 2, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), new PassThroughAudioEncoder());
 
         buffer.append(1L, seconds(1, 1));
         buffer.append(2L, seconds(1, 2));
@@ -191,8 +193,8 @@ class InstructorAudioBufferTest {
 
     @Test
     void 반납으로_빈_슬롯은_다음_세션이_쓴다() {
-        InstructorAudioBuffer buffer =
-                new InstructorAudioBuffer(FORMAT, WINDOW, 2, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
+        InstructorAudioBuffer buffer = new InstructorAudioBuffer(
+                FORMAT, WINDOW, 2, Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), new PassThroughAudioEncoder());
         buffer.append(1L, seconds(1, 1));
         buffer.append(2L, seconds(1, 2));
 

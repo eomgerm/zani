@@ -36,9 +36,10 @@ public class AudioClipConfig implements WebSocketConfigurer {
     }
 
     @Bean
-    public InstructorAudioBuffer instructorAudioBuffer(java.time.Clock clock) {
+    public InstructorAudioBuffer instructorAudioBuffer(
+            java.time.Clock clock, com.a105.zani.audioclip.infrastructure.encoding.TranscriptionAudioEncoder encoder) {
         PcmAudioFormat format = new PcmAudioFormat(properties.sampleRate(), 1, 16);
-        return new InstructorAudioBuffer(format, properties.window(), properties.maxSessions(), clock);
+        return new InstructorAudioBuffer(format, properties.window(), properties.maxSessions(), clock, encoder);
     }
 
     @Bean

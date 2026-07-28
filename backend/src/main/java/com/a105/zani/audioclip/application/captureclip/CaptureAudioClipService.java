@@ -25,8 +25,6 @@ import com.a105.zani.common.error.BusinessException;
 @Service
 public class CaptureAudioClipService implements CaptureAudioClipUseCase {
 
-    private static final String WAV_CONTENT_TYPE = "audio/wav";
-
     private final InstructorAudioBufferPort buffer;
     private final AudioTranscriptionPort transcriptionPort;
     private final Duration window;
@@ -59,17 +57,18 @@ public class CaptureAudioClipService implements CaptureAudioClipUseCase {
         AudioClip audio = clip.get();
         String transcript = transcribeDiscardingBytes(audio, sessionId);
         log.info(
-                "Audio clip transcribed for session {} ({}ms, {} bytes)",
+                "Audio clip transcribed for session {} ({}ms, {} bytes, {})",
                 sessionId,
                 audio.actual().toMillis(),
-                audio.wav().length);
+                audio.audio().length,
+                audio.contentType());
         return CaptureAudioClipResult.of(transcript, audio.actual().toMillis());
     }
 
-    /** 전사 실패는 그대로 전파한다. 어느 경로로 끝나든 WAV 바이트는 이 메서드를 벗어나며 참조가 사라진다. 버퍼는 비우지 않는다 — 다음 트리거가 같은 구간을 다시 시도할 수 있어야 한다. */
+    /** 전사 실패는 그대로 전파한다. 어느 경로로 끝나든 오디오 바이트는 이 메서드를 벗어나며 참조가 사라진다. 버퍼는 비우지 않는다 — 다음 트리거가 같은 구간을 다시 시도할 수 있어야 한다. */
     private String transcribeDiscardingBytes(AudioClip audio, long sessionId) {
         try {
-            return transcriptionPort.transcribe(new ByteArrayInputStream(audio.wav()), WAV_CONTENT_TYPE);
+            return transcriptionPort.transcribe(new ByteArrayInputStream(audio.audio()), audio.contentType());
         } catch (RuntimeException exception) {
             log.warn("Audio clip transcription failed for session {}", sessionId);
             if (exception instanceof BusinessException businessException) {

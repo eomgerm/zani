@@ -12,7 +12,7 @@ import com.a105.zani.audioclip.application.port.AudioClip;
 import com.a105.zani.audioclip.application.port.InstructorAudioBufferPort;
 import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
 import com.a105.zani.audioclip.domain.model.PcmDownsampler;
-import com.a105.zani.audioclip.domain.model.WavEncoder;
+import com.a105.zani.audioclip.infrastructure.encoding.TranscriptionAudioEncoder;
 
 /**
  * 세션별 강사 오디오를 고정 크기 원형 버퍼에 담는다.
@@ -38,9 +38,11 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
     private final int windowBytes;
     private final int maxSessions;
     private final Clock clock;
+    private final TranscriptionAudioEncoder encoder;
     private final Map<Long, SessionRing> ringsBySession = new ConcurrentHashMap<>();
 
-    public InstructorAudioBuffer(PcmAudioFormat format, Duration window, int maxSessions, Clock clock) {
+    public InstructorAudioBuffer(
+            PcmAudioFormat format, Duration window, int maxSessions, Clock clock, TranscriptionAudioEncoder encoder) {
         long bytes = format.bytesFor(window);
         if (bytes <= 0 || bytes > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("window is out of range: " + window);
@@ -52,6 +54,7 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
         this.windowBytes = (int) bytes;
         this.maxSessions = maxSessions;
         this.clock = clock;
+        this.encoder = encoder;
     }
 
     /** 수신한 raw PCM 을 이어 붙인다. 창을 넘는 만큼 가장 오래된 바이트가 밀려난다. */
@@ -101,7 +104,7 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             return Optional.empty();
         }
         long requested = format.bytesFor(window);
-        return ring.snapshot(format, requested);
+        return ring.snapshot(format, requested, encoder);
     }
 
     @Override
@@ -178,8 +181,9 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             size = Math.min(data.length, size + length);
         }
 
-        /** 최근 requestedBytes 만큼을 16kHz WAV 로 떠낸다. 확보량이 적으면 있는 만큼만 담는다. */
-        private synchronized Optional<AudioClip> snapshot(PcmAudioFormat format, long requestedBytes) {
+        /** 최근 requestedBytes 만큼을 16kHz 로 낮춰 인코딩해 떠낸다. 확보량이 적으면 있는 만큼만 담는다. */
+        private synchronized Optional<AudioClip> snapshot(
+                PcmAudioFormat format, long requestedBytes, TranscriptionAudioEncoder encoder) {
             if (size == 0 || requestedBytes <= 0) {
                 return Optional.empty();
             }
@@ -200,9 +204,10 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             // totalWritten 이 경과 시간과 맞춰져 있으므로 구간의 끝·시작을 벽시계로 환산할 수 있다.
             long toEpochMs = streamStartMs + format.durationMsOf(totalWritten);
             long durationMs = format.durationMsOf(take);
-            byte[] wav =
-                    WavEncoder.encode(PcmDownsampler.toTranscriptionRate(pcm, format), PcmAudioFormat.transcription());
-            return Optional.of(new AudioClip(wav, toEpochMs - durationMs, toEpochMs, Duration.ofMillis(durationMs)));
+            byte[] audio =
+                    encoder.encode(PcmDownsampler.toTranscriptionRate(pcm, format), PcmAudioFormat.transcription());
+            return Optional.of(new AudioClip(
+                    audio, encoder.contentType(), toEpochMs - durationMs, toEpochMs, Duration.ofMillis(durationMs)));
         }
 
         private synchronized int size() {

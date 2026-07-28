@@ -28,6 +28,9 @@ class CaptureAudioClipServiceTest {
     private static final Duration WINDOW = Duration.ofMinutes(5);
     private static final Duration MIN_TRANSCRIBABLE = Duration.ofMinutes(1);
 
+    /** 버퍼(인코더)가 정한 형식. 서비스는 이 값을 그대로 전사 포트에 넘겨야 한다. */
+    private static final String CLIP_CONTENT_TYPE = "audio/mpeg";
+
     private final FakeBuffer buffer = new FakeBuffer();
     private final FakeTranscriptionPort transcription = new FakeTranscriptionPort();
 
@@ -39,10 +42,14 @@ class CaptureAudioClipServiceTest {
                 buffer, transcription, new AudioClipProperties(WINDOW, MIN_TRANSCRIBABLE, null, null, null));
     }
 
-    /** durationMs 만큼의 오디오가 버퍼에 있는 상태로 만든다. */
+    /** durationMs 만큼의 오디오가 버퍼에 있는 상태로 만든다. 앞 3바이트는 MP3 프레임 헤더와 ID3 없는 시작부를 흉내낸 값이다. */
     private void bufferHolds(long durationMs) {
-        buffer.clip =
-                new AudioClip(new byte[] {'R', 'I', 'F', 'F', 0, 0}, 0L, durationMs, Duration.ofMillis(durationMs));
+        buffer.clip = new AudioClip(
+                new byte[] {(byte) 0xFF, (byte) 0xF3, 0x40, 0},
+                CLIP_CONTENT_TYPE,
+                0L,
+                durationMs,
+                Duration.ofMillis(durationMs));
         buffer.availableMs = durationMs;
     }
 
@@ -105,18 +112,19 @@ class CaptureAudioClipServiceTest {
     void 실제_확보된_길이를_결과에_담는다() {
         // 창은 5분이지만 3분만 쌓였다면 3분이 보고돼야 한다(팁 판정 근거).
         buffer.availableMs = Duration.ofMinutes(5).toMillis();
-        buffer.clip = new AudioClip(new byte[10], 0L, 180_000L, Duration.ofMinutes(3));
+        buffer.clip = new AudioClip(new byte[10], CLIP_CONTENT_TYPE, 0L, 180_000L, Duration.ofMinutes(3));
 
         assertEquals(180_000, capture().availableMs());
     }
 
     @Test
-    void 전사에는_WAV를_넘긴다() {
+    void 전사에는_클립이_알려준_형식을_그대로_넘긴다() {
         bufferHolds(Duration.ofMinutes(2).toMillis());
 
         capture();
 
-        assertEquals("audio/wav", transcription.contentType);
+        // 형식을 아는 쪽은 인코더뿐이다. 서비스가 MIME 타입을 자체 판단하면 인코더 교체 때 조용히 어긋난다.
+        assertEquals(CLIP_CONTENT_TYPE, transcription.contentType);
         assertTrue(transcription.consumedBytes > 0);
     }
 

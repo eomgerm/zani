@@ -53,6 +53,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'io.hypersistence:hypersistence-tsid:2.1.4'
+    // 전사 클립을 MP3로 인코딩한다. LAME 의 순수 Java 포트라 네이티브 라이브러리나 ffmpeg 바이너리를
+    // 런타임 이미지에 넣지 않아도 된다.
+    implementation 'de.sciss:jump3r:1.0.5'
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     runtimeOnly 'com.mysql:mysql-connector-j'

@@ -27,7 +27,8 @@ class InstructorAudioBufferSilencePaddingTest {
     private static final Duration WINDOW = Duration.ofSeconds(10);
 
     private final MutableClock clock = new MutableClock(0);
-    private final InstructorAudioBuffer buffer = new InstructorAudioBuffer(FORMAT, WINDOW, 8, clock);
+    private final InstructorAudioBuffer buffer = new InstructorAudioBuffer(
+            FORMAT, WINDOW, 8, clock, new com.a105.zani.audioclip.infrastructure.encoding.PassThroughAudioEncoder());
 
     /** seconds 초 분량의 발화(0이 아닌 값으로 채워 무음과 구분한다). */
     private static byte[] speech(double seconds) {
@@ -36,11 +37,9 @@ class InstructorAudioBufferSilencePaddingTest {
         return bytes;
     }
 
-    /** WAV 헤더를 뗀 실제 오디오 바이트. */
+    /** 항등 인코더를 끼웠으므로 클립 바이트가 곧 떠낸 PCM 이다. */
     private static byte[] pcmOf(long sessionId, InstructorAudioBuffer buffer) {
-        AudioClip clip = buffer.snapshot(sessionId, WINDOW).orElseThrow();
-        return java.util.Arrays.copyOfRange(
-                clip.wav(), com.a105.zani.audioclip.domain.model.WavEncoder.HEADER_BYTES, clip.wav().length);
+        return buffer.snapshot(sessionId, WINDOW).orElseThrow().audio();
     }
 
     private static int silenceCount(byte[] pcm) {

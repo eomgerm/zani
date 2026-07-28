@@ -34,7 +34,8 @@ class EgressAudioWebSocketHandlerTest {
                 TINY,
                 Duration.ofSeconds(5),
                 8,
-                java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
+                java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC),
+                new com.a105.zani.audioclip.infrastructure.encoding.PassThroughAudioEncoder());
         // 자격은 엔드포인트가 기동 시 만들어 갖고 있다. 테스트도 발급된 주소를 그대로 쓴다.
         endpoint = new AudioStreamEndpoint(new com.a105.zani.audioclip.infrastructure.config.AudioClipProperties(
                 null, null, null, null, "ws://backend/internal/audio/{sessionId}"));
