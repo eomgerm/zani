@@ -129,6 +129,9 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
             return response.body().stream()
                     .filter(info -> info.hasTrack()
                             && request.trackSid().equals(info.getTrack().getTrackId()))
+                    // 같은 트랙에 코칭용 WebSocket Egress 가 함께 붙는다. 출력 종류로 걸러내지 않으면
+                    // 아카이브 재시도가 코칭 실행을 채택해, 파일 Egress 가 영영 시작되지 않는다.
+                    .filter(info -> info.getTrack().hasFile())
                     .filter(info -> !info.getEgressId().isBlank())
                     // 같은 트랙에 여러 실행 기록이 있으면 가장 최근 것을 채택한다.
                     .max(java.util.Comparator.comparingLong(LivekitEgress.EgressInfo::getStartedAt))

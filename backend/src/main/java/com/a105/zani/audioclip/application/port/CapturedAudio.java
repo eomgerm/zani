@@ -8,5 +8,7 @@ import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
  * @param pcm s16le raw 바이트. 어디에도 저장하지 않고 전사 후 폐기한다
  * @param format pcm 을 해석하는 데 필요한 샘플레이트·채널 정보
  * @param durationMs pcm 의 재생 시간
+ * @param fromEpochMs 이 구간의 시작 벽시계 시각. 무음 패딩으로 바이트와 시계가 맞춰져 있어 신뢰할 수 있다
+ * @param toEpochMs 이 구간의 끝 벽시계 시각
  */
-public record CapturedAudio(byte[] pcm, PcmAudioFormat format, long durationMs) {}
+public record CapturedAudio(byte[] pcm, PcmAudioFormat format, long durationMs, long fromEpochMs, long toEpochMs) {}

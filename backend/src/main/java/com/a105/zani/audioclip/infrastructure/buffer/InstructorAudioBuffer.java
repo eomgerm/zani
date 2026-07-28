@@ -1,5 +1,6 @@
 package com.a105.zani.audioclip.infrastructure.buffer;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -15,21 +16,30 @@ import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
  * <p>raw PCM 은 바이트 수와 재생 시간이 정확히 비례하므로, 창 길이만큼의 바이트 배열 하나를 미리 잡고 덮어쓰면 된다. 오래된 바이트는 새 바이트가 자연히 덮으므로 별도 만료 처리가 없고, 세션당
  * 메모리가 유입량과 무관하게 창 크기로 고정된다.
  *
- * <p>WebSocket 수신 스레드가 쓰고 트리거 스레드가 읽으므로 세션별 버퍼는 자체적으로 동기화한다.
+ * <p><b>벽시계 정렬</b>: Egress 는 마이크가 음소거되면 프레임을 보내지 않는다. 바이트만 세면 "최근 300초"가 실제로는 훨씬 과거부터 시작하는데(2분 음소거면 7분 전부터), 예외 없이 조용히
+ * 어긋나 추적이 어렵다. 그래서 {@link #padSilence()} 가 주기적으로 경과 시간 대비 부족분을 무음으로 메운다. 프레임이 계속 오더라도 부족분이 없어 아무 일도 하지 않으므로, 스트림 동작 방식과
+ * 무관하게 안전하다.
+ *
+ * <p>WebSocket 수신 스레드가 쓰고 트리거·틱 스레드가 읽으므로 세션별 버퍼는 자체적으로 동기화한다.
  */
 public class InstructorAudioBuffer implements InstructorAudioBufferPort {
 
+    /** 이 시간 미만의 어긋남은 메우지 않는다. 프레임 도착 지터까지 무음으로 메우면 발화 중간에 짧은 공백이 끼어 전사 품질이 떨어진다. 틱 주기보다 넉넉하되 의미 있는 음소거보다는 훨씬 짧게 잡는다. */
+    static final Duration PADDING_TOLERANCE = Duration.ofMillis(500);
+
     private final PcmAudioFormat format;
     private final int windowBytes;
+    private final Clock clock;
     private final Map<Long, SessionRing> ringsBySession = new ConcurrentHashMap<>();
 
-    public InstructorAudioBuffer(PcmAudioFormat format, Duration window) {
+    public InstructorAudioBuffer(PcmAudioFormat format, Duration window, Clock clock) {
         long bytes = format.bytesFor(window);
         if (bytes <= 0 || bytes > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("window is out of range: " + window);
         }
         this.format = format;
         this.windowBytes = (int) bytes;
+        this.clock = clock;
     }
 
     /** 수신한 raw PCM 을 이어 붙인다. 창을 넘는 만큼 가장 오래된 바이트가 밀려난다. */
@@ -38,8 +48,14 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             return;
         }
         ringsBySession
-                .computeIfAbsent(sessionId, ignored -> new SessionRing(windowBytes))
+                .computeIfAbsent(sessionId, ignored -> new SessionRing(windowBytes, clock.millis()))
                 .append(pcm);
+    }
+
+    /** 모든 세션에서 경과 시간 대비 부족한 만큼을 무음으로 메운다. 주기적으로 호출해야 음소거 구간이 있어도 버퍼의 바이트 수가 벽시계와 일치한다. */
+    public void padSilence() {
+        long nowMs = clock.millis();
+        ringsBySession.values().forEach(ring -> ring.padTo(nowMs, format, PADDING_TOLERANCE.toMillis()));
     }
 
     @Override
@@ -48,11 +64,7 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
         if (ring == null) {
             return Optional.empty();
         }
-        byte[] pcm = ring.snapshot();
-        if (pcm.length == 0) {
-            return Optional.empty();
-        }
-        return Optional.of(new CapturedAudio(pcm, format, format.durationMsOf(pcm.length)));
+        return ring.snapshot(format);
     }
 
     @Override
@@ -71,22 +83,50 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
         return ring == null ? 0 : ring.size();
     }
 
-    /** 한 세션의 원형 버퍼. 쓰기(WS 스레드)와 읽기(트리거 스레드)가 동시에 일어난다. */
+    /** 한 세션의 원형 버퍼. 쓰기(WS 스레드)와 읽기(트리거·틱 스레드)가 동시에 일어난다. */
     private static final class SessionRing {
 
         private final byte[] data;
+        /** 첫 프레임이 도착한 벽시계 시각. 경과 시간 기준점이다. */
+        private final long streamStartMs;
+
         private int writePosition;
         private int size;
+        /** 무음 패딩을 포함해 지금까지 쓴 총 바이트. 경과 시간과 대조하는 값이라 창 크기를 넘어 계속 증가한다. */
+        private long totalWritten;
 
-        private SessionRing(int capacity) {
+        private SessionRing(int capacity, long streamStartMs) {
             this.data = new byte[capacity];
+            this.streamStartMs = streamStartMs;
         }
 
         private synchronized void append(byte[] pcm) {
-            // 한 조각이 창보다 크면 뒤쪽(최근) 창 크기만 의미가 있다.
-            int from = Math.max(0, pcm.length - data.length);
-            int length = pcm.length - from;
+            write(pcm, Math.max(0, pcm.length - data.length));
+            totalWritten += pcm.length;
+        }
 
+        /** 경과 시간이 요구하는 바이트 수에 못 미치는 만큼 무음을 채운다. */
+        private synchronized void padTo(long nowMs, PcmAudioFormat format, long toleranceMs) {
+            long elapsedMs = nowMs - streamStartMs;
+            if (elapsedMs <= 0) {
+                return;
+            }
+            long expected = format.bytesFor(Duration.ofMillis(elapsedMs));
+            expected -= expected % format.frameBytes();
+            long deficit = expected - totalWritten;
+            if (deficit < format.bytesFor(Duration.ofMillis(toleranceMs))) {
+                return;
+            }
+
+            // 창보다 긴 공백이면 어차피 전부 덮이므로 창 크기만 쓰고, 시계는 기대치로 맞춘다.
+            int toWrite = (int) Math.min(deficit, data.length);
+            write(new byte[toWrite], 0);
+            totalWritten = expected;
+        }
+
+        /** pcm[from..] 을 원형으로 기록한다. 호출자가 동기화한다. */
+        private void write(byte[] pcm, int from) {
+            int length = pcm.length - from;
             int toEnd = Math.min(length, data.length - writePosition);
             System.arraycopy(pcm, from, data, writePosition, toEnd);
             if (length > toEnd) {
@@ -96,19 +136,23 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             size = Math.min(data.length, size + length);
         }
 
-        /** 오래된 것부터 시간순으로 정렬된 복사본. 원본을 비우지 않는다. */
-        private synchronized byte[] snapshot() {
-            byte[] out = new byte[size];
+        /** 오래된 것부터 시간순으로 정렬된 복사본과 그 구간의 벽시계 범위. 원본은 비우지 않는다. */
+        private synchronized Optional<CapturedAudio> snapshot(PcmAudioFormat format) {
             if (size == 0) {
-                return out;
+                return Optional.empty();
             }
+            byte[] out = new byte[size];
             int start = (writePosition - size + data.length) % data.length;
             int toEnd = Math.min(size, data.length - start);
             System.arraycopy(data, start, out, 0, toEnd);
             if (size > toEnd) {
                 System.arraycopy(data, 0, out, toEnd, size - toEnd);
             }
-            return out;
+
+            // totalWritten 이 경과 시간과 맞춰져 있으므로 구간의 끝·시작을 벽시계로 환산할 수 있다.
+            long toEpochMs = streamStartMs + format.durationMsOf(totalWritten);
+            long durationMs = format.durationMsOf(size);
+            return Optional.of(new CapturedAudio(out, format, durationMs, toEpochMs - durationMs, toEpochMs));
         }
 
         private synchronized int size() {

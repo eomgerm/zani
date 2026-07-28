@@ -26,23 +26,32 @@ public class AudioClipConfig implements WebSocketConfigurer {
 
     private final AudioClipProperties properties;
 
-    public AudioClipConfig(AudioClipProperties properties) {
+    private final org.springframework.beans.factory.ObjectProvider<EgressAudioWebSocketHandler> handlerProvider;
+
+    public AudioClipConfig(
+            AudioClipProperties properties,
+            org.springframework.beans.factory.ObjectProvider<EgressAudioWebSocketHandler> handlerProvider) {
         this.properties = properties;
+        this.handlerProvider = handlerProvider;
     }
 
     @Bean
-    public InstructorAudioBuffer instructorAudioBuffer() {
+    public InstructorAudioBuffer instructorAudioBuffer(java.time.Clock clock) {
         PcmAudioFormat format = new PcmAudioFormat(properties.sampleRate(), 1, 16);
-        return new InstructorAudioBuffer(format, properties.window());
+        return new InstructorAudioBuffer(format, properties.window(), clock);
     }
 
     @Bean
-    public EgressAudioWebSocketHandler egressAudioWebSocketHandler() {
-        return new EgressAudioWebSocketHandler(instructorAudioBuffer(), properties.streamSecret());
+    public EgressAudioWebSocketHandler egressAudioWebSocketHandler(InstructorAudioBuffer buffer) {
+        return new EgressAudioWebSocketHandler(buffer, properties.streamSecret());
     }
 
+    /**
+     * 등록 시점에는 핸들러 빈이 이미 만들어져 있어야 하므로 컨텍스트에서 받아 쓴다. 설정 클래스 안에서 {@code egressAudioWebSocketHandler(...)} 를 직접 호출하면 프록시를
+     * 거치지 않는 새 인스턴스가 생겨 버퍼가 갈릴 수 있다.
+     */
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(egressAudioWebSocketHandler(), AUDIO_STREAM_PATH);
+        registry.addHandler(handlerProvider.getObject(), AUDIO_STREAM_PATH);
     }
 }

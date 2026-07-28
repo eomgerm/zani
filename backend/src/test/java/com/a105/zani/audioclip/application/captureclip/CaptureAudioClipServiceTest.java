@@ -44,7 +44,7 @@ class CaptureAudioClipServiceTest {
     /** durationMs 만큼의 오디오가 버퍼에 있는 상태로 만든다. */
     private void bufferHolds(long durationMs) {
         int bytes = (int) FORMAT.bytesFor(Duration.ofMillis(durationMs));
-        buffer.captured = new CapturedAudio(new byte[bytes], FORMAT, durationMs);
+        buffer.captured = new CapturedAudio(new byte[bytes], FORMAT, durationMs, 0L, durationMs);
         buffer.availableMs = durationMs;
     }
 

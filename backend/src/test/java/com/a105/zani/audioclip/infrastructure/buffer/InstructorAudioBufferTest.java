@@ -23,7 +23,9 @@ class InstructorAudioBufferTest {
     private static final Duration WINDOW = Duration.ofSeconds(5);
 
     private InstructorAudioBuffer buffer() {
-        return new InstructorAudioBuffer(TINY, WINDOW);
+        // 이 클래스는 바이트 산술만 검증한다. 벽시계 패딩은 SilencePaddingTest 소관이라 시계를 멈춰 둔다.
+        return new InstructorAudioBuffer(
+                TINY, WINDOW, java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
     }
 
     /** 값이 value 로 채워진 length 바이트. 어느 구간이 남았는지 눈으로 확인하려고 쓴다. */

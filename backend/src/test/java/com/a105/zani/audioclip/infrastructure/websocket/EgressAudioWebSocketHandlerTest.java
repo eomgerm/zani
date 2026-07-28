@@ -31,7 +31,8 @@ class EgressAudioWebSocketHandlerTest {
 
     @BeforeEach
     void setUp() {
-        buffer = new InstructorAudioBuffer(TINY, Duration.ofSeconds(5));
+        buffer = new InstructorAudioBuffer(
+                TINY, Duration.ofSeconds(5), java.time.Clock.fixed(java.time.Instant.EPOCH, java.time.ZoneOffset.UTC));
         handler = new EgressAudioWebSocketHandler(buffer, SECRET);
     }
 
