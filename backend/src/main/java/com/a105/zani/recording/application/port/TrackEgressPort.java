@@ -18,4 +18,12 @@ public interface TrackEgressPort {
      * 중인 것뿐 아니라 **이미 종료된 Egress도 포함**해서 찾는다: 종료된 실행을 놓치면 재실행이 같은 트랙에 두 번째 Egress를 시작하게 된다.
      */
     Optional<String> findExistingEgressId(TrackEgressRequest request);
+
+    /**
+     * 이 트랙에 붙어 있는 <b>아직 살아 있는</b> 오디오 스트림 Egress의 egressId. 재실행 시 두 번째 스트림이 붙는 것을 막기 위한 조회다.
+     *
+     * <p>파일 Egress 조회({@link #findExistingEgressId})와 달리 종료된 실행은 채택하지 않는다. 파일은 종료된 실행이 이미 산출물을 남겼으므로 채택이 맞지만, 스트림은 종료되면
+     * 흐름 자체가 끊긴 상태라 채택하면 그 세션은 코칭 오디오를 영구히 받지 못한다. 중복 유입이 해로운 구간은 실행이 살아 있을 때뿐이므로, 살아 있는 것만 채택하고 종료된 것만 있으면 새로 시작한다.
+     */
+    Optional<String> findLiveAudioStreamEgressId(AudioStreamEgressRequest request);
 }

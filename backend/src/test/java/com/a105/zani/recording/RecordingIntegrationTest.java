@@ -382,6 +382,7 @@ class RecordingIntegrationTest {
         private final List<com.a105.zani.recording.application.port.AudioStreamEgressRequest> audioStreamRequests =
                 new ArrayList<>();
         private final Set<String> activeTrackSids = new HashSet<>();
+        private final Set<String> liveAudioStreamTrackSids = new HashSet<>();
         private final Set<String> failTrackSids = new HashSet<>();
         private boolean failAll;
 
@@ -393,7 +394,17 @@ class RecordingIntegrationTest {
                 throw new TrackEgressUnavailableException(new IllegalStateException("egress unavailable"));
             }
             audioStreamRequests.add(request);
+            liveAudioStreamTrackSids.add(request.trackSid());
             return new IssuedTrackEgress("EG_WS_" + request.trackSid());
+        }
+
+        /** 실제 어댑터처럼 아직 살아 있는 스트림만 되돌린다. 종료된 실행은 채택 대상이 아니다. */
+        @Override
+        public java.util.Optional<String> findLiveAudioStreamEgressId(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            return liveAudioStreamTrackSids.contains(request.trackSid())
+                    ? java.util.Optional.of("EG_WS_" + request.trackSid())
+                    : java.util.Optional.empty();
         }
 
         @Override

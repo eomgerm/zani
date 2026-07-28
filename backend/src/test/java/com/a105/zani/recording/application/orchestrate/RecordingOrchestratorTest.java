@@ -205,6 +205,55 @@ class RecordingOrchestratorTest {
     }
 
     @Test
+    void 완료_표시가_실패해도_재실행_시_스트림_Egress를_다시_시작하지_않는다() {
+        // 같은 트랙에 스트림 Egress 가 두 개 붙으면 두 PCM 이 한 링버퍼에 뒤섞이고, 누적 바이트가 경과 시간을
+        // 앞질러 무음 패딩이 영구히 멈춘다. 예외도 로그도 없이 조용히 틀리는 종류라 재실행 경로를 못 박는다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_ws"));
+        orchestrator.relayPendingOutbox();
+        assertEquals(1, egressPort.audioStreamRequests.size());
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.audioStreamRequests.size(), "살아 있는 스트림 Egress 를 채택해야 한다");
+        assertEquals("COMPLETED", outbox.statusOf("audio-stream:100:TR_ws"));
+    }
+
+    @Test
+    void 채택한_스트림_Egress도_웹훅_필터에_다시_표시한다() {
+        // 표시가 TTL 로 사라졌거나 첫 저장이 실패했을 수 있다. 표시가 없으면 웹훅이 "녹화 미준비" 503 을 돌려
+        // LiveKit 이 무한 재전송한다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_re"));
+        orchestrator.relayPendingOutbox();
+        audioStreamRegistry.egressIds.clear();
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertTrue(audioStreamRegistry.isAudioStream("EG_WS_1"), "채택한 Egress 도 표시돼야 한다");
+    }
+
+    @Test
+    void 스트림_Egress가_종료됐으면_재실행이_새로_시작한다() {
+        // 종료된 실행을 채택하면 흐름이 끊긴 상태로 굳어 그 세션은 코칭 오디오를 영구히 받지 못한다.
+        // 중복 유입이 해로운 구간은 실행이 살아 있을 때뿐이므로, 죽었으면 새로 시작해야 한다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_dead"));
+        orchestrator.relayPendingOutbox();
+        egressPort.audioStreamEnded("TR_dead");
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(2, egressPort.audioStreamRequests.size(), "죽은 스트림은 채택하지 않는다");
+    }
+
+    @Test
     void Egress_실패는_백오프와_함께_재시도로_남긴다() {
         egressPort.failWith = new IllegalStateException("livekit down");
         orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_f"));
@@ -393,6 +442,9 @@ class RecordingOrchestratorTest {
         private final List<com.a105.zani.recording.application.port.AudioStreamEgressRequest> audioStreamRequests =
                 new ArrayList<>();
         private final Map<String, String> egressByTrackSid = new HashMap<>();
+        /** 아직 살아 있는 스트림 Egress. 종료된 실행은 담지 않는다(실제 어댑터가 상태로 걸러낸다). */
+        private final Map<String, String> liveAudioStreamByTrackSid = new HashMap<>();
+
         private RuntimeException failWith;
 
         @Override
@@ -402,7 +454,9 @@ class RecordingOrchestratorTest {
                 throw failWith;
             }
             audioStreamRequests.add(request);
-            return new IssuedTrackEgress("EG_WS_" + audioStreamRequests.size());
+            String egressId = "EG_WS_" + audioStreamRequests.size();
+            liveAudioStreamByTrackSid.put(request.trackSid(), egressId);
+            return new IssuedTrackEgress(egressId);
         }
 
         @Override
@@ -420,6 +474,17 @@ class RecordingOrchestratorTest {
         public java.util.Optional<String> findExistingEgressId(TrackEgressRequest request) {
             // 실제 어댑터처럼 종료된 실행도 포함해 되돌린다(한 번 시작하면 계속 조회된다).
             return java.util.Optional.ofNullable(egressByTrackSid.get(request.trackSid()));
+        }
+
+        @Override
+        public java.util.Optional<String> findLiveAudioStreamEgressId(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            return java.util.Optional.ofNullable(liveAudioStreamByTrackSid.get(request.trackSid()));
+        }
+
+        /** 스트림 Egress 가 종료된 상황. 재실행이 채택하지 않고 새로 시작해야 한다. */
+        private void audioStreamEnded(String trackSid) {
+            liveAudioStreamByTrackSid.remove(trackSid);
         }
     }
 

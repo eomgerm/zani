@@ -146,6 +146,46 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
         }
     }
 
+    @Override
+    public java.util.Optional<String> findLiveAudioStreamEgressId(AudioStreamEgressRequest request) {
+        MediaServerCredentials credentials = mediaRoomPort.credentials();
+        if (!credentials.isConfigured()) {
+            throw new TrackEgressUnavailableException(new IllegalStateException("LiveKit is not configured"));
+        }
+        String roomName = mediaRoomPort.roomName(request.sessionId());
+        try {
+            // active=true 로 좁히지 않는다. STARTING 상태를 놓치면 방금 시작된 실행 위에 하나를 더 얹는다.
+            Response<java.util.List<LivekitEgress.EgressInfo>> response =
+                    egressClient(credentials).listEgress(roomName, null, false).execute();
+            if (!response.isSuccessful() || response.body() == null) {
+                // 조회 실패를 "없음"으로 단정하면 중복 스트림이 붙는다. 재시도 대상 오류로 올린다.
+                throw new TrackEgressUnavailableException(
+                        new IllegalStateException("Egress list failed with HTTP " + response.code()));
+            }
+            return response.body().stream()
+                    .filter(info -> info.hasTrack()
+                            && request.trackSid().equals(info.getTrack().getTrackId()))
+                    // 같은 트랙에 파일 Egress 도 붙어 있다. 출력 종류로 걸러야 아카이브 실행을 채택하지 않는다.
+                    .filter(info -> info.getTrack().hasWebsocketUrl())
+                    .filter(info -> isLive(info.getStatus()))
+                    .filter(info -> !info.getEgressId().isBlank())
+                    .max(java.util.Comparator.comparingLong(LivekitEgress.EgressInfo::getStartedAt))
+                    .map(LivekitEgress.EgressInfo::getEgressId);
+        } catch (IOException exception) {
+            throw new TrackEgressUnavailableException(exception);
+        }
+    }
+
+    /**
+     * 프레임을 아직 흘려보낼 수 있는 상태인지. ENDING 도 포함한다 — 종료 중인 실행 위에 새 실행을 얹으면 두 스트림이 뒤섞여 링버퍼의 벽시계 정렬이 영구히 어긋난다. 반대로 ENDING 을 채택해서
+     * 잃는 것은 그 세션의 코칭 오디오뿐이라(수업·녹화는 정상) 이쪽이 안전하다.
+     */
+    private static boolean isLive(LivekitEgress.EgressStatus status) {
+        return status == LivekitEgress.EgressStatus.EGRESS_STARTING
+                || status == LivekitEgress.EgressStatus.EGRESS_ACTIVE
+                || status == LivekitEgress.EgressStatus.EGRESS_ENDING;
+    }
+
     private EgressServiceClient egressClient(MediaServerCredentials credentials) {
         EgressServiceClient current = client;
         if (current == null) {
