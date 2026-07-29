@@ -10,14 +10,17 @@
 // 결과는 100MB 가 넘지만(onnxruntime 이 브라우저 기능 감지에 따라 wasm 변종을 골라 받는다)
 // 커밋하지 않고 빌드 때마다 생성하며, 브라우저는 그중 하나만 내려받아 캐싱한다.
 
-import { copyFile, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { syncAttentionModelArtifact } from "./attention-model-artifact.mjs";
+
 const feRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const assetRoot = join(feRoot, "public", "attention");
+const modelSource = join(feRoot, "assets", "attention-model", "v1");
 
 const VISION_WASM_SOURCE = join(feRoot, "node_modules", "@mediapipe", "tasks-vision", "wasm");
 const ORT_DIST_SOURCE = join(feRoot, "node_modules", "onnxruntime-web", "dist");
@@ -26,25 +29,6 @@ const ORT_DIST_SOURCE = join(feRoot, "node_modules", "onnxruntime-web", "dist");
 const FACE_LANDMARKER_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/" +
   "face_landmarker/float16/1/face_landmarker.task";
-
-const MODEL_README = `# 브라우저 추론 모델
-
-이 디렉터리는 \`fe/scripts/sync-attention-assets.mjs\` 가 만들고 Next.js 가 정적으로 서빙한다.
-학습된 참여도 모델은 저장소에 커밋하지 않으므로(\`*.onnx\` 는 무시된다) 아래 명령으로 직접 내보낸다.
-
-\`\`\`powershell
-uv run python -m zani_ai engagement export \`
-  --checkpoint artifacts/engagement/run-001/best.pt \`
-  --output ../fe/public/attention/models
-\`\`\`
-
-필요 파일:
-
-- \`engagement.onnx\`
-- \`engagement.metadata.json\`
-
-두 파일이 없으면 판정은 \`unavailable\` 상태로 비활성되고 수업은 그대로 진행된다.
-`;
 
 async function exists(path) {
   try {
@@ -97,6 +81,13 @@ async function downloadFaceLandmarker(target) {
   }
 }
 
+await syncAttentionModelArtifact({
+  sourceDir: modelSource,
+  targetDir: join(assetRoot, "models"),
+  packageJsonPath: join(feRoot, "package.json"),
+});
+console.log("[attention] 검증된 참여도 ONNX 모델과 배포 메타데이터를 복사했습니다.");
+
 // FilesetResolver 가 SIMD 지원 여부에 따라 골라 받으므로 wasm 디렉터리를 그대로 옮긴다.
 const visionWasmCount = await copyMatching(
   VISION_WASM_SOURCE,
@@ -117,6 +108,3 @@ console.log(`[attention] onnxruntime-web wasm 자산 ${ortCount}개를 복사했
 const landmarkerTarget = join(assetRoot, "mediapipe", "face_landmarker.task");
 const landmarkerResult = await downloadFaceLandmarker(landmarkerTarget);
 console.log(`[attention] FaceLandmarker 모델: ${landmarkerResult}`);
-
-await mkdir(join(assetRoot, "models"), { recursive: true });
-await writeFile(join(assetRoot, "models", "README.md"), MODEL_README, "utf8");
