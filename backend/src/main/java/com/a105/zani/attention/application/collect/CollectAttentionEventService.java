@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +56,20 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
     /** 멱등 판정에 쓰는 clientEventId 기록 보관 기간. */
     private static final Duration EVENT_ID_TTL = Duration.ofMinutes(10);
 
+    /**
+     * 측정 불가가 이만큼 이어지면 집단 비율 분모에서 뺀다(§7.1).
+     *
+     * <p>빼는 데 1분이 걸리고 넣는 데는 즉시인 비대칭이 각각 맞다. 카메라를 켜는 순간 관측이 가능해지므로 기다릴 이유가 없고, 껐다 켰다를 반복해도 빼는 데 1분이 걸려 분모가 출렁이지 않는다.
+     */
+    private static final Duration SUSTAINED_OUTAGE = Duration.ofMinutes(1);
+
+    /**
+     * 측정 불가 구간과 분모 제외 표시의 보관 기간.
+     *
+     * <p>관측이 10초마다 오므로 몇 주기를 건너뛰어도 유지되도록 넉넉히 잡는다. 학생이 아예 사라지면 presence 가 분모에서 빼 주므로 이 표시를 오래 붙들 필요는 없다.
+     */
+    private static final Duration OUTAGE_TTL = Duration.ofMinutes(2);
+
     /** 클라이언트 시계가 조금 빠른 것은 받아 준다. 이보다 미래면 시간선이 깨진 것으로 본다. */
     private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(1);
 
@@ -101,6 +116,8 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                 log.debug("더 최신 관측이 이미 반영됐습니다. sessionId={}, offsetMs={}", sessionId, observedOffsetMs);
                 return CollectAttentionEventResult.recordedButSuperseded();
             }
+            applyDenominatorMembership(
+                    sessionId, participantId, command.signal().outcome(), observedOffsetMs);
         } catch (RuntimeException exception) {
             // 멱등 표시만 남으면 재시도가 "이미 처리했다"는 거짓 성공을 받고 그 관측이 영영 사라진다.
             clearMarkerQuietly(sessionId, participantId, command.clientEventId());
@@ -143,6 +160,26 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
             }
         });
         return true;
+    }
+
+    /**
+     * 집단 비율 분모에 넣을지 뺄지를 정한다(§7.1).
+     *
+     * <p>판단은 서버가 한다. 클라이언트가 "저를 빼주세요"라고 말하는 구조는 학생 입장에서 빠지는 게 늘 유리해져 분모가 계속 줄어든다. 그래서 학생의 카메라 안내 응답이 아니라 검출기 이벤트가 근거다.
+     */
+    private void applyDenominatorMembership(
+            long sessionId, long participantId, DetectorOutcome outcome, long observedOffsetMs) {
+        OptionalLong outage = attentionStatePort.trackMeasurementOutage(
+                sessionId, participantId, outcome.suspendsMeasurement(), observedOffsetMs, OUTAGE_TTL);
+
+        if (outage.isEmpty()) {
+            // 측정이 가능해진 순간 되돌린다. 표시가 없으면 지우는 것도 아무 일이 아니라 상태를 따로 읽지 않는다.
+            attentionStatePort.includeInDenominator(sessionId, participantId);
+            return;
+        }
+        if (outage.getAsLong() >= SUSTAINED_OUTAGE.toMillis()) {
+            attentionStatePort.excludeFromDenominator(sessionId, participantId, OUTAGE_TTL);
+        }
     }
 
     /**
