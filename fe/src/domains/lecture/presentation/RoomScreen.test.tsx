@@ -395,6 +395,19 @@ describe("RoomScreen attention wiring", () => {
     );
   });
 
+  // 어떤 비활성 상태도 수업을 막지 않는다(76 요구사항).
+  it("keeps the class controls usable while the analysis is unavailable", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "카메라 끄기" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "참여자" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /발표자 보기/ })).toBeVisible();
+  });
+
   it("stops detection when the student turns the camera off", () => {
     asStudent();
     media.cameraEnabled = false;
