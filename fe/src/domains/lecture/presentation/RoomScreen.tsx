@@ -149,7 +149,12 @@ function RoomScreenContent({
   // 판정 상태가 아니라 접힌 가용 상태만 들고 있다. 카메라·검출기가 실제로 바뀔 때만 갱신된다.
   const [analysisAvailability, setAnalysisAvailability] = useState<AnalysisAvailability>("ACTIVE");
   // 팁을 받는 쪽이 강사라 강사 화면에서만 폴링한다. 팁 카드 배선은 86 소관이다.
-  const coaching = useCoachingStatus({ sessionId, enabled: isInstructor });
+  //
+  // 역할이 확정되기 전(connected=false)에는 isInstructor 가 true 이므로 그것만 보면 학생도
+  // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
+  // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
+  const isConfirmedInstructor = connected && isInstructor;
+  const coaching = useCoachingStatus({ sessionId, enabled: isConfirmedInstructor });
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
@@ -251,8 +256,8 @@ function RoomScreenContent({
         <div className="flex-1" />
         {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
         {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
-        {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 강사에게만 알린다. */}
-        {isInstructor && <CoachingStatusNotice availability={coaching.availability} />}
+        {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 역할이 확정된 강사에게만 알린다. */}
+        {isConfirmedInstructor && <CoachingStatusNotice availability={coaching.availability} />}
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
         {!isInstructor && process.env.NODE_ENV !== "production" && (
           <button

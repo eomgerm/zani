@@ -78,6 +78,18 @@ vi.mock("./useRoomParticipants", () => ({
   useRoomParticipants: () => roomParticipants,
 }));
 
+// 폴링 자체는 useCoachingStatus.test 가 본다. 여기서는 누구에게 켜지는지와 배지가 뜨는지만 본다.
+const coaching = vi.hoisted(() => ({
+  enabledCalls: [] as boolean[],
+  availability: "ACTIVE" as string,
+}));
+vi.mock("./useCoachingStatus", () => ({
+  useCoachingStatus: (options: { enabled: boolean }) => {
+    coaching.enabledCalls.push(options.enabled);
+    return { availability: coaching.availability };
+  },
+}));
+
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
@@ -123,6 +135,8 @@ afterEach(() => {
   media.cameraBlocked = false;
   media.cameraPermissionDenied = false;
   attentionSource.props = [];
+  coaching.enabledCalls = [];
+  coaching.availability = "ACTIVE";
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
   vi.useRealTimers();
@@ -358,6 +372,54 @@ describe("RoomScreen end-session control", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("end-session-button")).toBeNull();
+  });
+});
+
+describe("RoomScreen coaching wiring", () => {
+  /** 폴링이 켜진 적이 있는지. */
+  const everEnabled = () => coaching.enabledCalls.some(Boolean);
+
+  it("polls and shows the coaching notice for an instructor", () => {
+    asInstructor();
+    coaching.availability = "TRANSCRIPTION_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(true);
+    expect(screen.getByTestId("coaching-status-notice")).toHaveTextContent(
+      "수업 음성을 인식하지 못하고 있어요",
+    );
+  });
+
+  it("keeps the coaching notice away from students", () => {
+    asStudent();
+    coaching.availability = "TRANSCRIPTION_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  // 참가자 목록이 오기 전에는 isInstructor 가 true 다. 그것만 보면 학생도 잠깐 강사 전용
+  // 엔드포인트를 두드리고 강사용 배지를 보게 된다.
+  it("waits for the role to be confirmed before polling", () => {
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+    coaching.availability = "TRANSCRIPTION_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  it("says nothing while coaching works", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
   });
 });
 
