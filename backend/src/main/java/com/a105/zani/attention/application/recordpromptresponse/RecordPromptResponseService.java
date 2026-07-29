@@ -13,7 +13,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.exception.InvalidPromptTimelineException;
-import com.a105.zani.attention.application.exception.MismatchedPromptAnswerException;
 import com.a105.zani.attention.application.exception.NotPromptStudentException;
 import com.a105.zani.attention.application.exception.StalePromptException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
@@ -83,9 +82,6 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
         // 프롬프트는 학생에게만 뜬다. 강사 응답이 섞이면 집계 분자에만 끼어 비율이 부풀어 오른다.
         if (participant.role() != SessionParticipantRole.STUDENT) {
             throw new NotPromptStudentException();
-        }
-        if (!command.kind().allows(command.answer())) {
-            throw new MismatchedPromptAnswerException();
         }
         validateTimelineConsistency(participant.sessionStartedAt(), command);
 

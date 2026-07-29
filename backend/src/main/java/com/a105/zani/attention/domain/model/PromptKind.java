@@ -1,7 +1,5 @@
 package com.a105.zani.attention.domain.model;
 
-import java.util.Set;
-
 /**
  * 서버가 기록하는 프롬프트 종류(확정 문서 §5).
  *
@@ -13,16 +11,5 @@ import java.util.Set;
 public enum PromptKind {
 
     /** 이해 확인 — 저참여 3연속일 때. 이해했어요 / 헷갈려요 / 놓쳤어요, 30초 무응답. */
-    UNDERSTANDING_CHECK(Set.of(PromptAnswer.OK, PromptAnswer.CONFUSED, PromptAnswer.MISSED, PromptAnswer.NON_RESPONSE));
-
-    private final Set<PromptAnswer> allowedAnswers;
-
-    PromptKind(Set<PromptAnswer> allowedAnswers) {
-        this.allowedAnswers = allowedAnswers;
-    }
-
-    /** 이 종류의 프롬프트에 낼 수 있는 답인지. 다른 종류의 답이 섞이면 집계가 뒤틀린다. */
-    public boolean allows(PromptAnswer answer) {
-        return allowedAnswers.contains(answer);
-    }
+    UNDERSTANDING_CHECK
 }

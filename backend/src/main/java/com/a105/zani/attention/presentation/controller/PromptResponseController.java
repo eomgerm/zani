@@ -51,7 +51,7 @@ public class PromptResponseController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "응답 기록 또는 중복 무시"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "필수 값 누락, 프롬프트 종류에 없는 답, 수업 시간선과 어긋난 시각, 또는 계약에 없는 필드가 포함됨"),
+                description = "필수 값 누락, 계약에 없는 답이나 종류, 수업 시간선과 어긋난 시각, 또는 계약에 없는 필드가 포함됨"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",

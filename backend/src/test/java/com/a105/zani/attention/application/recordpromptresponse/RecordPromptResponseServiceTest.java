@@ -22,6 +22,7 @@ import com.a105.zani.attention.application.exception.NotPromptStudentException;
 import com.a105.zani.attention.application.exception.StalePromptException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.CheckPrompt;
 import com.a105.zani.attention.domain.model.CheckPromptStatus;
@@ -265,10 +266,12 @@ class RecordPromptResponseServiceTest {
     }
 
     @Test
-    void acceptsEveryAnswerTheUnderstandingCheckOffers() {
-        for (PromptAnswer answer : PromptAnswer.values()) {
-            assertTrue(PromptKind.UNDERSTANDING_CHECK.allows(answer), answer.name());
-        }
+    void keepsTheAnswerContractToTheFourConfirmedValues() {
+        // 계약이 조용히 넓어지면 폐기한 카메라·자세 응답이 다시 들어와 분모를 흔들 수 있다.
+        assertEquals(
+                List.of(PromptAnswer.OK, PromptAnswer.CONFUSED, PromptAnswer.MISSED, PromptAnswer.NON_RESPONSE),
+                List.of(PromptAnswer.values()));
+        assertEquals(List.of(PromptKind.UNDERSTANDING_CHECK), List.of(PromptKind.values()));
     }
 
     @Test
@@ -395,12 +398,6 @@ class RecordPromptResponseServiceTest {
         }
 
         @Override
-        public OptionalLong trackMeasurementOutage(
-                long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
-            return OptionalLong.empty();
-        }
-
-        @Override
         public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
             failFast();
             excluded.add(participantId);
@@ -416,13 +413,14 @@ class RecordPromptResponseServiceTest {
         private boolean runsReset;
 
         @Override
-        public Optional<DetectionRunCounters> applyObservation(
+        public Optional<ObservationApplied> applyObservation(
                 long sessionId,
                 long participantId,
                 DetectionRunTransition transition,
+                boolean measurementSuspended,
                 long observedOffsetMs,
                 Duration ttl) {
-            return Optional.of(DetectionRunCounters.none());
+            return Optional.of(new ObservationApplied(DetectionRunCounters.none(), OptionalLong.empty()));
         }
 
         @Override
