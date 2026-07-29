@@ -209,6 +209,7 @@ class DerivedFeatureProvenance:
     segment_count: int
     minimum_valid_frames: int
     representation_source_sha256: str
+    representation_dependencies_sha256: str
     segment_aggregation_source_sha256: str
     representation_fingerprint: str
 

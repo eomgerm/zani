@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from zani_ai.engagement import segments
+from zani_ai.engagement import representations, segments
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract
 from zani_ai.engagement.extraction import (
     MINIMUM_VALID_FRAMES,
@@ -29,6 +29,7 @@ from zani_ai.engagement.raw_cache import (
     is_clip_included,
 )
 from zani_ai.engagement.representations import (
+    LandmarkSequenceRepresentation,
     TokenRepresentation,
     build_feature_manifest,
 )
@@ -133,6 +134,41 @@ def test_python_frame_gate_matches_browser_runtime_contract() -> None:
     assert _runtime_config_value(
         "minimumValidFramesPerSegment"
     ) == MINIMUM_VALID_FRAMES
+
+
+def test_representation_dependency_hash_tracks_token_and_landmark_contracts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token_representation = TokenRepresentation(get_schema("mediapipe_98_v1"))
+    token_hash = representations._representation_dependencies_sha256(
+        token_representation
+    )
+    monkeypatch.setattr(
+        representations,
+        "BLENDSHAPE_NAMES_132",
+        (*representations.BLENDSHAPE_NAMES_132, "changedDependency"),
+    )
+    assert (
+        representations._representation_dependencies_sha256(token_representation)
+        != token_hash
+    )
+
+    monkeypatch.undo()
+    landmark_representation = LandmarkSequenceRepresentation()
+    landmark_hash = representations._representation_dependencies_sha256(
+        landmark_representation
+    )
+    monkeypatch.setattr(
+        representations,
+        "LANDMARK_78_INDICES",
+        tuple(reversed(representations.LANDMARK_78_INDICES)),
+    )
+    assert (
+        representations._representation_dependencies_sha256(
+            landmark_representation
+        )
+        != landmark_hash
+    )
 
 
 def test_raw_cache_rejects_sixty_to_sixty_nine_valid_frames() -> None:
@@ -315,6 +351,7 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
     assert provenance["expected_frame_count"] == 100
     assert provenance["minimum_valid_frame_ratio"] == 0.7
     assert len(provenance["representation_source_sha256"]) == 64
+    assert len(provenance["representation_dependencies_sha256"]) == 64
     assert len(provenance["segment_aggregation_source_sha256"]) == 64
     assert len(provenance["representation_fingerprint"]) == 64
 

@@ -36,6 +36,7 @@ from typing import Protocol, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from zani_ai.engagement import features as feature_algorithms
 from zani_ai.engagement.contracts import DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
     MINIMUM_VALID_FRAMES,
@@ -225,6 +226,44 @@ class LandmarkSequenceRepresentation:
         return np.ascontiguousarray(sequence.transpose(2, 0, 1), dtype=np.float32)
 
 
+def _representation_dependencies_sha256(representation: Representation) -> str:
+    """Hash values and source code that can change derived feature contents."""
+    payload: dict[str, object] = {
+        "array_key": representation.array_key,
+        "name": representation.name,
+        "output_shape": representation.output_shape,
+    }
+    if isinstance(representation, TokenRepresentation):
+        payload.update(
+            {
+                "kind": "token",
+                "feature_algorithms_source_sha256": sha256(
+                    inspect.getsource(feature_algorithms).encode("utf-8")
+                ).hexdigest(),
+                "raw_blendshape_names": BLENDSHAPE_NAMES_132,
+                "schema": {
+                    "name": representation.schema.name,
+                    "blendshape_names": representation.schema.blendshape_names,
+                    "gaze_dim": representation.schema.gaze_dim,
+                    "head_dim": representation.schema.head_dim,
+                },
+            }
+        )
+    elif isinstance(representation, LandmarkSequenceRepresentation):
+        payload.update(
+            {
+                "kind": "landmark_sequence",
+                "landmark_indices": LANDMARK_78_INDICES,
+                "sample_fps": representation.sample_fps,
+            }
+        )
+    else:
+        payload["kind"] = type(representation).__qualname__
+    return sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def load_raw_clip(feature_path: Path) -> RawClip:
     """Load one raw MediaPipe cache npz (Task 3's format) into a `RawClip`."""
     with np.load(feature_path, allow_pickle=False) as cache:
@@ -328,6 +367,9 @@ def build_feature_manifest(
     representation_source_sha256 = sha256(
         inspect.getsource(type(representation)).encode("utf-8")
     ).hexdigest()
+    representation_dependencies_sha256 = _representation_dependencies_sha256(
+        representation
+    )
     segment_aggregation_source_sha256 = sha256(
         inspect.getsource(aggregate_segments).encode("utf-8")
     ).hexdigest()
@@ -341,6 +383,7 @@ def build_feature_manifest(
         "segment_count": SEGMENT_COUNT,
         "minimum_valid_frames": MINIMUM_VALID_FRAMES,
         "representation_source_sha256": representation_source_sha256,
+        "representation_dependencies_sha256": representation_dependencies_sha256,
         "segment_aggregation_source_sha256": segment_aggregation_source_sha256,
     }
     representation_fingerprint = sha256(
@@ -360,6 +403,7 @@ def build_feature_manifest(
         segment_count=SEGMENT_COUNT,
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
         representation_source_sha256=representation_source_sha256,
+        representation_dependencies_sha256=representation_dependencies_sha256,
         segment_aggregation_source_sha256=segment_aggregation_source_sha256,
         representation_fingerprint=representation_fingerprint,
     )
