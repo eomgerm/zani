@@ -15,6 +15,9 @@ export interface TrackProcessorFrameSource {
   stop(): void;
 }
 
+/** 정지 보고를 이만큼 기다린 뒤에는 Worker 를 강제로 종료한다. */
+export const TRACK_FRAME_WORKER_STOP_TIMEOUT_MS = 1_000;
+
 function spawnWorker(): TrackFrameWorkerPort {
   return new Worker(new URL("./trackFrameSource.worker.ts", import.meta.url), {
     type: "module",
@@ -40,9 +43,26 @@ export function createTrackProcessorFrameSource(
     throw error;
   }
   let stopped = false;
+  let terminated = false;
+  let stopTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function terminate(): void {
+    if (terminated) return;
+    terminated = true;
+    if (stopTimer !== null) {
+      clearTimeout(stopTimer);
+      stopTimer = null;
+    }
+    worker.terminate();
+  }
 
   worker.onmessage = (event: MessageEvent<TrackFrameWorkerResponse>) => {
     const response = event.data;
+    if (response.type === "stopped") {
+      // 카메라 트랙이 끊긴 뒤이므로 이제 Worker 를 버려도 된다.
+      terminate();
+      return;
+    }
     if (response.type === "failure") {
       if (!stopped) onFailure(response.message);
       return;
@@ -67,9 +87,10 @@ export function createTrackProcessorFrameSource(
       [clonedTrack as unknown as Transferable],
     );
   } catch (error) {
+    // transfer 가 실패했으면 트랙은 아직 이쪽 소유라 직접 끊을 수 있다.
     clonedTrack.stop();
-    worker.terminate();
     stopped = true;
+    terminate();
     onFailure(workerErrorMessage(error));
   }
 
@@ -78,7 +99,8 @@ export function createTrackProcessorFrameSource(
       if (stopped) return;
       stopped = true;
       worker.postMessage({ type: "stop" });
-      worker.terminate();
+      // Worker 가 보고하지 못해도 영원히 살아 있지 않게 한다.
+      stopTimer = setTimeout(terminate, TRACK_FRAME_WORKER_STOP_TIMEOUT_MS);
     },
   };
 }

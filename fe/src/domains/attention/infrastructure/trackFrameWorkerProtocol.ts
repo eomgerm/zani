@@ -23,7 +23,20 @@ export interface TrackFrameFailureResponse {
   readonly message: string;
 }
 
-export type TrackFrameWorkerResponse = TrackFrameResponse | TrackFrameFailureResponse;
+/**
+ * 정지 요청 처리 완료 보고.
+ *
+ * 카메라 트랙은 Worker 로 transfer 되어 메인 스레드 핸들이 떨어졌으므로 Worker 만
+ * 정지시킬 수 있다. 메인 스레드는 이 응답을 받은 뒤에 Worker 를 종료한다.
+ */
+export interface TrackFrameStoppedResponse {
+  readonly type: "stopped";
+}
+
+export type TrackFrameWorkerResponse =
+  | TrackFrameResponse
+  | TrackFrameFailureResponse
+  | TrackFrameStoppedResponse;
 
 export interface TrackFrameWorkerPort {
   postMessage(message: TrackFrameWorkerRequest, transfer?: Transferable[]): void;

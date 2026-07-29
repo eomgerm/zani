@@ -44,6 +44,8 @@ export async function runTrackFrameWorker(
       },
     });
   } catch (error) {
+    // 정지 요청이 트랙을 끊으면 리더도 거부되므로 의도한 종료를 실패로 보고하지 않는다.
+    if (isStopped()) return;
     postMessage({ type: "failure", message: reason(error) });
   }
 }

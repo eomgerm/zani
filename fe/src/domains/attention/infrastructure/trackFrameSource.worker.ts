@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
-import { runTrackFrameWorker, type TrackProcessorLike } from "./trackFrameWorkerRuntime";
+import type { TrackProcessorLike } from "./trackFrameWorkerRuntime";
+import { createTrackFrameWorkerSession } from "./trackFrameWorkerSession";
 import type {
   TrackFrameWorkerRequest,
   TrackFrameWorkerResponse,
@@ -13,9 +14,6 @@ type TrackProcessorConstructor = new (options: {
   maxBufferSize?: number;
 }) => TrackProcessorLike;
 
-let stopped = false;
-let activeTrack: MediaStreamTrack | null = null;
-
 function createProcessor(track: MediaStreamTrack): TrackProcessorLike {
   const constructor = (
     globalThis as typeof globalThis & { MediaStreamTrackProcessor?: TrackProcessorConstructor }
@@ -24,26 +22,13 @@ function createProcessor(track: MediaStreamTrack): TrackProcessorLike {
   return new constructor({ track, maxBufferSize: 1 });
 }
 
-function postMessage(message: TrackFrameWorkerResponse, transfer?: Transferable[]): void {
-  scope.postMessage(message, transfer ?? []);
-}
+const session = createTrackFrameWorkerSession({
+  createProcessor,
+  postMessage(message: TrackFrameWorkerResponse, transfer?: Transferable[]): void {
+    scope.postMessage(message, transfer ?? []);
+  },
+});
 
 scope.onmessage = (event: MessageEvent<TrackFrameWorkerRequest>) => {
-  const request = event.data;
-  if (request.type === "stop") {
-    stopped = true;
-    activeTrack?.stop();
-    activeTrack = null;
-    return;
-  }
-
-  stopped = false;
-  activeTrack = request.track;
-  void runTrackFrameWorker({
-    track: request.track,
-    sampleIntervalMs: request.sampleIntervalMs,
-    createProcessor,
-    postMessage,
-    isStopped: () => stopped,
-  });
+  session.handle(event.data);
 };
