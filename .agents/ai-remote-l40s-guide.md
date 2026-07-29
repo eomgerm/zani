@@ -110,8 +110,11 @@ mkdir -p ~/zani/ai/datasets/processed/engagenet && tar -xf ~/e1.tar -C ~/zani/ai
 To experiment across representations, upload `raw_frames_v1` (5.2 GB) the same
 way and then run `build-features`. Its `--schema` accepts four representations:
 `mediapipe_98_v1`, `mediapipe_132_v1`, `landmark_78_v1`, and
-`landmark_78_300_v1`. The original MP4s (31.5 GB) are not brought in, because
-that stage is not one the GPU contributes to.
+`landmark_78_300_v1`; the last of these needs `--sample-fps 30`, because the
+schema name has to match the step count the sampling rate produces and the
+default `--sample-fps 10` produces `landmark_78_v1`. `build-features` writes the
+cache to `<--output>/<schema>/`. The original MP4s (31.5 GB) are not brought in,
+because that stage is not one the GPU contributes to.
 
 `audit-frame-gate` counts raw clips accepted offline but rejected by the browser
 frame gate, which is how you size the mismatch band before acting on it. It
@@ -139,8 +142,10 @@ protocol list is `SPECS` in `ai/src/zani_ai/engagement/experiment.py`, and
 `uv run python -m zani_ai engagement --help` prints every registered subcommand.
 Substitute `<protocol>` below with the CLI protocol name you are running (`e1`,
 `e1a`, `e0c`, …); `--features` must point at the feature representation that
-protocol expects, which for the ST-GCN protocols is the `landmark_78_v1`
-directory unpacked above.
+protocol expects, which for the ST-GCN protocols is the `e1` directory unpacked
+above. Some protocols take an extra required argument — `reproduce-e0i` needs
+`--reliability <reliability_manifest.json>`, produced by
+`analyze-label-reliability` — so check `--help` for the protocol you are running.
 
 ```bash
 cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 CUBLAS_WORKSPACE_CONFIG=:4096:8 setsid nohup uv run python -m zani_ai engagement reproduce-<protocol> --features datasets/processed/engagenet/e1 --output artifacts/engagement/<protocol> --device cuda > ~/<protocol>.log 2>&1 < /dev/null & echo "PID=$!"

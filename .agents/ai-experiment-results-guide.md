@@ -45,8 +45,8 @@ readers.
 
 Files are laid out as `<source>/<protocol>/...`:
 
-- `l40s/e1/summary.json`
-- `l40s/e1/seed-42/record.json`
+- `jupyter04/e1/summary.json`
+- `jupyter04/e1/seed-42/record.json`
 
 The first segment is a source label rather than the protocol. Results from
 different training boxes must not be mixed: Windows runs `torch` built against
@@ -54,8 +54,12 @@ cu130 while Linux runs cu128, so the same protocol produces different numbers on
 each. Keeping the label as the top-level segment makes overwriting impossible
 even when both boxes use the same protocol name.
 
-`--source` sets the label and defaults to the short hostname of the machine that
-publishes.
+The label defaults to the short hostname of the publishing machine, which is why
+`jupyter04` appears above. Leave it at the default: the periodic publisher and
+`run_seeds_parallel.sh`'s end-of-run publish then agree on the prefix without
+anyone passing anything, and metrics from one box cannot end up split across two
+directories. `--source` overrides it, for the rare case where you deliberately
+want a different label.
 
 ## Publishing from the training box
 
@@ -65,7 +69,7 @@ snapshots; `0` publishes once and exits.
 ```bash
 cd ~/zani/ai && setsid nohup uv run python -m zani_ai engagement publish-results \
   --artifacts artifacts/engagement --worktree ~/zani-results \
-  --source l40s --interval 300 > ~/publish.log 2>&1 < /dev/null & echo "PID=$!"
+  --interval 300 > ~/publish.log 2>&1 < /dev/null & echo "PID=$!"
 ```
 
 `--worktree` must already have `ai/results` checked out; the publisher refuses to
