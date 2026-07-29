@@ -3,10 +3,10 @@ export type PromptKind = "UNDERSTANDING_CHECK" | "POSTURE_GUIDE" | "CAMERA_CHECK
 
 /**
  * 이해 확인 프롬프트에 실을 수 있는 답(기준 문서 §6). 학생이 고르는 3종에 더해, 30초가 지나
- * 자동으로 닫힌 경우의 `NON_RESPONSE` 가 있다 — 보내지 않으면 서버가 "학생이 무시함"과
+ * 자동으로 닫힌 경우의 `NO_RESPONSE` 가 있다 — 보내지 않으면 서버가 "학생이 무시함"과
  * "브라우저가 죽음"을 구분할 수 없다.
  */
-export type PromptAnswer = "OK" | "CONFUSED" | "MISSED" | "NON_RESPONSE";
+export type PromptAnswer = "OK" | "CONFUSED" | "MISSED" | "NO_RESPONSE";
 
 /** 서버가 계약 밖 필드를 400 으로 거절하므로 이 네 값만 실어 보낸다. */
 export interface PromptResponsePayload {

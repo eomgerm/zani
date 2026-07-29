@@ -10,8 +10,8 @@ import {
 import { isTabHidden } from "./promptVisibility";
 import { usePromptTimer } from "./usePromptTimer";
 
-/** 학생이 직접 고를 수 있는 답. 무응답은 훅이 `NON_RESPONSE` 로 대신 보낸다. */
-export type UnderstandingCheckResponse = Exclude<PromptAnswer, "NON_RESPONSE">;
+/** 학생이 직접 고를 수 있는 답. 무응답은 훅이 `NO_RESPONSE` 로 대신 보낸다. */
+export type UnderstandingCheckResponse = Exclude<PromptAnswer, "NO_RESPONSE">;
 
 /** 표시 시간(초). 실시간 코칭 기준 문서 §3 기준. */
 export const UNDERSTANDING_CHECK_SECONDS = 30;
@@ -29,7 +29,7 @@ export interface UnderstandingCheckPrompt {
 export interface UseUnderstandingCheckPromptOptions {
   readonly sessionId: string;
   sendResponse?: PromptResponseSender;
-  /** 30초 동안 응답이 없어 자동으로 닫혔을 때 호출된다. `NON_RESPONSE` 전송은 훅이 알아서 한다. */
+  /** 30초 동안 응답이 없어 자동으로 닫혔을 때 호출된다. `NO_RESPONSE` 전송은 훅이 알아서 한다. */
   onTimedOut?: () => void;
   /**
    * 어떤 이유로든 프롬프트가 닫힐 때 호출된다. 판정 파이프라인(75)이 연속 카운터를 0으로
@@ -47,7 +47,7 @@ export interface UseUnderstandingCheckPromptResult {
 }
 
 /**
- * "이해 확인" 프롬프트(3택). 30초 안에 응답하지 않으면 `NON_RESPONSE` 로 대신 보내고 닫는다 —
+ * "이해 확인" 프롬프트(3택). 30초 안에 응답하지 않으면 `NO_RESPONSE` 로 대신 보내고 닫는다 —
  * 무전송을 신호로 쓰면 서버가 학생의 무응답과 브라우저 중단을 구분할 수 없다.
  * 닫힌 시각으로부터 5분 이내에는 재트리거를 무시한다.
  * 전송 실패는 수업 진행을 막지 않도록 조용히 삼킨다.
@@ -103,7 +103,7 @@ export function useUnderstandingCheckPrompt(
     const timedOutPromptId = promptIdRef.current;
     close();
     if (timedOutPromptId !== null) {
-      void send(timedOutPromptId, "NON_RESPONSE");
+      void send(timedOutPromptId, "NO_RESPONSE");
     }
     onTimedOut?.();
   }, [close, send, onTimedOut]);

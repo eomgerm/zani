@@ -9,7 +9,7 @@ import type {
   AttentionInferenceFailure,
 } from "../application/attentionDetectionPorts";
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
-import type { DetectorReport } from "../domain/detectionOutcome";
+import type { DetectorOutput, DetectorReport } from "../domain/detectionOutcome";
 import { useAttentionDetection } from "./useAttentionDetection";
 
 /**
@@ -55,6 +55,7 @@ describe("useAttentionDetection", () => {
   let createFeatureDetector: Mock<() => Promise<AttentionFeatureDetector>>;
   let onPrediction: Mock<(prediction: AttentionPrediction) => void>;
   let onStatusChange: Mock<(status: AttentionStatus) => void>;
+  let onDetection: Mock<(output: DetectorOutput) => void>;
   let onReport: ReturnType<typeof vi.fn<(report: DetectorReport) => void>>;
   let emitPrediction: (prediction: AttentionPrediction) => void;
   let renderCount: number;
@@ -66,6 +67,7 @@ describe("useAttentionDetection", () => {
     createFeatureDetector = vi.fn(async () => ({ detect: detectedFeatures, close }));
     onPrediction = vi.fn();
     onStatusChange = vi.fn();
+    onDetection = vi.fn();
     onReport = vi.fn();
     renderCount = 0;
   });
@@ -93,6 +95,7 @@ describe("useAttentionDetection", () => {
           track,
           onPrediction,
           onStatusChange,
+          onDetection,
           onReport,
           createFrameSource: frames.createFrameSource,
           createFeatureDetector,
@@ -137,6 +140,13 @@ describe("useAttentionDetection", () => {
 
     view.unmount();
     vi.useRealTimers();
+  });
+
+  it("notifies the local coaching pipeline when the camera turns off", async () => {
+    render("off");
+    await act(async () => {});
+
+    expect(onDetection).toHaveBeenCalledWith({ outcome: "CAMERA_OFF" });
   });
 
   it("treats a missing local camera track as CAMERA_OFF", async () => {
@@ -215,6 +225,19 @@ describe("useAttentionDetection", () => {
     expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
     expect(onStatusChange).toHaveBeenCalledWith("collecting");
     expect(onStatusChange).toHaveBeenCalledWith("measuring");
+  });
+
+  it("notifies the local coaching pipeline with probabilities", async () => {
+    render();
+    await act(async () => {});
+    await advance(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onDetection).toHaveBeenCalledWith({
+      outcome: "Engaged",
+      probabilities: [0.1, 0.1, 0.7, 0.1],
+    });
   });
 
   it("does not re-render once per sample while the status is unchanged", async () => {
