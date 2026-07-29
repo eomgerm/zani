@@ -11,6 +11,9 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.domain.model.AttentionState;
+import com.a105.zani.attention.domain.model.DetectionRunCounters;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
+import com.a105.zani.attention.domain.model.RunStep;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +32,11 @@ class AttentionStateRedisAdapterTest {
 
     private static final String STATE_KEY = "attention:" + SESSION_ID + ":state:" + PARTICIPANT_ID;
     private static final String EXCLUDED_KEY = "attention:" + SESSION_ID + ":excluded:" + PARTICIPANT_ID;
+    private static final String LOW_RUN_KEY = "attention:" + SESSION_ID + ":run:low:" + PARTICIPANT_ID;
+    private static final String UNMEASURABLE_RUN_KEY =
+            "attention:" + SESSION_ID + ":run:unmeasurable:" + PARTICIPANT_ID;
+    private static final String APPLIED_KEY = "attention:" + SESSION_ID + ":applied:" + PARTICIPANT_ID;
+    private static final Duration RUN_TTL = Duration.ofMinutes(2);
     private static final String EVENT_KEY = "attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:redis-adapter-1";
 
     @Autowired
@@ -46,6 +54,9 @@ class AttentionStateRedisAdapterTest {
         redisTemplate.delete(STATE_KEY);
         redisTemplate.delete(EVENT_KEY);
         redisTemplate.delete(EXCLUDED_KEY);
+        redisTemplate.delete(LOW_RUN_KEY);
+        redisTemplate.delete(UNMEASURABLE_RUN_KEY);
+        redisTemplate.delete(APPLIED_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
         }
@@ -159,5 +170,72 @@ class AttentionStateRedisAdapterTest {
         adapter.includeInDenominator(SESSION_ID, PARTICIPANT_ID);
 
         assertNull(redisTemplate.opsForValue().get(EXCLUDED_KEY));
+    }
+
+    @Test
+    void countsUpAndArmsTheTtlInOneStep() {
+        DetectionRunCounters first = adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
+        DetectionRunCounters second = adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
+
+        assertEquals(1, first.lowEngagement());
+        assertEquals(2, second.lowEngagement());
+        Long ttl = redisTemplate.getExpire(LOW_RUN_KEY);
+        assertNotNull(ttl);
+        // INCR 과 EXPIRE 가 갈라지면 TTL 없는 카운터가 남아 재입장 학생이 옛 값을 물려받는다.
+        assertTrue(ttl > 0 && ttl <= 120, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void keepsACounterWithoutChangingItAndStillRefreshesItsTtl() {
+        adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
+
+        DetectionRunCounters kept = adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT), RUN_TTL);
+
+        assertEquals(1, kept.lowEngagement());
+        assertEquals(1, kept.unmeasurable());
+        Long ttl = redisTemplate.getExpire(LOW_RUN_KEY);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0, "kept counter should keep its TTL armed, was " + ttl);
+    }
+
+    @Test
+    void clearsACounterOnReset() {
+        adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), RUN_TTL);
+
+        DetectionRunCounters reset = adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.RESET, RunStep.RESET), RUN_TTL);
+
+        assertEquals(0, reset.lowEngagement());
+        assertEquals(0, reset.unmeasurable());
+        assertNull(redisTemplate.opsForValue().get(LOW_RUN_KEY));
+    }
+
+    @Test
+    void clearsBothCountersWhenAPromptCloses() {
+        adapter.advanceRun(
+                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), RUN_TTL);
+
+        adapter.resetRuns(SESSION_ID, PARTICIPANT_ID);
+
+        assertNull(redisTemplate.opsForValue().get(LOW_RUN_KEY));
+        assertNull(redisTemplate.opsForValue().get(UNMEASURABLE_RUN_KEY));
+    }
+
+    @Test
+    void remembersTheLastAppliedJudgementOffset() {
+        assertTrue(adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).isEmpty());
+
+        adapter.recordAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID, 70_000L, Duration.ofSeconds(30));
+
+        assertEquals(
+                70_000L, adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).getAsLong());
+        Long ttl = redisTemplate.getExpire(APPLIED_KEY);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 30, "TTL should be armed, was " + ttl);
     }
 }
