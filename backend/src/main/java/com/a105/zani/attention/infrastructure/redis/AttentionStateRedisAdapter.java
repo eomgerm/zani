@@ -3,6 +3,7 @@ package com.a105.zani.attention.infrastructure.redis;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
@@ -25,6 +26,7 @@ import com.a105.zani.attention.domain.model.DetectionRunTransition;
  *   <li>{@code attention:{sessionId}:state:{participantId}} — 현재 판정 상태
  *   <li>{@code attention:{sessionId}:significant:{state}:{participantId}} — 최근 5분 유의 상태 흔적
  *   <li>{@code attention:{sessionId}:excluded:{participantId}} — 집단 비율 분모 제외 표시
+ *   <li>{@code attention:{sessionId}:outage:{participantId}} — 측정 불가 구간의 시작 지점(§7.1)
  *   <li>{@code attention:{sessionId}:run:{kind}:{participantId}} — 검출기 출력 연속 횟수(§4.1)
  *   <li>{@code attention:{sessionId}:applied:{participantId}} — 마지막으로 반영한 판정 창 종료 시각
  * </ul>
@@ -81,6 +83,27 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
             return counters
             """, List.class);
 
+    /**
+     * 측정 불가 구간의 시작 지점을 심거나 지우고, 지금까지 이어진 길이를 돌려준다(§7.1).
+     *
+     * <p>읽고-쓰기로 나누면 같은 학생의 관측이 겹쳐 들어올 때 둘 다 "내가 이 구간의 시작"이라고 판단해, 1분을 넘긴 구간이 계속 0으로 되돌아간다. 시작 지점은 처음 한 번만 심고 이후에는 TTL 만
+     * 늘린다.
+     */
+    private static final RedisScript<Long> TRACK_OUTAGE = RedisScript.of("""
+            local ttl = tonumber(ARGV[3])
+            if ARGV[1] ~= 'SUSPENDED' then
+              redis.call('DEL', KEYS[1])
+              return -1
+            end
+            local startedAt = redis.call('GET', KEYS[1])
+            if not startedAt then
+              redis.call('SET', KEYS[1], ARGV[2], 'EX', ttl)
+              return 0
+            end
+            redis.call('EXPIRE', KEYS[1], ttl)
+            return tonumber(ARGV[2]) - tonumber(startedAt)
+            """, Long.class);
+
     private final StringRedisTemplate redisTemplate;
 
     @Override
@@ -129,6 +152,23 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
                 + snapshot.signalQuality()
                 + FIELD_SEPARATOR
                 + snapshot.recordedAt().toEpochMilli();
+    }
+
+    @Override
+    public OptionalLong trackMeasurementOutage(
+            long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
+        try {
+            Long outageMs = redisTemplate.execute(
+                    TRACK_OUTAGE,
+                    List.of(outageKey(sessionId, participantId)),
+                    suspended ? "SUSPENDED" : "MEASURABLE",
+                    Long.toString(observedOffsetMs),
+                    Long.toString(ttl.toSeconds()));
+            // -1 은 측정이 가능해져 구간이 없다는 뜻이다.
+            return outageMs == null || outageMs < 0 ? OptionalLong.empty() : OptionalLong.of(outageMs);
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
     }
 
     @Override
@@ -214,5 +254,9 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
 
     private String appliedKey(long sessionId, long participantId) {
         return "attention:" + sessionId + ":applied:" + participantId;
+    }
+
+    private String outageKey(long sessionId, long participantId) {
+        return "attention:" + sessionId + ":outage:" + participantId;
     }
 }

@@ -2,6 +2,7 @@ package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
@@ -41,9 +42,21 @@ public interface AttentionStatePort {
     void markSignificant(long sessionId, long participantId, AttentionState state, Duration window);
 
     /**
-     * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 카메라가 꺼졌거나 검출기가 못 도는 상태가 이어지는 학생이 대상이다(확정 문서 §7.1).
+     * 측정 불가 구간을 갱신하고 지금까지 이어진 길이를 돌려준다(확정 문서 §7.1).
      *
-     * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다. 세션이 끝날 때까지 유지되므로 TTL 은 세션 최대 길이에 맞춘다.
+     * <p>{@code CAMERA_OFF}·{@code DETECTOR_UNAVAILABLE} 이 연속 1분 이어지면 분모에서 빼는데, 그 "연속"을 재는 자리다. 판단을 서버가 하는 이유는 클라이언트가
+     * "저를 빼주세요"라고 말하는 구조보다 안전하기 때문이다.
+     *
+     * @param suspended 이번 관측이 측정 불가 상태인지
+     * @return 이어지고 있는 구간의 길이(ms). 첫 관측이면 0, 측정이 가능한 관측이면 비어 있다
+     */
+    OptionalLong trackMeasurementOutage(
+            long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl);
+
+    /**
+     * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 측정 불가 상태가 1분 이상 이어진 학생이 대상이다(확정 문서 §7.1).
+     *
+     * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다.
      */
     void excludeFromDenominator(long sessionId, long participantId, Duration ttl);
 
