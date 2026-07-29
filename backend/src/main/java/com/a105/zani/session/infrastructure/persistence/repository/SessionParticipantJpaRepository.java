@@ -14,4 +14,6 @@ public interface SessionParticipantJpaRepository extends JpaRepository<SessionPa
     List<SessionParticipantJpaEntity> findByMemberId(Long memberId);
 
     List<SessionParticipantJpaEntity> findBySessionIdOrderByIdAsc(Long sessionId);
+
+    long countBySessionId(Long sessionId);
 }

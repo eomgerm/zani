@@ -8,12 +8,12 @@ import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.MediaTokenSessionNotFoundException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
+import com.a105.zani.session.application.exception.SessionNotStartedException;
 import com.a105.zani.session.application.port.IssuedMediaToken;
 import com.a105.zani.session.application.port.LiveKitTokenPort;
 import com.a105.zani.session.application.port.MediaTokenRequest;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
-import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -49,8 +49,13 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
 
         Session session =
                 sessionRepository.findById(command.sessionId()).orElseThrow(MediaTokenSessionNotFoundException::new);
-        if (session.status() == SessionStatus.ENDED) {
+        // ENDING 이후에는 재발급하지 않는다(가이드 §7). 종료 절차 중에 새 토큰이 나가면 정리 중인 Room으로 다시 들어온다.
+        if (session.hasStartedEnding()) {
             throw new SessionAlreadyEndedException();
+        }
+        // 강사는 PREPARING부터 받아야 미디어를 붙이고 수업을 시작할 수 있고, 학생은 LIVE 이후에만 받는다(가이드 §4).
+        if (!session.canIssueTokenFor(participant.role())) {
+            throw new SessionNotStartedException();
         }
 
         // 표시 이름은 member 도메인의 읽기 UseCase로만 조회한다(크로스도메인은 공개 API 경유).
@@ -69,6 +74,7 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
                 issued.roomName(),
                 identity,
                 issued.expiresAt(),
-                session.expiresAt());
+                // 아직 시작하지 않은 세션에는 자동 종료 시각이 없다. 강사가 시작을 호출하면 그때 정해진다.
+                session.expiresAt().orElse(null));
     }
 }

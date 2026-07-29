@@ -43,7 +43,14 @@ class ResolveSessionParticipantServiceTest {
         participantRepository.byUserId.put(
                 STUDENT_USER,
                 SessionParticipant.reconstitute(
-                        STUDENT_PARTICIPANT, SESSION_ID, STUDENT_USER, SessionParticipantRole.STUDENT, T0, T0));
+                        STUDENT_PARTICIPANT,
+                        SESSION_ID,
+                        STUDENT_USER,
+                        SessionParticipantRole.STUDENT,
+                        T0,
+                        T0,
+                        null,
+                        T0));
     }
 
     @Test
@@ -90,7 +97,17 @@ class ResolveSessionParticipantServiceTest {
 
     private static Session session(SessionStatus status) {
         return Session.reconstitute(
-                SESSION_ID, 7L, "제목", "INVITE01", false, T0, status, SessionAnalysisStatus.NOT_STARTED);
+                SESSION_ID,
+                7L,
+                "제목",
+                "INVITE01",
+                false,
+                T0,
+                status,
+                SessionAnalysisStatus.NOT_STARTED,
+                null,
+                null,
+                null);
     }
 
     private static final class FakeSessionRepository implements SessionRepository {
@@ -114,7 +131,22 @@ class ResolveSessionParticipantServiceTest {
         }
 
         @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<Session> findNotePendingDueBefore(Instant dueBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }
@@ -126,6 +158,11 @@ class ResolveSessionParticipantServiceTest {
         @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(byUserId.get(userId));
+        }
+
+        @Override
+        public long countBySessionId(Long sessionId) {
+            return byUserId.size();
         }
 
         @Override

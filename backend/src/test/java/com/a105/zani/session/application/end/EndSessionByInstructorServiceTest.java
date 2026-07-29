@@ -11,6 +11,7 @@ import com.a105.zani.session.application.exception.NotSessionInstructorException
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -39,7 +40,10 @@ class EndSessionByInstructorServiceTest {
                 false,
                 STARTED_AT,
                 SessionStatus.LIVE,
-                SessionAnalysisStatus.NOT_STARTED);
+                SessionAnalysisStatus.NOT_STARTED,
+                null,
+                null,
+                null);
     }
 
     @Test
@@ -113,7 +117,22 @@ class EndSessionByInstructorServiceTest {
         }
 
         @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
         public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
+        public List<Session> findNotePendingDueBefore(Instant dueBefore, int limit) {
             return List.of();
         }
     }

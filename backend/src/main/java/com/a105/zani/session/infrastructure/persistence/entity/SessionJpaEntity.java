@@ -20,6 +20,7 @@ import lombok.NoArgsConstructor;
 import com.a105.zani.common.infrastructure.persistence.BaseSoftDeletableJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionStatus;
 
 @Entity
@@ -55,11 +56,16 @@ public class SessionJpaEntity extends BaseSoftDeletableJpaEntity {
     @Column(name = "analysis_status", nullable = false, length = 30)
     private SessionAnalysisStatus analysisStatus;
 
-    @Column(name = "started_at", nullable = false, columnDefinition = "DATETIME(6)")
+    /** 실제 수업 시작 시각. PREPARING 동안 비어 있다. */
+    @Column(name = "started_at", columnDefinition = "DATETIME(6)")
     private Instant startedAt;
 
     @Column(name = "ended_at", columnDefinition = "DATETIME(6)")
     private Instant endedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "end_reason", length = 30)
+    private SessionEndReason endReason;
 
     @Column(name = "note_due_at", columnDefinition = "DATETIME(6)")
     private Instant noteDueAt;

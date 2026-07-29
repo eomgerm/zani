@@ -49,6 +49,26 @@ public class SessionPersistenceAdapter implements SessionRepository {
     }
 
     @Override
+    public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+        return sessionJpaRepository
+                .findByStatusAndCreatedAtLessThanEqualOrderByCreatedAtAsc(
+                        SessionStatus.PREPARING, createdBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<Session> findNotePendingDueBefore(Instant dueBefore, int limit) {
+        return sessionJpaRepository
+                .findByStatusAndNoteDueAtLessThanEqualOrderByNoteDueAtAsc(
+                        SessionStatus.NOTE_PENDING, dueBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public Optional<Session> findById(Long id) {
         return sessionJpaRepository.findById(id).map(mapper::toDomain);
     }
@@ -56,5 +76,10 @@ public class SessionPersistenceAdapter implements SessionRepository {
     @Override
     public Optional<Session> findByInviteCode(String inviteCode) {
         return sessionJpaRepository.findByInviteCode(inviteCode).map(mapper::toDomain);
+    }
+
+    @Override
+    public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+        return sessionJpaRepository.findByInviteCodeForUpdate(inviteCode).map(mapper::toDomain);
     }
 }

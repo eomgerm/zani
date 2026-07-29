@@ -23,6 +23,7 @@ import com.a105.zani.session.application.port.SessionPresencePort;
 import com.a105.zani.session.domain.model.ConnectionState;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;
@@ -53,10 +54,10 @@ class SessionPresenceServiceTest {
     /** 실제 EndSessionService와 같은 계약: LIVE면 종료·저장, 이미 종료면 멱등 no-op. */
     private final EndSessionUseCase endSessionUseCase = command -> {
         Session session = sessionRepository.session;
-        if (session.isEnded()) {
+        if (!session.beginEnding(command.reason(), clock.instant())) {
             return new EndSessionResult(command.sessionId(), session.status(), false);
         }
-        session.end();
+        session.markNotePending(clock.instant());
         sessionRepository.save(session);
         return new EndSessionResult(command.sessionId(), session.status(), true);
     };
@@ -74,11 +75,20 @@ class SessionPresenceServiceTest {
                         INSTRUCTOR_USER,
                         SessionParticipantRole.INSTRUCTOR,
                         T0,
+                        T0,
+                        null,
                         T0));
         participantRepository.byUserId.put(
                 STUDENT_USER,
                 SessionParticipant.reconstitute(
-                        STUDENT_PARTICIPANT, SESSION_ID, STUDENT_USER, SessionParticipantRole.STUDENT, T0, T0));
+                        STUDENT_PARTICIPANT,
+                        SESSION_ID,
+                        STUDENT_USER,
+                        SessionParticipantRole.STUDENT,
+                        T0,
+                        T0,
+                        null,
+                        T0));
     }
 
     private static Session liveSession() {
@@ -90,7 +100,10 @@ class SessionPresenceServiceTest {
                 false,
                 T0,
                 SessionStatus.LIVE,
-                SessionAnalysisStatus.NOT_STARTED);
+                SessionAnalysisStatus.NOT_STARTED,
+                null,
+                null,
+                null);
     }
 
     private PresenceResult heartbeat(long userId, ConnectionState state) {
@@ -102,9 +115,10 @@ class SessionPresenceServiceTest {
         assertThrows(NotSessionMemberException.class, () -> heartbeat(999L, ConnectionState.CONNECTED));
     }
 
+    /** 종료 절차가 시작된 순간부터 막는다. 정리 중인 수업을 heartbeat 로 살아 있게 만들면 안 된다. */
     @Test
-    void throwsConflictWhenTheSessionHasAlreadyEnded() {
-        sessionRepository.session.end();
+    void throwsConflictOnceTheSessionHasStartedEnding() {
+        sessionRepository.session.beginEnding(SessionEndReason.INSTRUCTOR_REQUEST, T0);
         assertThrows(SessionAlreadyEndedException.class, () -> heartbeat(STUDENT_USER, ConnectionState.CONNECTED));
     }
 
@@ -147,7 +161,9 @@ class SessionPresenceServiceTest {
 
         assertEquals(ReconnectStatus.SESSION_ENDED, result.reconnectStatus());
         assertTrue(result.sessionEnded());
-        assertTrue(sessionRepository.session.isEnded());
+        // 종료는 ENDING 을 거쳐 NOTE_PENDING 에서 멈춘다. 최종 ENDED 는 메모 마감이 지나야 온다.
+        assertTrue(sessionRepository.session.hasStartedEnding());
+        assertEquals(SessionStatus.NOTE_PENDING, sessionRepository.session.status());
         assertEquals(1, sessionRepository.saveCount);
     }
 
@@ -170,7 +186,8 @@ class SessionPresenceServiceTest {
 
         assertEquals(ReconnectStatus.SESSION_ENDED, result.reconnectStatus());
         assertTrue(result.sessionEnded());
-        assertTrue(sessionRepository.session.isEnded());
+        assertTrue(sessionRepository.session.hasStartedEnding());
+        assertEquals(SessionEndReason.INSTRUCTOR_ABSENT, sessionRepository.session.endReason());
     }
 
     @Test
@@ -267,7 +284,22 @@ class SessionPresenceServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findPreparingCreatedBefore(java.time.Instant createdBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public java.util.List<Session> findNotePendingDueBefore(java.time.Instant dueBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }
@@ -279,6 +311,11 @@ class SessionPresenceServiceTest {
         @Override
         public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
             return Optional.ofNullable(byUserId.get(userId));
+        }
+
+        @Override
+        public long countBySessionId(Long sessionId) {
+            return byUserId.size();
         }
 
         @Override

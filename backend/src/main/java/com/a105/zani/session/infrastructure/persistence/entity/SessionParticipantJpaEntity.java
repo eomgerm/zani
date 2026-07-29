@@ -51,8 +51,15 @@ public class SessionParticipantJpaEntity extends BaseJpaEntity {
     @Column(name = "role", nullable = false, length = 20)
     private SessionParticipantRole role;
 
-    @Column(name = "first_joined_at", nullable = false, columnDefinition = "DATETIME(6)")
+    /** LiveKit 첫 연결 성공 시각. API 입장만 한 상태에서는 비어 있다. */
+    @Column(name = "first_joined_at", columnDefinition = "DATETIME(6)")
     private Instant firstJoinedAt;
+
+    @Column(name = "last_joined_at", columnDefinition = "DATETIME(6)")
+    private Instant lastJoinedAt;
+
+    @Column(name = "last_left_at", columnDefinition = "DATETIME(6)")
+    private Instant lastLeftAt;
 
     @Column(name = "last_accessed_at", columnDefinition = "DATETIME(6)")
     private Instant lastAccessedAt;

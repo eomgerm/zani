@@ -9,13 +9,13 @@ import org.springframework.stereotype.Service;
 
 import com.a105.zani.session.application.end.EndSessionCommand;
 import com.a105.zani.session.application.end.EndSessionUseCase;
-import com.a105.zani.session.application.end.SessionEndReason;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.port.SessionPresencePort;
 import com.a105.zani.session.domain.model.ConnectionState;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.repository.SessionParticipantRepository;
@@ -53,7 +53,10 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                 .orElseThrow(NotSessionMemberException::new);
 
         Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
-        if (session.isEnded()) {
+        // 종료 절차가 시작된 순간부터 막는다. ENDING·NOTE_PENDING 세션의 heartbeat를 받아 주면 이미 정리 중인
+        // 수업을 살아 있는 것으로 보이게 하고, 강사 유예를 다시 평가하게 된다. PREPARING은 강사가 미디어를 붙이는
+        // 구간이라 정상적으로 heartbeat가 온다.
+        if (session.hasStartedEnding()) {
             throw new SessionAlreadyEndedException();
         }
 

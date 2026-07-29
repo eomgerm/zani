@@ -12,7 +12,12 @@ public enum SessionApplicationErrorCode implements ErrorCode {
             ErrorType.INTERNAL_SERVER_ERROR, "SESSION_APP_004", "Failed to generate a unique invite code"),
     SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found"),
     NOT_SESSION_INSTRUCTOR(
-            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it");
+            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it"),
+    SESSION_CAPACITY_REACHED(
+            ErrorType.CONFLICT, "SESSION_APP_007", "SESSION_CAPACITY_REACHED: the session already holds 30 members"),
+    SESSION_NOT_JOINABLE(
+            ErrorType.CONFLICT, "SESSION_APP_008", "The session is not accepting new participants right now"),
+    SESSION_NOT_STARTED(ErrorType.CONFLICT, "SESSION_APP_009", "The session has not started yet");
 
     private final ErrorType type;
     private final String code;

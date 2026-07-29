@@ -28,11 +28,15 @@ public class ResolveSessionParticipantService implements ResolveSessionParticipa
                 .orElseThrow(NotSessionMemberException::new);
 
         Session session = sessionRepository.findById(query.sessionId()).orElseThrow(SessionNotFoundException::new);
-        if (session.isEnded()) {
+        if (session.hasStartedEnding()) {
             throw new SessionAlreadyEndedException();
         }
 
+        // 아직 시작하지 않은 세션은 시작·만료 시각이 없다. 강사가 준비 화면에서 확인할 때가 그 경우다.
         return new ResolveSessionParticipantResult(
-                participant.id(), participant.role(), session.startedAt(), session.expiresAt());
+                participant.id(),
+                participant.role(),
+                session.startedAt(),
+                session.expiresAt().orElse(null));
     }
 }

@@ -44,6 +44,11 @@ public class SessionParticipantPersistenceAdapter implements SessionParticipantR
     }
 
     @Override
+    public long countBySessionId(Long sessionId) {
+        return sessionParticipantJpaRepository.countBySessionId(sessionId);
+    }
+
+    @Override
     public SessionParticipant save(SessionParticipant sessionParticipant) {
         try {
             SessionParticipantJpaEntity entity = mapper.toEntity(sessionParticipant);
@@ -51,8 +56,9 @@ public class SessionParticipantPersistenceAdapter implements SessionParticipantR
             return mapper.toDomain(saved);
         } catch (DataIntegrityViolationException raceLost) {
             // 동시에 같은 (session_id, member_id)로 먼저 들어간 행이 있으면 그걸 그대로 반환한다 (멱등 가입 보장).
-            // 주의: 현재 SessionParticipant 엔티티에는 (session_id, member_id) 유니크 제약이 없어
-            // 이 방어는 DB 제약이 있을 때만 확실하다. 제약 추가는 ERD 후속 논의 대상.
+            // UK_SESSION_PARTICIPANTS_SESSION_MEMBER 가 이 경합을 DB 수준에서 확정해 준다.
+            // 다만 호출자가 트랜잭션 안이면 제약 위반으로 영속성 컨텍스트가 이미 오염돼 이 재조회도 실패할 수 있다.
+            // 입장 경로는 세션 행 잠금으로 애초에 경합이 오지 않게 막으므로(SessionJoinService) 여기까지 오지 않는다.
             return sessionParticipantJpaRepository
                     .findBySessionIdAndMemberId(sessionParticipant.sessionId(), sessionParticipant.userId())
                     .map(mapper::toDomain)
