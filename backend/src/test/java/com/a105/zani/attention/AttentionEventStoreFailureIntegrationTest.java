@@ -51,12 +51,12 @@ class AttentionEventStoreFailureIntegrationTest {
     private static final Instant SESSION_STARTED_AT = NOW.minusSeconds(300);
 
     /** 관측 시각은 세션 시작 기준으로 잡는다. 고정 시각을 쓰면 시간선 검증에 먼저 걸려 503 을 볼 수 없다. */
-    private static final String BODY = "{\"outcome\":\"BARELY_ENGAGED\",\"lowEngagement\":true,\"windowStartedAt\":\""
+    private static final String BODY = "{\"outcome\":\"BARELY_ENGAGED\",\"windowStartedAt\":\""
             + SESSION_STARTED_AT.plusSeconds(60)
             + "\",\"observedAt\":\""
             + SESSION_STARTED_AT.plusSeconds(70)
             + "\",\"signalQuality\":0.92,\"featureSchemaVersion\":\"mediapipe_98_v1\","
-            + "\"engineVersion\":\"e0g-1\",\"clientEventId\":\"store-down-1\"}";
+            + "\"clientEventId\":\"store-down-1\"}";
 
     @TestConfiguration
     static class FailingStoreConfig {
@@ -110,7 +110,7 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public void resetRuns(long sessionId, long participantId) {
+                public void resetUnmeasurableRun(long sessionId, long participantId) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
             };

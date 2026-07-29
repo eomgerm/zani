@@ -24,11 +24,10 @@ import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRecord;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
-import com.a105.zani.attention.domain.model.DetectionSignal;
 import com.a105.zani.attention.domain.model.DetectorOutcome;
 import com.a105.zani.attention.domain.model.RunStep;
+import com.a105.zani.attention.domain.model.UnmeasurableRun;
 import com.a105.zani.attention.domain.repository.DetectionRecordRepository;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
@@ -50,7 +49,6 @@ class CollectAttentionEventServiceTest {
     private static final Instant SESSION_STARTED_AT = Instant.parse("2026-07-28T09:00:00Z");
     private static final Instant SERVER_NOW = SESSION_STARTED_AT.plusSeconds(600);
     private static final String SCHEMA = "mediapipe_98_v1";
-    private static final String ENGINE = "e0g-1";
 
     private final InMemoryAttentionStatePort statePort = new InMemoryAttentionStatePort();
     private final InMemoryDetectionRecordRepository records = new InMemoryDetectionRecordRepository();
@@ -67,7 +65,7 @@ class CollectAttentionEventServiceTest {
                 resolveParticipant,
                 records,
                 statePort,
-                new DetectorContractProperties(Set.of(SCHEMA), Set.of()),
+                new DetectorContractProperties(Set.of(SCHEMA)),
                 Clock.fixed(SERVER_NOW, ZoneOffset.UTC));
         window = 0;
     }
@@ -79,9 +77,8 @@ class CollectAttentionEventServiceTest {
 
         assertEquals(1, records.saved.size());
         DetectionRecord saved = records.saved.get(0);
-        assertEquals(DetectorOutcome.NOT_ENGAGED, saved.signal().outcome());
+        assertEquals(DetectorOutcome.NOT_ENGAGED, saved.outcome());
         assertEquals(SCHEMA, saved.featureSchemaVersion());
-        assertEquals(ENGINE, saved.engineVersion());
         assertTrue(statePort.currentState.isEmpty());
     }
 
@@ -140,7 +137,7 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
-    void leavesTheStateOpenWhileTheLowEngagementRunBuilds() {
+    void leavesTheStateOpenWhileLowEngagementJudgementsArrive() {
         service.collect(next(DetectorOutcome.NOT_ENGAGED));
         service.collect(next(DetectorOutcome.BARELY_ENGAGED));
         service.collect(next(DetectorOutcome.NOT_ENGAGED));
@@ -148,17 +145,16 @@ class CollectAttentionEventServiceTest {
         // 저참여 3연속은 프롬프트를 띄울 조건일 뿐, 상태는 이해 확인 응답이 와야 갈린다(§2).
         assertTrue(statePort.currentState.isEmpty());
         assertTrue(statePort.significant.isEmpty());
-        assertEquals(3, statePort.lastCounters.lowEngagement());
     }
 
     @Test
-    void keepsTheLowEngagementRunAcrossAnUnmeasurableWindow() {
+    void doesNotCountLowEngagementRunsOnTheServer() {
         service.collect(next(DetectorOutcome.NOT_ENGAGED));
-        service.collect(next(DetectorOutcome.NOT_ENGAGED));
-        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        service.collect(next(DetectorOutcome.BARELY_ENGAGED));
         service.collect(next(DetectorOutcome.NOT_ENGAGED));
 
-        assertTrue(statePort.lastCounters.lowEngagementRunComplete());
+        // 이해 확인 프롬프트를 띄울지 판정하는 주체가 브라우저다(§5, 티켓 75·81). 서버 사본은 읽는 곳이 없어 두지 않는다.
+        assertEquals(UnmeasurableRun.none(), statePort.lastRun);
     }
 
     @Test
@@ -196,12 +192,11 @@ class CollectAttentionEventServiceTest {
         CollectAttentionEventCommand beforeStart = new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(DetectorOutcome.ENGAGED, false),
+                DetectorOutcome.ENGAGED,
                 SESSION_STARTED_AT.minusSeconds(20),
                 SESSION_STARTED_AT.minusSeconds(10),
                 0.9d,
                 SCHEMA,
-                ENGINE,
                 "before-start");
 
         assertThrows(InvalidDetectionTimelineException.class, () -> service.collect(beforeStart));
@@ -213,12 +208,11 @@ class CollectAttentionEventServiceTest {
         CollectAttentionEventCommand backwards = new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(DetectorOutcome.ENGAGED, false),
+                DetectorOutcome.ENGAGED,
                 SESSION_STARTED_AT.plusSeconds(60),
                 SESSION_STARTED_AT.plusSeconds(50),
                 0.9d,
                 SCHEMA,
-                ENGINE,
                 "backwards");
 
         assertThrows(InvalidDetectionTimelineException.class, () -> service.collect(backwards));
@@ -229,12 +223,11 @@ class CollectAttentionEventServiceTest {
         CollectAttentionEventCommand future = new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(DetectorOutcome.ENGAGED, false),
+                DetectorOutcome.ENGAGED,
                 SERVER_NOW.plusSeconds(3_600),
                 SERVER_NOW.plusSeconds(3_610),
                 0.9d,
                 SCHEMA,
-                ENGINE,
                 "future");
 
         assertThrows(InvalidDetectionTimelineException.class, () -> service.collect(future));
@@ -245,12 +238,11 @@ class CollectAttentionEventServiceTest {
         CollectAttentionEventCommand otherSchema = new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(DetectorOutcome.ENGAGED, false),
+                DetectorOutcome.ENGAGED,
                 SESSION_STARTED_AT,
                 SESSION_STARTED_AT.plusSeconds(10),
                 0.9d,
                 "mediapipe_64_v0",
-                ENGINE,
                 "other-schema");
 
         // 다른 잣대로 잰 판정을 같은 집계에 섞으면 안 된다.
@@ -277,10 +269,9 @@ class CollectAttentionEventServiceTest {
 
         CollectAttentionEventResult retry = service.collect(observation);
 
-        // 유니크 제약이 행은 막고, 더 최신 관측이 이미 반영됐다는 사실이 카운터를 지킨다.
+        // 유니크 제약이 행은 막고, 더 최신 관측이 이미 반영됐다는 사실이 집계를 지킨다.
         assertTrue(retry.supersededByNewerJudgement());
         assertEquals(2, records.saved.size());
-        assertEquals(2, statePort.lastCounters.lowEngagement());
     }
 
     @Test
@@ -311,9 +302,9 @@ class CollectAttentionEventServiceTest {
         statePort.failRecordState = false;
         CollectAttentionEventResult retry = service.collect(third);
 
-        // 카운터가 4가 되면 관측 세 건이 아니라 두 건 반이 3연속을 만든 셈이 된다. 반영 지점이 카운터와 같이 쓰이기에 걸린다.
+        // 4가 되면 관측 세 건이 아니라 두 건 반이 3연속을 만든 셈이 된다. 반영 지점이 연속 횟수와 같이 쓰이기에 걸린다.
         assertTrue(retry.supersededByNewerJudgement());
-        assertEquals(3, statePort.lastCounters.unmeasurable());
+        assertEquals(3, statePort.lastRun.consecutive());
     }
 
     @Test
@@ -403,13 +394,11 @@ class CollectAttentionEventServiceTest {
         return new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(
-                        outcome, outcome == DetectorOutcome.NOT_ENGAGED || outcome == DetectorOutcome.BARELY_ENGAGED),
+                outcome,
                 start,
                 start.plusSeconds(10),
                 0.92d,
                 SCHEMA,
-                ENGINE,
                 "event-" + windowIndex + "-" + outcome);
     }
 
@@ -424,12 +413,11 @@ class CollectAttentionEventServiceTest {
         service.collect(new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(outcome, false),
+                outcome,
                 windowed ? observedAt.minusSeconds(10) : null,
                 observedAt,
                 windowed ? 0.9d : null,
                 SCHEMA,
-                ENGINE,
                 "event-at-" + observedOffsetMs + "-" + outcome));
     }
 
@@ -439,12 +427,11 @@ class CollectAttentionEventServiceTest {
         return new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
-                new DetectionSignal(outcome, false),
+                outcome,
                 null,
                 SESSION_STARTED_AT.plusSeconds(10L * window),
                 null,
                 SCHEMA,
-                ENGINE,
                 "event-" + window + "-" + outcome);
     }
 
@@ -490,8 +477,8 @@ class CollectAttentionEventServiceTest {
         private final Set<Long> excluded = new HashSet<>();
         private final Map<Long, Long> appliedOffsets = new HashMap<>();
         private final Map<Long, Long> outageStartedAt = new HashMap<>();
-        private DetectionRunCounters counters = DetectionRunCounters.none();
-        private DetectionRunCounters lastCounters = DetectionRunCounters.none();
+        private UnmeasurableRun run = UnmeasurableRun.none();
+        private UnmeasurableRun lastRun = UnmeasurableRun.none();
         private boolean failAdvance;
         private boolean failRecordState;
 
@@ -545,13 +532,11 @@ class CollectAttentionEventServiceTest {
             if (applied != null && applied >= observedOffsetMs) {
                 return Optional.empty();
             }
-            counters = new DetectionRunCounters(
-                    apply(transition.lowEngagement(), counters.lowEngagement()),
-                    apply(transition.unmeasurable(), counters.unmeasurable()));
-            lastCounters = counters;
+            run = new UnmeasurableRun(apply(transition.unmeasurable(), run.consecutive()));
+            lastRun = run;
             appliedOffsets.put(participantId, observedOffsetMs);
             return Optional.of(
-                    new ObservationApplied(counters, outage(participantId, measurementSuspended, observedOffsetMs)));
+                    new ObservationApplied(run, outage(participantId, measurementSuspended, observedOffsetMs)));
         }
 
         private OptionalLong outage(long participantId, boolean suspended, long observedOffsetMs) {
@@ -564,16 +549,15 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
-        public void resetRuns(long sessionId, long participantId) {
-            counters = DetectionRunCounters.none();
-            lastCounters = counters;
+        public void resetUnmeasurableRun(long sessionId, long participantId) {
+            run = UnmeasurableRun.none();
+            lastRun = run;
         }
 
         private int apply(RunStep step, int current) {
             return switch (step) {
                 case INCREMENT -> current + 1;
                 case RESET -> 0;
-                case KEEP -> current;
             };
         }
     }
