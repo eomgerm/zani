@@ -106,6 +106,13 @@ class ExperimentSpec:
     # both enter the identity together.
     target_encoding: str = "one_hot"
     sord_alpha: float = 2.0
+    # E0-I two-stage curriculum. Defaults preserve all earlier identities.
+    curriculum: str = "none"
+    reliable_warmup_epochs: int = 10
+    ambiguous_target_encoding: str = "adjacent_smoothing"
+    ambiguous_neighbor_mass: float = 0.2
+    needs_reliability_manifest: bool = False
+    reliability_manifest: Path | None = None
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -226,6 +233,17 @@ E0H_SPEC = ExperimentSpec(
     ModelConfig(input_dim=98),
     target_encoding="sord",
     sord_alpha=2.0,
+)
+
+E0I_SPEC = ExperimentSpec(
+    "E0-I",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    curriculum="label_reliability_v1",
+    reliable_warmup_epochs=10,
+    ambiguous_target_encoding="adjacent_smoothing",
+    ambiguous_neighbor_mass=0.2,
+    needs_reliability_manifest=True,
 )
 
 
@@ -350,6 +368,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0F_SPEC,
         E0G_SPEC,
         E0H_SPEC,
+        E0I_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -480,6 +499,11 @@ def _apply_loss_and_sampling(
     if spec.target_encoding != "one_hot":
         configuration["target_encoding"] = spec.target_encoding
         configuration["sord_alpha"] = spec.sord_alpha
+    if spec.curriculum != "none":
+        configuration["curriculum"] = spec.curriculum
+        configuration["reliable_warmup_epochs"] = spec.reliable_warmup_epochs
+        configuration["ambiguous_target_encoding"] = spec.ambiguous_target_encoding
+        configuration["ambiguous_neighbor_mass"] = spec.ambiguous_neighbor_mass
     return configuration
 
 
@@ -617,6 +641,53 @@ def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
         "sha256": _sha256(graph_path),
         "size_bytes": graph_path.stat().st_size,
     }
+
+
+def _reliability_record(
+    reliability_path: Path | None, *, feature_manifest_sha256: str
+) -> dict[str, object] | None:
+    if reliability_path is None:
+        return None
+    path = reliability_path.resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"reliability manifest not found: {path}")
+    from zani_ai.engagement.reliability import load_validated_reliability_manifest
+
+    validated = load_validated_reliability_manifest(
+        path,
+        feature_manifest_sha256=feature_manifest_sha256,
+        require_go=True,
+    )
+    size_bytes = path.stat().st_size
+    if _sha256(path) != validated.sha256:
+        raise RuntimeError(f"reliability manifest changed during validation: {path}")
+    return {
+        "path": str(path),
+        "sha256": validated.sha256,
+        "size_bytes": size_bytes,
+    }
+
+
+def _assert_file_record_unchanged(
+    record: dict[str, object], name: str, boundary: str
+) -> None:
+    path_value = record.get("path")
+    expected_hash = record.get("sha256")
+    expected_size = record.get("size_bytes")
+    if (
+        not isinstance(path_value, str)
+        or not isinstance(expected_hash, str)
+        or not isinstance(expected_size, int)
+        or isinstance(expected_size, bool)
+    ):
+        raise RuntimeError(f"{name} integrity record is invalid")
+    path = Path(path_value)
+    if (
+        not path.is_file()
+        or path.stat().st_size != expected_size
+        or _sha256(path) != expected_hash
+    ):
+        raise RuntimeError(f"{name} changed {boundary}")
 
 
 def _validate_inputs_identity(
@@ -800,6 +871,7 @@ def _seed_is_complete(
     output_dir: Path,
     manifest_sha256: str,
     configuration: dict[str, object],
+    inputs: dict[str, object],
     spec: ExperimentSpec,
 ) -> tuple[bool, str]:
     if record is None:
@@ -811,6 +883,20 @@ def _seed_is_complete(
         return False, "feature manifest fingerprint does not match"
     if record.get("configuration_sha256") != _canonical_hash(configuration):
         return False, "configuration fingerprint does not match"
+    if spec.needs_reliability_manifest:
+        recorded_inputs = record.get("inputs")
+        recorded_reliability = (
+            recorded_inputs.get("label_reliability")
+            if isinstance(recorded_inputs, dict)
+            else None
+        )
+        current_reliability = inputs.get("label_reliability")
+        if (
+            not isinstance(recorded_reliability, dict)
+            or not isinstance(current_reliability, dict)
+            or recorded_reliability.get("sha256") != current_reliability.get("sha256")
+        ):
+            return False, "label_reliability input fingerprint does not match"
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, dict):
         return False, "artifact integrity records are missing"
@@ -982,6 +1068,7 @@ def prepare_run(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> RunContext:
     """Validate the inputs and pin the identity every seed of this run shares.
@@ -1000,10 +1087,21 @@ def prepare_run(
         spec = replace(
             spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
         )
+    if spec.needs_reliability_manifest:
+        selected_reliability = reliability_path or spec.reliability_manifest
+        if selected_reliability is None:
+            raise ValueError(f"{spec.protocol} requires a reliability manifest")
+        spec = replace(spec, reliability_manifest=selected_reliability.resolve())
     inputs: dict[str, object] = {}
     graph_record = _graph_record(spec.graph_path)
     if graph_record is not None:
         inputs["landmark_graph"] = graph_record
+    reliability_record = _reliability_record(
+        spec.reliability_manifest,
+        feature_manifest_sha256=manifest_sha256,
+    )
+    if reliability_record is not None:
+        inputs["label_reliability"] = reliability_record
     configuration = _build_configuration(spec, device)
     environment = _environment(device, spec)
     _enable_strict_determinism(device)
@@ -1042,10 +1140,22 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     manifest_path = context.manifest_path
     manifest_sha256 = context.manifest_sha256
     configuration = context.configuration
+    reliability_input = context.inputs.get("label_reliability")
+
+    def assert_reliability_unchanged(boundary: str) -> None:
+        if isinstance(reliability_input, dict):
+            _assert_file_record_unchanged(
+                cast(dict[str, object], reliability_input),
+                "label_reliability",
+                boundary,
+            )
 
     def report_progress(epoch: int, metrics: EvaluationMetrics) -> None:
+        total_epochs = spec.max_epochs + (
+            spec.reliable_warmup_epochs if spec.curriculum != "none" else 0
+        )
         print(
-            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{spec.max_epochs} "
+            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{total_epochs} "
             f"validation_accuracy={metrics.accuracy:.6f} "
             f"validation_macro_f1={metrics.macro_f1:.6f}",
             flush=True,
@@ -1074,14 +1184,21 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         lr_step=spec.lr_step,
         array_key=spec.array_key,
         array_shape=spec.array_shape,
+        curriculum=spec.curriculum,
+        reliability_manifest=spec.reliability_manifest,
+        reliable_warmup_epochs=spec.reliable_warmup_epochs,
+        ambiguous_target_encoding=spec.ambiguous_target_encoding,
+        ambiguous_neighbor_mass=spec.ambiguous_neighbor_mass,
     )
     _assert_manifest_unchanged(
         manifest_path, manifest_sha256, f"before seed {seed} training", spec
     )
+    assert_reliability_unchanged(f"before seed {seed} training")
     result = train_model(training_config, evaluate_test=False, progress=report_progress)
     _assert_manifest_unchanged(
         manifest_path, manifest_sha256, f"after seed {seed} training", spec
     )
+    assert_reliability_unchanged(f"after seed {seed} training")
     metrics_payload = _load_summary(result.metrics_path, spec)
     metrics_payload["experiment"] = {
         "protocol": spec.protocol,
@@ -1089,6 +1206,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         "feature_manifest_sha256": manifest_sha256,
         "configuration": configuration,
         "configuration_sha256": _canonical_hash(configuration),
+        "inputs": context.inputs,
     }
     metrics_payload["test_evaluation"] = {
         "status": "deferred",
@@ -1119,11 +1237,13 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     _assert_manifest_unchanged(
         manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
     )
+    assert_reliability_unchanged(f"before recording seed {seed} completion")
     return {
         "seed": seed,
         "status": "complete",
         "feature_manifest_sha256": manifest_sha256,
         "configuration_sha256": _canonical_hash(configuration),
+        "inputs": context.inputs,
         # Per-seed snapshot: with drift allowed, the summary's top-level
         # environment describes only the most recent run, so this is the
         # only record of which machine and card produced this checkpoint.
@@ -1167,6 +1287,7 @@ def run_seed(context: RunContext, seed: int) -> bool:
             output_dir=context.output_dir,
             manifest_sha256=context.manifest_sha256,
             configuration=context.configuration,
+            inputs=context.inputs,
             spec=spec,
         )
         if complete:
@@ -1229,6 +1350,7 @@ def collect_summary(
             output_dir=context.output_dir,
             manifest_sha256=context.manifest_sha256,
             configuration=context.configuration,
+            inputs=context.inputs,
             spec=spec,
         )
         if complete and record is not None:
@@ -1250,6 +1372,7 @@ def reproduce_experiment(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
     seeds: Sequence[int] | None = None,
     collect: bool = True,
@@ -1266,6 +1389,7 @@ def reproduce_experiment(
         output_dir,
         device=device,
         graph_path=graph_path,
+        reliability_path=reliability_path,
         allow_environment_drift=allow_environment_drift,
     )
     for seed in context.spec.seeds if seeds is None else seeds:
@@ -1291,6 +1415,7 @@ def collect_only(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> E0ExperimentResult:
     """Rebuild ``summary.json`` without training, after parallel seeds finish."""
@@ -1300,6 +1425,7 @@ def collect_only(
         output_dir,
         device=device,
         graph_path=graph_path,
+        reliability_path=reliability_path,
         allow_environment_drift=allow_environment_drift,
     )
     return collect_summary(context, allow_environment_drift=allow_environment_drift)
@@ -1325,6 +1451,7 @@ __all__ = [
     "E0B_SPEC",
     "E0C_SPEC",
     "E0D_SPEC",
+    "E0I_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",

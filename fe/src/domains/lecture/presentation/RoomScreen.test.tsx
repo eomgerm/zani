@@ -45,10 +45,18 @@ vi.mock("./useRoomMediaControls", () => ({
 
 // 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
 const attentionSource = vi.hoisted(() => ({
-  props: [] as { active: boolean; denied?: boolean }[],
+  props: [] as {
+    active: boolean;
+    denied?: boolean;
+    onAvailabilityChange?: (availability: string) => void;
+  }[],
 }));
 vi.mock("./components/room/AttentionCameraSource", () => ({
-  AttentionCameraSource: (props: { active: boolean; denied?: boolean }) => {
+  AttentionCameraSource: (props: {
+    active: boolean;
+    denied?: boolean;
+    onAvailabilityChange?: (availability: string) => void;
+  }) => {
     attentionSource.props.push(props);
     return <div data-testid="attention-camera-source" />;
   },
@@ -69,6 +77,18 @@ const roomParticipants = vi.hoisted(() => ({
 
 vi.mock("./useRoomParticipants", () => ({
   useRoomParticipants: () => roomParticipants,
+}));
+
+// 폴링 자체는 useCoachingStatus.test 가 본다. 여기서는 누구에게 켜지는지와 배지가 뜨는지만 본다.
+const coaching = vi.hoisted(() => ({
+  enabledCalls: [] as boolean[],
+  availability: "ACTIVE" as string,
+}));
+vi.mock("./useCoachingStatus", () => ({
+  useCoachingStatus: (options: { enabled: boolean }) => {
+    coaching.enabledCalls.push(options.enabled);
+    return { availability: coaching.availability };
+  },
 }));
 
 const push = vi.hoisted(() => vi.fn());
@@ -118,6 +138,8 @@ afterEach(() => {
   media.cameraBlocked = false;
   media.cameraPermissionDenied = false;
   attentionSource.props = [];
+  coaching.enabledCalls = [];
+  coaching.availability = "ACTIVE";
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
   vi.useRealTimers();
@@ -281,17 +303,21 @@ describe("RoomScreen controls", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    // 강사에게는 학생용 카메라 안내가 뜨지 않는다.
-    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
+    // 강사는 판정 대상이 아니라 학생용 분석 안내가 뜨지 않는다.
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
   });
 
-  it("warns a student whose camera is off", () => {
+  /*
+    카메라가 꺼졌을 때의 안내는 카메라 안내 프롬프트(81)가 1분 지속 뒤 원인별로 맡는다.
+    여기 있던 "10분 이상·이후 5분마다" 배너는 확정 규칙과 어긋나 76 에서 제거했다.
+  */
+  it("leaves the camera-off guidance to the camera prompt instead of a standing banner", () => {
     asStudent();
     media.cameraEnabled = false;
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
   });
 
   it("delegates the camera toggle to the media hook", () => {
@@ -356,6 +382,54 @@ describe("RoomScreen end-session control", () => {
   });
 });
 
+describe("RoomScreen coaching wiring", () => {
+  /** 폴링이 켜진 적이 있는지. */
+  const everEnabled = () => coaching.enabledCalls.some(Boolean);
+
+  it("polls and shows the coaching notice for an instructor", () => {
+    asInstructor();
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(true);
+    expect(screen.getByTestId("coaching-status-notice")).toHaveTextContent(
+      "수업 팁을 받아오지 못하고 있어요",
+    );
+  });
+
+  it("keeps the coaching notice away from students", () => {
+    asStudent();
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  // 참가자 목록이 오기 전에는 isInstructor 가 true 다. 그것만 보면 학생도 잠깐 강사 전용
+  // 엔드포인트를 두드리고 강사용 배지를 보게 된다.
+  it("waits for the role to be confirmed before polling", () => {
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  it("says nothing while coaching works", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+});
+
 describe("RoomScreen attention wiring", () => {
   /** 판정 소스가 마지막으로 받은 props. */
   const lastProps = () => attentionSource.props.at(-1);
@@ -373,7 +447,34 @@ describe("RoomScreen attention wiring", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(lastProps()).toEqual({ active: true, denied: false });
+    expect(lastProps()).toMatchObject({ active: true, denied: false });
+  });
+
+  // 상단 바에 흐름대로 놓아야 한다. 띄워 얹으면 보기 전환·패널 토글 위를 가린다.
+  it("shows the analysis notice once the source reports it stopped", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
+
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toHaveTextContent(
+      "학습 분석을 사용할 수 없어요",
+    );
+  });
+
+  // 어떤 비활성 상태도 수업을 막지 않는다(76 요구사항).
+  it("keeps the class controls usable while the analysis is unavailable", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "카메라 끄기" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "참여자" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /발표자 보기/ })).toBeVisible();
   });
 
   it("stops detection when the student turns the camera off", () => {
