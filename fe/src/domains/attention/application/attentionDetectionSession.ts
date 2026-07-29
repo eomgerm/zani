@@ -1,4 +1,8 @@
-import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
+import type {
+  AttentionPrediction,
+  AttentionStatus,
+  AttentionWindow,
+} from "../domain/attentionPrediction";
 import {
   createBrowserFaceLandmarker,
   type BrowserFaceLandmarker,
@@ -35,7 +39,7 @@ export interface AttentionDetectionSessionOptions {
   /** 판정 대상 비디오 요소를 가져온다. 아직 없으면 null. */
   videoSource(): HTMLVideoElement | null;
   onStatus(status: AttentionStatus): void;
-  onPrediction(prediction: AttentionPrediction): void;
+  onPrediction(prediction: AttentionPrediction, window: AttentionWindow | null): void;
   /** 표본 추출 주기(ms). 기본 100. */
   readonly sampleIntervalMs?: number;
   readonly scheduler?: FrameScheduler;
@@ -71,6 +75,8 @@ export function startAttentionDetection(
   let judgementDisabled = false;
   let hasPrediction = false;
   const featureWindow = new RollingFeatureWindow();
+  // 추론은 비동기라 결과가 올 때쯤 창은 이미 비워져 있다. 제출 순서대로 창 메타를 담아 두고 결과와 짝지운다.
+  const pendingWindows: AttentionWindow[] = [];
 
   function stopLoop(): void {
     if (frameHandle === null) return;
@@ -82,7 +88,9 @@ export function startAttentionDetection(
     onPrediction(next: AttentionPrediction) {
       if (stopped) return;
       hasPrediction = true;
-      onPrediction(next);
+      // 짝지을 창이 없으면 null 이다. 창 메타를 지어내면 서버의 측정 가능 비율이 틀어지므로 서버 보고는 건너뛰게 하고,
+      // 화면 표시처럼 창 메타가 필요 없는 소비자는 판정을 그대로 받게 한다.
+      onPrediction(next, pendingWindows.shift() ?? null);
       onStatus("measuring");
     },
     onFailure(failure: AttentionInferenceFailure) {
@@ -129,6 +137,10 @@ export function startAttentionDetection(
 
     const tokens = featureWindow.tokens(timestampMs);
     if (tokens === null) return;
+    pendingWindows.push({
+      durationSec: featureWindow.options.windowMs / 1_000,
+      signalQuality: featureWindow.signalQuality,
+    });
     // 다음 10초 창을 처음부터 다시 모은다.
     featureWindow.clear();
     inference.submit(tokens);
@@ -142,6 +154,10 @@ export function startAttentionDetection(
       landmarker !== null &&
       video !== null &&
       video.readyState >= HAVE_CURRENT_DATA &&
+      // MediaPipe 는 크기가 0 인 프레임을 받으면 예외를 던진다. `readyState` 만으로는 부족하다 —
+      // LiveKit 트랙을 갓 붙였을 때 재생은 시작됐지만 해상도가 아직 0 인 구간이 있다.
+      video.videoWidth > 0 &&
+      video.videoHeight > 0 &&
       timestampMs - lastSampleAtMs >= sampleIntervalMs
     ) {
       lastSampleAtMs = timestampMs;
@@ -177,6 +193,7 @@ export function startAttentionDetection(
       landmarker = null;
       inference.terminate();
       featureWindow.clear();
+      pendingWindows.length = 0;
     },
   };
 }

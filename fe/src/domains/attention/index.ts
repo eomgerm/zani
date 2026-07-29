@@ -10,4 +10,15 @@ export type {
   AttentionLabel,
   AttentionPrediction,
   AttentionStatus,
+  AttentionWindow,
 } from "./domain/attentionPrediction";
+export {
+  attentionEventTypeOf,
+  reportAttentionEvent,
+  AttentionEventRequestError,
+} from "./infrastructure/attentionEventApi";
+export type {
+  AttentionEvent,
+  AttentionEventReporter,
+  AttentionEventType,
+} from "./infrastructure/attentionEventApi";
