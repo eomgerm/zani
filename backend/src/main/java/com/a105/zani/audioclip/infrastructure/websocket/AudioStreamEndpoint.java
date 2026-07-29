@@ -4,6 +4,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.stereotype.Component;
 
@@ -26,28 +28,49 @@ import com.a105.zani.audioclip.infrastructure.config.AudioClipProperties;
 public class AudioStreamEndpoint implements AudioStreamEndpointPort {
 
     private static final int SECRET_BYTES = 32;
+    private static final String MAC_ALGORITHM = "HmacSHA256";
+
+    /** 기동 시 만든 마스터 키. 프로세스 밖으로 나가지 않는다 — 나가는 것은 세션별 파생 토큰뿐이다. */
+    private final byte[] masterKey;
 
     private final String urlTemplate;
-    private final String secret;
 
     public AudioStreamEndpoint(AudioClipProperties properties) {
         this.urlTemplate = properties.streamUrlTemplate();
-        byte[] random = new byte[SECRET_BYTES];
-        new SecureRandom().nextBytes(random);
-        this.secret = HexFormat.of().formatHex(random);
+        this.masterKey = new byte[SECRET_BYTES];
+        new SecureRandom().nextBytes(this.masterKey);
     }
 
     @Override
     public String streamUrlFor(long sessionId) {
-        return urlTemplate.replace("{sessionId}", String.valueOf(sessionId)) + "?key=" + secret;
+        return urlTemplate.replace("{sessionId}", String.valueOf(sessionId)) + "?key=" + tokenFor(sessionId);
     }
 
-    /** 들어온 자격이 이번 기동의 것인지. 길이 차이로도 정보가 새지 않게 상수 시간 비교를 쓴다. */
-    public boolean matches(String candidate) {
+    /**
+     * 들어온 자격이 <b>이 세션의</b> 이번 기동 토큰인지.
+     *
+     * <p>세션마다 다른 토큰을 쓴다. 주소는 LiveKit 으로 나가 {@code EgressInfo} 와 그쪽 로그에 남을 수 있는데, 모든 세션이 한 값을 공유하면 하나만 새도 임의 세션의 버퍼에 PCM
+     * 을 밀어넣을 수 있다. 남의 강의 링버퍼가 오염되면 그 강사의 전사가 통째로 망가진다. 마스터 키에서 세션별로 파생하면 새어도 피해가 그 세션 하나에 갇힌다.
+     *
+     * <p>토큰은 경로에서 읽은 세션 ID 로 다시 계산해 대조하므로, 다른 세션의 토큰을 들고 와 경로만 바꾸면 일치하지 않는다. 길이 차이로도 정보가 새지 않게 상수 시간 비교를 쓴다.
+     */
+    public boolean matches(long sessionId, String candidate) {
         if (candidate == null) {
             return false;
         }
         return MessageDigest.isEqual(
-                candidate.getBytes(StandardCharsets.UTF_8), secret.getBytes(StandardCharsets.UTF_8));
+                candidate.getBytes(StandardCharsets.UTF_8), tokenFor(sessionId).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String tokenFor(long sessionId) {
+        try {
+            Mac mac = Mac.getInstance(MAC_ALGORITHM);
+            mac.init(new SecretKeySpec(masterKey, MAC_ALGORITHM));
+            return HexFormat.of()
+                    .formatHex(mac.doFinal(String.valueOf(sessionId).getBytes(StandardCharsets.UTF_8)));
+        } catch (java.security.GeneralSecurityException impossible) {
+            // HmacSHA256 은 모든 JRE 가 제공한다. 여기 오면 런타임이 규격을 벗어난 것이라 기동 자체가 잘못됐다.
+            throw new IllegalStateException("HMAC is unavailable", impossible);
+        }
     }
 }

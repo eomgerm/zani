@@ -16,6 +16,7 @@ import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
 import com.a105.zani.audioclip.infrastructure.buffer.InstructorAudioBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -97,6 +98,32 @@ class EgressAudioWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
 
         assertNotNull(session.closeStatus);
+    }
+
+    @Test
+    void 다른_세션의_토큰으로는_접속할_수_없다() throws Exception {
+        // 주소는 LiveKit 으로 나가 EgressInfo·로그에 남을 수 있다. 토큰이 모든 세션 공용이면 하나만 새도
+        // 임의 세션 링버퍼에 PCM 을 밀어넣어 그 강사의 전사를 통째로 오염시킬 수 있다.
+        long otherSession = SESSION_ID + 1;
+        String stolen = queryOf(endpoint.streamUrlFor(otherSession));
+        FakeWebSocketSession session = session("ws://backend/internal/audio/" + SESSION_ID + "?" + stolen);
+
+        handler.afterConnectionEstablished(session);
+
+        assertNotNull(session.closeStatus, "다른 세션 토큰은 거부돼야 한다");
+        assertEquals(CloseStatus.POLICY_VIOLATION.getCode(), session.closeStatus.getCode());
+    }
+
+    @Test
+    void 세션마다_다른_토큰을_발급한다() {
+        assertNotEquals(
+                queryOf(endpoint.streamUrlFor(SESSION_ID)),
+                queryOf(endpoint.streamUrlFor(SESSION_ID + 1)),
+                "토큰이 같으면 유출 시 피해가 모든 세션으로 번진다");
+    }
+
+    private static String queryOf(String url) {
+        return url.substring(url.indexOf('?') + 1);
     }
 
     @Test

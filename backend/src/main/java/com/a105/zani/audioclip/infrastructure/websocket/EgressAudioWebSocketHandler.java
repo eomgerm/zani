@@ -39,14 +39,20 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         URI uri = session.getUri();
-        if (uri == null || !hasValidSecret(uri)) {
-            log.warn("Rejected audio stream connection with invalid secret");
+        if (uri == null) {
+            log.warn("Rejected audio stream connection without a URI");
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
+        // 토큰이 세션에 묶여 있어 먼저 어느 세션인지 정해야 검증할 수 있다.
         Long sessionId = parseSessionId(uri);
         if (sessionId == null) {
             log.warn("Rejected audio stream connection with unparsable session id: {}", uri.getPath());
+            session.close(CloseStatus.POLICY_VIOLATION);
+            return;
+        }
+        if (!hasValidSecret(uri, sessionId)) {
+            log.warn("Rejected audio stream connection with invalid secret for session {}", sessionId);
             session.close(CloseStatus.POLICY_VIOLATION);
             return;
         }
@@ -84,14 +90,14 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private boolean hasValidSecret(URI uri) {
+    private boolean hasValidSecret(URI uri, long sessionId) {
         String query = uri.getQuery();
         if (query == null) {
             return false;
         }
         for (String parameter : query.split("&")) {
             if (parameter.startsWith(SECRET_QUERY_KEY)) {
-                return endpoint.matches(parameter.substring(SECRET_QUERY_KEY.length()));
+                return endpoint.matches(sessionId, parameter.substring(SECRET_QUERY_KEY.length()));
             }
         }
         return false;
