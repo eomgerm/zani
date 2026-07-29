@@ -1,14 +1,19 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// 토큰은 인증 컨텍스트가 메모리에만 들고 있는 값이다. 여기서는 고정값으로 대체한다.
+const auth = vi.hoisted(() => ({ accessToken: "test-access-token" as string | null }));
+vi.mock("@/domains/auth", () => ({ useAuth: () => auth }));
+
 import { COACH_POLL_INTERVAL_MS, useCoachingStatus } from "./useCoachingStatus";
 import { COACH_POLL_FAILURE_THRESHOLD } from "../domain/coachingAvailability";
-import type { CoachPollResult } from "../infrastructure/coachPollApi";
+import { CoachPollError, type CoachPollResult } from "../infrastructure/coachPollApi";
 
 const idle: CoachPollResult = { triggerId: null, tip: null, unavailableReason: null };
 
 beforeEach(() => {
   vi.useFakeTimers();
+  auth.accessToken = "test-access-token";
 });
 
 afterEach(() => {
@@ -37,7 +42,18 @@ describe("useCoachingStatus", () => {
     await flushFirstPoll();
 
     expect(poll).toHaveBeenCalledTimes(1);
-    expect(poll).toHaveBeenCalledWith("s1", expect.anything());
+    // 쿠키는 refresh 전용이라 Bearer 토큰이 없으면 서버가 401 을 준다.
+    expect(poll).toHaveBeenCalledWith("s1", "test-access-token", expect.anything());
+  });
+
+  it("does not poll before a token is available", async () => {
+    auth.accessToken = null;
+    const poll = vi.fn().mockResolvedValue(idle);
+
+    renderHook(() => useCoachingStatus({ sessionId: "s1", enabled: true, poll }));
+    await advancePolls(3);
+
+    expect(poll).not.toHaveBeenCalled();
   });
 
   it("keeps polling every 10 seconds", async () => {
@@ -116,6 +132,50 @@ describe("useCoachingStatus", () => {
     await advancePolls(1);
 
     expect(result.current.availability).toBe("ACTIVE");
+  });
+
+  // 85 컨트롤러가 "클라이언트는 폴링을 멈춘다" 로 못박은 상태들이다. 다시 물어도 답이 같다.
+  it.each([
+    [409, "이미 종료된 세션"],
+    [403, "팁을 받을 수 없는 역할"],
+  ])("stops polling on %i (%s)", async (status) => {
+    const poll = vi.fn().mockRejectedValue(new CoachPollError("nope", status));
+
+    const { result } = renderHook(() =>
+      useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
+    );
+    await flushFirstPoll();
+    await advancePolls(5);
+
+    expect(poll).toHaveBeenCalledTimes(1);
+    // 다시 물을 수 없는 상태를 고장으로 알리지는 않는다.
+    expect(result.current.availability).toBe("ACTIVE");
+  });
+
+  // 이 폴링이 곧 트리거 판정이라(85) 겹쳐 돌면 분모 조회와 쿨타임 소모가 두 번 일어난다.
+  it("waits for the previous poll before scheduling the next", async () => {
+    let settle: (value: CoachPollResult) => void = () => {};
+    const poll = vi.fn().mockImplementation(
+      () =>
+        new Promise<CoachPollResult>((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    renderHook(() => useCoachingStatus({ sessionId: "s1", enabled: true, poll }));
+    await flushFirstPoll();
+
+    // 응답이 주기보다 오래 걸려도 다음 조회가 겹쳐 나가지 않는다.
+    await advancePolls(3);
+    expect(poll).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settle(idle);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await advancePolls(1);
+
+    expect(poll).toHaveBeenCalledTimes(2);
   });
 
   // 팁 카드(86)가 여기서 팁을 받아 간다.

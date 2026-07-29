@@ -3,8 +3,7 @@ import type { CoachTipUnavailableReason } from "../domain/coachingAvailability";
 /**
  * 강사 코칭 폴링 어댑터.
  *
- * 팁은 WebSocket 이 아니라 10초 REST 폴링으로 받는다(85 결정). 응답 하나에 대기 중인 팁과
- * 오디오 업로드 요청이 함께 실린다.
+ * 팁은 WebSocket 이 아니라 10초 REST 폴링으로 받는다(85 결정).
  *
  * <p>계약은 85 의 `CoachingTipResponse` 를 따른다. 팁이 없어도 200 에 본문을 담아 내려주므로
  * "지금 띄울 팁이 없는 것"과 "만들지 못한 것"을 구분할 수 있다.
@@ -46,7 +45,11 @@ export interface CoachPollResult {
   readonly unavailableReason: CoachTipUnavailableReason | null;
 }
 
-export type CoachPoller = (sessionId: string, signal?: AbortSignal) => Promise<CoachPollResult>;
+export type CoachPoller = (
+  sessionId: string,
+  accessToken: string,
+  signal?: AbortSignal,
+) => Promise<CoachPollResult>;
 
 export class CoachPollError extends Error {
   /** HTTP 상태. 네트워크 실패 등 응답이 없으면 0. */
@@ -56,6 +59,16 @@ export class CoachPollError extends Error {
     super(message);
     this.name = "CoachPollError";
     this.status = status;
+  }
+
+  /**
+   * 다시 조회해도 결과가 달라지지 않아 폴링을 멈춰야 하는지.
+   *
+   * 403 은 이 세션의 멤버가 아니거나 팁을 받을 수 없는 역할이고, 409 는 이미 종료된 수업이다
+   * (85 컨트롤러). 둘 다 10초 뒤에 다시 물어도 같은 답이 온다.
+   */
+  get shouldStopPolling(): boolean {
+    return this.status === 403 || this.status === 409;
   }
 }
 
@@ -101,7 +114,12 @@ const parseTip = (value: unknown): CoachTip | null => {
   };
 };
 
-export const pollCoach: CoachPoller = async (sessionId, signal) => {
+/**
+ * 서버는 Access Token 으로 요청자가 이 수업의 강사인지 판단한다. 쿠키는 refresh 전용이라 API
+ * 인증 경로가 아니므로 Bearer 헤더가 없으면 401 이다. 토큰은 인증 컨텍스트가 메모리에만 들고
+ * 있는 값을 그대로 전달받는다(저장·로그 금지).
+ */
+export const pollCoach: CoachPoller = async (sessionId, accessToken, signal) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
 
   let response: Response;
@@ -110,7 +128,7 @@ export const pollCoach: CoachPoller = async (sessionId, signal) => {
       `${apiBaseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/coaching-tip`,
       {
         method: "GET",
-        headers: { Accept: "application/json" },
+        headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
         credentials: "include",
         signal,
       },
