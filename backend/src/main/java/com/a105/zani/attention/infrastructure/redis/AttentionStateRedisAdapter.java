@@ -1,16 +1,21 @@
 package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.domain.model.AttentionState;
+import com.a105.zani.attention.domain.model.DetectionRunCounters;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
 
 /**
  * 참여도 판정 상태를 Redis에 보관한다. 네 종류의 키를 쓰며 모두 TTL로 자연 소멸한다.
@@ -20,6 +25,8 @@ import com.a105.zani.attention.domain.model.AttentionState;
  *   <li>{@code attention:{sessionId}:state:{participantId}} — 현재 판정 상태
  *   <li>{@code attention:{sessionId}:significant:{state}:{participantId}} — 최근 5분 유의 상태 흔적
  *   <li>{@code attention:{sessionId}:excluded:{participantId}} — 집단 비율 분모 제외 표시
+ *   <li>{@code attention:{sessionId}:run:{kind}:{participantId}} — 검출기 출력 연속 횟수(§4.1)
+ *   <li>{@code attention:{sessionId}:applied:{participantId}} — 마지막으로 반영한 판정 창 종료 시각
  * </ul>
  *
  * <p>현재 상태는 해시가 아니라 문자열 한 개로 쓴다. 해시(HSET)는 TTL을 유지하지 않아 EXPIRE를 따로 걸어야 하는데, 그 사이에 연결이 끊기면 TTL 없는 키가 남아 떠난 학생이 영원히 "측정
@@ -35,6 +42,34 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     private static final String MARKER_VALUE = "1";
     /** 현재 상태 값 구분자. {@code 상태|유효프레임비율|기록시각(epoch millis)} 순서로 담는다. */
     private static final String FIELD_SEPARATOR = "|";
+
+    /**
+     * 연속 카운터 두 개에 조작을 한 번에 적용한다.
+     *
+     * <p>INCR 과 EXPIRE 를 왕복 두 번으로 나누면 그 사이에 연결이 끊겼을 때 TTL 없는 카운터가 남아, 한참 뒤 재입장한 학생이 옛 값을 그대로 물려받는다. 같은 이유로 현재 상태도 SET 한
+     * 번으로 쓴다.
+     */
+    private static final RedisScript<List> ADVANCE_RUN = RedisScript.of("""
+            local function apply(key, step, ttl)
+              if step == 'INCREMENT' then
+                local value = redis.call('INCR', key)
+                redis.call('EXPIRE', key, ttl)
+                return value
+              elseif step == 'RESET' then
+                redis.call('DEL', key)
+                return 0
+              else
+                local value = redis.call('GET', key)
+                if value then
+                  redis.call('EXPIRE', key, ttl)
+                  return tonumber(value)
+                end
+                return 0
+              end
+            end
+            local ttl = tonumber(ARGV[3])
+            return { apply(KEYS[1], ARGV[1], ttl), apply(KEYS[2], ARGV[2], ttl) }
+            """, List.class);
 
     private final StringRedisTemplate redisTemplate;
 
@@ -104,6 +139,55 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
         }
     }
 
+    @Override
+    public DetectionRunCounters advanceRun(
+            long sessionId, long participantId, DetectionRunTransition transition, Duration ttl) {
+        try {
+            List<Long> counters = redisTemplate.execute(
+                    ADVANCE_RUN,
+                    List.of(lowRunKey(sessionId, participantId), unmeasurableRunKey(sessionId, participantId)),
+                    transition.lowEngagement().name(),
+                    transition.unmeasurable().name(),
+                    Long.toString(ttl.toSeconds()));
+            if (counters == null || counters.size() < 2) {
+                return DetectionRunCounters.none();
+            }
+            return new DetectionRunCounters(
+                    counters.get(0).intValue(), counters.get(1).intValue());
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void resetRuns(long sessionId, long participantId) {
+        try {
+            redisTemplate.delete(
+                    List.of(lowRunKey(sessionId, participantId), unmeasurableRunKey(sessionId, participantId)));
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
+        try {
+            String value = redisTemplate.opsForValue().get(appliedKey(sessionId, participantId));
+            return value == null ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(value));
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void recordAppliedOffsetMs(long sessionId, long participantId, long offsetMs, Duration ttl) {
+        try {
+            redisTemplate.opsForValue().set(appliedKey(sessionId, participantId), Long.toString(offsetMs), ttl);
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
     private String eventKey(long sessionId, long participantId, String clientEventId) {
         return "attention:" + sessionId + ":" + participantId + ":event:" + clientEventId;
     }
@@ -118,5 +202,17 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
 
     private String excludedKey(long sessionId, long participantId) {
         return "attention:" + sessionId + ":excluded:" + participantId;
+    }
+
+    private String lowRunKey(long sessionId, long participantId) {
+        return "attention:" + sessionId + ":run:low:" + participantId;
+    }
+
+    private String unmeasurableRunKey(long sessionId, long participantId) {
+        return "attention:" + sessionId + ":run:unmeasurable:" + participantId;
+    }
+
+    private String appliedKey(long sessionId, long participantId) {
+        return "attention:" + sessionId + ":applied:" + participantId;
     }
 }
