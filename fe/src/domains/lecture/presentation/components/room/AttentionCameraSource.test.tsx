@@ -54,11 +54,10 @@ const attention = vi.hoisted(() => ({
   calls: [] as Array<{ camera: string; track: MediaStreamTrack | null }>,
   status: "measuring" as string,
 }));
-vi.mock("@/domains/attention", async () => {
-  // 가용 상태 매핑은 실제 구현을 쓴다. 배럴 전체를 부르면 Worker·ONNX 까지 딸려 오므로 모듈만 집는다.
-  const { analysisAvailabilityOf } = await import("@/domains/attention/domain/analysisAvailability");
+vi.mock("@/domains/attention", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/domains/attention")>();
   return {
-    analysisAvailabilityOf,
+    ...actual,
     useAttentionDetection: (options: { camera: string; track: MediaStreamTrack | null }) => {
       attention.calls.push({ camera: options.camera, track: options.track });
       return { status: attention.status, prediction: null };
