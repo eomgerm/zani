@@ -95,6 +95,30 @@ mkdir -p ~/zani/ai/datasets/processed/engagenet && tar -xf ~/e1.tar -C ~/zani/ai
 `--extra vision`을 추가 설치한 뒤 `build-features`를 실행합니다. 원본 MP4(31.5 GB)는
 GPU가 기여하지 않는 구간이라 반입하지 않습니다.
 
+브라우저와 오프라인의 유효 프레임 비율 게이트를 정합한 뒤에는 먼저 60~69프레임
+불일치 대역을 집계합니다. 결과 JSON에는 전체·분할별·등급별 수와 clip ID가 기록됩니다.
+
+```bash
+cd ~/zani/ai
+uv run python -m zani_ai engagement audit-frame-gate \
+  --data-root datasets/raw/engagenet \
+  --raw-root datasets/processed/engagenet/raw_frames_v1 \
+  --output artifacts/engagement/frame-gate-audit.json
+```
+
+그다음 raw cache에서 98D 특징과 `manifest.json`을 재생성합니다. 기존 실험 산출물은
+삭제하지 않으며, 새 manifest SHA-256이 이전 결과의 재사용을 차단합니다.
+
+```bash
+cd ~/zani/ai
+uv run python -m zani_ai engagement build-features \
+  --data-root datasets/raw/engagenet \
+  --raw-root datasets/processed/engagenet/raw_frames_v1 \
+  --output datasets/processed/engagenet \
+  --schema mediapipe_98_v1 \
+  --sample-fps 10
+```
+
 ## 5. 학습 실행
 
 idle culler가 24시간 뒤 singleuser 서버를 내리고, 그 자식 프로세스는 함께 죽습니다.

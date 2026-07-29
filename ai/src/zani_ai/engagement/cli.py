@@ -176,6 +176,20 @@ def _build_features(args: argparse.Namespace) -> int:
     return 0
 
 
+def _audit_frame_gate(args: argparse.Namespace) -> int:
+    from zani_ai.engagement.frame_gate_audit import (
+        audit_frame_gate_gap,
+        write_frame_gate_audit,
+    )
+
+    report = audit_frame_gate_gap(_load_contract(args), args.raw_root)
+    write_frame_gate_audit(report, args.output)
+    print(
+        f"Frame gate audit | mismatched={report['mismatch_clip_count']} | {args.output}"
+    )
+    return 0
+
+
 def _resolve_device(args: argparse.Namespace) -> str:
     """The requested device, defaulting to CUDA only when it is actually there."""
     import torch
@@ -355,6 +369,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_data_options(build_features)
     build_features.set_defaults(handler=_build_features)
+
+    audit_frame_gate = commands.add_parser(
+        "audit-frame-gate",
+        help="count raw clips accepted offline but rejected by the browser frame gate",
+    )
+    _add_data_options(audit_frame_gate)
+    audit_frame_gate.add_argument("--raw-root", type=Path, required=True)
+    audit_frame_gate.add_argument("--output", type=Path, required=True)
+    audit_frame_gate.set_defaults(handler=_audit_frame_gate)
 
     train = commands.add_parser("train", help="train and evaluate the Transformer")
     train.add_argument("--features", type=Path, required=True)

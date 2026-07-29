@@ -38,6 +38,8 @@ from zani_ai.engagement.features import (
     extract_frame_features,
 )
 from zani_ai.engagement.segments import (
+    EXPECTED_FRAME_COUNT,
+    MINIMUM_VALID_FRAME_RATIO,
     InsufficientFaceCoverageError,
     TimedFeatures,
     aggregate_segments,
@@ -179,6 +181,8 @@ class ExtractionProvenance:
     window_seconds: float
     segment_count: int
     minimum_valid_frames: int
+    expected_frame_count: int
+    minimum_valid_frame_ratio: float
     raw_feature_dimension: int
     token_feature_dimension: int
     feature_schema: str
@@ -429,6 +433,14 @@ def _cached_clip(
                 return None
             if int(cache["label_index"].item()) != record.label_index:
                 return None
+            if (
+                "expected_frame_count" not in cache.files
+                or int(cache["expected_frame_count"].item()) != EXPECTED_FRAME_COUNT
+                or "minimum_valid_frame_ratio" not in cache.files
+                or float(cache["minimum_valid_frame_ratio"].item())
+                != MINIMUM_VALID_FRAME_RATIO
+            ):
+                return None
             tokens = np.asarray(cache["tokens"])
             if tokens.shape != (SEGMENT_COUNT, TOKEN_FEATURE_COUNT):
                 return None
@@ -466,6 +478,8 @@ def _save_tokens(
                     label_index=np.int64(record.label_index),
                     schema=np.asarray(SCHEMA_NAME),
                     source_fingerprint=np.asarray(fingerprint),
+                    expected_frame_count=np.int64(EXPECTED_FRAME_COUNT),
+                    minimum_valid_frame_ratio=np.float64(MINIMUM_VALID_FRAME_RATIO),
                 )
             else:
                 np.savez_compressed(
@@ -475,6 +489,8 @@ def _save_tokens(
                     schema=np.asarray(SCHEMA_NAME),
                     source_fingerprint=np.asarray(fingerprint),
                     extraction_fingerprint=np.asarray(extraction_fingerprint),
+                    expected_frame_count=np.int64(EXPECTED_FRAME_COUNT),
+                    minimum_valid_frame_ratio=np.float64(MINIMUM_VALID_FRAME_RATIO),
                 )
         temporary.replace(feature_path)
     finally:
@@ -667,6 +683,8 @@ def _build_provenance(
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
         "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "expected_frame_count": EXPECTED_FRAME_COUNT,
+        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
         "raw_feature_dimension": RAW_FEATURE_COUNT,
         "token_feature_dimension": TOKEN_FEATURE_COUNT,
         "feature_schema": SCHEMA_NAME,
@@ -697,6 +715,8 @@ def _build_provenance(
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        expected_frame_count=EXPECTED_FRAME_COUNT,
+        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
         raw_feature_dimension=RAW_FEATURE_COUNT,
         token_feature_dimension=TOKEN_FEATURE_COUNT,
         feature_schema=SCHEMA_NAME,

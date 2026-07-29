@@ -20,6 +20,20 @@ def _complete_window() -> list[TimedFeatures]:
     return frames
 
 
+def _window_with_valid_counts(counts: list[int]) -> list[TimedFeatures]:
+    frames: list[TimedFeatures] = []
+    for segment, valid_count in enumerate(counts):
+        for offset in range(5):
+            timestamp = segment * 0.5 + offset * 0.1
+            values = (
+                np.full(49, segment + offset, dtype=np.float32)
+                if offset < valid_count
+                else None
+            )
+            frames.append(TimedFeatures(timestamp, values))
+    return frames
+
+
 def test_aggregate_segments_returns_mean_then_population_std() -> None:
     tokens = aggregate_segments(_complete_window())
 
@@ -45,4 +59,42 @@ def test_aggregate_segments_rejects_segment_with_two_valid_frames() -> None:
         frames[index] = TimedFeatures(frames[index].timestamp_seconds, None)
 
     with pytest.raises(InsufficientFaceCoverageError, match="segment 0"):
+        aggregate_segments(frames)
+
+
+@pytest.mark.parametrize(
+    ("counts", "valid_frame_count"),
+    [
+        ([3] * 20, 60),
+        ([4] * 9 + [3] * 11, 69),
+    ],
+)
+def test_aggregate_segments_rejects_total_coverage_below_runtime_gate(
+    counts: list[int], valid_frame_count: int
+) -> None:
+    frames = _window_with_valid_counts(counts)
+
+    with pytest.raises(
+        InsufficientFaceCoverageError,
+        match=rf"{valid_frame_count} valid frames; 70 required",
+    ):
+        aggregate_segments(frames)
+
+
+def test_aggregate_segments_accepts_seventy_valid_frames() -> None:
+    frames = _window_with_valid_counts([4] * 10 + [3] * 10)
+
+    tokens = aggregate_segments(frames)
+
+    assert tokens.shape == (20, 98)
+
+
+def test_aggregate_segments_excludes_frame_at_window_end_from_total_coverage() -> None:
+    frames = _window_with_valid_counts([4] * 9 + [3] * 11)
+    frames.append(TimedFeatures(10.0, np.ones(49, dtype=np.float32)))
+
+    with pytest.raises(
+        InsufficientFaceCoverageError,
+        match=r"69 valid frames; 70 required",
+    ):
         aggregate_segments(frames)
