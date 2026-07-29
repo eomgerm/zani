@@ -199,6 +199,6 @@ class GetDenominatorServiceTest {
         }
 
         @Override
-        public void resetRuns(long sessionId, long participantId) {}
+        public void resetUnmeasurableRun(long sessionId, long participantId) {}
     }
 }
