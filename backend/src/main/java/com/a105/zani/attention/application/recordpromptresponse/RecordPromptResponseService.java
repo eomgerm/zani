@@ -18,8 +18,8 @@ import com.a105.zani.attention.application.exception.NotPromptStudentException;
 import com.a105.zani.attention.application.exception.StalePromptException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.CheckPrompt;
-import com.a105.zani.attention.domain.model.PromptAnswer;
 import com.a105.zani.attention.domain.repository.CheckPromptRepository;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantResult;
@@ -30,6 +30,9 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
  * 학생이 프롬프트에 낸 답을 기록하고, 집계가 곧바로 읽을 수 있게 현재 상태에 반영한다.
  *
  * <p>DB가 진실의 원천이다. 답은 수업 후 리포트의 근거이기도 하므로 Redis가 죽어도 저장은 끝까지 마치고, 코칭용 상태 갱신만 건너뛴다(티켓 예외 규약).
+ *
+ * <p><b>응답은 집계 분모를 바꾸지 않는다</b>(§5.2). 학생 답으로 분모에서 빼면 빠지는 쪽이 늘 유리해져 모두가 그 답을 고르고 분모가 계속 줄어든다. 분모 제외는 서버가 검출기 이벤트로 직접
+ * 판단한다(§7.1, {@code CollectAttentionEventService}).
  */
 @Slf4j
 @Service
@@ -59,9 +62,6 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
 
     /** 클라이언트 시계가 조금 빠른 것은 받아 준다. 이보다 미래면 시간선이 깨진 것으로 본다. */
     private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(1);
-
-    /** 분모 제외 표시의 최소 보관 기간. 이미 만료 시각을 지난 세션이라도 키를 심을 수 있어야 한다. */
-    private static final Duration MINIMUM_EXCLUSION_TTL = Duration.ofMinutes(1);
 
     /** 멱등 표시 보관 기간. 답을 받아 주는 창보다 넉넉히 잡아 늦은 재시도도 걸러낸다. */
     private static final Duration PROMPT_MARKER_TTL = Duration.ofMinutes(10);
@@ -119,8 +119,7 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
             throw exception;
         }
 
-        reflectOnCoachingStateAfterCommit(
-                sessionId, participantId, command, remainingSessionTime(participant.sessionExpiresAt()));
+        reflectOnCoachingStateAfterCommit(sessionId, participantId, command);
         return RecordPromptResponseResult.recorded();
     }
 
@@ -178,24 +177,22 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
      * 않는다.
      */
     private void reflectOnCoachingStateAfterCommit(
-            long sessionId, long participantId, RecordPromptResponseCommand command, Duration exclusionTtl) {
+            long sessionId, long participantId, RecordPromptResponseCommand command) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            reflectOnCoachingState(sessionId, participantId, command, exclusionTtl);
+            reflectOnCoachingState(sessionId, participantId, command);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                reflectOnCoachingState(sessionId, participantId, command, exclusionTtl);
+                reflectOnCoachingState(sessionId, participantId, command);
             }
         });
     }
 
     /** 저장소가 죽어도 예외를 밖으로 내보내지 않는다. 답은 이미 커밋됐고, 코칭만 잠시 멈춘다. */
-    private void reflectOnCoachingState(
-            long sessionId, long participantId, RecordPromptResponseCommand command, Duration exclusionTtl) {
+    private void reflectOnCoachingState(long sessionId, long participantId, RecordPromptResponseCommand command) {
         try {
-            applyDenominatorChange(sessionId, participantId, command.answer(), exclusionTtl);
             if (isTooOldToSteerCoaching(command)) {
                 // 지나간 답을 지금 상태로 찍으면 관찰 창이 새로 연장돼 옛 신호가 트리거를 계속 끌고 간다.
                 log.debug("코칭에 반영하기에는 오래된 답입니다. sessionId={}, promptId={}", sessionId, command.promptId());
@@ -205,18 +202,17 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
             // 다음 관측 한 건이 곧바로 상태를 다시 확정하고 분자 마커를 새로 건다.
             // 오래된 답에는 하지 않는다 — 그 사이 새로 쌓인 연속 판정까지 지운다.
             attentionStatePort.resetRuns(sessionId, participantId);
-            command.kind().confirmedState(command.answer()).ifPresent(state -> {
-                // 프롬프트에 답했다는 것은 학생이 화면 앞에 있다는 뜻이라, 신호 품질은 최댓값으로 본다.
-                // 이 값은 "측정 가능 학생 비율"에 쓰이며 프레임 판정이 아니라 상호작용에서 나온 확신이다.
-                attentionStatePort.recordCurrentState(
-                        sessionId,
-                        participantId,
-                        new AttentionSnapshot(state, MEASURED_BY_INTERACTION, clock.instant()),
-                        CURRENT_STATE_TTL);
-                if (state.isSignificant()) {
-                    attentionStatePort.markSignificant(sessionId, participantId, state, SIGNIFICANT_WINDOW);
-                }
-            });
+            AttentionState state = command.answer().confirmedState();
+            // 프롬프트에 답했다는 것은 학생이 화면 앞에 있다는 뜻이라, 신호 품질은 최댓값으로 본다.
+            // 프레임 판정이 아니라 상호작용에서 나온 확신이다.
+            attentionStatePort.recordCurrentState(
+                    sessionId,
+                    participantId,
+                    new AttentionSnapshot(state, MEASURED_BY_INTERACTION, clock.instant()),
+                    CURRENT_STATE_TTL);
+            if (state.isSignificant()) {
+                attentionStatePort.markSignificant(sessionId, participantId, state, SIGNIFICANT_WINDOW);
+            }
         } catch (RuntimeException exception) {
             log.warn(
                     "프롬프트 응답을 코칭 상태에 반영하지 못했습니다. 답은 저장됐고 코칭만 멈춥니다. sessionId={}, promptId={}",
@@ -224,27 +220,6 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
                     command.promptId(),
                     exception);
         }
-    }
-
-    /** 카메라를 켤 수 없다고 답하면 분모에서 빼고, 켤 수 있다고 답하면 되돌린다(확정 문서 §8). */
-    private void applyDenominatorChange(
-            long sessionId, long participantId, PromptAnswer answer, Duration exclusionTtl) {
-        if (answer.excludesFromDenominator()) {
-            // 카메라를 켤 수 없는 학생을 분모에 남기면, 무엇을 하든 비율이 낮아져 어려움을 겪는 학생들이 가려진다.
-            attentionStatePort.excludeFromDenominator(sessionId, participantId, exclusionTtl);
-        } else if (answer == PromptAnswer.CAMERA_AVAILABLE) {
-            attentionStatePort.includeInDenominator(sessionId, participantId);
-        }
-    }
-
-    /**
-     * 세션이 자동 종료될 때까지 남은 시간.
-     *
-     * <p>분모 제외는 그 수업 동안만 뜻이 있다(확정 문서 §8). 수업 최대 길이를 상수로 베껴 두면 세션 도메인이 값을 바꿀 때 조용히 어긋나므로, 세션이 알려 준 만료 시각에서 그때그때 계산한다.
-     */
-    private Duration remainingSessionTime(Instant sessionExpiresAt) {
-        Duration remaining = Duration.between(clock.instant(), sessionExpiresAt);
-        return remaining.compareTo(MINIMUM_EXCLUSION_TTL) > 0 ? remaining : MINIMUM_EXCLUSION_TTL;
     }
 
     /** 답이 코칭 신호로 쓰기에는 너무 오래됐는지. */
