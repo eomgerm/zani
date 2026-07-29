@@ -1,8 +1,13 @@
 package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import com.a105.zani.attention.domain.model.AttentionState;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
 
 /**
  * 참여도 판정 상태를 Redis에 보관하는 포트. 벤더(Redis) 타입은 인프라 어댑터 안에만 존재한다.
@@ -27,7 +32,7 @@ public interface AttentionStatePort {
     void recordCurrentState(long sessionId, long participantId, AttentionSnapshot snapshot, Duration ttl);
 
     /**
-     * 유의 상태를 5분 창에 남긴다. 창 안에 한 번이라도 있었으면 트리거 분자에 든다(확정 문서 §4).
+     * 유의 상태를 5분 창에 남긴다. 창 안에 한 번이라도 있었으면 트리거 분자에 든다(확정 문서 §7.3).
      *
      * <p>상태 종류별로 따로 남긴다. 팁 유형 선택이 CONFUSED·MISSED·NON_RESPONSE·UNMEASURABLE 네 비율을 각각 요구하므로, 한 참가자가 창 안에서 두 종류를 겪었다면 둘 다
      * 세어야 한다.
@@ -38,12 +43,64 @@ public interface AttentionStatePort {
     void markSignificant(long sessionId, long participantId, AttentionState state, Duration window);
 
     /**
-     * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 카메라 확인 프롬프트에 "예"(연결이 어렵다)라고 답한 학생이 대상이다(확정 문서 §1).
+     * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 측정 불가 상태가 1분 이상 이어진 학생이 대상이다(확정 문서 §7.1).
      *
-     * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다. 세션이 끝날 때까지 유지되므로 TTL 은 세션 최대 길이에 맞춘다.
+     * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다.
      */
     void excludeFromDenominator(long sessionId, long participantId, Duration ttl);
 
-    /** 분모 제외를 되돌린다. 카메라를 다시 쓸 수 있게 된 학생은 곧바로 분모로 돌아온다(확정 문서 §8). */
+    /** 분모 제외를 되돌린다. 카메라를 다시 쓸 수 있게 된 학생은 곧바로 분모로 돌아온다(확정 문서 §7.1). */
     void includeInDenominator(long sessionId, long participantId);
+
+    /**
+     * 주어진 참가자들 중 최근 5분 창에 각 유의 상태를 겪은 사람(§7.3).
+     *
+     * <p>유의 상태 넷만 담고, 아무도 없는 상태는 빈 집합으로 온다. "최근 5분"은 표시의 TTL 이 대신하므로 창을 따로 계산하지 않는다.
+     *
+     * <p>후보를 밖에서 받는 이유는 키 공간을 훑지 않기 위해서다(SCAN 금지). 분모에 든 학생만 물으면 되므로 그 ID 들만 조회한다.
+     */
+    Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds);
+
+    /**
+     * 주어진 참가자들 중 지금 분모에서 빠져 있는 사람.
+     *
+     * <p>후보를 밖에서 받는 이유는 키 공간을 훑지 않기 위해서다(SCAN 금지). 세는 후보는 presence 가 알고 있으므로 그 ID 들만 조회한다.
+     */
+    Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds);
+
+    /**
+     * 이 관측이 이미 반영된 것보다 새로우면 집계 상태에 반영한다. 더 최신 판정이 이미 반영돼 있으면 아무것도 하지 않고 빈 값을 돌려준다.
+     *
+     * <p>한 번에 갱신하는 것은 <b>순서 판단·{@code UNMEASURABLE} 연속 횟수(§7.3)·반영 지점·측정 불가 구간(§7.1)</b> 넷이다. 어떤 조작을 할지는
+     * 도메인({@link DetectionRunTransition})이 정하고, 저장소는 그것을 적용하기만 한다.
+     *
+     * <p>넷을 쪼개지 않는 이유:
+     *
+     * <ul>
+     *   <li>순서 판단을 밖에서 하면 겹쳐 들어온 두 판정이 둘 다 "내가 최신"으로 읽고, 나중에 쓴 옛 쪽이 반영 지점을 되돌린다.
+     *   <li>연속 횟수만 오르고 반영 지점이 빠지면 재시도가 그 사실을 알 길이 없어 같은 관측으로 한 번 더 올린다. 3연속이 관측 두 건으로 앞당겨진다.
+     *   <li>측정 불가 구간을 따로 재면 순서 판단을 통과한 관측들 사이에서도 순서가 뒤바뀔 수 있어, 구간 길이가 음수로 나온다. 여기서 재면 통과한 오프셋이 항상 증가하므로 그럴 수 없다.
+     * </ul>
+     *
+     * @param measurementSuspended 이번 관측이 측정 불가 상태인지({@code CAMERA_OFF}·{@code DETECTOR_UNAVAILABLE})
+     * @param observedOffsetMs 이 관측이 반영될 지점. 이미 반영된 지점보다 크지 않으면 거절된다
+     * @return 반영 결과. 더 최신 판정이 이미 반영돼 있었다면 빈 값
+     */
+    Optional<ObservationApplied> applyObservation(
+            long sessionId,
+            long participantId,
+            DetectionRunTransition transition,
+            boolean measurementSuspended,
+            long observedOffsetMs,
+            Duration ttl);
+
+    /**
+     * {@code UNMEASURABLE} 연속 횟수를 0으로 되돌린다.
+     *
+     * <p>프롬프트가 떠 있는 30초 동안의 관측은 믿을 수 없다(§5) — 학생은 화면 아래쪽 패널을 읽는 중이라 시선이 내려가고 얼굴 검출도 함께 실패한다. 그런데 §5는 그 동안에도 전송은 계속하라고
+     * 정하므로, 서버는 <b>프롬프트가 만들어낸</b> {@code UNMEASURABLE} 관측을 그대로 받아 센다. 답이 도착한 시점이 곧 프롬프트가 닫힌 시점이므로 여기서 그 구간을 지운다.
+     *
+     * <p>그러지 않으면 프롬프트에 성실히 답한 학생이 그 답 때문에 §7.3 분자에 들어간다.
+     */
+    void resetUnmeasurableRun(long sessionId, long participantId);
 }

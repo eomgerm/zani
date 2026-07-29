@@ -1,7 +1,7 @@
 "use client";
 
 import { useAttentionDetection, type CameraAvailability } from "@/domains/attention";
-import { useLocalCameraVideo } from "../../useLocalCameraVideo";
+import { useLocalCameraTrack } from "../../useLocalCameraTrack";
 
 export interface AttentionCameraSourceProps {
   /** 판정을 돌려도 되는 상태인지. 보통 `media.ready && media.cameraEnabled` 를 넘긴다. */
@@ -19,25 +19,16 @@ export interface AttentionCameraSourceProps {
  */
 export function AttentionCameraSource({ active, denied = false }: AttentionCameraSourceProps) {
   // LiveKit이 이미 열어 둔 로컬 카메라 트랙을 읽는다(카메라를 두 번 열지 않는다).
-  const { videoRef, attached } = useLocalCameraVideo();
-  // 트랙이 요소에 붙기 전에는 읽을 프레임이 없다. 연결 불가와 판정 UNMEASURABLE 은 다른 개념이다.
-  const camera: CameraAvailability = denied ? "denied" : active && attached ? "on" : "off";
+  const { track } = useLocalCameraTrack();
+  // 트랙이 publish 되기 전에는 읽을 프레임이 없다. 연결 불가와 판정 UNMEASURABLE 은 다른 개념이다.
+  const camera: CameraAvailability = denied ? "denied" : active && track !== null ? "on" : "off";
 
-  useAttentionDetection({ videoRef, camera });
+  useAttentionDetection({ camera, track });
 
-  return (
-    /*
-      display:none 이면 브라우저가 프레임 갱신을 멈춰 판정이 불가능하므로, 화면에서 감추되
-      렌더는 유지한다. 프레임은 이 기기 안에서만 쓰이고 서버로 나가지 않는다.
-    */
-    <video
-      ref={videoRef}
-      data-testid="attention-camera-source"
-      aria-hidden
-      muted
-      playsInline
-      autoPlay
-      className="pointer-events-none absolute size-px opacity-0"
-    />
-  );
+  /*
+    프레임은 Worker 가 `MediaStreamTrackProcessor` 로 트랙에서 직접 읽으므로 트랙을 붙일
+    video 요소가 필요 없다. 그래서 아무것도 그리지 않는다. 프레임은 이 기기 안에서만 쓰이고
+    서버로 나가지 않는다.
+  */
+  return null;
 }

@@ -44,7 +44,7 @@ public final class CheckPrompt {
             PromptAnswer answer,
             long shownOffsetMs,
             long respondedOffsetMs) {
-        boolean timedOut = answer == PromptAnswer.NO_RESPONSE;
+        boolean timedOut = answer == PromptAnswer.NON_RESPONSE;
         return new CheckPrompt(
                 null,
                 sessionId,

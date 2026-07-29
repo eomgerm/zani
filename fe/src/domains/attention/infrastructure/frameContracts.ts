@@ -14,14 +14,3 @@ export interface FrameLandmarkerValues {
   transform: readonly number[];
   blendshapes: ReadonlyMap<string, number>;
 }
-
-export interface TimedFrameFeatures {
-  timestampMs: number;
-  values: Float32Array | null;
-}
-
-export interface WindowOptions {
-  windowMs: number;
-  segmentCount: number;
-  minimumValidFrames: number;
-}

@@ -1,0 +1,18 @@
+{
+  "artifact_version": 1,
+  "schema": "mediapipe_98_v1",
+  "engine": {
+    "name": "onnxruntime-web",
+    "version": "1.27.0"
+  },
+  "files": {
+    "model": {
+      "name": "engagement.onnx",
+      "sha256": "cde0d02a114635bf330cf96df27a9323f9da9458ffad43a351f55edd862a7884"
+    },
+    "metadata": {
+      "name": "engagement.metadata.json",
+      "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2"
+    }
+  }
+}

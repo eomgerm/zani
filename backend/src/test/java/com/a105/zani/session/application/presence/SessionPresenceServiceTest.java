@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -215,16 +216,32 @@ class SessionPresenceServiceTest {
     private static final class InMemoryPresencePort implements SessionPresencePort {
 
         private final Set<String> presence = new HashSet<>();
+        private final Map<String, Instant> connectedSince = new HashMap<>();
         private final Map<Long, Instant> grace = new HashMap<>();
 
         @Override
-        public void recordHeartbeat(long sessionId, long participantId, Duration ttl) {
+        public Instant recordHeartbeat(long sessionId, long participantId, Instant now, Duration ttl) {
             presence.add(sessionId + ":" + participantId);
+            // 실제 어댑터는 시작 시각을 처음 한 번만 심고 이후 TTL 만 늘린다.
+            return connectedSince.computeIfAbsent(sessionId + ":" + participantId, key -> now);
         }
 
         @Override
         public void clearPresence(long sessionId, long participantId) {
             presence.remove(sessionId + ":" + participantId);
+            connectedSince.remove(sessionId + ":" + participantId);
+        }
+
+        @Override
+        public Map<Long, Instant> connectedSince(long sessionId, Collection<Long> participantIds) {
+            Map<Long, Instant> found = new HashMap<>();
+            for (Long participantId : participantIds) {
+                Instant startedAt = connectedSince.get(sessionId + ":" + participantId);
+                if (startedAt != null) {
+                    found.put(participantId, startedAt);
+                }
+            }
+            return found;
         }
 
         @Override
