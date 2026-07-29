@@ -60,6 +60,10 @@ Before you start work, read the guides relevant to your task:
 - Any LiveKit / real-time media integration →
   [`.agents/livekit-integration-context.md`](.agents/livekit-integration-context.md)
   first, then the relevant `livekit-*` guide(s).
+- Training on the remote L40S server →
+  [`.agents/ai-remote-l40s-guide.md`](.agents/ai-remote-l40s-guide.md).
+- Reading or publishing training metrics →
+  [`.agents/ai-experiment-results-guide.md`](.agents/ai-experiment-results-guide.md).
 
 Do not infer a project-wide convention from a single file when a guide defines a
 different rule.
@@ -79,6 +83,8 @@ implementation detail an agent should read before working).
 | [`.agents/livekit-overview.md`](.agents/livekit-overview.md) | Reference | Shared overview of sessions, LiveKit rooms, media, and recording | First, when starting LiveKit work |
 | [`.agents/livekit-frontend-guide.md`](.agents/livekit-frontend-guide.md) | Reference | Frontend LiveKit implementation guide | Frontend LiveKit work |
 | [`.agents/livekit-backend-guide.md`](.agents/livekit-backend-guide.md) | Reference | Backend LiveKit implementation guide and target contracts | Backend LiveKit work |
+| [`.agents/ai-remote-l40s-guide.md`](.agents/ai-remote-l40s-guide.md) | Reference | Remote L40S training environment, run procedure, and idle-cull limits | Before training on the remote server |
+| [`.agents/ai-experiment-results-guide.md`](.agents/ai-experiment-results-guide.md) | Guidance | Where training metrics live, how to read them, and what must never enter the results branch | Before reading or publishing training metrics |
 
 ## Adding Agent-Facing Documentation
 
