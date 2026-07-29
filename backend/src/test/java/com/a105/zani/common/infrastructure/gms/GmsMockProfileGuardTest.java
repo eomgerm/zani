@@ -24,8 +24,10 @@ class GmsMockProfileGuardTest {
                 Duration.ofSeconds(10),
                 Duration.ofSeconds(2),
                 "whisper-1",
-                Duration.ofSeconds(10),
-                "ko");
+                Duration.ofSeconds(20),
+                "ko",
+                "gpt-5.4-mini",
+                Duration.ofSeconds(6));
     }
 
     private StandardEnvironment environment(String... activeProfiles) {

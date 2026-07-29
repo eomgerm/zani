@@ -9,8 +9,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>여러 도메인이 공유하는 외부 시스템 설정이라 {@code common} 에 둔다({@link GmsClientConfig} 참고).
  *
- * <p>모델 이름은 실제 호출이 생기는 티켓에서 추가한다 — 전사 모델은 203, 팁 모델(gpt-5.4-mini)은 204. (ddd-development-guide ARCH-008)
- *
  * @param baseUrl GMS 프록시 base URL. 예: https://gms.ssafy.io/gmsapi/api.openai.com
  * @param apiKey GMS API key (Bearer)
  * @param mockEnabled true 면 실제 GMS 를 호출하지 않는다. 운영 프로파일에서 금지
@@ -19,6 +17,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param sttModel 전사 모델. 기본 whisper-1
  * @param transcribeTimeout 전사 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 전사는 실패로 끝난다
  * @param transcribeLanguage 전사 언어. 한국어 강의를 전제로 기본값은 ko 다. 비우면 GMS 가 자동 감지한다
+ * @param tipModel 팁 문구를 채우는 모델. 기본 gpt-5.4-mini
+ * @param tipTimeout 팁 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 팁은 만들지 않는다
  */
 @ConfigurationProperties(prefix = "gms")
 public record GmsProperties(
@@ -29,13 +29,15 @@ public record GmsProperties(
         Duration connectTimeout,
         String sttModel,
         Duration transcribeTimeout,
-        String transcribeLanguage) {
+        String transcribeLanguage,
+        String tipModel,
+        Duration tipTimeout) {
 
     /** record 기본 구현은 apiKey 를 그대로 출력한다. 설정 덤프·예외 메시지로 키가 새지 않도록 마스킹한다. */
     @Override
     public String toString() {
         return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s,"
-                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s]"
+                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s, tipModel=%s, tipTimeout=%s]"
                         .formatted(
                                 baseUrl,
                                 apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
@@ -44,6 +46,8 @@ public record GmsProperties(
                                 connectTimeout,
                                 sttModel,
                                 transcribeTimeout,
-                                transcribeLanguage);
+                                transcribeLanguage,
+                                tipModel,
+                                tipTimeout);
     }
 }
