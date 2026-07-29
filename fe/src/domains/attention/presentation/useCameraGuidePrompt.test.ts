@@ -11,8 +11,8 @@ import type { CameraAvailability } from "./useAttentionDetection";
 
 const DURATION_MS = CAMERA_GUIDE_SECONDS * 1000;
 
-function renderCameraGuide(initial: CameraAvailability) {
-  return renderHook(({ camera }) => useCameraGuidePrompt({ camera }), {
+function renderCameraGuide(initial: CameraAvailability, sessionId = "s1") {
+  return renderHook(({ camera }) => useCameraGuidePrompt({ sessionId, camera }), {
     initialProps: { camera: initial },
   });
 }
@@ -25,6 +25,7 @@ function hideTab() {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-28T09:00:00Z"));
+  sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -109,6 +110,31 @@ describe("useCameraGuidePrompt", () => {
     expect(result.current.prompt).toBeNull();
   });
 
+  // 새로고침으로 풀리면 "수업이 끝날 때까지"라는 약속이 깨진다(§5.2).
+  it("keeps the suppression after a remount, as a page refresh would cause", () => {
+    const first = renderCameraGuide("off");
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    act(() => first.result.current.answer("CANNOT_ENABLE"));
+    first.unmount();
+
+    const second = renderCameraGuide("off");
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS * 2));
+
+    expect(second.result.current.prompt).toBeNull();
+  });
+
+  it("keeps the suppression scoped to its own class", () => {
+    const first = renderCameraGuide("off", "session-a");
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    act(() => first.result.current.answer("CANNOT_ENABLE"));
+    first.unmount();
+
+    const other = renderCameraGuide("off", "session-b");
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+
+    expect(other.result.current.prompt).not.toBeNull();
+  });
+
   // 응답이 집계를 바꾸지 않으므로 서버로 보낼 것이 없다(§5.2·§6).
   it("never reaches the network for any answer", () => {
     const fetchSpy = vi.fn();
@@ -128,7 +154,7 @@ describe("useCameraGuidePrompt", () => {
   it("reports every close, including the one caused by the camera coming back", () => {
     const onClosed = vi.fn();
     const { result, rerender } = renderHook(
-      ({ camera }) => useCameraGuidePrompt({ camera, onClosed }),
+      ({ camera }) => useCameraGuidePrompt({ sessionId: "s1", camera, onClosed }),
       { initialProps: { camera: "off" as CameraAvailability } },
     );
 

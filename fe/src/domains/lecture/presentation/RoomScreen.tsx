@@ -139,6 +139,7 @@ function RoomScreenContent({
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않는다 — 판정 파이프라인(75)이 채운다.
   const cameraGuide = useCameraGuidePrompt({
+    sessionId,
     camera: media.cameraBlocked ? "denied" : media.cameraEnabled ? "on" : "off",
   });
   const [alertOpen, setAlertOpen] = useState(false);
