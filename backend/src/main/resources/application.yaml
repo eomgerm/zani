@@ -67,8 +67,12 @@ gms:
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
   stt-model: ${GMS_STT_MODEL:whisper-1}
-  # 전사 전용 timeout. 실측에서 300초 클립이 GMS 부하에 따라 14~31초 걸렸다. 재시도가 없으므로
-  # 초과하면 그 트리거의 팁 1회를 포기한다.
+  # 전사 전용 timeout. 재시도는 없다.
+  # 실측: 300초 클립이 GMS 부하에 따라 14~31초. 기준 문서 §9의 10초는 300초 클립에서 거의 항상
+  # 실패해 20초로 올렸다. 다만 실측 최대치(31초)까지 기다리지는 않는다 — 느린 응답을 끊는 쪽이
+  # 낫다고 봤다. 팁을 보내지 않으면 쿨타임이 시작되지 않아(§10 "알림 1회 후 10분") 다음 트리거가
+  # 부하가 덜한 시점에 다시 시도할 수 있고, 300초 전 발화에 40초 지연을 더한 팁은 강사에게
+  # 효용이 떨어진다. 운영 데이터가 쌓이면 팀에서 재조정한다.
   transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
   transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
 

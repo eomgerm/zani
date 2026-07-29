@@ -23,9 +23,11 @@ import com.a105.zani.common.infrastructure.gms.GmsProperties;
 /**
  * GMS whisper-1 로 오디오를 1회 전사한다. (S15P11A105-203)
  *
- * <p>{@code POST /v1/audio/transcriptions} 에 multipart 로 올린다. 재시도는 하지 않는다 — 팁은 트리거 후 십여 초 안에 떠야 해서 재시도 여유가 없다.
- * timeout·자격증명 오류·크레딧 소진·rate limit·서버 오류는 모두 {@link AudioClipTranscriptionFailedException} 으로 바꿔 던지고, 팁을 건너뛸지는 호출자가
- * 정한다(포트 계약).
+ * <p>{@code POST /v1/audio/transcriptions} 에 multipart 로 올린다. timeout·자격증명 오류·크레딧 소진·rate limit·서버 오류는 모두
+ * {@link AudioClipTranscriptionFailedException} 으로 바꿔 던지고, 팁을 건너뛸지는 호출자가 정한다(포트 계약).
+ *
+ * <p>재시도는 하지 않는다. 같은 트리거에서 다시 호출해도 오디오 구간은 그대로이고, timeout 이 났다는 것은 GMS 가 이미 느리다는 뜻이라 재시도가 지연만 배로 만든다. 팁을 보내지 않으면 쿨타임이
+ * 시작되지 않으므로(기준 문서 §10 "알림 1회 후 10분") 다음 트리거가 부하가 덜한 시점에 다시 시도할 수 있다. 실패 시 쿨타임 처리는 204 가 확정한다.
  *
  * <p>스트림은 메모리로만 읽는다. 디스크에 쓰지 않는 것이 "전사가 끝나면 오디오를 즉시 폐기한다"의 가장 강한 형태이고, multipart 요청에 Content-Length 를 실으려면 전체 길이를 알아야
  * 한다. 클립은 16kHz mono mp3 로 300초가 약 2.3MB 라 전량 적재해도 부담이 없다.
