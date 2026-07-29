@@ -29,6 +29,7 @@ import com.a105.zani.audioclip.infrastructure.buffer.InstructorAudioBuffer;
 import com.a105.zani.auth.application.port.TokenProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -194,6 +195,8 @@ class CoachingTipPollingIntegrationTest {
         // 파이프라인이 쿨타임(10분)보다 오래 걸린 상황이다. 그 사이 키가 만료되고 다음 폴링이 새 트리거를 연다.
         redisTemplate.delete(OPEN_KEY);
         String current = triggerIdOf(poll(INSTRUCTOR_ID));
+        // 둘이 실제로 다른 트리거여야 아래 단정이 뜻을 갖는다. 같은 값이면 무엇을 확인해도 통과한다.
+        assertNotEquals(stale, current);
 
         coachingTriggerStatePort.completeOutcome(
                 SESSION_ID,
