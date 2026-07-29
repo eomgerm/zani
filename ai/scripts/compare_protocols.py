@@ -49,6 +49,10 @@ class Protocol:
     metrics: dict[str, list[float]]
     adjacent_shares: list[float]
     pooled_confusion: np.ndarray
+    #: True when QWK/within-1 were recomputed from the confusion matrix because
+    #: the run predates those metrics being recorded.
+    derived_ordinal: bool
+    runtime: str
 
     @property
     def error_count(self) -> int:
@@ -69,6 +73,31 @@ def _adjacent_share(confusion: np.ndarray) -> float:
     return float(confusion[distance == 1].sum()) / errors
 
 
+def _within_one(confusion: np.ndarray) -> float:
+    grades = np.arange(confusion.shape[0])
+    distance = np.abs(grades[:, None] - grades[None, :])
+    return float(confusion[distance <= 1].sum()) / float(confusion.sum())
+
+
+def _quadratic_weighted_kappa(confusion: np.ndarray) -> float:
+    """QWK straight from the confusion matrix.
+
+    It only ever depended on the matrix -- observed disagreement over the
+    disagreement expected from the two marginals -- so protocols finalized
+    before the ordinal metrics existed (E0..E0-F) can still be compared without
+    retraining. Matches ``training.ordinal_quality``, including its NaN-to-zero
+    handling for a degenerate split.
+    """
+    grades = np.arange(confusion.shape[0])
+    weights = (grades[:, None] - grades[None, :]) ** 2
+    total = float(confusion.sum())
+    expected = np.outer(confusion.sum(axis=1), confusion.sum(axis=0)) / total
+    denominator = float((weights * expected).sum())
+    if denominator == 0:
+        return 0.0
+    return 1.0 - float((weights * confusion).sum()) / denominator
+
+
 def _load(directory: Path) -> Protocol:
     path = directory / RESULTS_FILENAME
     if not path.is_file():
@@ -79,13 +108,23 @@ def _load(directory: Path) -> Protocol:
     records = payload["seeds"]
     metrics: dict[str, list[float]] = {key: [] for key in METRICS}
     confusions = []
+    derived = False
     for record in records:
         test = record["test"]
+        confusion = np.asarray(test["confusion_matrix"], dtype=np.int64)
+        confusions.append(confusion)
+        fallbacks = {
+            "quadratic_weighted_kappa": _quadratic_weighted_kappa,
+            "within_one_accuracy": _within_one,
+        }
         for key in METRICS:
-            if key not in test:
+            if key in test:
+                metrics[key].append(float(test[key]))
+            elif key in fallbacks:
+                metrics[key].append(fallbacks[key](confusion))
+                derived = True
+            else:
                 raise SystemExit(f"{path} seed {record['seed']} has no {key}")
-            metrics[key].append(float(test[key]))
-        confusions.append(np.asarray(test["confusion_matrix"], dtype=np.int64))
     return Protocol(
         # The recorded protocol carries the `-fixed-checkpoint-test` suffix that
         # `finalize` adds; the bare name is what the ticket and README use.
@@ -96,7 +135,24 @@ def _load(directory: Path) -> Protocol:
         metrics=metrics,
         adjacent_shares=[_adjacent_share(matrix) for matrix in confusions],
         pooled_confusion=np.sum(confusions, axis=0),
+        derived_ordinal=derived,
+        runtime=_runtime(directory),
     )
+
+
+def _runtime(directory: Path) -> str:
+    """PyTorch build and card from ``summary.json``, for the environment check.
+
+    Two protocols measured under different PyTorch/CUDA builds are not a clean
+    A/B: the repo's own resume rules treat those keys as numerics-changing, so a
+    comparison that spans them confounds the protocol with the runtime.
+    """
+    path = directory / "summary.json"
+    if not path.is_file():
+        return "unknown"
+    environment = json.loads(path.read_text(encoding="utf-8")).get("environment", {})
+    card = (environment.get("cuda_device") or {}).get("name", "cpu")
+    return f"{environment.get('pytorch', '?')} / {card}"
 
 
 def _mean_sd(values: list[float]) -> str:
@@ -200,6 +256,13 @@ def main() -> int:
         print("!! 두 프로토콜의 feature manifest가 다릅니다 — 이 비교는 유효하지 않습니다")
         print(f"   {baseline.label}: {baseline.manifest_sha256[:16]}")
         print(f"   {variant.label}: {variant.manifest_sha256[:16]}\n")
+    if baseline.runtime != variant.runtime:
+        print("!! 두 프로토콜의 실행 환경이 다릅니다 — 차이에 런타임이 섞입니다")
+        print(f"   {baseline.label}: {baseline.runtime}")
+        print(f"   {variant.label}: {variant.runtime}\n")
+    for protocol in (baseline, variant):
+        if protocol.derived_ordinal:
+            print(f"   note: {protocol.label}의 QWK·within-1은 confusion matrix에서 복원했습니다")
 
     header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p")
     rows = [
