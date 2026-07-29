@@ -28,6 +28,14 @@ LOSS_SCHEMES = ("cross_entropy", "focal")
 #: batch composition rather than in the loss.
 SAMPLER_SCHEMES = ("none", "balanced")
 
+#: Target encodings for the softmax head. ``one_hot`` is the usual hard target;
+#: ``sord`` (Diaz & Marathe, CVPR 2019) spreads probability over the neighbouring
+#: grades by squared grade distance, which leaves the head and the argmax
+#: decoding untouched and changes only what the loss is asked to match. Kept
+#: beside the other scheme tuples so the CLI can list them without importing
+#: torch.
+TARGET_ENCODINGS = ("one_hot", "sord")
+
 _LABEL_LOOKUP = {label.casefold(): label for label in LABELS}
 _LABEL_LOOKUP["barely-engaged"] = "Barely-Engaged"
 _SPLIT_FILES: dict[SplitName, str] = {

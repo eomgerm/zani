@@ -26,6 +26,7 @@ from zani_ai.engagement.contracts import (
     LABELS,
     LOSS_SCHEMES,
     SAMPLER_SCHEMES,
+    TARGET_ENCODINGS,
     SplitName,
 )
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
@@ -113,6 +114,10 @@ class TrainingConfig:
     focal_gamma: float = 2.0
     # "none" | "balanced"; see SAMPLER_SCHEMES. Applies to the training split only.
     sampler: str = "none"
+    # "one_hot" | "sord"; see TARGET_ENCODINGS. Softmax head only -- the CORAL
+    # head has no class-probability target to soften.
+    target_encoding: str = "one_hot"
+    sord_alpha: float = 2.0
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -458,6 +463,53 @@ class FocalObjective:
         return out.softmax(dim=1)
 
 
+class SordObjective:
+    """SORD soft ordinal targets (Diaz & Marathe, CVPR 2019) on E0's softmax head.
+
+    ``target_j = softmax(-alpha * (i - j)^2)_j`` for true grade ``i``, which is
+    exactly the paper's ``exp(-phi(y_i, y_j))`` normalized over the grades with
+    ``phi`` the squared grade distance. Computing it as a softmax over the
+    negated penalties rather than an explicit ``exp`` and divide is the same
+    value without the overflow risk.
+
+    Unlike CORAL, which replaces the head with cumulative threshold logits and
+    failed here (E0-B, macro-F1 0.5185), nothing but the *target* moves: the
+    4-way head, the argmax decoding and every metric stay exactly as E0 has
+    them, so a difference is attributable to the target encoding alone.
+
+    ``alpha`` controls how much probability leaks to the neighbours -- large
+    values converge on one-hot, small ones on uniform -- so it is part of the
+    protocol identity rather than a tuning knob.
+
+    No class weighting: ``CrossEntropyLoss(weight=)`` scales each sample by the
+    weight of its *hard* label, which no longer means "per-class loss mass" once
+    the target is spread across grades. :func:`make_objective` rejects the
+    combination instead of silently reinterpreting it.
+    """
+
+    def __init__(self, num_classes: int = 4, alpha: float = 2.0) -> None:
+        if alpha <= 0:
+            raise ValueError(f"sord_alpha must be positive, got {alpha!r}")
+        self.num_classes = num_classes
+        self.alpha = alpha
+
+    def soft_targets(self, labels: Tensor) -> Tensor:
+        grades = torch.arange(self.num_classes, device=labels.device, dtype=torch.float32)
+        distance = labels.unsqueeze(1).to(grades.dtype) - grades.unsqueeze(0)  # [B,C]
+        return (-self.alpha * distance.square()).softmax(dim=1)
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        # `cross_entropy` accepts probability targets, giving the plain
+        # -sum(target * log_softmax(out)) mean over the batch.
+        return nn.functional.cross_entropy(out, self.soft_targets(labels))
+
+    def predict(self, out: Tensor) -> Tensor:
+        return out.argmax(dim=1)
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        return out.softmax(dim=1)
+
+
 class CoralObjective:
     """CORAL ordinal objective: k=num_classes-1 cumulative threshold logits."""
 
@@ -489,14 +541,33 @@ def make_objective(
     *,
     loss: str = "cross_entropy",
     focal_gamma: float = 2.0,
+    target_encoding: str = "one_hot",
+    sord_alpha: float = 2.0,
 ) -> Objective:
+    if target_encoding not in TARGET_ENCODINGS:
+        raise ValueError(
+            f"target_encoding must be one of {TARGET_ENCODINGS}, got {target_encoding!r}"
+        )
     # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
     # attribute); any config without a `head` defaults to softmax.
     if getattr(config, "head", "softmax") == "coral":
+        if target_encoding != "one_hot":
+            # CORAL's targets are cumulative 1[y>j] indicators, so there is no
+            # class distribution left for SORD to soften. Ignoring the request
+            # would let a run record a target encoding it never trained with.
+            raise ValueError("target_encoding is not applicable to the CORAL head")
         # CORAL replaces the softmax head itself, so `loss` does not apply.
         return CoralObjective(config.num_classes)
     if loss not in LOSS_SCHEMES:
         raise ValueError(f"loss must be one of {LOSS_SCHEMES}, got {loss!r}")
+    if target_encoding == "sord":
+        if loss != "cross_entropy":
+            raise ValueError("sord targets require loss='cross_entropy'")
+        if class_weights is not None:
+            # See SordObjective: per-class weights are defined against a hard
+            # label, which a spread target no longer has.
+            raise ValueError("sord targets cannot be combined with class weighting")
+        return SordObjective(config.num_classes, alpha=sord_alpha)
     if loss == "focal":
         return FocalObjective(gamma=focal_gamma, alpha=class_weights)
     return SoftmaxObjective(weight=class_weights)
@@ -718,6 +789,8 @@ def train_model(
         class_weights=weights if model_head == "softmax" else None,
         loss=config.loss,
         focal_gamma=config.focal_gamma,
+        target_encoding=config.target_encoding,
+        sord_alpha=config.sord_alpha,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     scheduler = (
@@ -817,12 +890,14 @@ __all__ = [
     "CLASS_WEIGHTING_SCHEMES",
     "LOSS_SCHEMES",
     "SAMPLER_SCHEMES",
+    "TARGET_ENCODINGS",
     "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",
     "FocalObjective",
     "Objective",
     "SoftmaxObjective",
+    "SordObjective",
     "TrainingConfig",
     "TrainingResult",
     "compute_feature_statistics",
