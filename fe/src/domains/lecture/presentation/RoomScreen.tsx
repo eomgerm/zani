@@ -6,6 +6,7 @@ import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import { publicMessages } from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
+import { useParticipantVideos } from "./useParticipantVideos";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -93,6 +94,8 @@ function RoomScreenContent({
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
+  // 로컬·원격 카메라 화면을 타일에 붙인다. 훅은 여기서 한 번만 부르고 ref 를 내려보낸다.
+  const participantVideos = useParticipantVideos();
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -194,6 +197,7 @@ function RoomScreenContent({
         <AttentionCameraSource
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
+          sessionId={sessionId}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -275,7 +279,8 @@ function RoomScreenContent({
             ) : view === "gallery" ? (
               <ParticipantGrid
                 participants={galleryParticipants}
-                currentParticipantId={localParticipantId ?? "p0"}
+                currentParticipantId={localParticipantId ?? undefined}
+                videoRefFor={participantVideos.refFor}
                 isInstructor={isInstructor}
                 narrow={panelOpen}
               />

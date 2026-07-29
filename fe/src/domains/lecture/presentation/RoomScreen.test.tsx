@@ -370,7 +370,8 @@ describe("RoomScreen attention wiring", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(lastProps()).toEqual({ active: true, denied: false });
+    // 판정 결과를 어느 세션으로 보고할지 함께 내려준다.
+    expect(lastProps()).toEqual({ active: true, denied: false, sessionId: "123" });
   });
 
   it("stops detection when the student turns the camera off", () => {
