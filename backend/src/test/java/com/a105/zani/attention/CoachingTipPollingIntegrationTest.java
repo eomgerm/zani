@@ -113,11 +113,15 @@ class CoachingTipPollingIntegrationTest {
     @Test
     void answersWithAnEmptyEnvelopeWhenThereIsNothingToShow() throws Exception {
         // 204 로 하면 본문이 없어 미표시 사유를 함께 전달할 수 없다.
+        //
+        // doesNotExist() 는 쓰지 않는다 — 명시적 null 과 키 없음을 둘 다 통과시켜 이 결정을 지켜 주지 못한다.
+        // isEmpty() 는 null 만 통과하고 키가 사라지면 실패한다. 직렬화 설정 한 줄(default-property-inclusion:
+        // non_null)이면 data 가 {} 로 나가는데, 그것을 잡아내는 것이 이 테스트의 목적이다.
         poll(INSTRUCTOR_ID)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.triggerId").doesNotExist())
-                .andExpect(jsonPath("$.data.tip").doesNotExist())
-                .andExpect(jsonPath("$.data.unavailableReason").doesNotExist());
+                .andExpect(jsonPath("$.data.triggerId").isEmpty())
+                .andExpect(jsonPath("$.data.tip").isEmpty())
+                .andExpect(jsonPath("$.data.unavailableReason").isEmpty());
     }
 
     @Test
@@ -129,8 +133,8 @@ class CoachingTipPollingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.triggerId").isString())
                 // 전사와 문구 생성을 기다리지 않으므로 첫 응답에는 팁이 없다.
-                .andExpect(jsonPath("$.data.tip").doesNotExist())
-                .andExpect(jsonPath("$.data.unavailableReason").doesNotExist());
+                .andExpect(jsonPath("$.data.tip").isEmpty())
+                .andExpect(jsonPath("$.data.unavailableReason").isEmpty());
 
         assertNotNull(redisTemplate.opsForValue().get(OPEN_KEY));
         // 쿨타임은 트리거를 연 순간부터다. TTL 이 없으면 키가 남아 다음 수업까지 트리거를 막는다.
