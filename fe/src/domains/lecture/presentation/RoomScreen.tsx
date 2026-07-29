@@ -112,7 +112,7 @@ function RoomScreenContent({
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt, sessionTitle } = useRoomConnection();
+  const { sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
   const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
@@ -180,6 +180,9 @@ function RoomScreenContent({
     ...(participant.id === meId ? me : {}),
   }));
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
+  // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
+  // 자리만 잡고 기다리지 않고 기본 문구를 쓴다. 그러지 않으면 스켈레톤이 영원히 뛴다.
+  const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
   const host = tileParticipants.find((participant) => participant.role === "instructor");
   const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
 
@@ -243,9 +246,19 @@ function RoomScreenContent({
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
-        {/* 강의명은 서버가 미디어 토큰 응답으로 내려준다. prop 은 테스트·스토리북 강제 지정용이다. */}
+        {/*
+          강의명은 서버가 미디어 토큰 응답으로 내려주므로 연결이 끝나기 전에는 알 수 없다.
+          그 동안 "수업" 같은 최종값처럼 보이는 문구를 그리면 제목이 바뀌는 것처럼 보인다. 자리만 잡아 둔다.
+          prop 은 테스트·스토리북 강제 지정용이다.
+        */}
         <div className="text-[14.5px] font-extrabold">
-          {roomTitle ?? sessionTitle ?? "수업"}
+          {title ?? (
+            <span
+              data-testid="room-title-loading"
+              aria-label="강의명을 불러오는 중"
+              className="inline-block h-[15px] w-28 animate-pulse rounded bg-white/15 align-middle"
+            />
+          )}
         </div>
         <div className="flex-1" />
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
@@ -353,13 +366,22 @@ function RoomScreenContent({
                     } ${host.cameraEnabled ? "" : "invisible"}`}
                   />
                 )}
+                {/* 강사 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
                 <div className="pointer-events-none absolute inset-0">
-                  <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                    강의: {hostName} 선생님
-                  </div>
-                  <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                    📶 {hostName} 선생님
-                  </div>
+                  {hostName === "" ? (
+                    <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                      강의자를 기다리고 있어요
+                    </div>
+                  ) : (
+                    <>
+                      <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                        강의: {hostName} 선생님
+                      </div>
+                      <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
+                        📶 {hostName} 선생님
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
