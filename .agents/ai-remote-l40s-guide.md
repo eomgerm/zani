@@ -290,7 +290,7 @@ be compared against the existing seeds.
 > There is no CLI command that produces this file yet.
 > `build_spatial_partitions` takes the dataset's mean landmark coordinates as
 > input, so it cannot be regenerated from constants alone. **Losing the file
-> makes E1 irreproducible, so keep a separate copy.**
+> makes the ST-GCN protocols irreproducible, so keep a separate copy.**
 
 ## Resuming in a different environment
 

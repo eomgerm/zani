@@ -87,6 +87,14 @@ git config --global credential.helper store
 The first push prompts for your GitLab username and the token and writes them to
 `~/.git-credentials`; every later cycle reuses them.
 
+The publisher also commits, so the clone needs a committer identity — a clone
+made only for reading code has none, and `git commit` then fails on every cycle:
+
+```bash
+git config --global user.email "you@example.com"
+git config --global user.name "Your Name"
+```
+
 Check on it through its log. A cycle that fails — a flaky network, a rejected
 push — prints and retries on the next interval rather than ending the loop:
 
@@ -94,9 +102,15 @@ push — prints and retries on the next interval rather than ending the loop:
 tail -f ~/publish.log
 ```
 
-The timestamp of the newest commit on the branch is a heartbeat. A live run keeps
-producing commits roughly every interval, so **commits that have stopped mean the
-training is gone**, not merely that the metrics are stale. Check it from any
+The timestamp of the newest commit on the branch tells you how far the run has
+got, but **it is not a per-interval heartbeat.** A commit appears only when a
+metric file's bytes change, and nothing changes between seed completions:
+`metrics.json` is written once after the epoch loop ends, and `record.json` and
+`summary.json` land at seed boundaries. So a five-seed run produces roughly five
+commits, and a gap as long as one seed's runtime is exactly what a healthy run
+looks like. Only a gap much longer than a single seed's runtime suggests the run
+is gone. Per-epoch progress is printed to the training log, not committed here,
+so that is where to look for finer-grained liveness. Check the branch from any
 checkout:
 
 ```bash
@@ -106,7 +120,10 @@ git -C <path> log -1 --format='%cr  %s' ai/results
 `run_seeds_parallel.sh` publishes once more when the run ends if you give it
 `RESULTS_WORKTREE`. The periodic publisher shares the singleuser server's cgroup
 and can be culled before the last seed lands, so this makes the final metrics
-independent of whether that loop is still alive:
+independent of whether that loop is still alive. When that loop *is* still alive
+it holds the lock, and the end-of-run publish says so and exits 0 rather than
+reporting a failure: the snapshot is on disk and the loop sends it within one
+interval.
 
 ```bash
 RESULTS_WORKTREE=~/zani-results CUDA_VISIBLE_DEVICES=2 setsid nohup \

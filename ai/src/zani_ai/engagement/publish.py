@@ -161,7 +161,14 @@ def require_results_branch(worktree: Path, branch: str) -> None:
 
 
 def commit_subject(source_label: str, written: Sequence[Path]) -> str:
-    """One scannable line naming where the snapshot came from and what moved."""
+    """One scannable line naming where the snapshot came from and what moved.
+
+    The first path segment is read as a protocol name, which holds only when
+    ``--artifacts`` points at the directory the protocol outputs sit under, as in
+    ``--artifacts artifacts/engagement``. Point it one level deeper and the
+    segment is a seed directory instead; the subject is then less informative but
+    still correct about the file count.
+    """
     protocols = sorted({path.parts[0] for path in written if path.parts})
     if len(protocols) > _MAX_LISTED_PROTOCOLS:
         listed = protocols[:_MAX_LISTED_PROTOCOLS]
