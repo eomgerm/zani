@@ -4,6 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
+  CoachingPromptPanel,
+  useCameraGuidePrompt,
+  usePostureGuidePrompt,
+  useUnderstandingCheckPrompt,
+  type CameraGuideCause,
+  type UnderstandingCheckResponse,
+} from "@/domains/attention";
+import {
   participantTiles,
   participants as participantsFixture,
   publicMessages,
@@ -40,6 +48,28 @@ type RoomScreenProps = {
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
+
+/** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
+const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
+  disabled: {
+    title: "카메라를 켜주세요 📷",
+    body: "수업 참여도를 확인하려면 카메라가 필요해요. 지금 켜실 수 있나요?",
+  },
+  denied: {
+    title: "카메라 권한이 필요해요 🔒",
+    body: "브라우저에서 카메라 권한을 허용해주세요. 주소창 옆 자물쇠 아이콘에서 바꿀 수 있어요.",
+  },
+  muted: {
+    title: "카메라를 사용할 수 없어요 ⚠️",
+    body: "다른 앱이 카메라를 사용 중인지 확인해주세요.",
+  },
+};
+
+const UNDERSTANDING_CHECK_FEEDBACK: Record<UnderstandingCheckResponse, string> = {
+  OK: "응답을 보냈어요.",
+  CONFUSED: "응답을 보냈어요.",
+  MISSED: "응답을 보냈어요.",
+};
 
 /** 상단 바의 참여자/채팅 토글 버튼 */
 function PanelToggle({
@@ -97,6 +127,12 @@ function RoomScreenContent({
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
+  // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
+  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
+  const connected = tileParticipants.length > 0;
+  const isInstructor =
+    !connected ||
+    tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -105,8 +141,17 @@ function RoomScreenContent({
   const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
+  const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
+  const postureGuide = usePostureGuidePrompt();
+  // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
+  const cameraGuide = useCameraGuidePrompt({
+    sessionId,
+    camera: media.cameraPermissionDenied ? "denied" : media.cameraEnabled ? "on" : "off",
+    // 학생 프롬프트라 강사 화면에서는 돌리지 않는다. 역할이 확인되기 전에는 isInstructor 가
+    // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
+    enabled: !isInstructor,
+  });
   const [alertOpen, setAlertOpen] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
@@ -123,13 +168,6 @@ function RoomScreenContent({
   const track = useCallback((id: ReturnType<typeof setTimeout>) => {
     timers.current.push(id);
   }, []);
-
-  // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
-  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
-  const connected = tileParticipants.length > 0;
-  const isInstructor =
-    !connected ||
-    tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
 
   // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
   // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
@@ -166,9 +204,10 @@ function RoomScreenContent({
     router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
   };
 
-  const answerPrompt = (text: string) => {
-    setPromptOpen(false);
-    setPromptToast(text);
+  const answerPrompt = async (value: UnderstandingCheckResponse) => {
+    const sent = await understandingCheck.respond(value);
+    if (!sent) return; // 전송 실패 — 조용히 넘어간다(수업 진행 우선).
+    setPromptToast(UNDERSTANDING_CHECK_FEEDBACK[value]);
     track(setTimeout(() => setPromptToast(null), 2600));
   };
 
@@ -202,6 +241,16 @@ function RoomScreenContent({
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
         <div className="flex-1" />
+        {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
+        {!isInstructor && process.env.NODE_ENV !== "production" && (
+          <button
+            type="button"
+            onClick={() => understandingCheck.trigger(`dev-${Date.now()}`)}
+            className="rounded-[11px] border border-[#262b42] bg-[#151830] px-3 py-[9px] font-sans text-[12px] text-panel-muted"
+          >
+            확인 프롬프트 테스트
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
@@ -372,43 +421,87 @@ function RoomScreenContent({
         )}
       </div>
 
-      {/* 확인 프롬프트 (학생) */}
-      {promptOpen && (
-        <div className="absolute bottom-24 left-1/2 z-50 w-[420px] -translate-x-1/2 animate-[zPop_.2s] rounded-[20px] bg-surface p-[22px] text-ink shadow-[0_20px_50px_#0008]">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-base font-extrabold">잠깐 확인할게요 ✋</span>
-            <span className="flex h-[34px] min-w-[34px] items-center justify-center rounded-[10px] bg-primary-soft px-2 font-mono text-[15px] font-black text-primary">
-              30
-            </span>
-          </div>
-          <p className="mb-4 text-sm text-ink-sub">
-            방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요.
-          </p>
-          <div className="flex gap-2.5">
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 고마워요!")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#d4f0e5] bg-primary-mint py-3.5 text-primary-dark"
-            >
-              👍 이해했어요
-            </button>
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 곧 짚어드릴게요.")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-[#f6e3a7] bg-warn-soft py-3.5 text-warn-text"
-            >
-              🤔 헷갈려요
-            </button>
-            <button
-              type="button"
-              onClick={() => answerPrompt("응답을 보냈어요. 관련 구간을 리포트에 담아둘게요.")}
-              className="z-btn flex-1 rounded-[14px] border-[1.5px] border-line-muted bg-primary-softer py-3.5 text-ink-muted"
-            >
-              😅 놓쳤어요
-            </button>
-          </div>
-        </div>
+      {/* 확인 프롬프트 (학생 전용 — 강사는 판정 대상이 아니다) */}
+      {!isInstructor && understandingCheck.prompt && (
+        <CoachingPromptPanel
+          title="잠깐 확인할게요 ✋"
+          body="방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요."
+          remainingMs={understandingCheck.prompt.remainingMs}
+          durationMs={understandingCheck.prompt.durationMs}
+          onSelect={answerPrompt}
+          options={[
+            {
+              value: "OK",
+              label: "이해했어요",
+              emoji: "👍",
+              toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+            },
+            {
+              value: "CONFUSED",
+              label: "헷갈려요",
+              emoji: "🤔",
+              toneClassName: "border-[#f6e3a7] bg-warn-soft text-warn-text",
+            },
+            {
+              value: "MISSED",
+              label: "놓쳤어요",
+              emoji: "😅",
+              toneClassName: "border-line-muted bg-primary-softer text-ink-muted",
+            },
+          ]}
+        />
       )}
+      {/* 자세 안내 (학생 전용) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
+      {!isInstructor && postureGuide.prompt && (
+        <CoachingPromptPanel
+          title="얼굴이 잘 보이지 않아요 🙂"
+          body="카메라에 얼굴이 나오도록 조정해주세요."
+          remainingMs={postureGuide.prompt.remainingMs}
+          durationMs={postureGuide.prompt.durationMs}
+          onSelect={postureGuide.acknowledge}
+          options={[
+            {
+              value: "ACKNOWLEDGED",
+              label: "확인",
+              toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+            },
+          ]}
+        />
+      )}
+
+      {/* 카메라 안내 (학생 전용) — 권한 거부·트랙 muted 는 답을 물어도 소용이 없어 확인만 받는다 */}
+      {!isInstructor && cameraGuide.prompt && (
+        <CoachingPromptPanel
+          title={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].title}
+          body={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].body}
+          remainingMs={cameraGuide.prompt.remainingMs}
+          durationMs={cameraGuide.prompt.durationMs}
+          onSelect={cameraGuide.answer}
+          options={
+            cameraGuide.prompt.cause === "disabled"
+              ? [
+                  {
+                    value: "WILL_ENABLE",
+                    label: "지금 켤게요",
+                    toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+                  },
+                  {
+                    value: "CANNOT_ENABLE",
+                    label: "못 켜요",
+                    toneClassName: "border-line-muted bg-primary-softer text-ink-muted",
+                  },
+                ]
+              : [
+                  {
+                    value: "WILL_ENABLE",
+                    label: "확인",
+                    toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+                  },
+                ]
+          }
+        />
+      )}
+
       {promptToast && (
         <div
           role="status"
