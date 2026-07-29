@@ -1,6 +1,21 @@
-import type { TimedFrameFeatures, WindowOptions } from "./frameContracts";
 import { ATTENTION_DETECTION_CONFIG } from "./attentionDetectionConfig";
-import { RAW_FEATURE_COUNT, TOKEN_FEATURE_COUNT } from "./frameFeatures";
+import {
+  ATTENTION_TOKEN_FEATURE_COUNT,
+  RAW_ATTENTION_FEATURE_COUNT,
+} from "./attentionFeatureSchema";
+
+interface TimedFrameFeatures {
+  readonly timestampMs: number;
+  readonly values: Float32Array | null;
+}
+
+export interface WindowOptions {
+  readonly windowMs: number;
+  readonly expectedFrameCount: number;
+  readonly segmentCount: number;
+  readonly minimumValidFrameRatio: number;
+  readonly minimumValidFrames: number;
+}
 
 /**
  * 10초 창을 20세그먼트로 나눠 세그먼트별 mean/std 를 잇는 20×98 토큰 생성기.
@@ -34,8 +49,8 @@ export class RollingFeatureWindow {
   }
 
   add(timestampMs: number, values: Float32Array | null): void {
-    if (values !== null && values.length !== RAW_FEATURE_COUNT) {
-      throw new Error(`프레임 특징은 ${RAW_FEATURE_COUNT}차원이어야 합니다.`);
+    if (values !== null && values.length !== RAW_ATTENTION_FEATURE_COUNT) {
+      throw new Error(`프레임 특징은 ${RAW_ATTENTION_FEATURE_COUNT}차원이어야 합니다.`);
     }
     this.startedAtMs ??= timestampMs;
     this.frames.push({ timestampMs, values });
@@ -77,10 +92,12 @@ export class RollingFeatureWindow {
       return { kind: "unmeasurable" };
     }
 
-    const output = new Float32Array(this.options.segmentCount * TOKEN_FEATURE_COUNT);
+    const output = new Float32Array(
+      this.options.segmentCount * ATTENTION_TOKEN_FEATURE_COUNT,
+    );
     buckets.forEach((bucket, segment) => {
-      const tokenOffset = segment * TOKEN_FEATURE_COUNT;
-      for (let feature = 0; feature < RAW_FEATURE_COUNT; feature += 1) {
+      const tokenOffset = segment * ATTENTION_TOKEN_FEATURE_COUNT;
+      for (let feature = 0; feature < RAW_ATTENTION_FEATURE_COUNT; feature += 1) {
         let sum = 0;
         for (const frame of bucket) sum += frame[feature] ?? 0;
         const mean = sum / bucket.length;
@@ -90,7 +107,7 @@ export class RollingFeatureWindow {
           squaredDifference += difference * difference;
         }
         output[tokenOffset + feature] = mean;
-        output[tokenOffset + RAW_FEATURE_COUNT + feature] = Math.sqrt(
+        output[tokenOffset + RAW_ATTENTION_FEATURE_COUNT + feature] = Math.sqrt(
           squaredDifference / bucket.length,
         );
       }

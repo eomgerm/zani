@@ -1,7 +1,9 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
+import type { AttentionFeatureDetector } from "../application/attentionDetectionPorts";
 import { attentionAssetPaths, type AttentionAssetPaths } from "./attentionAssets";
 import type { FrameLandmarkerValues } from "./frameContracts";
+import { extractFrameFeatures } from "./frameFeatures";
 import { columnMajorTransformToRowMajor } from "./faceTransform";
 
 /**
@@ -56,6 +58,20 @@ export async function createBrowserFaceLandmarker(
         transform: columnMajorTransformToRowMajor(matrix.data),
         blendshapes: new Map(categories.map((category) => [category.categoryName, category.score])),
       };
+    },
+    close(): void {
+      landmarker.close();
+    },
+  };
+}
+
+/** application 포트에 맞춰 MediaPipe 출력과 49차원 특징 추출을 한 어댑터로 감싼다. */
+export async function createAttentionFeatureDetector(): Promise<AttentionFeatureDetector> {
+  const landmarker = await createBrowserFaceLandmarker();
+  return {
+    detect(frame, timestampMs): Float32Array | null {
+      const detected = landmarker.detect(frame as TexImageSource, timestampMs);
+      return detected === null ? null : extractFrameFeatures(detected);
     },
     close(): void {
       landmarker.close();

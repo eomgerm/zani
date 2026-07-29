@@ -1,4 +1,4 @@
-import { ATTENTION_DETECTION_CONFIG } from "./attentionDetectionConfig";
+import { ATTENTION_DETECTION_CONFIG } from "../domain/attentionDetectionConfig";
 import type {
   TrackFrameWorkerPort,
   TrackFrameWorkerResponse,

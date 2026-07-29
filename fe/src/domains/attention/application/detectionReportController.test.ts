@@ -7,6 +7,7 @@ describe("createDetectionReportController", () => {
   it("reports a four-class outcome without exposing its probabilities", () => {
     const reports: DetectorReport[] = [];
     const controller = createDetectionReportController({
+      reportIntervalMs: 10_000,
       now: () => 12_345,
       onReport: (report) => reports.push(report),
     });
@@ -25,6 +26,7 @@ describe("createDetectionReportController", () => {
     vi.setSystemTime(0);
     const reports: DetectorReport[] = [];
     const controller = createDetectionReportController({
+      reportIntervalMs: 10_000,
       onReport: (report) => reports.push(report),
     });
 
@@ -50,6 +52,7 @@ describe("createDetectionReportController", () => {
     let visible = false;
     const reports: DetectorReport[] = [];
     const controller = createDetectionReportController({
+      reportIntervalMs: 10_000,
       isReportingAllowed: () => visible,
       onReport: (report) => reports.push(report),
     });

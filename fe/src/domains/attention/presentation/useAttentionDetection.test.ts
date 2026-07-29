@@ -1,16 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
-import type { DetectorReport } from "../domain/detectionOutcome";
-import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
 import type {
+  AttentionFeatureDetector,
+  AttentionFrame,
+  AttentionFrameSourceHandlers,
   AttentionInferenceClient,
   AttentionInferenceFailure,
-} from "../infrastructure/attentionInferenceClient";
-import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
-import type { BrowserFaceLandmarker } from "../infrastructure/faceLandmarker";
-import type { TrackProcessorFrameSourceOptions } from "../infrastructure/trackProcessorFrameSource";
+} from "../application/attentionDetectionPorts";
+import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
+import type { DetectorReport } from "../domain/detectionOutcome";
 import { useAttentionDetection } from "./useAttentionDetection";
 
 /**
@@ -19,31 +18,17 @@ import { useAttentionDetection } from "./useAttentionDetection";
  * 세션 간 결과 격리, 상위 통지.
  */
 
-/** 얼굴이 정면을 보는 유효한 MediaPipe 출력 1장. */
-function detectedFace(): FrameLandmarkerValues {
-  const landmarks = Array.from({ length: 478 }, () => ({ x: 0, y: 0, z: 0 }));
-  const set = (index: number, x: number, y: number) => {
-    landmarks[index] = { x, y, z: 0 };
-  };
-  set(33, 0.1, 0.5); set(133, 0.3, 0.5); set(159, 0.2, 0.4); set(145, 0.2, 0.6);
-  set(263, 0.9, 0.5); set(362, 0.7, 0.5); set(386, 0.8, 0.4); set(374, 0.8, 0.6);
-  for (let index = 468; index < 473; index += 1) set(index, 0.2, 0.55);
-  for (let index = 473; index < 478; index += 1) set(index, 0.8, 0.45);
-  set(1, 0.4, 0.6);
-  return {
-    landmarks,
-    transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-    blendshapes: new Map(BLENDSHAPE_NAMES.map((name, index) => [name, index / 100])),
-  };
+function detectedFeatures(): Float32Array {
+  return new Float32Array(49).fill(1);
 }
 
 function manualFrameSource() {
-  let options: TrackProcessorFrameSourceOptions | null = null;
+  let options: AttentionFrameSourceHandlers | null = null;
   const stop = vi.fn<() => void>(() => {
     options = null;
   });
   return {
-    createFrameSource(next: TrackProcessorFrameSourceOptions) {
+    createFrameSource(next: AttentionFrameSourceHandlers) {
       options = next;
       return { stop };
     },
@@ -52,7 +37,7 @@ function manualFrameSource() {
       return options === null ? 0 : 1;
     },
     emit(timestampMs: number) {
-      const frame = { close: vi.fn<() => void>() } as unknown as VideoFrame;
+      const frame: AttentionFrame = { close: vi.fn<() => void>() };
       options?.onFrame(frame, timestampMs);
     },
   };
@@ -67,7 +52,7 @@ describe("useAttentionDetection", () => {
   let frames: ReturnType<typeof manualFrameSource>;
   let close: Mock<() => void>;
   let terminate: Mock<AttentionInferenceClient["terminate"]>;
-  let createLandmarker: Mock<() => Promise<BrowserFaceLandmarker>>;
+  let createFeatureDetector: Mock<() => Promise<AttentionFeatureDetector>>;
   let onPrediction: Mock<(prediction: AttentionPrediction) => void>;
   let onStatusChange: Mock<(status: AttentionStatus) => void>;
   let onReport: ReturnType<typeof vi.fn<(report: DetectorReport) => void>>;
@@ -78,7 +63,7 @@ describe("useAttentionDetection", () => {
     frames = manualFrameSource();
     close = vi.fn();
     terminate = vi.fn();
-    createLandmarker = vi.fn(async () => ({ detect: () => detectedFace(), close }));
+    createFeatureDetector = vi.fn(async () => ({ detect: detectedFeatures, close }));
     onPrediction = vi.fn();
     onStatusChange = vi.fn();
     onReport = vi.fn();
@@ -110,7 +95,7 @@ describe("useAttentionDetection", () => {
           onStatusChange,
           onReport,
           createFrameSource: frames.createFrameSource,
-          createLandmarker,
+          createFeatureDetector,
           createInferenceClient,
         });
       },
@@ -129,7 +114,7 @@ describe("useAttentionDetection", () => {
     await act(async () => {});
 
     expect(result.current.status).toBe("idle");
-    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(createFeatureDetector).not.toHaveBeenCalled();
     expect(frames.pending).toBe(0);
   });
 
@@ -159,7 +144,7 @@ describe("useAttentionDetection", () => {
     await act(async () => {});
 
     expect(result.current.status).toBe("idle");
-    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(createFeatureDetector).not.toHaveBeenCalled();
     expect(onReport).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "CAMERA_OFF" }),
     );
@@ -169,7 +154,7 @@ describe("useAttentionDetection", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    createLandmarker.mockRejectedValue(new Error("wasm 404"));
+    createFeatureDetector.mockRejectedValue(new Error("wasm 404"));
 
     const view = render("on");
     await act(async () => {
@@ -198,7 +183,7 @@ describe("useAttentionDetection", () => {
     await act(async () => {});
 
     expect(result.current.status).toBe("permissionDenied");
-    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(createFeatureDetector).not.toHaveBeenCalled();
   });
 
   it("exposes the status the session reports", async () => {

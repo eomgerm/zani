@@ -1,21 +1,17 @@
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
 import type { DetectorOutput } from "../domain/detectionOutcome";
 import {
-  createBrowserFaceLandmarker,
-  type BrowserFaceLandmarker,
-} from "../infrastructure/faceLandmarker";
-import {
-  createAttentionInferenceClient,
-  type AttentionInferenceClient,
+  type AttentionFeatureDetector,
   type AttentionInferenceFailure,
-} from "../infrastructure/attentionInferenceClient";
-import { extractFrameFeatures } from "../infrastructure/frameFeatures";
-import { RollingFeatureWindow } from "../infrastructure/rollingFeatureWindow";
+  type CreateAttentionFeatureDetector,
+  type CreateAttentionFrameSource,
+  type CreateAttentionInferenceClient,
+  type AttentionFrameSource,
+  type AttentionFrame,
+} from "./attentionDetectionPorts";
 import {
-  createTrackProcessorFrameSource,
-  type TrackProcessorFrameSource,
-  type TrackProcessorFrameSourceOptions,
-} from "../infrastructure/trackProcessorFrameSource";
+  RollingFeatureWindow,
+} from "../domain/rollingFeatureWindow";
 
 /**
  * 카메라 한 세션 동안의 판정 유스케이스.
@@ -28,20 +24,13 @@ import {
  */
 
 export interface AttentionDetectionSessionOptions {
-  /** LiveKit 로컬 카메라 트랙. 복제본을 Worker의 TrackProcessor에서 읽는다. */
-  readonly track: MediaStreamTrack;
   onStatus(status: AttentionStatus): void;
   onPrediction(prediction: AttentionPrediction): void;
   /** 7종 검출기 출력. 확률은 로컬 소비자에게만 제공한다. */
   onDetection?(output: DetectorOutput): void;
-  readonly createFrameSource?: (
-    options: TrackProcessorFrameSourceOptions,
-  ) => TrackProcessorFrameSource;
-  createLandmarker?: () => Promise<BrowserFaceLandmarker>;
-  createInferenceClient?: (handlers: {
-    onPrediction(prediction: AttentionPrediction): void;
-    onFailure(failure: AttentionInferenceFailure): void;
-  }) => AttentionInferenceClient;
+  readonly createFrameSource: CreateAttentionFrameSource;
+  readonly createFeatureDetector: CreateAttentionFeatureDetector;
+  readonly createInferenceClient: CreateAttentionInferenceClient;
 }
 
 export interface AttentionDetectionSession {
@@ -53,18 +42,17 @@ export function startAttentionDetection(
   options: AttentionDetectionSessionOptions,
 ): AttentionDetectionSession {
   const {
-    track,
     onStatus,
     onPrediction,
     onDetection,
-    createFrameSource = createTrackProcessorFrameSource,
-    createLandmarker = createBrowserFaceLandmarker,
-    createInferenceClient = createAttentionInferenceClient,
+    createFrameSource,
+    createFeatureDetector,
+    createInferenceClient,
   } = options;
 
   let stopped = false;
-  let landmarker: BrowserFaceLandmarker | null = null;
-  let frameSource: TrackProcessorFrameSource | null = null;
+  let featureDetector: AttentionFeatureDetector | null = null;
+  let frameSource: AttentionFrameSource | null = null;
   let judgementDisabled = false;
   let hasPrediction = false;
   const featureWindow = new RollingFeatureWindow();
@@ -90,14 +78,13 @@ export function startAttentionDetection(
   });
 
   function sample(
-    active: BrowserFaceLandmarker,
-    frame: TexImageSource,
+    active: AttentionFeatureDetector,
+    frame: AttentionFrame,
     timestampMs: number,
   ): void {
     let values: Float32Array | null;
     try {
-      const detected = active.detect(frame, timestampMs);
-      values = detected === null ? null : extractFrameFeatures(detected);
+      values = active.detect(frame, timestampMs);
     } catch (error) {
       // 한 프레임의 실패로 루프를 끊지 않는다.
       console.warn("[attention] 프레임 특징 추출 실패", error);
@@ -135,22 +122,21 @@ export function startAttentionDetection(
 
   async function begin(): Promise<void> {
     try {
-      const created = await createLandmarker();
+      const created = await createFeatureDetector();
       if (stopped) {
         created.close();
         return;
       }
-      landmarker = created;
+      featureDetector = created;
       onStatus("collecting");
       frameSource = createFrameSource({
-        track,
         onFrame(frame, timestampMs) {
-          if (stopped || judgementDisabled || landmarker === null) {
+          if (stopped || judgementDisabled || featureDetector === null) {
             frame.close();
             return;
           }
           try {
-            sample(landmarker, frame, timestampMs);
+            sample(featureDetector, frame, timestampMs);
           } finally {
             frame.close();
           }
@@ -173,8 +159,8 @@ export function startAttentionDetection(
     stop(): void {
       stopped = true;
       stopFrameSource();
-      landmarker?.close();
-      landmarker = null;
+      featureDetector?.close();
+      featureDetector = null;
       inference.terminate();
       featureWindow.clear();
     },

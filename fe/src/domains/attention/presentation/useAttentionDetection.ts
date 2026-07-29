@@ -7,17 +7,21 @@ import {
   type AttentionDetectionSessionOptions,
 } from "../application/attentionDetectionSession";
 import { createDetectionReportController } from "../application/detectionReportController";
+import { ATTENTION_DETECTION_CONFIG } from "../domain/attentionDetectionConfig";
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
 import type { DetectorReport } from "../domain/detectionOutcome";
+import { createAttentionInferenceClient } from "../infrastructure/attentionInferenceClient";
+import { createAttentionFeatureDetector } from "../infrastructure/faceLandmarker";
+import { createTrackProcessorFrameSource } from "../infrastructure/trackProcessorFrameSource";
 
 /** 카메라 가용 상태. 스트림을 소유한 상위 화면이 판단해 내려준다. */
 export type CameraAvailability = "on" | "off" | "denied";
 
 export interface UseAttentionDetectionOptions
-  extends Pick<
+  extends Partial<Pick<
     AttentionDetectionSessionOptions,
-    "createLandmarker" | "createInferenceClient" | "createFrameSource"
-  > {
+    "createFeatureDetector" | "createInferenceClient" | "createFrameSource"
+  >> {
   /** `on` 이 아니면 판정을 중단하고 상태만 알린다. */
   readonly camera: CameraAvailability;
   /** Worker TrackProcessor가 읽을 LiveKit 로컬 카메라 트랙. */
@@ -26,7 +30,7 @@ export interface UseAttentionDetectionOptions
   onStatusChange?: (status: AttentionStatus) => void;
   onReport?: (report: DetectorReport) => void;
 }
-// `createLandmarker`·`createInferenceClient`·`createFrameSource` 는 세션을 다시 시작할지 판단하는
+// `createFeatureDetector`·`createInferenceClient`·`createFrameSource` 는 세션을 다시 시작할지 판단하는
 // 의존성이다. 넘길 거라면 반드시 안정적인 참조여야 한다(렌더마다 새로 만든 함수를 주면
 // 세션이 매 렌더 재시작되며 루프가 돈다). 생략하면 모듈 상수 기본값이 쓰인다.
 
@@ -67,7 +71,7 @@ export function useAttentionDetection(
     onPrediction,
     onStatusChange,
     onReport,
-    createLandmarker,
+    createFeatureDetector,
     createInferenceClient,
     createFrameSource,
   } = options;
@@ -103,6 +107,7 @@ export function useAttentionDetection(
 
   useEffect(() => {
     const reports = createDetectionReportController({
+      reportIntervalMs: ATTENTION_DETECTION_CONFIG.reportIntervalMs,
       isReportingAllowed: () => typeof document === "undefined" || !document.hidden,
       onReport: (report) => notifyRef.current.onReport?.(report),
     });
@@ -114,10 +119,11 @@ export function useAttentionDetection(
     }
 
     const session = startAttentionDetection({
-      track,
-      createLandmarker,
-      createInferenceClient,
-      createFrameSource,
+      createFeatureDetector: createFeatureDetector ?? createAttentionFeatureDetector,
+      createInferenceClient: createInferenceClient ?? createAttentionInferenceClient,
+      createFrameSource:
+        createFrameSource ??
+        ((handlers) => createTrackProcessorFrameSource({ track, ...handlers })),
       onStatus(next) {
         // 세션은 표본마다 상태를 보고한다. 값이 그대로면 같은 객체를 돌려주어
         // 초당 10번씩 리렌더가 도는 것을 막는다.
@@ -152,7 +158,7 @@ export function useAttentionDetection(
   }, [
     effectiveCamera,
     track,
-    createLandmarker,
+    createFeatureDetector,
     createInferenceClient,
     createFrameSource,
   ]);

@@ -2,41 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vite
 
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
 import type { DetectorOutput } from "../domain/detectionOutcome";
-import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
 import type {
+  AttentionFeatureDetector,
+  AttentionFrame,
+  AttentionFrameSourceHandlers,
   AttentionInferenceClient,
   AttentionInferenceFailure,
-} from "../infrastructure/attentionInferenceClient";
-import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
-import type { BrowserFaceLandmarker } from "../infrastructure/faceLandmarker";
-import type { TrackProcessorFrameSourceOptions } from "../infrastructure/trackProcessorFrameSource";
+} from "./attentionDetectionPorts";
 import { startAttentionDetection } from "./attentionDetectionSession";
 
-/** 얼굴이 정면을 보는 유효한 MediaPipe 출력 1장. */
-function detectedFace(): FrameLandmarkerValues {
-  const landmarks = Array.from({ length: 478 }, () => ({ x: 0, y: 0, z: 0 }));
-  const set = (index: number, x: number, y: number) => {
-    landmarks[index] = { x, y, z: 0 };
-  };
-  set(33, 0.1, 0.5); set(133, 0.3, 0.5); set(159, 0.2, 0.4); set(145, 0.2, 0.6);
-  set(263, 0.9, 0.5); set(362, 0.7, 0.5); set(386, 0.8, 0.4); set(374, 0.8, 0.6);
-  for (let index = 468; index < 473; index += 1) set(index, 0.2, 0.55);
-  for (let index = 473; index < 478; index += 1) set(index, 0.8, 0.45);
-  set(1, 0.4, 0.6);
-  return {
-    landmarks,
-    transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-    blendshapes: new Map(BLENDSHAPE_NAMES.map((name, index) => [name, index / 100])),
-  };
+function detectedFeatures(): Float32Array {
+  return new Float32Array(49).fill(1);
 }
 
 function manualFrameSource() {
-  let options: TrackProcessorFrameSourceOptions | null = null;
+  let options: AttentionFrameSourceHandlers | null = null;
   const stop = vi.fn<() => void>(() => {
     options = null;
   });
   return {
-    createFrameSource(next: TrackProcessorFrameSourceOptions) {
+    createFrameSource(next: AttentionFrameSourceHandlers) {
       options = next;
       return { stop };
     },
@@ -45,7 +30,7 @@ function manualFrameSource() {
       return options === null ? 0 : 1;
     },
     emit(timestampMs: number) {
-      const frame = { close: vi.fn<() => void>() } as unknown as VideoFrame;
+      const frame: AttentionFrame = { close: vi.fn<() => void>() };
       options?.onFrame(frame, timestampMs);
       return frame;
     },
@@ -54,11 +39,11 @@ function manualFrameSource() {
 
 describe("startAttentionDetection", () => {
   let frames: ReturnType<typeof manualFrameSource>;
-  let detect: Mock<BrowserFaceLandmarker["detect"]>;
+  let detect: Mock<AttentionFeatureDetector["detect"]>;
   let close: Mock<() => void>;
   let submit: Mock<AttentionInferenceClient["submit"]>;
   let terminate: Mock<AttentionInferenceClient["terminate"]>;
-  let createLandmarker: Mock<() => Promise<BrowserFaceLandmarker>>;
+  let createFeatureDetector: Mock<() => Promise<AttentionFeatureDetector>>;
   let statuses: AttentionStatus[];
   let predictions: AttentionPrediction[];
   let detections: DetectorOutput[];
@@ -68,11 +53,11 @@ describe("startAttentionDetection", () => {
 
   beforeEach(() => {
     frames = manualFrameSource();
-    detect = vi.fn(() => detectedFace());
+    detect = vi.fn(() => detectedFeatures());
     close = vi.fn();
     submit = vi.fn();
     terminate = vi.fn();
-    createLandmarker = vi.fn(async () => ({ detect, close }));
+    createFeatureDetector = vi.fn(async () => ({ detect, close }));
     statuses = [];
     predictions = [];
     detections = [];
@@ -95,9 +80,8 @@ describe("startAttentionDetection", () => {
 
   function start() {
     return startAttentionDetection({
-      track: {} as MediaStreamTrack,
       createFrameSource: frames.createFrameSource,
-      createLandmarker,
+      createFeatureDetector,
       createInferenceClient,
       onStatus: (status) => statuses.push(status),
       onPrediction: (prediction) => predictions.push(prediction),
@@ -171,18 +155,16 @@ describe("startAttentionDetection", () => {
 
   it("consumes worker track frames while the page is hidden", async () => {
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
-    const track = { clone: vi.fn() } as unknown as MediaStreamTrack;
     const sourceStop = vi.fn();
-    let emitFrame: ((frame: VideoFrame, timestampMs: number) => void) | undefined;
-    const videoFrame = { close: vi.fn() } as unknown as VideoFrame;
+    let emitFrame: ((frame: AttentionFrame, timestampMs: number) => void) | undefined;
+    const videoFrame: AttentionFrame = { close: vi.fn() };
 
     const session = startAttentionDetection({
-      track,
       createFrameSource: ({ onFrame }) => {
         emitFrame = onFrame;
         return { stop: sourceStop };
       },
-      createLandmarker,
+      createFeatureDetector,
       createInferenceClient,
       onStatus: (status) => statuses.push(status),
       onPrediction: (prediction) => predictions.push(prediction),
@@ -205,11 +187,11 @@ describe("startAttentionDetection", () => {
     detect.mockImplementation(() => {
       const current = frameIndex;
       frameIndex += 1;
-      if (current >= 100) return detectedFace();
+      if (current >= 100) return detectedFeatures();
       const segment = Math.floor(current / 5);
       const offset = current % 5;
       const validFrames = segment < 9 ? 4 : 3;
-      return offset < validFrames ? detectedFace() : null;
+      return offset < validFrames ? detectedFeatures() : null;
     });
     start();
 
@@ -259,7 +241,7 @@ describe("startAttentionDetection", () => {
   });
 
   it("reports unavailable when MediaPipe cannot start", async () => {
-    createLandmarker.mockRejectedValue(new Error("wasm 404"));
+    createFeatureDetector.mockRejectedValue(new Error("wasm 404"));
     start();
     await Promise.resolve();
     await Promise.resolve();

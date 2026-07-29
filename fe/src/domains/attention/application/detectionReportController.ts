@@ -3,9 +3,9 @@ import type {
   DetectorReport,
   ImmediateDetectorOutput,
 } from "../domain/detectionOutcome";
-import { ATTENTION_DETECTION_CONFIG } from "../infrastructure/attentionDetectionConfig";
 
 export interface DetectionReportControllerOptions {
+  readonly reportIntervalMs: number;
   readonly now?: () => number;
   readonly isReportingAllowed?: () => boolean;
   onReport(report: DetectorReport): void;
@@ -21,7 +21,12 @@ export interface DetectionReportController {
 export function createDetectionReportController(
   options: DetectionReportControllerOptions,
 ): DetectionReportController {
-  const { now = Date.now, isReportingAllowed = () => true, onReport } = options;
+  const {
+    reportIntervalMs,
+    now = Date.now,
+    isReportingAllowed = () => true,
+    onReport,
+  } = options;
   let interval: ReturnType<typeof setInterval> | null = null;
 
   const emit = (output: DetectorOutput): void => {
@@ -42,7 +47,7 @@ export function createDetectionReportController(
     startImmediate(output): void {
       stop();
       emit(output);
-      interval = setInterval(() => emit(output), ATTENTION_DETECTION_CONFIG.reportIntervalMs);
+      interval = setInterval(() => emit(output), reportIntervalMs);
     },
     stop,
   };
