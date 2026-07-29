@@ -9,7 +9,12 @@ package com.a105.zani.attention.application.port;
  * <p>이 값이 있다고 코칭 기능이 죽은 것은 아니다. 다음 트리거에서 복구되므로 강사 화면의 비활성 표시(티켓 76)는 폴링 자체가 연속 실패할 때만 쓴다.
  */
 public enum CoachingTipUnavailableReason {
-    /** 강사 오디오 버퍼가 최소 길이에 못 미쳐 전사할 것이 없었다. */
+    /**
+     * 전사 결과가 비어 있었다(강사가 그 구간에 말하지 않은 경우 등).
+     *
+     * <p>버퍼가 최소 길이에 못 미치는 경우는 여기 오지 않는다. 그때는 트리거 자체를 열지 않아 {@code triggerId} 가 없고, {@link CoachingOutcome} 은 사유만 있는 값을
+     * 만들 수 없다.
+     */
     NO_TRANSCRIPT,
 
     /** 전사 호출이 실패했다(타임아웃·크레딧 소진 포함). */
