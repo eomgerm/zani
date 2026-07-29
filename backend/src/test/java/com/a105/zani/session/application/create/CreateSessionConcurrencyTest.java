@@ -1,5 +1,6 @@
 package com.a105.zani.session.application.create;
 
+import java.time.Clock;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -17,6 +18,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.a105.zani.session.application.exception.ActiveSessionExistsException;
 import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionParticipant;
+import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 import com.a105.zani.session.infrastructure.redis.SessionActivationLockRedisAdapter;
 
@@ -46,8 +49,9 @@ class CreateSessionConcurrencyTest {
 
         SessionActivationLockRedisAdapter lockPort = new SessionActivationLockRedisAdapter(redisTemplate);
         SessionRepository sessionRepository = new InMemorySessionRepository();
-        createSessionService =
-                new CreateSessionService(new NewSessionSaver(sessionRepository), lockPort, new InviteCodeGenerator());
+        NewSessionSaver saver =
+                new NewSessionSaver(sessionRepository, new InMemoryParticipantRepository(), statusChange -> {});
+        createSessionService = new CreateSessionService(saver, lockPort, new InviteCodeGenerator(), Clock.systemUTC());
 
         redisTemplate.delete("session:active-lock:" + INSTRUCTOR_ID);
     }
@@ -116,10 +120,60 @@ class CreateSessionConcurrencyTest {
         }
 
         @Override
+        public java.util.List<Session> findPreparingCreatedBefore(java.time.Instant createdBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
+        public java.util.List<Session> findNotePendingDueBefore(java.time.Instant dueBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))
                     .findFirst();
+        }
+
+        @Override
+        public java.util.Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+            return findByInviteCode(inviteCode);
+        }
+    }
+
+    private static class InMemoryParticipantRepository implements SessionParticipantRepository {
+
+        private final Map<Long, SessionParticipant> store = new ConcurrentHashMap<>();
+
+        @Override
+        public java.util.Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
+            return store.values().stream()
+                    .filter(p -> p.sessionId().equals(sessionId) && p.userId().equals(userId))
+                    .findFirst();
+        }
+
+        @Override
+        public java.util.Optional<SessionParticipant> findById(Long id) {
+            return java.util.Optional.ofNullable(store.get(id));
+        }
+
+        @Override
+        public java.util.List<SessionParticipant> findBySessionId(Long sessionId) {
+            return store.values().stream()
+                    .filter(p -> p.sessionId().equals(sessionId))
+                    .toList();
+        }
+
+        @Override
+        public long countBySessionId(Long sessionId) {
+            return findBySessionId(sessionId).size();
+        }
+
+        @Override
+        public SessionParticipant save(SessionParticipant sessionParticipant) {
+            store.put(sessionParticipant.id(), sessionParticipant);
+            return sessionParticipant;
         }
     }
 }

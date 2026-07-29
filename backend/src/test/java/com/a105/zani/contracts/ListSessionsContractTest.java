@@ -51,13 +51,21 @@ class ListSessionsContractTest {
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
         insertInstructorIfAbsent();
+        // 활성 세션 잠금은 TTL 이 3시간이다. 앞선 실행이 정리 전에 실패하면 키가 남아 이후 생성이 계속 409 가 되므로,
+        // 정리에만 의존하지 않고 시작할 때도 반납한다.
+        activationLockPort.release(INSTRUCTOR_ID);
     }
 
     @AfterEach
     void tearDown() {
+        // 세션 생성이 강사 참가 관계와 상태 이력을 함께 만들므로, 자식 행을 먼저 지워야 FK 제약에 걸리지 않는다.
         sessionJpaRepository.findAll().stream()
                 .filter(session -> session.getHostMemberId().equals(INSTRUCTOR_ID))
-                .forEach(sessionJpaRepository::delete);
+                .forEach(session -> {
+                    jdbcTemplate.update("DELETE FROM session_status_changes WHERE session_id = ?", session.getId());
+                    jdbcTemplate.update("DELETE FROM session_participants WHERE session_id = ?", session.getId());
+                    sessionJpaRepository.delete(session);
+                });
         activationLockPort.release(INSTRUCTOR_ID);
         jdbcTemplate.update("DELETE FROM members WHERE id = ?", INSTRUCTOR_ID);
     }
