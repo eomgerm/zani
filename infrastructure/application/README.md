@@ -1,6 +1,6 @@
 # Application Stack
 
-This stack runs the `dev` branch backend on the existing single EC2 host. The frontend is deployed separately with Vercel.
+This stack runs the `dev` branch backend on the existing single EC2 host. The frontend is deployed as a separate container on the same host.
 
 ## Network layout
 
@@ -9,7 +9,7 @@ This stack runs the `dev` branch backend on the existing single EC2 host. The fr
 - MySQL and Application Redis are reachable only inside `zani-application-internal`.
 - Media Redis remains a separate service and data store.
 - No additional UFW rule is required for this stack.
-- Nginx routes only backend API and Swagger paths; Vercel serves the frontend.
+- Nginx routes backend API and Swagger paths to this stack and serves the separately deployed frontend at `/`.
 
 ## Required secret files
 
@@ -22,7 +22,14 @@ The Compose file reads these files from `/etc/zani/application/secrets`:
 
 Do not commit secret values to Git. Creating the server-side directory and applying restrictive file permissions requires explicit operator approval.
 
-`FRONTEND_ORIGIN` must be supplied to Docker Compose as the stable HTTPS Vercel deployment origin. Vercel preview URLs are not covered by the current exact-origin CORS configuration.
+The root-owned `/etc/zani/application/runtime.env` file supplies non-secret runtime configuration. Use `runtime.env.example` as the field-name reference, but enter the actual Google Web Client ID only on the server:
+
+```dotenv
+FRONTEND_ORIGIN=https://i15a105.p.ssafy.io
+GOOGLE_OAUTH_CLIENT_ID=example.apps.googleusercontent.com
+```
+
+`GOOGLE_OAUTH_CLIENT_ID` is the Google Web Client ID used to validate the ID-token audience. It is an identifier, not a client secret. The same value is injected into the frontend build as `NEXT_PUBLIC_GOOGLE_CLIENT_ID` by the frontend Compose configuration.
 
 ## Schema policy
 
