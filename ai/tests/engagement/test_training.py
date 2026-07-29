@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +12,15 @@ import torch
 
 from zani_ai.engagement import training as training_module
 from zani_ai.engagement.model import ModelConfig
+from zani_ai.engagement.reliability import (
+    ClipReliability,
+    ReliabilityCriteria,
+    _json_safe,
+    assess_reliability_signal,
+    summarize_reliability,
+)
 from zani_ai.engagement.training import (
+    AdjacentSmoothingObjective,
     CachedFeatureDataset,
     CoralObjective,
     FeatureEntry,
@@ -95,6 +105,135 @@ def test_train_model_writes_best_checkpoint_and_test_metrics(tmp_path: Path) -> 
     assert {"epoch", "macro_f1", "quadratic_weighted_kappa"} <= set(
         metrics["validation_history"][0]
     )
+
+
+def _write_reliability_manifest(features: Path, path: Path, *, decision: str = "go") -> None:
+    feature_hash = hashlib.sha256((features / "manifest.json").read_bytes()).hexdigest()
+    feature_manifest = json.loads((features / "manifest.json").read_text(encoding="utf-8"))
+    records = [
+        ClipReliability.from_seed_logits(
+            clip_id=str(item["clip_id"]),
+            split=str(item["split"]),
+            label=int(item["label_index"]),
+            seeds=(42, 43, 44, 45, 46),
+            seed_logits=tuple(
+                tuple(4.0 if column == prediction else -4.0 for column in range(4))
+                for prediction in (
+                    (0, 1, 0, 1, 0)
+                    if decision == "go" and item["clip_id"] == "train-4"
+                    else (
+                        (2, 2, 3, 2, 2)
+                        if decision == "go" and item["clip_id"] == "valid-3"
+                        else (int(item["label_index"]),) * 5
+                    )
+                )
+            ),
+        )
+        for item in feature_manifest["included"]
+        if item["split"] in ("train", "valid")
+    ]
+    criteria = ReliabilityCriteria()
+    assessment = assess_reliability_signal(records, criteria=criteria)
+    assert assessment.decision == decision
+    path.write_text(
+        json.dumps(
+            _json_safe({
+                "schema_version": "label_reliability_v1",
+                "decision": assessment.decision,
+                "inputs": {"feature_manifest": {"sha256": feature_hash}},
+                "criteria": asdict(criteria),
+                "assessment": asdict(assessment),
+                "summary": asdict(summarize_reliability(records)),
+                "clips": [asdict(record) for record in records],
+            })
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_adjacent_smoothing_keeps_equal_true_class_mass_at_edges_and_middle() -> None:
+    objective = AdjacentSmoothingObjective(num_classes=4, neighbor_mass=0.2)
+    labels = torch.tensor([0, 1, 2, 3, 1])
+    ambiguous = torch.tensor([True, True, True, True, False])
+
+    targets = objective.soft_targets(labels, ambiguous)
+
+    torch.testing.assert_close(
+        targets,
+        torch.tensor(
+            [
+                [0.8, 0.2, 0.0, 0.0],
+                [0.1, 0.8, 0.1, 0.0],
+                [0.0, 0.1, 0.8, 0.1],
+                [0.0, 0.0, 0.2, 0.8],
+                [0.0, 1.0, 0.0, 0.0],
+            ]
+        ),
+    )
+
+
+def test_curriculum_checkpoint_is_selected_only_after_mixed_stage(tmp_path: Path) -> None:
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+    manifest_path = features / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["included"].append(_write_feature(features, "train", 4, 0))
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    reliability = tmp_path / "reliability.json"
+    _write_reliability_manifest(features, reliability)
+
+    result = train_model(
+        TrainingConfig(
+            features_root=features,
+            output_dir=tmp_path / "run",
+            max_epochs=1,
+            batch_size=4,
+            patience=1,
+            device="cpu",
+            model=ModelConfig(d_model=8, nhead=2, num_layers=1, mlp_dim=8, dropout=0),
+            curriculum="label_reliability_v1",
+            reliability_manifest=reliability,
+            reliable_warmup_epochs=2,
+            ambiguous_neighbor_mass=0.2,
+        ),
+        evaluate_test=False,
+    )
+
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+    assert [item["curriculum_stage"] for item in metrics["validation_history"]] == [
+        "reliable_warmup",
+        "reliable_warmup",
+        "mixed",
+    ]
+    assert result.best_epoch == 2
+    checkpoint = torch.load(result.checkpoint_path, map_location="cpu", weights_only=False)
+    assert checkpoint["epoch"] == 2
+
+
+def test_curriculum_refuses_a_no_go_reliability_manifest(tmp_path: Path) -> None:
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+    reliability = tmp_path / "reliability.json"
+    _write_reliability_manifest(features, reliability, decision="no-go")
+
+    with pytest.raises(ValueError, match="decision is not go"):
+        train_model(
+            TrainingConfig(
+                features_root=features,
+                output_dir=tmp_path / "run",
+                max_epochs=1,
+                batch_size=4,
+                patience=1,
+                device="cpu",
+                model=ModelConfig(d_model=8, nhead=2, num_layers=1, mlp_dim=8, dropout=0),
+                curriculum="label_reliability_v1",
+                reliability_manifest=reliability,
+                reliable_warmup_epochs=1,
+            ),
+            evaluate_test=False,
+        )
 
 
 def _run_tiny_training(
