@@ -10,3 +10,7 @@
 /infrastructure/media/*.py text eol=lf
 /infrastructure/media/tests/*.sh text eol=lf
 /infrastructure/media/tests/*.py text eol=lf
+# 참여도 모델 산출물은 manifest 의 SHA-256 으로 빌드 게이트를 통과해야 한다. CRLF 로
+# 체크아웃되면 해시가 달라져 Windows 로컬 빌드가 깨진다.
+/fe/assets/attention-model/**/*.json text eol=lf
+/fe/assets/attention-model/**/*.onnx binary

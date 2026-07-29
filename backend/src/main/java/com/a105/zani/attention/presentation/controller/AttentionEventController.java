@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.a105.zani.attention.application.collect.CollectAttentionEventCommand;
 import com.a105.zani.attention.application.collect.CollectAttentionEventResult;
 import com.a105.zani.attention.application.collect.CollectAttentionEventUseCase;
-import com.a105.zani.attention.domain.model.DetectionSignal;
 import com.a105.zani.attention.presentation.request.AttentionEventRequest;
 import com.a105.zani.attention.presentation.response.AttentionEventResponse;
 import com.a105.zani.common.response.ApiResponse;
@@ -42,14 +41,15 @@ public class AttentionEventController {
                     같은 clientEventId로 다시 보내면 상태를 중복 반영하지 않고 duplicate=true로 성공 응답한다.
                     네트워크 실패 후 재시도할 때는 새 값을 만들지 말고 같은 clientEventId를 그대로 쓰면 된다.
 
-                    저참여와 UNMEASURABLE 은 3연속이어야 학생 상태로 확정된다. 한 창이 흔들린 것만으로 이탈자로 세지 않기 위해서다.
+                    UNMEASURABLE 은 3연속이어야 학생 상태로 확정된다. 한 창이 흔들린 것만으로 이탈자로 세지 않기 위해서다.
+                    저참여 3연속은 브라우저가 세어 이해 확인 프롬프트를 띄우고, 서버는 그 응답으로 상태를 정한다 — 서버는 저참여 연속을 세지 않는다.
+
                     관측 기록은 DB 에 남고, 파생된 현재 상태는 Redis 에 30초 보관되며 코칭 트리거의 5분 관찰 창에 반영된다.""")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "판정 반영 또는 중복 무시"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description =
-                        "필수 값 누락·범위 위반, 지원하지 않는 검출기 계약 버전, 수업 시간선과 어긋난 시각, 4단계 출력에 저참여 여부 누락, 창이 필요한 출력에 창 시작 시각 누락, 또는 계약에 없는 필드가 포함됨"),
+                description = "필수 값 누락·범위 위반, 지원하지 않는 특징 추출 계약 버전, 수업 시간선과 어긋난 시각, 또는 계약에 없는 필드가 포함됨"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",
@@ -70,12 +70,11 @@ public class AttentionEventController {
         CollectAttentionEventResult result = collectAttentionEventUseCase.collect(new CollectAttentionEventCommand(
                 sessionId,
                 Long.parseLong(jwt.getSubject()),
-                new DetectionSignal(request.outcome(), Boolean.TRUE.equals(request.lowEngagement())),
+                request.outcome(),
                 request.windowStartedAt(),
                 request.observedAt(),
                 request.signalQuality(),
                 request.featureSchemaVersion(),
-                request.engineVersion(),
                 request.clientEventId()));
         return ApiResponse.success(AttentionEventResponse.from(result));
     }

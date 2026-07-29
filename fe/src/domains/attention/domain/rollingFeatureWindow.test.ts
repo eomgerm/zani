@@ -31,6 +31,46 @@ describe("RollingFeatureWindow", () => {
     expect(window.tokens(10_000)).toBeNull();
   });
 
+  it("rejects sixty-nine valid frames even when every segment has three", () => {
+    const window = new RollingFeatureWindow();
+    for (let segment = 0; segment < 20; segment += 1) {
+      const validFrames = segment < 9 ? 4 : 3;
+      for (let frame = 0; frame < 5; frame += 1) {
+        const timestamp = segment * 500 + frame * 100;
+        window.add(timestamp, frame < validFrames ? values(segment) : null);
+      }
+    }
+
+    expect(window.tokens(10_000)).toBeNull();
+  });
+
+  it("accepts seventy valid frames when every segment has at least three", () => {
+    const window = new RollingFeatureWindow();
+    for (let segment = 0; segment < 20; segment += 1) {
+      const validFrames = segment < 10 ? 4 : 3;
+      for (let frame = 0; frame < 5; frame += 1) {
+        const timestamp = segment * 500 + frame * 100;
+        window.add(timestamp, frame < validFrames ? values(segment) : null);
+      }
+    }
+
+    expect(window.tokens(10_000)).toHaveLength(20 * 98);
+  });
+
+  it("distinguishes an incomplete window from a completed unmeasurable window", () => {
+    const window = new RollingFeatureWindow();
+    for (let segment = 0; segment < 20; segment += 1) {
+      const validFrames = segment < 9 ? 4 : 3;
+      for (let frame = 0; frame < 5; frame += 1) {
+        const timestamp = segment * 500 + frame * 100;
+        window.add(timestamp, frame < validFrames ? values(segment) : null);
+      }
+    }
+
+    expect(window.evaluate(9_900)).toEqual({ kind: "pending" });
+    expect(window.evaluate(10_000)).toEqual({ kind: "unmeasurable" });
+  });
+
   it("keeps all 20 segments over the same 500ms by excluding the frame at exactly nowMs", () => {
     const window = new RollingFeatureWindow();
     // 훅과 같은 타이밍: add() 직후 같은 timestamp 로 tokens() 를 부른다.

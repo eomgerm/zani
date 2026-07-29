@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -17,18 +18,18 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.exception.InvalidPromptTimelineException;
-import com.a105.zani.attention.application.exception.MismatchedPromptAnswerException;
 import com.a105.zani.attention.application.exception.NotPromptStudentException;
 import com.a105.zani.attention.application.exception.StalePromptException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.CheckPrompt;
 import com.a105.zani.attention.domain.model.CheckPromptStatus;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.attention.domain.model.PromptAnswer;
 import com.a105.zani.attention.domain.model.PromptKind;
+import com.a105.zani.attention.domain.model.UnmeasurableRun;
 import com.a105.zani.attention.domain.repository.CheckPromptRepository;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
@@ -80,7 +81,7 @@ class RecordPromptResponseServiceTest {
 
     @Test
     void marksAnUnansweredPromptAsTimedOutWithoutARespondedTime() {
-        service.record(command(PromptAnswer.NO_RESPONSE));
+        service.record(command(PromptAnswer.NON_RESPONSE));
 
         CheckPrompt saved = promptRepository.saved.get(0);
         assertEquals(CheckPromptStatus.TIMEOUT, saved.status());
@@ -99,7 +100,7 @@ class RecordPromptResponseServiceTest {
 
     @Test
     void treatsAnUnderstoodAnswerAsGoodAndKeepsItOutOfTheTriggerWindow() {
-        service.record(command(PromptAnswer.UNDERSTOOD));
+        service.record(command(PromptAnswer.OK));
 
         assertEquals(
                 AttentionState.GOOD,
@@ -109,7 +110,7 @@ class RecordPromptResponseServiceTest {
 
     @Test
     void treatsSilenceAsNonResponseInTheTriggerWindow() {
-        service.record(command(PromptAnswer.NO_RESPONSE));
+        service.record(command(PromptAnswer.NON_RESPONSE));
 
         assertTrue(statePort.significant.contains(AttentionState.NON_RESPONSE));
     }
@@ -118,108 +119,12 @@ class RecordPromptResponseServiceTest {
     void keepsTheFirstAnswerWhenTheSamePromptIsAnsweredTwice() {
         service.record(command(PromptAnswer.CONFUSED));
 
-        RecordPromptResponseResult retry = service.record(command(PromptAnswer.UNDERSTOOD));
+        RecordPromptResponseResult retry = service.record(command(PromptAnswer.OK));
 
         assertFalse(retry.accepted());
         assertTrue(retry.duplicate());
         assertEquals(1, promptRepository.saved.size());
         assertEquals(PromptAnswer.CONFUSED, promptRepository.saved.get(0).answer());
-    }
-
-    @Test
-    void dropsAStudentWhoCannotTurnTheCameraOnFromTheGroupDenominator() {
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.CAMERA_CHECK,
-                PromptAnswer.CAMERA_UNAVAILABLE,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        assertTrue(statePort.excluded.contains(STUDENT_PARTICIPANT));
-        // 제외는 그 수업 동안만 뜻이 있다. 상수를 베끼지 않고 남은 수업 시간에서 파생한다.
-        assertEquals(Duration.between(SERVER_NOW, SESSION_EXPIRES_AT), statePort.exclusionTtl);
-        // 카메라 확인은 참여 상태를 정하지 않는다. 분모에서 빠질 뿐이다.
-        assertTrue(statePort.currentState.isEmpty());
-    }
-
-    @Test
-    void keepsAStudentWhoStillHasACameraInTheGroupDenominator() {
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.CAMERA_CHECK,
-                PromptAnswer.CAMERA_AVAILABLE,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        assertTrue(statePort.excluded.isEmpty());
-    }
-
-    @Test
-    void leavesTheParticipationStateAloneWhenAPostureGuideIsAcknowledged() {
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.POSTURE_GUIDE,
-                PromptAnswer.ACKNOWLEDGED,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        // 자세 안내 확인은 UNMEASURABLE 판정이 남긴 상태를 덮을 이유가 없다.
-        assertTrue(statePort.currentState.isEmpty());
-        assertTrue(statePort.significant.isEmpty());
-    }
-
-    @Test
-    void leavesTheStateAloneWhenAPostureGuideTimesOut() {
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.POSTURE_GUIDE,
-                PromptAnswer.NO_RESPONSE,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        // 얼굴이 안 보여 뜬 안내에 학생이 답하지 않는 것은 당연하다. 이걸 NON_RESPONSE 로 남기면
-        // 그 학생이 코칭 분자에 계속 끼어 "학생 반응을 확인해 주세요" 팁이 잘못 뜬다.
-        assertTrue(statePort.currentState.isEmpty());
-        assertTrue(statePort.significant.isEmpty());
-    }
-
-    @Test
-    void leavesTheStateAloneWhenACameraCheckTimesOut() {
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.CAMERA_CHECK,
-                PromptAnswer.NO_RESPONSE,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        assertTrue(statePort.currentState.isEmpty());
-        assertTrue(statePort.significant.isEmpty());
-    }
-
-    @Test
-    void bringsBackAStudentWhoCanUseTheCameraAgain() {
-        statePort.excluded.add(STUDENT_PARTICIPANT);
-
-        service.record(new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-2",
-                PromptKind.CAMERA_CHECK,
-                PromptAnswer.CAMERA_AVAILABLE,
-                SHOWN_AT,
-                RESPONDED_AT));
-
-        assertTrue(statePort.excluded.isEmpty());
     }
 
     @Test
@@ -345,7 +250,7 @@ class RecordPromptResponseServiceTest {
         statePort.failMarker = true;
 
         service.record(command(PromptAnswer.CONFUSED));
-        RecordPromptResponseResult retry = service.record(command(PromptAnswer.UNDERSTOOD));
+        RecordPromptResponseResult retry = service.record(command(PromptAnswer.OK));
 
         // 저장소가 죽었다고 답을 거절하면 안 된다. 중복 판단만 DB 조회로 물러선다.
         assertTrue(retry.duplicate());
@@ -361,18 +266,26 @@ class RecordPromptResponseServiceTest {
     }
 
     @Test
-    void rejectsAnAnswerThatDoesNotBelongToThePromptKind() {
-        RecordPromptResponseCommand mismatched = new RecordPromptResponseCommand(
-                SESSION_ID,
-                STUDENT_USER,
-                "prompt-1",
-                PromptKind.POSTURE_GUIDE,
-                PromptAnswer.CONFUSED,
-                SHOWN_AT,
-                RESPONDED_AT);
+    void keepsTheAnswerContractToTheFourConfirmedValues() {
+        // 계약이 조용히 넓어지면 폐기한 카메라·자세 응답이 다시 들어와 분모를 흔들 수 있다.
+        assertEquals(
+                List.of(PromptAnswer.OK, PromptAnswer.CONFUSED, PromptAnswer.MISSED, PromptAnswer.NON_RESPONSE),
+                List.of(PromptAnswer.values()));
+        assertEquals(List.of(PromptKind.UNDERSTANDING_CHECK), List.of(PromptKind.values()));
+    }
 
-        assertThrows(MismatchedPromptAnswerException.class, () -> service.record(mismatched));
-        assertTrue(promptRepository.saved.isEmpty());
+    @Test
+    void neverTouchesTheGroupDenominatorWhateverTheStudentAnswers() {
+        for (PromptAnswer answer : PromptAnswer.values()) {
+            statePort.markers.clear();
+            promptRepository.saved.clear();
+            service.record(command(answer));
+        }
+
+        // 학생 답으로 분모에서 빼면 빠지는 쪽이 늘 유리해져 모두가 그 답을 고르고 분모가 계속 줄어든다(§5.2).
+        // 제외는 서버가 검출기 이벤트로 판단한다(§7.1).
+        assertTrue(statePort.excluded.isEmpty());
+        assertNull(statePort.exclusionTtl);
     }
 
     @Test
@@ -500,17 +413,18 @@ class RecordPromptResponseServiceTest {
         private boolean runsReset;
 
         @Override
-        public Optional<DetectionRunCounters> applyObservation(
+        public Optional<ObservationApplied> applyObservation(
                 long sessionId,
                 long participantId,
                 DetectionRunTransition transition,
+                boolean measurementSuspended,
                 long observedOffsetMs,
                 Duration ttl) {
-            return Optional.of(DetectionRunCounters.none());
+            return Optional.of(new ObservationApplied(UnmeasurableRun.none(), OptionalLong.empty()));
         }
 
         @Override
-        public void resetRuns(long sessionId, long participantId) {
+        public void resetUnmeasurableRun(long sessionId, long participantId) {
             failFast();
             runsReset = true;
         }

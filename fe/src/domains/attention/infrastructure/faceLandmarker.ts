@@ -1,7 +1,9 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
+import type { AttentionFeatureDetector } from "../application/attentionDetectionPorts";
 import { attentionAssetPaths, type AttentionAssetPaths } from "./attentionAssets";
 import type { FrameLandmarkerValues } from "./frameContracts";
+import { extractFrameFeatures } from "./frameFeatures";
 import { columnMajorTransformToRowMajor } from "./faceTransform";
 
 /**
@@ -14,7 +16,7 @@ import { columnMajorTransformToRowMajor } from "./faceTransform";
 
 export interface BrowserFaceLandmarker {
   /** 프레임 1장에서 랜드마크·변환행렬·blendshape 를 뽑는다. 얼굴이 없으면 null. */
-  detect(video: HTMLVideoElement, timestampMs: number): FrameLandmarkerValues | null;
+  detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null;
   close(): void;
 }
 
@@ -45,8 +47,8 @@ export async function createBrowserFaceLandmarker(
     });
   }
   return {
-    detect(video: HTMLVideoElement, timestampMs: number): FrameLandmarkerValues | null {
-      const result = landmarker.detectForVideo(video, timestampMs);
+    detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null {
+      const result = landmarker.detectForVideo(frame, timestampMs);
       const landmarks = result.faceLandmarks[0];
       const matrix = result.facialTransformationMatrixes[0];
       if (!landmarks || !matrix || matrix.rows !== 4 || matrix.columns !== 4) return null;
@@ -56,6 +58,20 @@ export async function createBrowserFaceLandmarker(
         transform: columnMajorTransformToRowMajor(matrix.data),
         blendshapes: new Map(categories.map((category) => [category.categoryName, category.score])),
       };
+    },
+    close(): void {
+      landmarker.close();
+    },
+  };
+}
+
+/** application 포트에 맞춰 MediaPipe 출력과 49차원 특징 추출을 한 어댑터로 감싼다. */
+export async function createAttentionFeatureDetector(): Promise<AttentionFeatureDetector> {
+  const landmarker = await createBrowserFaceLandmarker();
+  return {
+    detect(frame, timestampMs): Float32Array | null {
+      const detected = landmarker.detect(frame as TexImageSource, timestampMs);
+      return detected === null ? null : extractFrameFeatures(detected);
     },
     close(): void {
       landmarker.close();

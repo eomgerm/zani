@@ -1,6 +1,9 @@
-import type { AttentionPrediction } from "../domain/attentionPrediction";
 import type {
-  AttentionFailureKind,
+  AttentionInferenceClient,
+  AttentionInferenceFailure,
+  AttentionInferenceHandlers,
+} from "../application/attentionDetectionPorts";
+import type {
   AttentionWorkerPort,
   AttentionWorkerResponse,
 } from "./attentionWorkerProtocol";
@@ -13,23 +16,12 @@ import type {
  * 남기고 나머지는 버린다(밀린 프레임 폐기).
  */
 
-export interface AttentionInferenceFailure {
-  readonly kind: AttentionFailureKind;
-  readonly message: string;
-}
-
-export interface AttentionInferenceClient {
-  /** 완성된 20×98 토큰 창을 넘긴다. 추론 중이면 최신 창으로 대체된다. */
-  submit(tokens: Float32Array): void;
-  terminate(): void;
-}
-
-export interface AttentionInferenceClientOptions {
+export interface AttentionInferenceClientOptions extends AttentionInferenceHandlers {
   /** 실제 Worker 생성. 테스트에서 대체한다. */
   createWorker?: () => AttentionWorkerPort;
-  onPrediction(prediction: AttentionPrediction): void;
-  onFailure(failure: AttentionInferenceFailure): void;
 }
+
+export type { AttentionInferenceClient, AttentionInferenceFailure };
 
 function spawnWorker(): AttentionWorkerPort {
   // 번들러가 이 URL 로 Worker 청크를 따로 만들어 준다.

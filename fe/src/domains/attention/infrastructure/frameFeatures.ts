@@ -1,4 +1,9 @@
 import type { FrameLandmarkerValues, LandmarkPoint } from "./frameContracts";
+import {
+  ATTENTION_FEATURE_SCHEMA,
+  ATTENTION_TOKEN_FEATURE_COUNT,
+  RAW_ATTENTION_FEATURE_COUNT,
+} from "../domain/attentionFeatureSchema";
 
 /**
  * 프레임 1장에서 49차원 특징을 뽑는 `mediapipe_98_v1` 추출기.
@@ -6,9 +11,9 @@ import type { FrameLandmarkerValues, LandmarkPoint } from "./frameContracts";
  * 모델을 다시 학습하지 않는 한 바꿀 수 없다.
  */
 
-export const SCHEMA_NAME = "mediapipe_98_v1" as const;
-export const RAW_FEATURE_COUNT = 49;
-export const TOKEN_FEATURE_COUNT = 98;
+export const SCHEMA_NAME = ATTENTION_FEATURE_SCHEMA;
+export const RAW_FEATURE_COUNT = RAW_ATTENTION_FEATURE_COUNT;
+export const TOKEN_FEATURE_COUNT = ATTENTION_TOKEN_FEATURE_COUNT;
 
 export const BLENDSHAPE_NAMES = [
   "browDownLeft", "browDownRight", "browInnerUp", "browOuterUpLeft",
