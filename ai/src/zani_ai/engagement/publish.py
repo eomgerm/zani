@@ -12,6 +12,7 @@ interval.
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,4 +73,102 @@ def sync_metrics(metrics: Sequence[MetricFile], destination: Path) -> list[Path]
     return written
 
 
-__all__ = ["METRIC_FILENAMES", "MetricFile", "collect_metrics", "sync_metrics"]
+#: The orphan branch metrics live on. Not a code branch and never merged.
+DEFAULT_RESULTS_BRANCH = "ai/results"
+
+#: Kept out of the branch by the results branch's own ``.gitignore``.
+LOCK_FILENAME = ".publish.lock"
+
+#: Keeps a metrics snapshot from waking the Jenkins job.
+SKIP_CI_MARKER = "[skip ci]"
+
+#: Beyond this the subject stops being scannable, so the rest is summarised.
+_MAX_LISTED_PROTOCOLS = 3
+
+
+def _git(worktree: Path, *args: str) -> str:
+    """Run git in ``worktree``, raising with git's own stderr on failure."""
+    completed = subprocess.run(
+        ("git", "-C", str(worktree), *args),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise RuntimeError(f"git {' '.join(args)} failed in {worktree}: {detail}")
+    return completed.stdout
+
+
+def _abort_rebase(worktree: Path) -> None:
+    """Best-effort cleanup so a conflict does not wedge the next interval."""
+    subprocess.run(
+        ("git", "-C", str(worktree), "rebase", "--abort"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def require_results_branch(worktree: Path, branch: str) -> None:
+    """Fail before writing anything unless ``worktree`` has ``branch`` out.
+
+    Aimed at the training clone by accident, the publisher would stage code
+    changes and could change files under a run in progress.
+    """
+    current = _git(worktree, "rev-parse", "--abbrev-ref", "HEAD").strip()
+    if current != branch:
+        raise ValueError(f"worktree {worktree} is on {current!r}, expected {branch!r}")
+
+
+def commit_subject(source_label: str, written: Sequence[Path]) -> str:
+    """One scannable line naming where the snapshot came from and what moved."""
+    protocols = sorted({path.parts[0] for path in written if path.parts})
+    if len(protocols) > _MAX_LISTED_PROTOCOLS:
+        listed = protocols[:_MAX_LISTED_PROTOCOLS]
+        detail = f"{', '.join(listed)} 외 {len(protocols) - _MAX_LISTED_PROTOCOLS}개"
+    else:
+        detail = ", ".join(protocols)
+    return f"🔧 chore: {source_label} 지표 스냅샷 — {detail} {len(written)}개 파일 {SKIP_CI_MARKER}"
+
+
+def publish_once(
+    *,
+    artifacts_root: Path,
+    worktree: Path,
+    source_label: str,
+    branch: str,
+) -> int:
+    """Copy, commit and push one snapshot; return how many files were written.
+
+    Returns 0 without committing when nothing changed. Locking and the branch
+    check belong to the caller, which holds them for the whole process.
+    """
+    written = sync_metrics(collect_metrics(artifacts_root), worktree / source_label)
+    if not written:
+        return 0
+    _git(worktree, "add", "--all", "--", source_label)
+    if not _git(worktree, "status", "--porcelain", "--", source_label).strip():
+        return 0
+    _git(worktree, "commit", "-m", commit_subject(source_label, written))
+    try:
+        _git(worktree, "pull", "--rebase", "origin", branch)
+    except RuntimeError:
+        _abort_rebase(worktree)
+        raise
+    _git(worktree, "push", "origin", branch)
+    return len(written)
+
+
+__all__ = [
+    "DEFAULT_RESULTS_BRANCH",
+    "LOCK_FILENAME",
+    "METRIC_FILENAMES",
+    "MetricFile",
+    "collect_metrics",
+    "commit_subject",
+    "publish_once",
+    "require_results_branch",
+    "sync_metrics",
+]
