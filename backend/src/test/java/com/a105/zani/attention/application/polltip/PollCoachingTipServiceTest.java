@@ -245,6 +245,21 @@ class PollCoachingTipServiceTest {
     }
 
     @Test
+    void ignoresAResultFromATriggerThatIsNoLongerOpen() {
+        String stale = poll().outcome().orElseThrow().triggerId();
+        state.expire();
+        String current = poll().outcome().orElseThrow().triggerId();
+
+        state.completeOutcome(
+                SESSION_ID, CoachingOutcome.unavailable(stale, CoachingTipUnavailableReason.NO_TRANSCRIPT));
+
+        // 늦게 끝난 트리거가 새 트리거를 덮어쓰면 강사는 지난 구간의 결과를 이전 triggerId 로 받는다.
+        CoachingOutcome open = poll().outcome().orElseThrow();
+        assertEquals(current, open.triggerId());
+        assertNull(open.unavailableReason());
+    }
+
+    @Test
     void rejectsAPollFromAStudent() {
         // 학생에게 집단 통계를 보여 주면 익명 집계를 지켜 온 의미가 사라진다.
         assertThrows(
@@ -322,7 +337,12 @@ class PollCoachingTipServiceTest {
 
         @Override
         public void completeOutcome(long sessionId, CoachingOutcome outcome) {
-            stored.computeIfPresent(sessionId, (key, open) -> outcome);
+            // 실제 어댑터와 같게, 지금 열려 있는 트리거가 이 결과의 것일 때만 채운다. 키만 보면 늦게 끝난 트리거가 다음 트리거를 덮어쓴다.
+            CoachingOutcome open = stored.get(sessionId);
+            if (open == null || !open.triggerId().equals(outcome.triggerId())) {
+                return;
+            }
+            stored.put(sessionId, outcome);
             CoachingTip tip = outcome.tip();
             if (tip != null) {
                 previous = new PreviousCoachingTip(tip.tipType(), NOW);

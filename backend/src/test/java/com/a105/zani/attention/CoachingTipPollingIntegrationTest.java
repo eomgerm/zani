@@ -30,6 +30,7 @@ import com.a105.zani.auth.application.port.TokenProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -178,6 +179,37 @@ class CoachingTipPollingIntegrationTest {
         String lastTip = redisTemplate.opsForValue().get(LAST_TIP_KEY);
         assertNotNull(lastTip);
         assertTrue(lastTip.startsWith(CoachingTipType.CONFUSED.name() + "|"), "직전 팁 값이 어긋납니다: " + lastTip);
+    }
+
+    @Test
+    void ignoresACompletionFromATriggerThatIsNoLongerOpen() throws Exception {
+        markCountedStudent();
+        fillInstructorAudio(Duration.ofSeconds(90));
+        String stale = triggerIdOf(poll(INSTRUCTOR_ID));
+
+        // 파이프라인이 쿨타임(10분)보다 오래 걸린 상황이다. 그 사이 키가 만료되고 다음 폴링이 새 트리거를 연다.
+        redisTemplate.delete(OPEN_KEY);
+        String current = triggerIdOf(poll(INSTRUCTOR_ID));
+
+        coachingTriggerStatePort.completeOutcome(
+                SESSION_ID,
+                CoachingOutcome.completed(
+                        stale,
+                        new CoachingTip(
+                                CoachingTipType.NON_RESPONSE,
+                                "학생 반응을 확인해 주세요",
+                                "전체 학생의 100%가 질문에 응답하지 않았어요.",
+                                // 무응답 팁은 §8 에 자리표시자가 없어 LLM 을 부르지 않는다(티켓 204).
+                                null)));
+
+        // 늦게 끝난 트리거를 그대로 받으면 강사는 10분 전 팁을 이전 triggerId 로 받고 새 트리거는 사라진다.
+        poll(INSTRUCTOR_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.triggerId").value(current))
+                .andExpect(jsonPath("$.data.tip").isEmpty());
+
+        // 직전 팁도 남기지 않는다. 남기면 다음 트리거가 뜨지도 않은 팁을 피하려 유형을 바꾼다.
+        assertNull(redisTemplate.opsForValue().get(LAST_TIP_KEY));
     }
 
     @Test

@@ -45,12 +45,20 @@ public class CoachingTriggerRedisAdapter implements CoachingTriggerStatePort {
     private static final String FIELD_SEPARATOR = "|";
 
     /**
-     * 열린 트리거가 아직 있을 때만 결과를 채운다. 없으면 아무것도 하지 않는다.
+     * 지금 열려 있는 트리거가 <b>이 결과의 것일 때만</b> 결과를 채운다. 그 외에는 아무것도 하지 않는다.
+     *
+     * <p>키가 있는지만 보면 늦게 끝난 트리거가 다음 트리거를 덮어쓴다. 파이프라인이 쿨타임보다 오래 걸리면 그 사이 키가 만료되고 다음 폴링이 새 트리거를 여는데, 그때 이전 결과가 도착하면 강사는 10분
+     * 전 팁을 이전 {@code triggerId} 로 받고 새 트리거는 대기 중이던 것까지 사라진다. 그래서 {@code triggerId} 를 함께 넘겨 대조한다.
      *
      * <p>{@code KEEPTTL} 로 쿨타임을 늘리지 않는다. 새로 SET 하면 팁이 늦게 완성될수록 쿨타임이 뒤로 밀려, 20초 걸린 트리거는 10분 20초를 쉰다.
      */
     private static final RedisScript<Long> COMPLETE_OUTCOME = RedisScript.of("""
-            if redis.call('EXISTS', KEYS[1]) == 0 then
+            local current = redis.call('GET', KEYS[1])
+            if not current then
+              return 0
+            end
+            local ok, open = pcall(cjson.decode, current)
+            if not ok or type(open) ~= 'table' or open.triggerId ~= ARGV[2] then
               return 0
             end
             redis.call('SET', KEYS[1], ARGV[1], 'KEEPTTL')
@@ -86,10 +94,10 @@ public class CoachingTriggerRedisAdapter implements CoachingTriggerStatePort {
 
     @Override
     public void completeOutcome(long sessionId, CoachingOutcome outcome) {
-        Long applied =
-                execute(() -> redisTemplate.execute(COMPLETE_OUTCOME, List.of(openKey(sessionId)), write(outcome)));
+        Long applied = execute(() -> redisTemplate.execute(
+                COMPLETE_OUTCOME, List.of(openKey(sessionId)), write(outcome), outcome.triggerId()));
         if (applied == null || applied == 0L) {
-            log.info("쿨타임이 이미 끝나 팁을 표시하지 않습니다. sessionId={}, triggerId={}", sessionId, outcome.triggerId());
+            log.info("이 트리거가 더 이상 열려 있지 않아 팁을 표시하지 않습니다. sessionId={}, triggerId={}", sessionId, outcome.triggerId());
             return;
         }
         if (outcome.tip() != null) {
