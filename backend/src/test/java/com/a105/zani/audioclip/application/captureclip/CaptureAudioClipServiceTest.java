@@ -12,9 +12,9 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
 import com.a105.zani.audioclip.application.port.AudioClip;
+import com.a105.zani.audioclip.application.port.AudioClipCaptureSettings;
 import com.a105.zani.audioclip.application.port.AudioTranscriptionPort;
 import com.a105.zani.audioclip.application.port.InstructorAudioBufferPort;
-import com.a105.zani.audioclip.infrastructure.config.AudioClipProperties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,7 +39,7 @@ class CaptureAudioClipServiceTest {
     @BeforeEach
     void setUp() {
         service = new CaptureAudioClipService(
-                buffer, transcription, new AudioClipProperties(WINDOW, MIN_TRANSCRIBABLE, null, null, null));
+                buffer, transcription, new AudioClipCaptureSettings(WINDOW, MIN_TRANSCRIBABLE));
     }
 
     /** durationMs 만큼의 오디오가 버퍼에 있는 상태로 만든다. 앞 3바이트는 MP3 프레임 헤더와 ID3 없는 시작부를 흉내낸 값이다. */

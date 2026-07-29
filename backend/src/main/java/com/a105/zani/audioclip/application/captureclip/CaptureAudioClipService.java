@@ -9,15 +9,15 @@ import org.springframework.stereotype.Service;
 
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
 import com.a105.zani.audioclip.application.port.AudioClip;
+import com.a105.zani.audioclip.application.port.AudioClipCaptureSettings;
 import com.a105.zani.audioclip.application.port.AudioTranscriptionPort;
 import com.a105.zani.audioclip.application.port.InstructorAudioBufferPort;
-import com.a105.zani.audioclip.infrastructure.config.AudioClipProperties;
 import com.a105.zani.common.error.BusinessException;
 
 /**
  * 코칭 트리거 시점의 강사 최근 발화를 전사한다.
  *
- * <p>오디오는 이미 서버 메모리(링버퍼)에 있으므로 업로드도 파일 변환도 없다. 버퍼가 16kHz WAV 로 떠서 주고, 전사 포트에 넘긴 뒤 호출이 끝나면 바이트 참조가 사라진다(저장 경로 자체가 없다).
+ * <p>오디오는 이미 서버 메모리(링버퍼)에 있으므로 업로드도 파일 변환도 없다. 버퍼가 인코딩까지 끝내 주고, 전사 포트에 넘긴 뒤 호출이 끝나면 바이트 참조가 사라진다(저장 경로 자체가 없다).
  *
  * <p>확보량이 최소 길이에 못 미치면 전사를 시도하지 않는다. 수업 시작 직후처럼 맥락이 부족한 구간에 전사 비용을 쓰지 않고, 상위가 팁 생성과 쿨타임을 건너뛸 수 있게 사유를 함께 돌려준다.
  */
@@ -33,11 +33,11 @@ public class CaptureAudioClipService implements CaptureAudioClipUseCase {
     public CaptureAudioClipService(
             InstructorAudioBufferPort buffer,
             AudioTranscriptionPort transcriptionPort,
-            AudioClipProperties properties) {
+            AudioClipCaptureSettings settings) {
         this.buffer = buffer;
         this.transcriptionPort = transcriptionPort;
-        this.window = properties.window();
-        this.minTranscribable = properties.minTranscribable();
+        this.window = settings.window();
+        this.minTranscribable = settings.minTranscribable();
     }
 
     @Override
