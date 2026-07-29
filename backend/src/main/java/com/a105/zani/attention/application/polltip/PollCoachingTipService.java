@@ -106,11 +106,18 @@ public class PollCoachingTipService implements PollCoachingTipUseCase {
             log.warn("팁 생성 파이프라인이 없어 트리거만 열었습니다. sessionId={}, triggerId={}", sessionId, triggerId);
             return;
         }
-        pipeline.start(CoachingTipRequest.of(
-                sessionId,
-                triggerId,
-                clock.instant(),
-                summary,
-                coachingTriggerStatePort.previousTip(sessionId).orElse(null)));
+        try {
+            pipeline.start(CoachingTipRequest.of(
+                    sessionId,
+                    triggerId,
+                    clock.instant(),
+                    summary,
+                    coachingTriggerStatePort.previousTip(sessionId).orElse(null)));
+        } catch (RuntimeException exception) {
+            // 포트는 즉시 반환을 요구하지만 강제하지는 못한다. 구현이 동기로 던지면 강사 폴링이 500 이 되고, 티켓 76 이 그것을
+            // 연속 실패로 세어 코칭 비활성을 띄운다 — "전사·LLM 실패는 수업을 막지 않는다"에 어긋난다.
+            // 트리거는 되돌리지 않는다. 쿨타임이 이미 열려 있어 재시도가 몰리지 않고, 다음 트리거가 10분 뒤에 다시 시도한다.
+            log.warn("팁 생성 파이프라인을 시작하지 못했습니다. sessionId={}, triggerId={}", sessionId, triggerId, exception);
+        }
     }
 }

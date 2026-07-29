@@ -69,6 +69,10 @@ class PollCoachingTipServiceTest {
 
     @BeforeEach
     void setUp() {
+        service = serviceWith(pipeline);
+    }
+
+    private PollCoachingTipService serviceWith(CoachingTipPipelinePort tipPipeline) {
         GetCoachingSignalsUseCase signals = query -> {
             assertEquals(SESSION_ID, query.sessionId());
             return new GetCoachingSignalsResult(summary);
@@ -89,14 +93,14 @@ class PollCoachingTipServiceTest {
                 throw new UnsupportedOperationException();
             }
         };
-        service = new PollCoachingTipService(
+        return new PollCoachingTipService(
                 resolveParticipant,
                 signals,
                 buffer,
                 state,
                 policy,
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                provider(pipeline));
+                provider(tipPipeline));
     }
 
     private PollCoachingTipResult poll() {
@@ -221,32 +225,22 @@ class PollCoachingTipServiceTest {
 
     @Test
     void stillOpensTheTriggerWhenTheGeneratorIsNotDeployedYet() {
-        service = new PollCoachingTipService(
-                resolveParticipant,
-                query -> new GetCoachingSignalsResult(summary),
-                new InstructorAudioBufferPort() {
-                    @Override
-                    public Optional<AudioClip> snapshot(long sessionId, Duration window) {
-                        throw new UnsupportedOperationException();
-                    }
-
-                    @Override
-                    public long availableMs(long sessionId) {
-                        return availableMs;
-                    }
-
-                    @Override
-                    public void release(long sessionId) {
-                        throw new UnsupportedOperationException();
-                    }
-                },
-                state,
-                policy,
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                provider(null));
+        service = serviceWith(null);
 
         // 되돌리면 파이프라인이 붙기 전까지 10초마다 트리거를 새로 연다.
         assertTrue(poll().outcome().isPresent());
+        assertFalse(state.stored.isEmpty());
+    }
+
+    @Test
+    void stillAnswersWhenTheGeneratorThrowsOnTheCallerThread() {
+        service = serviceWith(request -> {
+            throw new IllegalStateException("파이프라인이 즉시 반환하지 않고 던졌다");
+        });
+
+        // 예외가 새어 나가면 강사 폴링이 500 이 되고, 76 이 그것을 연속 실패로 세어 코칭 비활성을 띄운다.
+        assertTrue(poll().outcome().isPresent());
+        // 쿨타임은 되돌리지 않는다. 되돌리면 파이프라인이 계속 던지는 동안 10초마다 트리거를 새로 연다.
         assertFalse(state.stored.isEmpty());
     }
 
