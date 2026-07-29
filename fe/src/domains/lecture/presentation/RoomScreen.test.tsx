@@ -138,8 +138,12 @@ describe("RoomScreen side panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
 
-    expect(screen.getByText("✋ 손든 참가자")).toBeVisible();
     expect(screen.getByRole("button", { name: "참여자" })).toHaveAttribute("aria-pressed", "true");
+    // 참여자 탭에는 채팅 입력이 없다. 손든 참가자 목록은 실제로 손을 든 사람이 있을 때만 나오므로
+    // (업무 WebSocket 소관) 패널이 열렸는지는 탭 구분으로 확인한다.
+    expect(
+      screen.queryByRole("textbox", { name: "전체에게 메시지 보내기" }),
+    ).not.toBeInTheDocument();
   });
 
   it("switches between people and chat without closing the panel", () => {

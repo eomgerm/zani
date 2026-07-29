@@ -1,5 +1,6 @@
 export type EndSessionResult = {
-  sessionId: number;
+  /** TSID 라 JS 안전 정수 범위를 넘는다. 문자열로만 다뤄야 값이 깨지지 않는다. */
+  sessionId: string;
   /** 종료 후 세션 상태. */
   status: string;
   /** 이번 요청으로 종료되었는지. 이미 종료된 세션이면 false. */
@@ -23,13 +24,23 @@ export type SessionEnder = (
   signal?: AbortSignal,
 ) => Promise<EndSessionResult>;
 
+/**
+ * 서버가 TSID 를 숫자로 내보내는 구성도 있어 둘 다 받는다. 숫자로 파싱된 값은 JS 안전 정수 범위를 넘겨
+ * 이미 반올림돼 있을 수 있으므로, 문자열로 오는 편이 정확하다(서버 쪽 개선 대상).
+ */
+const idOf = (value: unknown): string | null => {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+};
+
 const isEndSessionResult = (value: unknown): value is EndSessionResult => {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const result = value as Record<string, unknown>;
   return (
-    typeof result.sessionId === "number" &&
+    idOf(result.sessionId) !== null &&
     typeof result.status === "string" &&
     typeof result.ended === "boolean"
   );
@@ -78,5 +89,6 @@ export const endSession: SessionEnder = async (sessionId, accessToken, signal) =
     );
   }
 
-  return (envelope as { data: EndSessionResult }).data;
+  const data = (envelope as { data: EndSessionResult }).data;
+  return { ...data, sessionId: String(data.sessionId) };
 };

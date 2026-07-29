@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
-import {
-  participantTiles,
-  participants as participantsFixture,
-  publicMessages,
-} from "./fixtures";
+import { publicMessages } from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { RoomControlBar } from "./components/room/RoomControlBar";
@@ -131,15 +127,26 @@ function RoomScreenContent({
     !connected ||
     tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
 
-  // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
-  // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
-  const galleryParticipants = connected ? tileParticipants : participantTiles;
+  // 갤러리는 LiveKit 이 알려주는 실제 참가자만 보여준다. 아직 아무도 없으면 빈 화면이 맞다 —
+  // 시연용 픽스처로 채우면 들어오지 않은 학생이 참가 중인 것처럼 보인다.
+  const galleryParticipants = tileParticipants;
 
-  // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
-  const meId = isInstructor ? "p0" : "p7";
-  const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
+  // 사이드 패널 사람 목록도 갤러리와 같은 실제 참가자를 쓴다. 내 마이크·카메라는 LiveKit 반영보다
+  // 로컬 토글이 먼저 움직이므로, 내 행만 로컬 상태로 덮어 즉시 반응하게 한다.
+  // 손들기는 업무 WebSocket 소관이라 아직 항상 내려간 상태다.
+  const meId = localParticipantId;
+  const list = tileParticipants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    color: participant.color,
+    host: participant.role === "instructor",
+    cam: participant.cameraEnabled,
+    mic: participant.microphoneEnabled,
+    hand: participant.handRaised,
+    ...(participant.id === meId ? me : {}),
+  }));
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
-  const hostName = "박서준";
+  const hostName = list.find((p) => p.host)?.name ?? "";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
 
@@ -366,7 +373,7 @@ function RoomScreenContent({
             panel={panel}
             participants={list}
             messages={publicMessages}
-            meId={meId}
+            meId={meId ?? ""}
             isInstructor={isInstructor}
           />
         )}
