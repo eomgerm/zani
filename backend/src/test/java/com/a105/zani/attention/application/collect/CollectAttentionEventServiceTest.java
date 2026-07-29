@@ -275,10 +275,27 @@ class CollectAttentionEventServiceTest {
 
         CollectAttentionEventResult retry = service.collect(observation);
 
-        // 유니크 제약이 행은 막아 주지만, 그대로 진행하면 카운터가 한 칸 더 올라 3연속이 앞당겨진다.
-        assertTrue(retry.duplicate());
+        // 유니크 제약이 행은 막고, 더 최신 관측이 이미 반영됐다는 사실이 카운터를 지킨다.
+        assertTrue(retry.supersededByNewerJudgement());
         assertEquals(2, records.saved.size());
         assertEquals(2, statePort.lastCounters.lowEngagement());
+    }
+
+    @Test
+    void finishesTheCoachingUpdateWhenAnEarlierAttemptDiedAfterStoringTheRow() {
+        CollectAttentionEventCommand observation = next(DetectorOutcome.ENGAGED);
+        statePort.failAdvance = true;
+        assertThrows(IllegalStateException.class, () -> service.collect(observation));
+
+        statePort.failAdvance = false;
+        CollectAttentionEventResult retry = service.collect(observation);
+
+        // 행이 이미 있다고 돌려보내면, 저장 뒤 죽은 그 관측의 집계 반영이 영영 되살아나지 못한다.
+        assertTrue(retry.accepted());
+        assertEquals(1, records.saved.size());
+        assertEquals(
+                AttentionState.GOOD,
+                statePort.currentState.get(STUDENT_PARTICIPANT).state());
     }
 
     @Test
@@ -385,6 +402,7 @@ class CollectAttentionEventServiceTest {
         private final Map<Long, Long> appliedOffsets = new HashMap<>();
         private DetectionRunCounters counters = DetectionRunCounters.none();
         private DetectionRunCounters lastCounters = DetectionRunCounters.none();
+        private boolean failAdvance;
 
         @Override
         public boolean registerEvent(long sessionId, long participantId, String clientEventId, Duration ttl) {
@@ -419,6 +437,9 @@ class CollectAttentionEventServiceTest {
         @Override
         public DetectionRunCounters advanceRun(
                 long sessionId, long participantId, DetectionRunTransition transition, Duration ttl) {
+            if (failAdvance) {
+                throw new IllegalStateException("redis down");
+            }
             counters = new DetectionRunCounters(
                     apply(transition.lowEngagement(), counters.lowEngagement()),
                     apply(transition.unmeasurable(), counters.unmeasurable()));

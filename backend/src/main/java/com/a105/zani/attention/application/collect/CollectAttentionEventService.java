@@ -90,11 +90,11 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
             // 기록이 먼저다. 집계는 30초면 사라지지만 이 행은 수업 후 리포트의 근거로 남는다.
             boolean stored = detectionRecordRepository.saveIfNew(
                     record(sessionId, participantId, command, participant, observedOffsetMs));
-
-            // 멱등 표시가 TTL 로 사라진 뒤 도착한 재시도는 여기서 걸린다. 그냥 두면 같은 관측이 카운터를 두 번 올린다.
             if (!stored) {
-                log.debug("이미 기록된 판정입니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
-                return CollectAttentionEventResult.alreadyRecorded();
+                // 행은 있는데 멱등 표시는 없다 — 앞선 시도가 저장까지 마치고 집계 반영에서 죽었다는 뜻이다.
+                // 여기서 되돌아가면 그 관측의 집계 반영이 영영 되살아나지 못한다. 반영만 다시 한다.
+                log.debug(
+                        "기록은 남아 있어 집계 반영만 다시 합니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
             }
 
             if (isSupersededByNewerJudgement(sessionId, participantId, observedOffsetMs)) {
