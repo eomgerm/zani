@@ -27,6 +27,8 @@ import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
+import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
+import { useCoachingStatus } from "./useCoachingStatus";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -146,6 +148,8 @@ function RoomScreenContent({
   const [promptToast, setPromptToast] = useState<string | null>(null);
   // 판정 상태가 아니라 접힌 가용 상태만 들고 있다. 카메라·검출기가 실제로 바뀔 때만 갱신된다.
   const [analysisAvailability, setAnalysisAvailability] = useState<AnalysisAvailability>("ACTIVE");
+  // 팁을 받는 쪽이 강사라 강사 화면에서만 폴링한다. 팁 카드 배선은 86 소관이다.
+  const coaching = useCoachingStatus({ sessionId, enabled: isInstructor });
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
@@ -247,6 +251,8 @@ function RoomScreenContent({
         <div className="flex-1" />
         {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
         {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
+        {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 강사에게만 알린다. */}
+        {isInstructor && <CoachingStatusNotice availability={coaching.availability} />}
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
         {!isInstructor && process.env.NODE_ENV !== "production" && (
           <button
