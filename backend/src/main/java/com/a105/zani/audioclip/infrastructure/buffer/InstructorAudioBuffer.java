@@ -181,16 +181,37 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
             size = Math.min(data.length, size + length);
         }
 
-        /** 최근 requestedBytes 만큼을 16kHz 로 낮춰 인코딩해 떠낸다. 확보량이 적으면 있는 만큼만 담는다. */
-        private synchronized Optional<AudioClip> snapshot(
+        /**
+         * 최근 requestedBytes 만큼을 16kHz 로 낮춰 인코딩해 떠낸다. 확보량이 적으면 있는 만큼만 담는다.
+         *
+         * <p>다운샘플과 인코딩은 <b>락 밖에서</b> 한다. 5분 구간 인코딩이 약 800ms 인데, 이걸 락 안에서 하면 그동안 같은 세션의 {@link #append} 가 막혀 수신 스레드에 역압이
+         * 걸린다(48kHz 기준 초당 96KB 가 소켓 버퍼에 쌓인다). 원본 구간 복사와 벽시계 환산만 락 안에서 끝내면 유지 시간이 arraycopy 수준으로 떨어진다.
+         */
+        private Optional<AudioClip> snapshot(
                 PcmAudioFormat format, long requestedBytes, TranscriptionAudioEncoder encoder) {
-            if (size == 0 || requestedBytes <= 0) {
+            RawSlice slice = copySlice(format, requestedBytes);
+            if (slice == null) {
                 return Optional.empty();
+            }
+            byte[] audio = encoder.encode(
+                    PcmDownsampler.toTranscriptionRate(slice.pcm(), format), PcmAudioFormat.transcription());
+            return Optional.of(new AudioClip(
+                    audio,
+                    encoder.contentType(),
+                    slice.toEpochMs() - slice.durationMs(),
+                    slice.toEpochMs(),
+                    Duration.ofMillis(slice.durationMs())));
+        }
+
+        /** 락 안에서 끝내야 하는 부분만. 버퍼가 계속 덮이므로 구간 복사와 시각 환산은 원자적이어야 한다. */
+        private synchronized RawSlice copySlice(PcmAudioFormat format, long requestedBytes) {
+            if (size == 0 || requestedBytes <= 0) {
+                return null;
             }
             int take = (int) Math.min(size, requestedBytes);
             take -= take % format.frameBytes();
             if (take == 0) {
-                return Optional.empty();
+                return null;
             }
 
             byte[] pcm = new byte[take];
@@ -203,15 +224,14 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
 
             // totalWritten 이 경과 시간과 맞춰져 있으므로 구간의 끝·시작을 벽시계로 환산할 수 있다.
             long toEpochMs = streamStartMs + format.durationMsOf(totalWritten);
-            long durationMs = format.durationMsOf(take);
-            byte[] audio =
-                    encoder.encode(PcmDownsampler.toTranscriptionRate(pcm, format), PcmAudioFormat.transcription());
-            return Optional.of(new AudioClip(
-                    audio, encoder.contentType(), toEpochMs - durationMs, toEpochMs, Duration.ofMillis(durationMs)));
+            return new RawSlice(pcm, toEpochMs, format.durationMsOf(take));
         }
 
         private synchronized int size() {
             return size;
         }
     }
+
+    /** 락 안에서 떠낸 원본 구간과 그 시점의 벽시계 값. 무거운 변환은 이걸 들고 락 밖에서 한다. */
+    private record RawSlice(byte[] pcm, long toEpochMs, long durationMs) {}
 }
