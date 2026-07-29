@@ -28,6 +28,7 @@ from zani_ai.engagement.experiment import (
     E0E_SPEC,
     E0F_SPEC,
     E0G_SPEC,
+    E0H_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -59,6 +60,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-F", "cuda"): "32fa6faa58b51f2b1d6ac71ca54605b6a4e1f1910aecac071925b9a270decdca",
     ("E0-G", "cpu"): "5886db84162b0342eb4805c0b1b49ce953b5f10d74dbcf07b750d98bf502c471",
     ("E0-G", "cuda"): "ddf2e00582eaa1c5b7d38220c0622f8a5b6f8acbc042aae9a32fc6d3283ddea8",
+    ("E0-H", "cpu"): "1ff748ff0a1148f3c90d2af760690bf0eac13f690958c77100fe1e32553b8c01",
+    ("E0-H", "cuda"): "766e2ceb2272162a63756ecd23d3add33c20cf0a99e2a2a09228a313ce13d864",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -76,6 +79,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0E_SPEC,
     E0F_SPEC,
     E0G_SPEC,
+    E0H_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -151,6 +155,58 @@ def test_schedule_alone_separates_e0g_from_e0() -> None:
     differing = {k for k in base | variant if base.get(k) != variant.get(k)}
     assert differing == {"learning_rate", "early_stopping", "lr_step"}
     assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_target_encoding_alone_separates_e0h_from_e0() -> None:
+    """E0-H changes the target the loss is fitted to and nothing else.
+
+    It deliberately inherits E0's schedule rather than E0-G's, so lr, early
+    stopping and decay must all stay put; ``sord_alpha`` travels with the
+    encoding because a different alpha is a different target distribution.
+    """
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    variant = _build_configuration(E0H_SPEC, "cuda")
+
+    differing = {k for k in base | variant if base.get(k) != variant.get(k)}
+    assert differing == {"target_encoding", "sord_alpha"}
+    assert variant["target_encoding"] == "sord"
+    assert variant["sord_alpha"] == 2.0
+    assert _canonical_hash(variant) != _canonical_hash(base)
+
+
+def test_e0h_keeps_the_head_and_leaves_the_loss_weighting_alone() -> None:
+    """SORD acts on the target, so the softmax head and unweighted CE must stay.
+
+    E0-B already tried the grade order by replacing the head and failed; keeping
+    ``head``/``loss`` at E0's values is what makes E0-H a different attempt
+    rather than a second CORAL.
+    """
+    assert E0H_SPEC.model_config.to_dict() == E0_SPEC.model_config.to_dict()
+    assert E0H_SPEC.loss == "cross_entropy"
+    assert E0H_SPEC.class_weighting == "none"
+    assert E0H_SPEC.sampler == "none"
+    # The schedule stays on E0's, not E0-G's: cheap base first, and E0-G was
+    # never established as the better baseline. See the E0H_SPEC comment.
+    for field in ("learning_rate", "batch_size", "max_epochs", "patience", "lr_step"):
+        assert getattr(E0H_SPEC, field) == getattr(E0_SPEC, field)
+
+    configuration = _build_configuration(E0H_SPEC, "cuda")
+
+    assert "loss" not in configuration
+    assert configuration["class_weighting"] is False
+
+
+def test_target_encoding_enters_the_identity_only_when_it_leaves_one_hot() -> None:
+    """Recording it unconditionally would rewrite every earlier protocol's hash."""
+    for spec in SPECS_TUPLE:
+        configuration = _build_configuration(spec, "cuda")
+
+        if spec.target_encoding == "one_hot":
+            assert "target_encoding" not in configuration
+            assert "sord_alpha" not in configuration
+        else:
+            assert configuration["target_encoding"] == spec.target_encoding
 
 
 def test_training_schedule_fields_enter_the_identity_only_when_set() -> None:

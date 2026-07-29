@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -11,14 +12,17 @@ from zani_ai.engagement import training as training_module
 from zani_ai.engagement.model import ModelConfig
 from zani_ai.engagement.training import (
     CachedFeatureDataset,
+    CoralObjective,
     FeatureEntry,
     FocalObjective,
     SoftmaxObjective,
+    SordObjective,
     TrainingConfig,
     _balanced_sample_weights,
     _class_weights,
     _loader,
     compute_feature_statistics,
+    make_objective,
     ordinal_quality,
     train_model,
 )
@@ -383,3 +387,144 @@ def test_ordinal_quality_degenerate_split_is_zero_not_nan() -> None:
 
     assert within_one == 1.0
     assert kappa == 0.0
+
+
+# --- SORD soft ordinal targets ------------------------------------------------
+
+
+def _sord_targets_by_hand(label: int, alpha: float, num_classes: int = 4) -> list[float]:
+    """``exp(-alpha d^2)`` normalized, written out the way the paper states it.
+
+    The implementation reaches the same distribution through a softmax over the
+    negated penalties, so this is an independent second derivation rather than a
+    copy of it.
+    """
+    weights = [math.exp(-alpha * (label - grade) ** 2) for grade in range(num_classes)]
+    total = sum(weights)
+    return [weight / total for weight in weights]
+
+
+@pytest.mark.parametrize("label", [0, 1, 2, 3])
+def test_sord_targets_match_the_paper_formula(label: int) -> None:
+    targets = SordObjective(alpha=2.0).soft_targets(torch.tensor([label]))
+
+    np.testing.assert_allclose(
+        targets.numpy()[0], _sord_targets_by_hand(label, 2.0), rtol=1e-6
+    )
+    assert float(targets.sum()) == pytest.approx(1.0)
+
+
+def test_sord_targets_peak_on_the_true_grade_and_fall_off_by_distance() -> None:
+    """The point of the encoding: a neighbour keeps mass, a far grade does not."""
+    targets = SordObjective(alpha=2.0).soft_targets(torch.tensor([1]))[0]
+
+    assert int(targets.argmax()) == 1
+    # grade 0 and grade 2 are both one step from 1, so they must be equal.
+    assert float(targets[0]) == pytest.approx(float(targets[2]))
+    assert float(targets[0]) > float(targets[3])
+    assert float(targets[1]) > 0.5
+
+
+def test_large_alpha_converges_on_one_hot_and_small_alpha_on_uniform() -> None:
+    """alpha is the knob between the two degenerate ends, which is why it is
+    part of the protocol identity instead of a free parameter."""
+    labels = torch.tensor([2])
+
+    sharp = SordObjective(alpha=50.0).soft_targets(labels)[0]
+    flat = SordObjective(alpha=1e-6).soft_targets(labels)[0]
+
+    np.testing.assert_allclose(sharp.numpy(), [0, 0, 1, 0], atol=1e-6)
+    np.testing.assert_allclose(flat.numpy(), [0.25] * 4, atol=1e-6)
+
+
+def test_sord_loss_is_the_soft_target_cross_entropy() -> None:
+    """-sum(target * log softmax(out)), averaged over the batch."""
+    objective = SordObjective(alpha=2.0)
+
+    loss = objective.loss(_LOGITS, _LABELS)
+
+    log_probabilities = _LOGITS.log_softmax(dim=1)
+    expected = -sum(
+        sum(
+            target * float(log_probabilities[row, grade])
+            for grade, target in enumerate(_sord_targets_by_hand(int(label), 2.0))
+        )
+        for row, label in enumerate(_LABELS)
+    ) / len(_LABELS)
+    assert float(loss) == pytest.approx(expected, rel=1e-6)
+
+
+def test_sord_with_a_near_one_hot_target_reduces_to_cross_entropy() -> None:
+    """A sanity anchor: as the target sharpens, the loss must approach plain CE."""
+    sord = SordObjective(alpha=100.0).loss(_LOGITS, _LABELS)
+
+    plain = SoftmaxObjective().loss(_LOGITS, _LABELS)
+    assert float(sord) == pytest.approx(float(plain), rel=1e-6)
+
+
+def test_sord_decodes_predictions_like_softmax() -> None:
+    """The head and the decision rule are untouched -- only the target moves."""
+    sord, plain = SordObjective(alpha=2.0), SoftmaxObjective()
+
+    torch.testing.assert_close(sord.predict(_LOGITS), plain.predict(_LOGITS))
+    torch.testing.assert_close(sord.class_probs(_LOGITS), plain.class_probs(_LOGITS))
+
+
+@pytest.mark.parametrize("alpha", [0.0, -1.0])
+def test_sord_rejects_a_non_positive_alpha(alpha: float) -> None:
+    with pytest.raises(ValueError, match="sord_alpha must be positive"):
+        SordObjective(alpha=alpha)
+
+
+def test_make_objective_builds_sord_for_the_softmax_head() -> None:
+    objective = make_objective(ModelConfig(), target_encoding="sord", sord_alpha=3.0)
+
+    assert isinstance(objective, SordObjective)
+    assert objective.alpha == 3.0
+    assert objective.num_classes == 4
+
+
+def test_make_objective_defaults_to_one_hot() -> None:
+    assert isinstance(make_objective(ModelConfig()), SoftmaxObjective)
+
+
+def test_make_objective_rejects_an_unknown_target_encoding() -> None:
+    with pytest.raises(ValueError, match="target_encoding must be one of"):
+        make_objective(ModelConfig(), target_encoding="soft")
+
+
+def test_sord_cannot_be_combined_with_class_weighting() -> None:
+    """A per-class weight is defined against a hard label the target no longer has."""
+    weights = torch.tensor([0.5, 1.5, 1.0, 2.0])
+
+    with pytest.raises(ValueError, match="cannot be combined with class weighting"):
+        make_objective(ModelConfig(), weights, target_encoding="sord")
+
+
+def test_sord_cannot_be_combined_with_focal_loss() -> None:
+    """Both rewrite what the loss compares against; stacking them would leave
+    neither attributable."""
+    with pytest.raises(ValueError, match="require loss='cross_entropy'"):
+        make_objective(ModelConfig(), loss="focal", target_encoding="sord")
+
+
+def test_sord_is_refused_on_the_coral_head() -> None:
+    """CORAL's targets are cumulative indicators, so silently ignoring the
+    request would record a target encoding the run never trained with."""
+    with pytest.raises(ValueError, match="not applicable to the CORAL head"):
+        make_objective(ModelConfig(head="coral"), target_encoding="sord")
+
+    assert isinstance(make_objective(ModelConfig(head="coral")), CoralObjective)
+
+
+def test_sord_config_reaches_the_training_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E0-H: the loop must build a SordObjective carrying the spec's alpha."""
+    objective, sampler = _run_tiny_training(
+        tmp_path, monkeypatch, target_encoding="sord", sord_alpha=1.5
+    )
+
+    assert isinstance(objective, SordObjective)
+    assert objective.alpha == 1.5
+    assert not isinstance(sampler, torch.utils.data.WeightedRandomSampler)
