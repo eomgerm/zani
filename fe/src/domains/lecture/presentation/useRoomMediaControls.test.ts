@@ -412,6 +412,44 @@ describe("useRoomMediaControls", () => {
     ]);
   });
 
+  /** 장치 점검을 통과하고 들어왔는데 둘 다 꺼져 있으면 고장으로 읽힌다. */
+  it("입장 전 점검을 거쳐 들어오면 카메라·마이크를 켠 상태로 시작한다", async () => {
+    stubMediaDevices([]);
+    sessionStorage.setItem(
+      "zani:prejoin:ABC123",
+      JSON.stringify({ cameraDeviceId: null, microphoneDeviceId: null, testedAt: "2026-07-26T12:00:00.000Z" }),
+    );
+    const room = connectedRoom();
+    room.localParticipant!.isCameraEnabled = false;
+    room.localParticipant!.isMicrophoneEnabled = false;
+
+    renderHook(() => useRoomMediaControls("ABC123"));
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(room.localParticipant!.isCameraEnabled).toBe(true);
+    expect(room.localParticipant!.isMicrophoneEnabled).toBe(true);
+  });
+
+  /** 서버가 publish 를 허락하지 않은 소스를 켜려 들면 LiveKit 이 거절한다. 켜려는 시도 자체를 하지 않는다. */
+  it("서버가 막은 소스는 켜지 않는다", async () => {
+    stubMediaDevices([]);
+    sessionStorage.setItem(
+      "zani:prejoin:ABC123",
+      JSON.stringify({ cameraDeviceId: null, microphoneDeviceId: null, testedAt: "2026-07-26T12:00:00.000Z" }),
+    );
+    const room = connectedRoom();
+    room.localParticipant!.isCameraEnabled = false;
+    room.localParticipant!.isMicrophoneEnabled = false;
+    // 마이크만 허용한다.
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [2] };
+
+    renderHook(() => useRoomMediaControls("ABC123"));
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(room.localParticipant!.isMicrophoneEnabled).toBe(true);
+    expect(room.localParticipant!.isCameraEnabled).toBe(false);
+  });
+
   it("starts with the default devices when no pre-join result is stored", async () => {
     stubMediaDevices([]);
     const room = connectedRoom();

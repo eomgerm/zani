@@ -327,7 +327,15 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
     };
   }, [room]);
 
-  // 입장 전 점검에서 고른 장치를 강의실에서도 이어 쓴다. room 연결마다 한 번만 적용한다.
+  /**
+   * 입장 전 점검에서 고른 장치를 강의실에서도 이어 쓰고, 카메라·마이크를 켠 상태로 시작한다. room 연결마다 한 번만 적용한다.
+   *
+   * <p>켜 주는 이유: 방금 장치 점검을 통과하고 들어왔는데 둘 다 꺼져 있으면 고장으로 읽힌다. 점검을 통과했다는 건 권한이 있고 장치가 동작한다는 뜻이라, 켜는 게 기대에 맞다.
+   *
+   * <p>장치를 먼저 고르고 나서 켠다. 순서를 뒤집으면 기본 장치로 publish 한 뒤 곧바로 다시 publish 하게 된다.
+   *
+   * <p>실패는 삼킨다. 여기서 못 켜도 사용자가 직접 켤 수 있고, 권한 거부는 토글 경로가 이미 안내한다.
+   */
   useEffect(() => {
     if (!room || !prejoinInviteCode) {
       return;
@@ -336,16 +344,24 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
     if (!prejoin) {
       return;
     }
-    // 전환 요청이 setState를 부르므로 effect 본문 밖(지연)에서 실행한다.
-    const applyPrejoinDevices = setTimeout(() => {
+    // 전환·publish 요청이 setState를 부르므로 effect 본문 밖(지연)에서 실행한다.
+    const applyPrejoin = setTimeout(() => {
       if (prejoin.microphoneDeviceId) {
         switchDevice(MICROPHONE_KIND, prejoin.microphoneDeviceId);
       }
       if (prejoin.cameraDeviceId) {
         switchDevice(CAMERA_KIND, prejoin.cameraDeviceId);
       }
+      const local = room.localParticipant;
+      const permissions: PublishPermissions | undefined = local?.permissions;
+      if (local && !sourceBlocked(permissions, TRACK_SOURCE_MICROPHONE)) {
+        void Promise.resolve(local.setMicrophoneEnabled(true)).catch(() => {});
+      }
+      if (local && !sourceBlocked(permissions, TRACK_SOURCE_CAMERA)) {
+        void Promise.resolve(local.setCameraEnabled(true)).catch(() => {});
+      }
     }, 0);
-    return () => clearTimeout(applyPrejoinDevices);
+    return () => clearTimeout(applyPrejoin);
   }, [room, prejoinInviteCode, switchDevice]);
 
   return {
