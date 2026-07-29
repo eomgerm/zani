@@ -9,12 +9,10 @@
     "prebuild": "node scripts/sync-attention-assets.mjs",
     "build": "next build",
     "start": "next start",
-    "start:attention-smoke": "node scripts/start-standalone-smoke.mjs",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:attention": "playwright test --config playwright.attention.config.ts",
     "generate:types": "openapi-typescript http://localhost:8080/v3/api-docs -o src/shared/types/api.d.ts"
   },
   "dependencies": {

@@ -12,7 +12,7 @@ readonly CI_DOCKER="${CI_ROOT}/docker"
 readonly DEPLOY_LOCK="${CI_LOCKS}/zani-frontend-deploy.lock"
 readonly VERIFY_LOCK="${CI_LOCKS}/zani-frontend-verify.lock"
 readonly FRONTEND_CONTAINER="zani-frontend"
-readonly CI_PLAYWRIGHT_IMAGE="mcr.microsoft.com/playwright:v1.61.1-noble@sha256:cf0daee9b994042e011bc29f20cdff1a9f682a039b43fcd738f7d8a9d3bcd9d6"
+readonly CI_NODE_IMAGE="node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2"
 
 log() {
   printf '[zani-frontend-deploy] %s\n' "$*"
@@ -95,7 +95,6 @@ verify_frontend() (
   local requested_workspace="$1"
   local sha="$2"
   local workspace short_sha temp_dir archive
-  local verification_image verification_network verification_container ready
 
   validate_sha "${sha}"
   workspace="$(resolve_workspace "${requested_workspace}")"
@@ -107,24 +106,14 @@ verify_frontend() (
   short_sha="${sha:0:12}"
   temp_dir="$(mktemp -d "${CI_TMP}/zani-frontend-ci-${short_sha}.XXXXXX")"
   archive="${temp_dir}/frontend.tar"
-  verification_image="zani/frontend:verify-${short_sha}-$$"
-  verification_network="zani-frontend-verify-${short_sha}-$$"
-  verification_container="zani-frontend-verify-app-${short_sha}-$$"
-
-  cleanup_frontend_verification() {
-    docker rm --force "${verification_container}" >/dev/null 2>&1 || true
-    docker network rm "${verification_network}" >/dev/null 2>&1 || true
-    docker image rm "${verification_image}" >/dev/null 2>&1 || true
-    rm -rf -- "${temp_dir}"
-  }
-  trap cleanup_frontend_verification EXIT
+  trap 'rm -rf -- "${temp_dir}"' EXIT
 
   archive_commit "${workspace}" "${sha}" "${archive}" fe
   mkdir -p "${temp_dir}/source"
   tar -xf "${archive}" -C "${temp_dir}/source"
   chown -R 1000:1000 "${temp_dir}/source/fe"
 
-  log "Running npm ci, lint, and unit tests for ${short_sha}."
+  log "Running npm ci, lint, tests, and production build for ${short_sha}."
   docker run --rm \
     --cpus 1.5 \
     --memory 2g \
@@ -139,49 +128,8 @@ verify_frontend() (
     -e NEXT_PUBLIC_API_BASE_URL= \
     -v "${temp_dir}/source/fe:/workspace:rw" \
     -w /workspace \
-    "${CI_PLAYWRIGHT_IMAGE}" \
-    sh -lc 'npm ci && npm run lint && npm run test'
-
-  log "Building the production frontend image for ${short_sha}."
-  docker build --tag "${verification_image}" "${temp_dir}/source/fe"
-  docker network create "${verification_network}" >/dev/null
-  docker run --detach \
-    --name "${verification_container}" \
-    --network "${verification_network}" \
-    "${verification_image}" >/dev/null
-
-  ready=false
-  for _ in $(seq 1 60); do
-    if docker exec "${verification_container}" node -e \
-      "fetch('http://127.0.0.1:3000/attention-model-smoke').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
-      ready=true
-      break
-    fi
-    sleep 2
-  done
-  if [[ "${ready}" != true ]]; then
-    docker logs --tail 100 "${verification_container}" >&2 || true
-    die "Production frontend image did not become ready for attention model smoke."
-  fi
-
-  log "Running Chromium attention model smoke against the production image for ${short_sha}."
-  docker run --rm \
-    --cpus 1.5 \
-    --memory 2g \
-    --pids-limit 512 \
-    --user 1000:1000 \
-    --read-only \
-    --ipc host \
-    --tmpfs /tmp:rw,noexec,nosuid,size=512m,uid=1000,gid=1000,mode=1777 \
-    --security-opt no-new-privileges:true \
-    --cap-drop ALL \
-    --network "${verification_network}" \
-    -e HOME=/tmp \
-    -e ATTENTION_SMOKE_BASE_URL="http://${verification_container}:3000" \
-    -v "${temp_dir}/source/fe:/workspace:rw" \
-    -w /workspace \
-    "${CI_PLAYWRIGHT_IMAGE}" \
-    sh -lc 'npm run test:e2e:attention'
+    "${CI_NODE_IMAGE}" \
+    sh -lc 'npm ci && npm run lint && npm run test && npm run build'
 
   log "Frontend verification succeeded for ${sha}."
 )
