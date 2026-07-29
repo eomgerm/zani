@@ -51,7 +51,12 @@ paths:
       summary: 세션(강의방) 생성
       description: |
         진행 중인 방이 없는 강사가 제목과 함께 세션을 생성한다.
-        LIVE 상태로 즉시 시작되며, 고유 초대 코드가 함께 발급된다.
+
+        세션은 `PREPARING`으로 만들어진다. 강사가 미디어를 연결하고 수업을 시작해야 `LIVE`가 되며,
+        그 전에는 초대 코드로 학생이 들어올 수 없다. 자동 종료 시각(`expiresAt`)도 시작 시점에 정해지므로
+        이 응답에서는 `null`이다.
+
+        강사 참가 관계도 이 시점에 함께 만들어진다. 따라서 생성 직후 바로 미디어 토큰을 발급받을 수 있다.
       security:
         - bearerAuth: []
       requestBody:
@@ -95,13 +100,69 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /sessions/{sessionId}/start:
+    post:
+      operationId: startSession
+      summary: 수업 시작 (강사 전용)
+      description: |
+        준비를 마친 강사가 수업을 실제로 시작한다. 세션이 `PREPARING` → `LIVE` 로 바뀐다.
+
+        이 호출 전까지 초대 코드는 유효하지 않아 학생이 입장할 수 없다. 자동 종료 시각(`expiresAt`)도 이때 정해진다.
+        멱등하며, 이미 진행 중이면 `started: false` 를 돌려주고 시작 시각은 밀리지 않는다.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 시작 완료
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartSessionApiResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: 수업을 연 강사가 아님
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                isSuccess: false
+                code: SESSION_APP_006
+                message: Only the instructor who opened this session can end it
+        "404":
+          description: 존재하지 않는 세션
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "409":
+          description: 이미 종료된 수업은 다시 시작할 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
   /sessions/join:
     post:
       operationId: joinSession
       summary: 초대 코드로 세션 입장
       description: |
-        유효한 초대 코드로 입장하면 STUDENT 멤버십을 즉시 얻는다.
-        이미 참여 중인 세션이면 멱등하게 기존 멤버십을 반환한다.
+        유효한 초대 코드로 입장하면 STUDENT 멤버십을 얻는다.
+        이미 참여 중인 세션이면 멱등하게 기존 멤버십을 반환한다(새로고침·재입장 대비).
+
+        이 API는 강의실 화면에 들어갈 자격만 만든다. **출석과 사후 자료 접근 자격은 확정하지 않는다.**
+        그 기준은 LiveKit에 실제로 연결됐을 때 서버가 받는 `participant_joined` webhook이며,
+        이 API만 호출하고 미디어에 접속하지 않은 사용자는 집계 분모에 포함되지 않는다.
+
+        입장은 세션이 `LIVE`일 때만 가능하고, 강사를 포함한 참가자가 30명이면 더 받지 않는다.
       security:
         - bearerAuth: []
       requestBody:
@@ -117,6 +178,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JoinSessionApiResponse"
+        "400":
+          description: 초대 코드 형식이 올바르지 않음
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                isSuccess: false
+                code: SESSION_002
+                message: Invite code format is invalid
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -129,6 +200,20 @@ paths:
                 isSuccess: false
                 code: SESSION_APP_005
                 message: No session found for the given invite code
+        "409":
+          description: |
+            입장할 수 없는 상태. 두 경우를 `code`로 구분한다.
+
+            - `SESSION_APP_007`: 정원 30명이 찼다.
+            - `SESSION_APP_008`: 아직 시작하지 않았거나 이미 종료된 수업이다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+              example:
+                isSuccess: false
+                code: SESSION_APP_007
+                message: "SESSION_CAPACITY_REACHED: the session already holds 30 members"
 
 components:
   securitySchemes:
@@ -197,8 +282,21 @@ components:
 
     SessionStatus:
       type: string
+      description: |
+        수업의 생명주기 상태.
+
+        - `PREPARING`: 강사가 방을 만들었지만 아직 시작하지 않음. 강사만 미디어 토큰을 받을 수 있고 학생 입장은 막힌다.
+        - `LIVE`: 수업 진행 중. 초대 코드로 학생이 들어올 수 있는 유일한 상태.
+        - `ENDING`: 종료 절차 진행 중. 신규 입장·토큰 발급이 막힌다.
+        - `NOTE_PENDING`: 강사 메모 작성 대기(30분).
+        - `ENDED`: 최종 종료.
+
+        클라이언트는 "진행 중"을 `LIVE` 하나로만 판단하고, `ENDING` 이후는 모두 종료로 다뤄야 한다.
       enum:
+        - PREPARING
         - LIVE
+        - ENDING
+        - NOTE_PENDING
         - ENDED
 
     SessionRole:
@@ -244,6 +342,7 @@ components:
           format: int64
         inviteCode:
           type: string
+          description: 학생에게 공유할 8자리 코드. 세션이 `LIVE`가 되기 전에는 이 코드로 입장할 수 없다.
           minLength: 8
           maxLength: 8
         status:
@@ -253,6 +352,8 @@ components:
         expiresAt:
           type: string
           format: date-time
+          description: 자동 종료 예정 시각. 아직 시작하지 않은 `PREPARING` 세션에서는 `null`이며, 시작 시각으로부터 3시간 뒤로 정해진다.
+          nullable: true
 
     CreateSessionApiResponse:
       type: object
@@ -273,13 +374,56 @@ components:
       required:
         - isSuccess
 
+    StartSessionResponse:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+          format: int64
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        inviteCode:
+          type: string
+          description: 이 시점부터 학생 입장에 쓸 수 있다.
+          minLength: 8
+          maxLength: 8
+        expiresAt:
+          type: string
+          format: date-time
+          description: 자동 종료 예정 시각(시작 + 3시간).
+        started:
+          type: boolean
+          description: 이번 요청으로 시작되었으면 true, 이미 진행 중이었으면 false.
+
+    StartSessionApiResponse:
+      type: object
+      properties:
+        isSuccess:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        data:
+          $ref: "#/components/schemas/StartSessionResponse"
+      required:
+        - isSuccess
+
     JoinSessionRequest:
       type: object
       properties:
         inviteCode:
           type: string
-          minLength: 8
-          maxLength: 8
+          description: |
+            초대 코드. 표시형(`A7KM-2PQR`)과 저장형(`A7KM2PQR`)을 모두 받고 소문자 입력도 허용한다.
+            서버가 하이픈을 제거하고 대문자로 정규화한 뒤 조회한다.
+          pattern: "^[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}$"
+          example: A7KM-2PQR
       required:
         - inviteCode
 
