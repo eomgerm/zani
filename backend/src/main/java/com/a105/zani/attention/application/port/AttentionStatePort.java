@@ -1,7 +1,9 @@
 package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
@@ -48,6 +50,13 @@ public interface AttentionStatePort {
 
     /** 분모 제외를 되돌린다. 카메라를 다시 쓸 수 있게 된 학생은 곧바로 분모로 돌아온다(확정 문서 §7.1). */
     void includeInDenominator(long sessionId, long participantId);
+
+    /**
+     * 주어진 참가자들 중 지금 분모에서 빠져 있는 사람.
+     *
+     * <p>후보를 밖에서 받는 이유는 키 공간을 훑지 않기 위해서다(SCAN 금지). 세는 후보는 presence 가 알고 있으므로 그 ID 들만 조회한다.
+     */
+    Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds);
 
     /**
      * 이 관측이 이미 반영된 것보다 새로우면 집계 상태에 반영한다. 더 최신 판정이 이미 반영돼 있으면 아무것도 하지 않고 빈 값을 돌려준다.

@@ -1,9 +1,12 @@
 package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
@@ -165,6 +168,33 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     public void includeInDenominator(long sessionId, long participantId) {
         try {
             redisTemplate.delete(excludedKey(sessionId, participantId));
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds) {
+        if (participantIds.isEmpty()) {
+            return Set.of();
+        }
+        List<Long> ordered = List.copyOf(participantIds);
+        try {
+            List<String> markers = redisTemplate
+                    .opsForValue()
+                    .multiGet(ordered.stream()
+                            .map(participantId -> excludedKey(sessionId, participantId))
+                            .toList());
+            if (markers == null) {
+                return Set.of();
+            }
+            Set<Long> excluded = new HashSet<>();
+            for (int index = 0; index < ordered.size() && index < markers.size(); index++) {
+                if (markers.get(index) != null) {
+                    excluded.add(ordered.get(index));
+                }
+            }
+            return excluded;
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }
