@@ -4,6 +4,7 @@ set -Eeuo pipefail
 readonly FRONTEND_ROOT="${FRONTEND_ROOT:-/opt/zani/frontend}"
 readonly RELEASES_DIR="${FRONTEND_ROOT}/releases"
 readonly CURRENT_LINK="${FRONTEND_ROOT}/current"
+readonly RUNTIME_ENV="${RUNTIME_ENV:-/etc/zani/application/runtime.env}"
 readonly AGENT_ROOT="${JENKINS_AGENT_ROOT:-/var/lib/zani-jenkins-agent}"
 readonly CI_ROOT="/var/lib/zani-ci"
 readonly CI_LOCKS="${CI_ROOT}/locks"
@@ -81,6 +82,17 @@ validate_checkout() {
     die "Workspace has staged changes."
 }
 
+load_runtime_environment() {
+  [[ -r "${RUNTIME_ENV}" ]] || die "Runtime environment file is not readable: ${RUNTIME_ENV}"
+  # The file is root-owned and limited to simple KEY=VALUE entries by the installer.
+  set -a
+  # shellcheck disable=SC1090
+  source "${RUNTIME_ENV}"
+  set +a
+  [[ -n "${GOOGLE_OAUTH_CLIENT_ID:-}" ]] ||
+    die "GOOGLE_OAUTH_CLIENT_ID is missing from ${RUNTIME_ENV}."
+}
+
 archive_commit() {
   local workspace="$1"
   local sha="$2"
@@ -126,6 +138,7 @@ verify_frontend() (
     -e HOME=/tmp \
     -e NEXT_TELEMETRY_DISABLED=1 \
     -e NEXT_PUBLIC_API_BASE_URL= \
+    -e NEXT_PUBLIC_GOOGLE_CLIENT_ID=zani-ci.apps.googleusercontent.com \
     -v "${temp_dir}/source/fe:/workspace:rw" \
     -w /workspace \
     "${CI_NODE_IMAGE}" \
@@ -139,7 +152,10 @@ compose_for_release() {
   local image="$2"
   shift 2
 
-  FRONTEND_IMAGE="${image}" NEXT_PUBLIC_API_BASE_URL="" docker compose \
+  FRONTEND_IMAGE="${image}" \
+    NEXT_PUBLIC_API_BASE_URL="" \
+    GOOGLE_OAUTH_CLIENT_ID="${GOOGLE_OAUTH_CLIENT_ID}" \
+    docker compose \
     --project-directory "${release_dir}/infrastructure/frontend" \
     -f "${release_dir}/infrastructure/frontend/compose.yaml" \
     "$@"
@@ -196,6 +212,7 @@ deploy_frontend() {
   validate_sha "${sha}"
   workspace="$(resolve_workspace "${requested_workspace}")"
   validate_checkout "${workspace}" "${sha}"
+  load_runtime_environment
 
   exec 9>"${DEPLOY_LOCK}"
   flock -n 9 || die "Another frontend deployment or rollback is already running."
@@ -282,6 +299,7 @@ resolve_rollback_target() {
 rollback_frontend() {
   local target_release current_release current_image target_image
 
+  load_runtime_environment
   exec 9>"${DEPLOY_LOCK}"
   flock -n 9 || die "Another frontend deployment or rollback is already running."
 
