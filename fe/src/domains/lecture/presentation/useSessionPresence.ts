@@ -65,6 +65,19 @@ export function useSessionPresence(
   const { accessToken } = useAuth();
   const connectionState = toConnectionState(status);
 
+  // 첫 연결이 끝난 적 있는지를 나타내는 래치. 강의실에 들어온 직후 LiveKit 핸드셰이크가 끝나기 전에는
+  // 상태가 "reconnecting" 인데, 이걸 그대로 보고하면 서버가 강사 이탈로 보고 5분 유예를 시작한다.
+  // 그래서 수업을 만든 직후 "강사 연결이 끊겼습니다" 가 잠깐 떴다 사라졌다.
+  //
+  // 한 번이라도 붙은 뒤의 재연결은 진짜 이탈이므로 그때부터는 그대로 보고한다.
+  const [everConnected, setEverConnected] = useState(false);
+  useEffect(() => {
+    if (status === "stable" && !everConnected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEverConnected(true);
+    }
+  }, [status, everConnected]);
+
   const [reconnectStatus, setReconnectStatus] = useState<PresenceReconnectStatus | null>(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +85,8 @@ export function useSessionPresence(
 
   useEffect(() => {
     // 로그인 없이는 heartbeat 를 보고할 수 없다. 401 을 반복하는 대신 보내지 않는다.
-    if (stopped || accessToken === null) {
+    // 첫 연결을 기다리는 동안에도 보내지 않는다(위 래치 설명 참고).
+    if (stopped || accessToken === null || !everConnected) {
       return;
     }
 
@@ -114,7 +128,7 @@ export function useSessionPresence(
       clearTimeout(initial);
       clearInterval(timer);
     };
-  }, [sessionId, connectionState, intervalMs, report, stopped, accessToken]);
+  }, [sessionId, connectionState, intervalMs, report, stopped, accessToken, everConnected]);
 
   return { reconnectStatus, sessionEnded, error };
 }
