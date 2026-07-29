@@ -36,6 +36,7 @@ import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,6 +68,7 @@ class RecordingWebhookServiceTest {
                 null,
                 null,
                 null,
+                null,
                 List.of());
     }
 
@@ -77,7 +79,7 @@ class RecordingWebhookServiceTest {
             Boolean complete,
             List<EgressFileResult> files) {
         return new RecordingWebhookEvent(
-                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", files);
+                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files);
     }
 
     @BeforeEach
@@ -358,6 +360,57 @@ class RecordingWebhookServiceTest {
         service.process("{}", "ok");
 
         assertTrue(processedEvents.contains("EV_ws_1"), "재전송되지 않도록 PROCESSED로 종결해야 한다");
+    }
+
+    @Test
+    void 표시가_없어도_페이로드의_출력_종류로_스트림_egress를_가려낸다() {
+        // Redis 가 죽어 remember 가 조용히 실패하면 표시가 영영 남지 않는다. 표시가 유일한 근거였을 때는
+        // 그 Egress 의 모든 후속 이벤트가 5xx 로 떨어져 LiveKit 이 무한 재전송했다.
+        audioStreamEgressIds.clear();
+        nextEvent = audioStreamEgressEvent("EV_ws_payload", "EG_ws_payload");
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_payload"), "표시 없이 페이로드만으로 종결해야 한다");
+    }
+
+    @Test
+    void 페이로드가_파일_출력이라고_알려주면_표시가_있어도_녹화로_처리한다() {
+        // 1차 근거가 2차 근거를 덮어야 한다. 반대로 동작하면 낡은 표시 하나가 정상 녹화를 통째로 건너뛴다.
+        audioStreamEgressIds.add("EG_file");
+        nextEvent = new RecordingWebhookEvent(
+                "EV_file_wins",
+                RecordingWebhookEventType.EGRESS_STARTED,
+                SESSION_ID,
+                null,
+                null,
+                null,
+                "EG_file",
+                null,
+                "TR_src",
+                false,
+                List.of());
+
+        // 녹화 경로로 들어갔다면 recordings 행이 없으므로 재전송을 유도하는 예외가 나야 한다.
+        // 표시를 우선했다면 조용히 PROCESSED 로 끝나 버려 정상 녹화가 통째로 누락된다.
+        assertThrows(RecordingNotReadyException.class, () -> service.process("{}", "ok"));
+        assertFalse(processedEvents.contains("EV_file_wins"), "파일 Egress 는 녹화 경로로 가야 한다");
+    }
+
+    /** 페이로드가 WebSocket 출력이라고 알려주는 egress 이벤트. */
+    private RecordingWebhookEvent audioStreamEgressEvent(String eventId, String egressId) {
+        return new RecordingWebhookEvent(
+                eventId,
+                RecordingWebhookEventType.EGRESS_STARTED,
+                SESSION_ID,
+                null,
+                null,
+                null,
+                egressId,
+                null,
+                "TR_src",
+                true,
+                List.of());
     }
 
     @Test
