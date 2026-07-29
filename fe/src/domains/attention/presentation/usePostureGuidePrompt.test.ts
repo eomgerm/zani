@@ -92,4 +92,19 @@ describe("usePostureGuidePrompt", () => {
 
     expect(result.current.prompt).toBeNull();
   });
+
+  // 확인 버튼 하나뿐이라 담긴 정보가 없다 — 서버로 보내지 않는다(§6).
+  it("never reaches the network, whether acknowledged or timed out", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { result } = renderHook(() => usePostureGuidePrompt());
+
+    act(() => result.current.trigger("posture-1"));
+    act(() => result.current.acknowledge());
+    act(() => result.current.trigger("posture-2"));
+    act(() => vi.advanceTimersByTime(DURATION_MS));
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });

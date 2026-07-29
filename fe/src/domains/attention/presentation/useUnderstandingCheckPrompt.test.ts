@@ -113,6 +113,30 @@ describe("useUnderstandingCheckPrompt", () => {
     );
   });
 
+  // 판정 파이프라인(75)이 연속 카운터를 0으로 되돌릴 수 있어야 한다(§5).
+  it("reports a close both when answered and when it times out", async () => {
+    const onClosed = vi.fn();
+    const { result } = renderHook(() =>
+      useUnderstandingCheckPrompt({
+        sessionId: "s1",
+        sendResponse: vi.fn().mockResolvedValue(undefined),
+        onClosed,
+      }),
+    );
+
+    act(() => result.current.trigger("prompt-1"));
+    await act(async () => {
+      await result.current.respond("OK");
+    });
+    expect(onClosed).toHaveBeenCalledTimes(1);
+
+    act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS));
+    act(() => result.current.trigger("prompt-2"));
+    act(() => vi.advanceTimersByTime(DURATION_MS));
+
+    expect(onClosed).toHaveBeenCalledTimes(2);
+  });
+
   it("does not open while the tab is hidden", () => {
     // jsdom 의 visibilityState 는 getter 라 spy 로 덮는다.
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");

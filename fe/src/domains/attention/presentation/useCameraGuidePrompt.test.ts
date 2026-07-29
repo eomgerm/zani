@@ -109,6 +109,37 @@ describe("useCameraGuidePrompt", () => {
     expect(result.current.prompt).toBeNull();
   });
 
+  // 응답이 집계를 바꾸지 않으므로 서버로 보낼 것이 없다(§5.2·§6).
+  it("never reaches the network for any answer", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { result } = renderCameraGuide("off");
+
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    act(() => result.current.answer("WILL_ENABLE"));
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_REMINDER_MS));
+    act(() => vi.advanceTimersByTime(DURATION_MS)); // 두 번째는 무응답으로 닫힌다.
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  // 판정 파이프라인(75)이 연속 카운터를 0으로 되돌릴 수 있어야 한다(§5).
+  it("reports every close, including the one caused by the camera coming back", () => {
+    const onClosed = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ camera }) => useCameraGuidePrompt({ camera, onClosed }),
+      { initialProps: { camera: "off" as CameraAvailability } },
+    );
+
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    expect(result.current.prompt).not.toBeNull();
+
+    rerender({ camera: "on" });
+
+    expect(onClosed).toHaveBeenCalledTimes(1);
+  });
+
   it("holds the prompt back while the tab is hidden and shows it once visible again", () => {
     const visibility = hideTab();
     const { result } = renderCameraGuide("off");

@@ -31,6 +31,11 @@ export interface CameraGuidePrompt {
 export interface UseCameraGuidePromptOptions {
   /** 스트림을 소유한 화면이 트랙을 보고 내려준다. `on` 이 아니면 꺼진 것으로 센다. */
   readonly camera: CameraAvailability;
+  /**
+   * 어떤 이유로든(응답·무응답·카메라 복귀) 프롬프트가 닫힐 때 호출된다.
+   * 판정 파이프라인(75)이 연속 카운터를 0으로 되돌리는 신호다(§5).
+   */
+  onClosed?: () => void;
 }
 
 export interface UseCameraGuidePromptResult {
@@ -54,7 +59,7 @@ const causeOf = (camera: CameraAvailability): CameraGuideCause =>
 export function useCameraGuidePrompt(
   options: UseCameraGuidePromptOptions,
 ): UseCameraGuidePromptResult {
-  const { camera } = options;
+  const { camera, onClosed } = options;
   const cameraOff = camera !== "on";
 
   const [prompt, setPrompt] = useState<{ promptId: string; cause: CameraGuideCause } | null>(null);
@@ -71,11 +76,17 @@ export function useCameraGuidePrompt(
   const [armTick, setArmTick] = useState(0);
   const rearm = useCallback(() => setArmTick((value) => value + 1), []);
 
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  });
+
   const close = useCallback(() => {
     if (promptRef.current === null) return;
     lastClosedAtRef.current = Date.now();
     setPrompt(null);
     rearm();
+    onClosedRef.current?.();
   }, [rearm]);
 
   const { remainingMs } = usePromptTimer(prompt !== null, CAMERA_GUIDE_DURATION_MS, close);
@@ -93,8 +104,10 @@ export function useCameraGuidePrompt(
     offSinceRef.current = null;
     lastClosedAtRef.current = null;
     if (promptRef.current !== null) {
+      // 재권유 간격을 남기지 않고 닫는다 — 카메라가 다시 꺼지면 1분부터 새로 센다.
       setPrompt(null);
       promptRef.current = null;
+      onClosedRef.current?.();
     }
   }, [cameraOff, rearm]);
 

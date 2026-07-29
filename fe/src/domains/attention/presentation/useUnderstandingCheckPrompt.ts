@@ -31,6 +31,11 @@ export interface UseUnderstandingCheckPromptOptions {
   sendResponse?: PromptResponseSender;
   /** 30초 동안 응답이 없어 자동으로 닫혔을 때 호출된다. `NON_RESPONSE` 전송은 훅이 알아서 한다. */
   onTimedOut?: () => void;
+  /**
+   * 어떤 이유로든 프롬프트가 닫힐 때 호출된다. 판정 파이프라인(75)이 연속 카운터를 0으로
+   * 되돌리는 신호다(§5). 무응답으로 닫힌 경우에는 `onTimedOut` 과 함께 호출된다.
+   */
+  onClosed?: () => void;
 }
 
 export interface UseUnderstandingCheckPromptResult {
@@ -50,7 +55,7 @@ export interface UseUnderstandingCheckPromptResult {
 export function useUnderstandingCheckPrompt(
   options: UseUnderstandingCheckPromptOptions,
 ): UseUnderstandingCheckPromptResult {
-  const { sessionId, sendResponse = sendPromptResponse, onTimedOut } = options;
+  const { sessionId, sendResponse = sendPromptResponse, onTimedOut, onClosed } = options;
 
   const [promptId, setPromptId] = useState<string | null>(null);
   const answeredRef = useRef(false);
@@ -61,9 +66,15 @@ export function useUnderstandingCheckPrompt(
     promptIdRef.current = promptId;
   });
 
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  });
+
   const close = useCallback(() => {
     lastClosedAtRef.current = Date.now();
     setPromptId(null);
+    onClosedRef.current?.();
   }, []);
 
   const send = useCallback(

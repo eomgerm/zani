@@ -15,6 +15,59 @@ const OPTIONS: { value: Choice; label: string; emoji: string; toneClassName: str
   { value: "MISSED", label: "놓쳤어요", emoji: "😅", toneClassName: "bg-primary-softer" },
 ];
 
+describe("CoachingPromptPanel 접근성", () => {
+  it("labels the panel as a group so screen readers announce what it is", () => {
+    render(
+      <CoachingPromptPanel
+        title="잠깐 확인할게요 ✋"
+        body="방금 설명한 내용, 지금 어떤가요?"
+        options={OPTIONS}
+        remainingMs={30_000}
+        durationMs={30_000}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("group", { name: "잠깐 확인할게요 ✋" })).toBeInTheDocument();
+  });
+
+  // 남은 시간이 줄어드는 것을 스크린리더가 따라 읽을 수 있어야 한다.
+  it("announces the countdown politely", () => {
+    render(
+      <CoachingPromptPanel
+        title="잠깐 확인할게요 ✋"
+        body="방금 설명한 내용, 지금 어떤가요?"
+        options={OPTIONS}
+        remainingMs={9_000}
+        durationMs={30_000}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("9")).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("lets a keyboard user answer with Enter on the focused option", () => {
+    const onSelect = vi.fn();
+    render(
+      <CoachingPromptPanel
+        title="잠깐 확인할게요 ✋"
+        body="방금 설명한 내용, 지금 어떤가요?"
+        options={OPTIONS}
+        remainingMs={30_000}
+        durationMs={30_000}
+        onSelect={onSelect}
+      />,
+    );
+
+    // 마운트 시 첫 버튼에 포커스가 가 있으므로 Enter 만으로 답할 수 있다.
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    fireEvent.click(document.activeElement!);
+
+    expect(onSelect).toHaveBeenCalledWith("OK");
+  });
+});
+
 describe("CoachingPromptPanel", () => {
   it("renders the title, body, all options, and a rounded-second countdown", () => {
     render(
