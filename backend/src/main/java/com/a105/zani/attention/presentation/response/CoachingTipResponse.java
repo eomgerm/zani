@@ -49,7 +49,9 @@ public record CoachingTipResponse(
             @Schema(description = "완성된 조언 문구", example = "전체 학생의 34%가 헷갈려하고 있습니다. 재귀 호출의 종료 조건을 예시와 함께 다시 설명해 주세요.")
             String message,
 
-            @Schema(description = "조언이 가리키는 핵심 개념", example = "재귀 호출의 종료 조건")
+            @Schema(description = """
+                            조언이 가리키는 핵심 개념. 무응답·자리비움 팁은 §8 문구에 자리표시자가 없어 LLM 을 부르지 않으므로 null 이다 —
+                            필수로 보면 다섯 유형 중 둘이 강사에게 영영 뜨지 않는다(티켓 86·204).""", example = "재귀 호출의 종료 조건", nullable = true)
             String targetConcept) {
 
         private static Tip from(CoachingTip tip) {

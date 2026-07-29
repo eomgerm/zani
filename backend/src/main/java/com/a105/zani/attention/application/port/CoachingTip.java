@@ -10,6 +10,7 @@ package com.a105.zani.attention.application.port;
  * @param tipType 고른 유형. 프론트는 검증과 로깅에만 쓴다
  * @param title 카드 제목
  * @param message 완성된 조언 문구
- * @param targetConcept LLM 이 채운 핵심 개념. 어느 대목에 대한 조언인지 강사가 알 수 있게 한다
+ * @param targetConcept LLM 이 채운 핵심 개념. 어느 대목에 대한 조언인지 강사가 알 수 있게 한다. 무응답·자리비움 팁은 §8 에 자리표시자가 없어 LLM 을 부르지 않으므로
+ *     {@code null} 이다
  */
 public record CoachingTip(CoachingTipType tipType, String title, String message, String targetConcept) {}
