@@ -55,16 +55,9 @@ function manualScheduler() {
   };
 }
 
-/**
- * 표본을 뜰 수 있는 상태의 video. jsdom 은 재생을 하지 않으므로 `readyState` 와 해상도를 손으로 세운다.
- *
- * <p>해상도가 필요한 이유: MediaPipe 는 크기가 0 인 프레임에 예외를 던지므로 세션이 해상도까지 확인한 뒤에 표본을 뜬다.
- */
-function readyVideo(readyState = 2, size = { width: 640, height: 480 }) {
+function readyVideo(readyState = 2) {
   const video = document.createElement("video");
   Object.defineProperty(video, "readyState", { value: readyState, configurable: true });
-  Object.defineProperty(video, "videoWidth", { value: size.width, configurable: true });
-  Object.defineProperty(video, "videoHeight", { value: size.height, configurable: true });
   return video;
 }
 
@@ -183,31 +176,6 @@ describe("startAttentionDetection", () => {
     }
 
     expect(detect).toHaveBeenCalledTimes(6);
-  });
-
-  /**
-   * MediaPipe 는 크기가 0 인 프레임을 받으면 예외를 던진다. LiveKit 트랙을 갓 붙인 직후에 실제로
-   * 재생은 시작됐지만 해상도가 아직 0 인 구간이 있어, `readyState` 만 보고 표본을 뜨면 매 프레임 실패한다.
-   */
-  it("해상도가 아직 0 인 프레임은 표본으로 뜨지 않는다", async () => {
-    video = readyVideo(2, { width: 0, height: 0 });
-    start();
-    await run(1_000);
-
-    expect(detect).not.toHaveBeenCalled();
-  });
-
-  /** 해상도가 잡히면 곧바로 표본을 뜬다 — 위 가드가 영구히 멈추게 만들지 않는지 확인한다. */
-  it("해상도가 잡히면 다시 표본을 뜬다", async () => {
-    video = readyVideo(2, { width: 0, height: 0 });
-    start();
-    await run(300);
-    expect(detect).not.toHaveBeenCalled();
-
-    video = readyVideo();
-    await run(600);
-
-    expect(detect).toHaveBeenCalled();
   });
 
   it("becomes unmeasurable while no face is detected", async () => {

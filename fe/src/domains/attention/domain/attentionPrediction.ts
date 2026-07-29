@@ -27,18 +27,6 @@ export interface AttentionPrediction {
 }
 
 /**
- * 판정 1건이 나온 10초 창의 메타데이터. 판정 결과를 서버에 보고할 때 함께 실어야 하는 값이다.
- *
- * <p>프레임·랜드마크는 담지 않는다. 창의 "길이"와 "얼마나 잘 보였는지"만 담는다.
- */
-export interface AttentionWindow {
-  /** 창 길이(초). 판정 단위는 10초다. */
-  readonly durationSec: number;
-  /** 유효 프레임 비율(0~1). 얼굴을 찾은 프레임 비율이다. */
-  readonly signalQuality: number;
-}
-
-/**
  * 상위(강의실 화면)에 알리는 판정 상태. 카메라 프레임이나 랜드마크는 절대 올려보내지
  * 않고 이 상태와 `AttentionPrediction` 만 전달한다.
  *

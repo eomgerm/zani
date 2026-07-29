@@ -168,8 +168,7 @@ describe("useAttentionDetection", () => {
 
     await act(async () => emitPrediction(PREDICTION));
 
-    // 창 메타는 제출을 거친 판정에만 붙는다. 이 테스트는 결과를 직접 흘려보내므로 null 이다.
-    expect(onPrediction).toHaveBeenCalledWith(PREDICTION, null);
+    expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
     expect(onStatusChange).toHaveBeenCalledWith("collecting");
     expect(onStatusChange).toHaveBeenCalledWith("measuring");
   });

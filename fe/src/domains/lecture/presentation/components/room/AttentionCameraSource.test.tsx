@@ -54,20 +54,11 @@ vi.mock("../../RoomProvider", async (importOriginal) => {
 
 // 판정 엔진 자체는 attention 도메인 테스트가 검증한다. 여기서는 어떤 카메라 상태를 넘기는지만 본다.
 const attention = vi.hoisted(() => ({ cameras: [] as string[] }));
-// 판정 보고에 로그인 토큰이 필요하다. 이 테스트는 인증 흐름을 다루지 않으므로 경계만 대체한다.
-vi.mock("@/domains/auth", () => ({
-  useAuth: () => ({ accessToken: "access-token" }),
-}));
-
 vi.mock("@/domains/attention", () => ({
   useAttentionDetection: (options: { camera: string }) => {
     attention.cameras.push(options.camera);
     return { status: "measuring", prediction: null };
   },
-  // 판정 보고 경계. 이 테스트의 관심사는 카메라 상태 전달이라 보고는 호출 여부만 대체한다.
-  attentionEventTypeOf: (label: string) =>
-    label === "Engaged" || label === "Highly-Engaged" ? "GOOD" : null,
-  reportAttentionEvent: vi.fn(async () => {}),
 }));
 
 import { AttentionCameraSource } from "./AttentionCameraSource";

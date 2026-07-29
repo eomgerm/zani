@@ -1,17 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
-
-import { useAuth } from "@/domains/auth";
-import {
-  attentionEventTypeOf,
-  reportAttentionEvent,
-  useAttentionDetection,
-  type AttentionEventReporter,
-  type AttentionPrediction,
-  type AttentionWindow,
-  type CameraAvailability,
-} from "@/domains/attention";
+import { useAttentionDetection, type CameraAvailability } from "@/domains/attention";
 import { useLocalCameraVideo } from "../../useLocalCameraVideo";
 
 export interface AttentionCameraSourceProps {
@@ -19,10 +8,6 @@ export interface AttentionCameraSourceProps {
   readonly active: boolean;
   /** 카메라 프레임을 얻을 권한이 없는 상태인지(학생이 스스로 끈 것과 구분한다). */
   readonly denied?: boolean;
-  /** 판정을 보고할 세션. 없으면 판정만 돌리고 보고하지 않는다. */
-  readonly sessionId?: string;
-  /** 테스트에서 API 경계를 대체하기 위한 주입점. */
-  readonly reportEvent?: AttentionEventReporter;
 }
 
 /**
@@ -32,47 +17,13 @@ export interface AttentionCameraSourceProps {
  * 그 주기로 다시 렌더된다. 상태 변화를 여기 안에 가둬 두려고 컴포넌트로 분리했다.
  * 판정 결과를 화면에 표시하는 일은 별도 티켓(76) 소관이라, 지금은 판정을 돌리는 것까지만 한다.
  */
-export function AttentionCameraSource({
-  active,
-  denied = false,
-  sessionId,
-  reportEvent = reportAttentionEvent,
-}: AttentionCameraSourceProps) {
-  const { accessToken } = useAuth();
+export function AttentionCameraSource({ active, denied = false }: AttentionCameraSourceProps) {
   // LiveKit이 이미 열어 둔 로컬 카메라 트랙을 읽는다(카메라를 두 번 열지 않는다).
   const { videoRef, attached } = useLocalCameraVideo();
   // 트랙이 요소에 붙기 전에는 읽을 프레임이 없다. 연결 불가와 판정 UNMEASURABLE 은 다른 개념이다.
   const camera: CameraAvailability = denied ? "denied" : active && attached ? "on" : "off";
 
-  // 판정 1건을 서버에 보고한다. 실패는 삼킨다 — 보고가 안 되는 것으로 수업을 끊지 않는다.
-  const onPrediction = useCallback(
-    (prediction: AttentionPrediction, window: AttentionWindow | null) => {
-      const type = attentionEventTypeOf(prediction.label);
-      // 창 메타가 없으면 보고하지 않는다 — signalQuality 를 지어내면 서버가 측정 품질을 잘못 계산한다.
-      if (type === null || window === null || sessionId === undefined || accessToken === null) {
-        return;
-      }
-      const endedAt = new Date();
-      const startedAt = new Date(endedAt.getTime() - window.durationSec * 1_000);
-      void reportEvent(
-        sessionId,
-        {
-          type,
-          startedAt: startedAt.toISOString(),
-          endedAt: endedAt.toISOString(),
-          durationSec: window.durationSec,
-          signalQuality: window.signalQuality,
-          clientEventId: crypto.randomUUID(),
-        },
-        accessToken,
-      ).catch((error: unknown) => {
-        console.warn("[attention] 판정 보고 실패", error);
-      });
-    },
-    [accessToken, reportEvent, sessionId],
-  );
-
-  useAttentionDetection({ videoRef, camera, onPrediction });
+  useAttentionDetection({ videoRef, camera });
 
   return (
     /*

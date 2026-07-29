@@ -6,11 +6,7 @@ import {
   startAttentionDetection,
   type AttentionDetectionSessionOptions,
 } from "../application/attentionDetectionSession";
-import type {
-  AttentionPrediction,
-  AttentionStatus,
-  AttentionWindow,
-} from "../domain/attentionPrediction";
+import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
 import type { FrameScheduler } from "../infrastructure/frameScheduler";
 
 export type { FrameScheduler } from "../infrastructure/frameScheduler";
@@ -27,7 +23,7 @@ export interface UseAttentionDetectionOptions
   readonly videoRef: RefObject<HTMLVideoElement | null>;
   /** `on` 이 아니면 판정을 중단하고 상태만 알린다. */
   readonly camera: CameraAvailability;
-  onPrediction?: (prediction: AttentionPrediction, window: AttentionWindow | null) => void;
+  onPrediction?: (prediction: AttentionPrediction) => void;
   onStatusChange?: (status: AttentionStatus) => void;
   readonly scheduler?: FrameScheduler;
 }
@@ -118,9 +114,9 @@ export function useAttentionDetection(
             : { ...current, status: next, camera },
         );
       },
-      onPrediction(next, window) {
+      onPrediction(next) {
         setReported((current) => ({ ...current, prediction: next, camera }));
-        notifyRef.current.onPrediction?.(next, window);
+        notifyRef.current.onPrediction?.(next);
       },
     });
 

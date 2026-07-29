@@ -197,7 +197,6 @@ function RoomScreenContent({
         <AttentionCameraSource
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
-          sessionId={sessionId}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
