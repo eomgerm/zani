@@ -4,8 +4,8 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/domains/auth/presentation/AuthProvider";
-import { canonicalInviteCode } from "@/domains/lecture/domain/inviteCode";
+import { useAuth } from "@/domains/auth";
+import { canonicalInviteCode } from "@/domains/lecture";
 import {
   JoinSessionRequestError,
   joinSession as joinSessionApi,

@@ -103,7 +103,7 @@ function renderProvider({
       <RoomProvider
         sessionId="55"
         requestToken={requestToken}
-        roomFactory={roomFactory as LiveKitRoomFactory}
+        roomFactory={roomFactory as unknown as LiveKitRoomFactory}
       >
         {children}
       </RoomProvider>,
@@ -230,5 +230,59 @@ describe("RoomProvider", () => {
     expect(room.connect).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+  /**
+   * 강의실 경로는 인증 가드 밖이라, 방 안에서 새로고침하면 세션 복원이 끝나기 전에 연결을 시도한다.
+   * 그때 멈춘 연결이 토큰이 들어온 뒤에도 그대로면 강의실은 영구히 error 로 남는다.
+   */
+  it("세션 복원이 끝나 토큰이 들어오면 멈춘 연결을 다시 시도한다", async () => {
+    authState.accessToken = null;
+    const room = createFakeRoom();
+    const roomFactory = vi.fn(() => room);
+    const requestToken = vi.fn().mockResolvedValue(token);
+    // 같은 엘리먼트 객체를 다시 넘기면 React 가 재조정을 건너뛴다. 매번 새로 만든다.
+    const tree = () => (
+      <RoomProvider
+        sessionId="55"
+        requestToken={requestToken}
+        roomFactory={roomFactory as unknown as LiveKitRoomFactory}
+      >
+        <Probe />
+      </RoomProvider>
+    );
+    const { rerender } = render(tree());
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("error"));
+    expect(requestToken).not.toHaveBeenCalled();
+
+    authState.accessToken = "test-access-token";
+    rerender(tree());
+
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+    expect(requestToken).toHaveBeenCalledWith("55", "test-access-token", expect.anything());
+  });
+
+  /** 토큰 갱신 실패로 로그아웃돼도 진행 중인 수업을 끊지 않는다. LiveKit 토큰은 따로라 연결은 살아 있다. */
+  it("토큰이 사라져도 이미 붙은 연결을 끊지 않는다", async () => {
+    const room = createFakeRoom();
+    const roomFactory = vi.fn(() => room);
+    // requestToken 은 연결 키의 일부다. 팩토리 안에서 새로 만들면 키가 바뀌어 재연결이 일어난다.
+    const requestToken = vi.fn().mockResolvedValue(token);
+    const tree = () => (
+      <RoomProvider
+        sessionId="55"
+        requestToken={requestToken}
+        roomFactory={roomFactory as unknown as LiveKitRoomFactory}
+      >
+        <Probe />
+      </RoomProvider>
+    );
+    const { rerender } = render(tree());
+    await waitFor(() => expect(screen.getByTestId("state")).toHaveTextContent("connected"));
+
+    authState.accessToken = null;
+    rerender(tree());
+
+    expect(screen.getByTestId("state")).toHaveTextContent("connected");
+    expect(roomFactory).toHaveBeenCalledTimes(1);
   });
 });

@@ -40,6 +40,8 @@ type ConnectionKey = {
   requestToken: MediaTokenRequester;
   roomFactory: LiveKitRoomFactory;
   sessionId: string;
+  /** 로그인 토큰을 한 번이라도 확보했는지. false→true 로만 바뀐다(아래 래치 설명 참고). */
+  tokenAvailable: boolean;
 };
 
 type ConnectionSnapshot = Omit<RoomConnectionContextValue, "retry"> & {
@@ -68,16 +70,30 @@ export function RoomProvider({
 }: RoomProviderProps) {
   const [attempt, setAttempt] = useState(0);
   const { accessToken } = useAuth();
-  // 토큰을 연결 키에 넣지 않는다. 넣으면 주기적인 토큰 갱신마다 강의실이 재연결되어 수업이 끊긴다.
+  // 토큰 값 자체는 연결 키에 넣지 않는다. 넣으면 주기적인 토큰 갱신마다 강의실이 재연결되어 수업이 끊긴다.
   // 발급 요청 시점의 최신 값만 필요하므로 ref 로 따라가게 한다.
   const accessTokenRef = useRef(accessToken);
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
 
+  // 토큰을 확보한 적이 있는지를 나타내는 래치. 강의실 경로는 인증 가드 밖이라, 방 안에서 새로고침하면
+  // 세션 복원이 끝나기 전에 연결을 시도해 토큰이 없다는 이유로 멈춘다. 이 값이 false→true 로 바뀔 때
+  // 연결 키가 달라져 자동으로 다시 시도한다.
+  //
+  // 한 방향으로만 바뀌는 게 중요하다. true→false 도 허용하면 토큰 갱신이 실패해 로그아웃될 때 진행 중인
+  // 강의실 연결까지 끊는다 — LiveKit 토큰은 따로라 그때도 수업은 이어질 수 있어야 한다.
+  const [tokenAvailable, setTokenAvailable] = useState(accessToken !== null);
+  useEffect(() => {
+    if (accessToken !== null && !tokenAvailable) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTokenAvailable(true);
+    }
+  }, [accessToken, tokenAvailable]);
+
   const connectionKey = useMemo<ConnectionKey>(
-    () => ({ attempt, requestToken, roomFactory, sessionId }),
-    [attempt, requestToken, roomFactory, sessionId],
+    () => ({ attempt, requestToken, roomFactory, sessionId, tokenAvailable }),
+    [attempt, requestToken, roomFactory, sessionId, tokenAvailable],
   );
   const [connection, setConnection] = useState<ConnectionSnapshot>({
     ...connectingSnapshot,

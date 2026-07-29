@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/domains/auth/presentation/AuthProvider";
+import { useAuth } from "@/domains/auth";
 import {
   CreateSessionRequestError,
   createSession as createSessionApi,
