@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -53,6 +53,9 @@ export function AuthProvider({
   requestCurrentMemberFn = requestCurrentMember,
   requestLogoutFn = requestLogout,
 }: AuthProviderProps) {
+  // 세션 복원을 페이지 로드당 한 번으로 묶는 표시. StrictMode 가 effect 를 다시 실행해도 같은 컴포넌트
+  // 인스턴스라 ref 는 유지되므로, 두 번째 실행을 여기서 걸러낼 수 있다.
+  const restoreStartedRef = useRef(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [accessTokenExpiresAt, setAccessTokenExpiresAt] = useState<string | null>(null);
   const [member, setMember] = useState<AuthMember | null>(null);
@@ -61,27 +64,28 @@ export function AuthProvider({
   // 앱 부트 시 1회, HttpOnly refresh 쿠키로 세션 복원을 시도한다. 로그인한 적 없거나
   // 세션이 만료된 경우 실패하는 게 정상이라 조용히 로그아웃 상태를 유지한다.
   useEffect(() => {
-    let cancelled = false;
+    // refresh 토큰은 1회용이다(서버가 rotate 하며 이전 토큰을 폐기한다). 그래서 이 복원 요청은
+    // 페이지 로드당 정확히 한 번만 나가야 한다. StrictMode 는 개발 모드에서 effect 를 두 번 실행하는데,
+    // 그러면 같은 쿠키로 두 번 호출해 첫 요청이 토큰을 회전시키고 두 번째가 거부된다 — 로그인 직후
+    // 새로고침하면 항상 로그아웃되던 원인이다. 그 두 번째 호출을 여기서 막는다.
+    if (restoreStartedRef.current) {
+      return;
+    }
+    restoreStartedRef.current = true;
 
     (async () => {
       try {
         const session = await requestRefreshSessionFn();
-        if (cancelled) return;
         const currentMember = await requestCurrentMemberFn(session.accessToken);
-        if (cancelled) return;
         setAccessToken(session.accessToken);
         setAccessTokenExpiresAt(session.accessTokenExpiresAt);
         setMember(currentMember);
       } catch {
         // 세션 없음/만료 — 로그아웃 상태를 유지한다.
       } finally {
-        if (!cancelled) setIsInitializing(false);
+        setIsInitializing(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
     // 부트 시 한 번만 시도한다. 함수 identity 변화로 재시도하지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
