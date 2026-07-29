@@ -274,17 +274,21 @@ describe("RoomScreen controls", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    // 강사에게는 학생용 카메라 안내가 뜨지 않는다.
-    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
+    // 강사는 판정 대상이 아니라 학생용 분석 안내가 뜨지 않는다.
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
   });
 
-  it("warns a student whose camera is off", () => {
+  /*
+    카메라가 꺼졌을 때의 안내는 카메라 안내 프롬프트(81)가 1분 지속 뒤 원인별로 맡는다.
+    여기 있던 "10분 이상·이후 5분마다" 배너는 확정 규칙과 어긋나 76 에서 제거했다.
+  */
+  it("leaves the camera-off guidance to the camera prompt instead of a standing banner", () => {
     asStudent();
     media.cameraEnabled = false;
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
   });
 
   it("delegates the camera toggle to the media hook", () => {

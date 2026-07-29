@@ -176,7 +176,6 @@ function RoomScreenContent({
   // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
   const meId = isInstructor ? "p0" : "p7";
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
@@ -339,13 +338,11 @@ function RoomScreenContent({
               </>
             )}
 
-            {/* 카메라 꺼짐 안내 (학생) */}
-            {!isInstructor && meCamOff && (
-              <div className="absolute left-1/2 top-[18px] z-[5] -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-[#f3dc90] bg-warn-soft px-[18px] py-[11px] text-[13px] font-bold text-[#836607] shadow-[0_8px_24px_#0004]">
-                📷 카메라가 10분 이상 꺼져 있어요. 켜면 학습 신호 분석에 참여할 수 있어요.{" "}
-                <span className="font-semibold opacity-80">(이후 5분마다 안내)</span>
-              </div>
-            )}
+            {/*
+              카메라 꺼짐 안내는 카메라 안내 프롬프트(81)가 원인별로 맡는다. 여기 있던 프로토타입
+              배너는 "10분 이상·이후 5분마다"라는 옛 규칙이라 확정된 1분 발동·5분 재권유와
+              어긋나고 문구도 겹쳐 제거했다(76: 중복 구현하지 않는다).
+            */}
 
             {/* 집단 알림 (강사) */}
             {isInstructor && alertOpen && (

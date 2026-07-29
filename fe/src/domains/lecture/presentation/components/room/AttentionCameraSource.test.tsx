@@ -53,13 +53,18 @@ vi.mock("../../RoomProvider", async (importOriginal) => {
 });
 
 // 판정 엔진 자체는 attention 도메인 테스트가 검증한다. 여기서는 어떤 카메라 상태를 넘기는지만 본다.
-const attention = vi.hoisted(() => ({ cameras: [] as string[] }));
-vi.mock("@/domains/attention", () => ({
-  useAttentionDetection: (options: { camera: string }) => {
-    attention.cameras.push(options.camera);
-    return { status: "measuring", prediction: null };
-  },
-}));
+const attention = vi.hoisted(() => ({ cameras: [] as string[], status: "measuring" as string }));
+vi.mock("@/domains/attention", async () => {
+  // 가용 상태 매핑은 실제 구현을 쓴다. 배럴 전체를 부르면 Worker·ONNX 까지 딸려 오므로 모듈만 집는다.
+  const { analysisAvailabilityOf } = await import("@/domains/attention/domain/analysisAvailability");
+  return {
+    analysisAvailabilityOf,
+    useAttentionDetection: (options: { camera: string }) => {
+      attention.cameras.push(options.camera);
+      return { status: attention.status, prediction: null };
+    },
+  };
+});
 
 import { AttentionCameraSource } from "./AttentionCameraSource";
 
@@ -73,11 +78,42 @@ beforeEach(() => {
   vi.useFakeTimers();
   hoisted.room = new FakeRoom(new FakeVideoTrack());
   attention.cameras = [];
+  attention.status = "measuring";
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+describe("AttentionCameraSource 가용 상태 표시", () => {
+  it("stays quiet while the analysis is running", () => {
+    render(<AttentionCameraSource active />);
+    flushInitialSync();
+
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
+  });
+
+  // 판정 상태를 부모로 올리지 않고 이 잎 안에서 배지까지 그린다(리렌더 격리).
+  it("shows the detector failure notice without mentioning the camera", () => {
+    attention.status = "unavailable";
+
+    render(<AttentionCameraSource active />);
+    flushInitialSync();
+
+    const notice = screen.getByTestId("analysis-status-notice");
+    expect(notice).toHaveTextContent("학습 분석을 사용할 수 없어요");
+    expect(notice).not.toHaveTextContent(/카메라/);
+  });
+
+  it("reports a paused analysis when the camera gives no frames", () => {
+    attention.status = "idle";
+
+    render(<AttentionCameraSource active={false} />);
+    flushInitialSync();
+
+    expect(screen.getByTestId("analysis-status-notice")).toHaveTextContent("학습 분석 일시 중지");
+  });
 });
 
 describe("AttentionCameraSource", () => {
