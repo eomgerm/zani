@@ -52,13 +52,19 @@ vi.mock("../../RoomProvider", async (importOriginal) => {
 // 판정 엔진 자체는 attention 도메인 테스트가 검증한다. 여기서는 무엇을 넘기는지만 본다.
 const attention = vi.hoisted(() => ({
   calls: [] as Array<{ camera: string; track: MediaStreamTrack | null }>,
+  status: "measuring" as string,
 }));
-vi.mock("@/domains/attention", () => ({
-  useAttentionDetection: (options: { camera: string; track: MediaStreamTrack | null }) => {
-    attention.calls.push({ camera: options.camera, track: options.track });
-    return { status: "measuring", prediction: null };
-  },
-}));
+vi.mock("@/domains/attention", async () => {
+  // 가용 상태 매핑은 실제 구현을 쓴다. 배럴 전체를 부르면 Worker·ONNX 까지 딸려 오므로 모듈만 집는다.
+  const { analysisAvailabilityOf } = await import("@/domains/attention/domain/analysisAvailability");
+  return {
+    analysisAvailabilityOf,
+    useAttentionDetection: (options: { camera: string; track: MediaStreamTrack | null }) => {
+      attention.calls.push({ camera: options.camera, track: options.track });
+      return { status: attention.status, prediction: null };
+    },
+  };
+});
 
 import { AttentionCameraSource } from "./AttentionCameraSource";
 
@@ -72,11 +78,55 @@ beforeEach(() => {
   vi.useFakeTimers();
   hoisted.room = new FakeRoom(new FakeVideoTrack("camera"));
   attention.calls = [];
+  attention.status = "measuring";
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+describe("AttentionCameraSource 가용 상태 알림", () => {
+  it("reports the analysis as running while detection works", () => {
+    const onAvailabilityChange = vi.fn();
+
+    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    flushInitialSync();
+
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith("ACTIVE");
+  });
+
+  // 검출기 실패는 카메라 문제와 다르게 다뤄야 한다(§76 완료 조건).
+  it("separates a detector failure from a paused camera", () => {
+    attention.status = "unavailable";
+    const onAvailabilityChange = vi.fn();
+
+    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    flushInitialSync();
+
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith("UNAVAILABLE");
+  });
+
+  it("reports a paused analysis when the camera gives no frames", () => {
+    attention.status = "idle";
+    const onAvailabilityChange = vi.fn();
+
+    render(<AttentionCameraSource active={false} onAvailabilityChange={onAvailabilityChange} />);
+    flushInitialSync();
+
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith("PAUSED");
+  });
+
+  // 얼굴이 안 잡히는 것은 분석이 도는 중이다. 알림이 흔들리면 상위 화면이 계속 다시 그려진다.
+  it("keeps reporting ACTIVE while the face is not detected", () => {
+    attention.status = "unmeasurable";
+    const onAvailabilityChange = vi.fn();
+
+    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    flushInitialSync();
+
+    expect(onAvailabilityChange).toHaveBeenLastCalledWith("ACTIVE");
+  });
 });
 
 describe("AttentionCameraSource", () => {

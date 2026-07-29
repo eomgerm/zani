@@ -8,6 +8,7 @@ import {
   useCameraGuidePrompt,
   usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
+  type AnalysisAvailability,
   type CameraGuideCause,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
@@ -25,6 +26,7 @@ import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
+import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -142,6 +144,8 @@ function RoomScreenContent({
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
+  // 판정 상태가 아니라 접힌 가용 상태만 들고 있다. 카메라·검출기가 실제로 바뀔 때만 갱신된다.
+  const [analysisAvailability, setAnalysisAvailability] = useState<AnalysisAvailability>("ACTIVE");
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
@@ -225,6 +229,7 @@ function RoomScreenContent({
         <AttentionCameraSource
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
+          onAvailabilityChange={setAnalysisAvailability}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -240,6 +245,8 @@ function RoomScreenContent({
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
         <div className="flex-1" />
+        {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
+        {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
         {!isInstructor && process.env.NODE_ENV !== "production" && (
           <button

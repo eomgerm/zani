@@ -44,10 +44,18 @@ vi.mock("./useRoomMediaControls", () => ({
 
 // 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
 const attentionSource = vi.hoisted(() => ({
-  props: [] as { active: boolean; denied?: boolean }[],
+  props: [] as {
+    active: boolean;
+    denied?: boolean;
+    onAvailabilityChange?: (availability: string) => void;
+  }[],
 }));
 vi.mock("./components/room/AttentionCameraSource", () => ({
-  AttentionCameraSource: (props: { active: boolean; denied?: boolean }) => {
+  AttentionCameraSource: (props: {
+    active: boolean;
+    denied?: boolean;
+    onAvailabilityChange?: (availability: string) => void;
+  }) => {
     attentionSource.props.push(props);
     return <div data-testid="attention-camera-source" />;
   },
@@ -370,7 +378,21 @@ describe("RoomScreen attention wiring", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(lastProps()).toEqual({ active: true, denied: false });
+    expect(lastProps()).toMatchObject({ active: true, denied: false });
+  });
+
+  // 상단 바에 흐름대로 놓아야 한다. 띄워 얹으면 보기 전환·패널 토글 위를 가린다.
+  it("shows the analysis notice once the source reports it stopped", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
+
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toHaveTextContent(
+      "학습 분석을 사용할 수 없어요",
+    );
   });
 
   it("stops detection when the student turns the camera off", () => {
