@@ -34,16 +34,19 @@ public class PromptResponseController {
     private final RecordPromptResponseUseCase recordPromptResponseUseCase;
 
     @Operation(summary = "프롬프트 응답 전송", description = """
-                    학생이 확인 프롬프트에 낸 답을 기록한다. 프롬프트를 띄울지는 브라우저가 판정하므로(75) 서버에는 표시 시점의 기록이 없고,
-                    이 요청이 도착할 때 비로소 행이 만들어진다. 30초가 지나 패널이 자동으로 닫힌 경우에도 answer=NO_RESPONSE 로 보내야 한다.
+                    학생이 이해 확인 프롬프트에 낸 답을 기록한다. 프롬프트를 띄울지는 브라우저가 판정하므로(75) 서버에는 표시 시점의 기록이 없고,
+                    이 요청이 도착할 때 비로소 행이 만들어진다. 30초가 지나 패널이 자동으로 닫힌 경우에도 answer=NON_RESPONSE 로 보내야 한다.
+
+                    자세 안내와 카메라 안내의 응답은 보내지 않는다. 그 두 프롬프트는 브라우저 안에서 끝나고, 노출 30초·종류별 5분 쿨타임·
+                    카메라 안내 재권유도 모두 브라우저가 관리한다.
 
                     같은 프롬프트에 두 번 답하면 첫 답만 남고 duplicate=true 로 성공 응답한다. 재시도할 때는 promptId 와 shownAt 을
                     모두 처음과 같은 값으로 보내야 한다. 중복 판정은 promptId 로 하고, 코칭 저장소를 쓸 수 없을 때만
                     (학생, 종류, shownAt)으로 물러선다. 매번 새 promptId 를 만들면 같은 답이 두 번 기록될 수 있다.
 
-                    이해 확인 응답은 학생의 참여 상태를 확정해 강사 코칭 집계에 곧바로 반영된다. 카메라 확인에 CAMERA_UNAVAILABLE(예)로
-                    답하면 그 학생은 집단 비율의 분모에서 빠진다. 답 자체는 수업 후 리포트의 근거라, 코칭 저장소가 죽어도 응답 기록은 남기고
-                    코칭 반영만 건너뛴다.""")
+                    네 답 모두 학생의 참여 상태를 확정해 강사 코칭 집계에 곧바로 반영된다. 다만 **응답은 집단 비율의 분모를 바꾸지 않는다** —
+                    분모 제외는 서버가 CAMERA_OFF·DETECTOR_UNAVAILABLE 이 연속 1분 이어지는지를 직접 보고 판단한다. 답 자체는 수업 후
+                    리포트의 근거라, 코칭 저장소가 죽어도 응답 기록은 남기고 코칭 반영만 건너뛴다.""")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "응답 기록 또는 중복 무시"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
