@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -161,6 +162,11 @@ class GetDenominatorServiceTest {
         public Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds) {
             askedAbout.add(Set.copyOf(participantIds));
             return participantIds.stream().filter(excluded::contains).collect(Collectors.toSet());
+        }
+
+        @Override
+        public Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds) {
+            return Map.of();
         }
 
         @Override

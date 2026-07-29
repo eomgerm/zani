@@ -300,12 +300,21 @@ class AttentionEventCollectionIntegrationTest {
                 + extra + "}";
     }
 
+    /**
+     * 창은 지금 바로 앞에 놓는다. 관측은 만들어진 직후 도착하므로 서버 시각과 벌어지지 않는다.
+     *
+     * <p>수업 시작 직후에 창을 놓으면 관측이 5분 창을 이미 넘긴 상태가 되어, 분자 표시와 현재 상태가 남는 기간을 검증할 수 없다.
+     */
+    private Instant observedInstant(int windowIndex) {
+        return now.minusSeconds(10L).plusSeconds(10L * (windowIndex - 1));
+    }
+
     private String windowStartedAt(int windowIndex) {
-        return sessionStartedAt.plusSeconds(10L * (windowIndex - 1)).toString();
+        return observedInstant(windowIndex).minusSeconds(10).toString();
     }
 
     private String observedAt(int windowIndex) {
-        return sessionStartedAt.plusSeconds(10L * windowIndex).toString();
+        return observedInstant(windowIndex).toString();
     }
 
     /**

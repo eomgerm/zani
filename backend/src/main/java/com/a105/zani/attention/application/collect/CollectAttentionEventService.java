@@ -107,7 +107,8 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
             }
 
             // 늦게 도착한 옛 관측이 최신 상태를 덮어쓰면 학생이 과거로 되돌아간다. 기록만 남기고 집계는 건드리지 않는다.
-            if (!applyToCoachingState(sessionId, participantId, command.outcome(), observedOffsetMs)) {
+            if (!applyToCoachingState(
+                    sessionId, participantId, command.outcome(), command.observedAt(), observedOffsetMs)) {
                 log.debug("더 최신 관측이 이미 반영됐습니다. sessionId={}, offsetMs={}", sessionId, observedOffsetMs);
                 return CollectAttentionEventResult.recordedButSuperseded();
             }
@@ -131,7 +132,7 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
      * @return 반영했으면 {@code true}, 더 최신 판정이 이미 반영돼 있어 건드리지 않았으면 {@code false}
      */
     private boolean applyToCoachingState(
-            long sessionId, long participantId, DetectorOutcome outcome, long observedOffsetMs) {
+            long sessionId, long participantId, DetectorOutcome outcome, Instant observedAt, long observedOffsetMs) {
         Optional<ObservationApplied> result = attentionStatePort.applyObservation(
                 sessionId,
                 participantId,
@@ -150,16 +151,38 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                 : outcome.immediateState();
 
         confirmed.ifPresent(state -> {
-            attentionStatePort.recordCurrentState(
-                    sessionId,
-                    participantId,
-                    new AttentionSnapshot(state, observedSignalQuality(state), clock.instant()),
-                    CURRENT_STATE_TTL);
+            remainingWindow(CURRENT_STATE_TTL, observedAt)
+                    .ifPresent(ttl -> attentionStatePort.recordCurrentState(
+                            sessionId,
+                            participantId,
+                            new AttentionSnapshot(state, observedSignalQuality(state), observedAt),
+                            ttl));
             if (state.isSignificant()) {
-                attentionStatePort.markSignificant(sessionId, participantId, state, SIGNIFICANT_WINDOW);
+                remainingWindow(SIGNIFICANT_WINDOW, observedAt)
+                        .ifPresent(
+                                window -> attentionStatePort.markSignificant(sessionId, participantId, state, window));
             }
         });
         return true;
+    }
+
+    /**
+     * 관측 시각을 기준으로 남은 보관 기간. 이미 지났으면 비어 있다.
+     *
+     * <p>지금부터 창을 새로 열면 <b>늦게 도착한 옛 관측이 그 시점부터 5분간 분자에 들어간다</b>. 네트워크가 복구되며 6분 전 {@code UNMEASURABLE} 이 도착하면 이미 창을 벗어난
+     * 신호가 30% 트리거를 만든다. 이 API 는 재시도를 지원하므로 실제로 열려 있는 경로다.
+     *
+     * <p>2분 전 관측이라면 남은 3분만 준다 — 거절하지 않는 이유는 그 관측이 <b>2분 전에는 실제로 유의했기</b> 때문이다. 창의 나머지만큼은 분자에 남는 것이 맞다.
+     *
+     * <p>클라이언트 시계가 조금 빠른 경우({@link #FUTURE_TOLERANCE} 안)는 창 전체를 준다. 미래 시각으로 창을 늘려 주지는 않는다.
+     */
+    private Optional<Duration> remainingWindow(Duration window, Instant observedAt) {
+        Duration elapsed = Duration.between(observedAt, clock.instant());
+        if (elapsed.isNegative()) {
+            return Optional.of(window);
+        }
+        Duration remaining = window.minus(elapsed);
+        return remaining.isPositive() ? Optional.of(remaining) : Optional.empty();
     }
 
     /**
