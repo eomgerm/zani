@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
-import java.util.OptionalLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,8 +24,8 @@ import org.springframework.web.context.WebApplicationContext;
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.auth.application.port.TokenProvider;
 
@@ -90,12 +89,6 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public OptionalLong trackMeasurementOutage(
-                        long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
-                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
-                }
-
-                @Override
                 public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
@@ -106,10 +99,11 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public Optional<DetectionRunCounters> applyObservation(
+                public Optional<ObservationApplied> applyObservation(
                         long sessionId,
                         long participantId,
                         DetectionRunTransition transition,
+                        boolean measurementSuspended,
                         long observedOffsetMs,
                         Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));

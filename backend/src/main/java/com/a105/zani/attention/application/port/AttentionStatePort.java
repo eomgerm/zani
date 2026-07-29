@@ -2,10 +2,8 @@ package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
 import java.util.Optional;
-import java.util.OptionalLong;
 
 import com.a105.zani.attention.domain.model.AttentionState;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
 
 /**
@@ -42,18 +40,6 @@ public interface AttentionStatePort {
     void markSignificant(long sessionId, long participantId, AttentionState state, Duration window);
 
     /**
-     * 측정 불가 구간을 갱신하고 지금까지 이어진 길이를 돌려준다(확정 문서 §7.1).
-     *
-     * <p>{@code CAMERA_OFF}·{@code DETECTOR_UNAVAILABLE} 이 연속 1분 이어지면 분모에서 빼는데, 그 "연속"을 재는 자리다. 판단을 서버가 하는 이유는 클라이언트가
-     * "저를 빼주세요"라고 말하는 구조보다 안전하기 때문이다.
-     *
-     * @param suspended 이번 관측이 측정 불가 상태인지
-     * @return 이어지고 있는 구간의 길이(ms). 첫 관측이면 0, 측정이 가능한 관측이면 비어 있다
-     */
-    OptionalLong trackMeasurementOutage(
-            long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl);
-
-    /**
      * 이 참가자를 집단 비율 <b>분모에서 제외</b>한다. 측정 불가 상태가 1분 이상 이어진 학생이 대상이다(확정 문서 §7.1).
      *
      * <p>카메라를 켤 수 없는 학생을 분모에 남겨 두면, 그 학생이 무엇을 하든 비율이 낮아져 실제로 어려움을 겪는 학생들이 가려진다.
@@ -64,23 +50,30 @@ public interface AttentionStatePort {
     void includeInDenominator(long sessionId, long participantId);
 
     /**
-     * 이 관측이 이미 반영된 것보다 새로우면 연속 카운터에 조작을 적용하고 반영 지점을 옮긴다(§4.1). 더 최신 판정이 이미 반영돼 있으면 아무것도 하지 않고 빈 값을 돌려준다.
+     * 이 관측이 이미 반영된 것보다 새로우면 집계 상태에 반영한다. 더 최신 판정이 이미 반영돼 있으면 아무것도 하지 않고 빈 값을 돌려준다.
      *
-     * <p>어떤 조작을 할지는 도메인({@link DetectionRunTransition})이 정하고, 저장소는 그것을 <b>한 번에</b> 적용하기만 한다. 읽고-쓰기로 나누면 같은 참가자의 판정이 겹쳐
-     * 들어올 때 읽은 값이 서로를 덮어써 연속 횟수가 실제보다 적게 세어진다.
+     * <p>한 번에 갱신하는 것은 <b>순서 판단·연속 카운터(§4.1)·반영 지점·측정 불가 구간(§7.1)</b> 넷이다. 어떤 조작을 할지는
+     * 도메인({@link DetectionRunTransition})이 정하고, 저장소는 그것을 적용하기만 한다.
      *
-     * <p>순서 판단·카운터·반영 지점 셋이 한 덩어리인 이유:
+     * <p>넷을 쪼개지 않는 이유:
      *
      * <ul>
-     *   <li>판단을 밖에서 하면 겹쳐 들어온 두 판정이 둘 다 "내가 최신"으로 읽고, 나중에 쓴 옛 쪽이 반영 지점을 되돌린다.
+     *   <li>순서 판단을 밖에서 하면 겹쳐 들어온 두 판정이 둘 다 "내가 최신"으로 읽고, 나중에 쓴 옛 쪽이 반영 지점을 되돌린다.
      *   <li>카운터만 오르고 반영 지점이 빠지면 재시도가 그 사실을 알 길이 없어 같은 관측으로 카운터를 한 번 더 올린다. 3연속이 관측 두 건으로 앞당겨진다.
+     *   <li>측정 불가 구간을 따로 재면 순서 판단을 통과한 관측들 사이에서도 순서가 뒤바뀔 수 있어, 구간 길이가 음수로 나온다. 여기서 재면 통과한 오프셋이 항상 증가하므로 그럴 수 없다.
      * </ul>
      *
+     * @param measurementSuspended 이번 관측이 측정 불가 상태인지({@code CAMERA_OFF}·{@code DETECTOR_UNAVAILABLE})
      * @param observedOffsetMs 이 관측이 반영될 지점. 이미 반영된 지점보다 크지 않으면 거절된다
-     * @return 적용된 뒤의 연속 카운터. 더 최신 판정이 이미 반영돼 있었다면 빈 값
+     * @return 반영 결과. 더 최신 판정이 이미 반영돼 있었다면 빈 값
      */
-    Optional<DetectionRunCounters> applyObservation(
-            long sessionId, long participantId, DetectionRunTransition transition, long observedOffsetMs, Duration ttl);
+    Optional<ObservationApplied> applyObservation(
+            long sessionId,
+            long participantId,
+            DetectionRunTransition transition,
+            boolean measurementSuspended,
+            long observedOffsetMs,
+            Duration ttl);
 
     /**
      * 연속 카운터 두 개를 모두 0으로 되돌린다.

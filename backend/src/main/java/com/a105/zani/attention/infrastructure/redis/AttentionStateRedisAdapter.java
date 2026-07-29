@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
@@ -54,6 +55,9 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
      * <p>반영 지점을 뒤이은 별도 왕복으로 쓰면, 카운터는 올랐는데 반영 지점은 빠진 상태가 남는다. 그 뒤 재시도는 반영이 안 끝난 것으로 보고 카운터를 한 번 더 올린다.
      *
      * <p>순서 판단까지 이 안에서 하는 이유도 같다. 밖에서 읽고 비교한 뒤 쓰면, 같은 학생의 판정 두 건이 겹쳐 들어왔을 때 둘 다 "내가 최신"이라고 읽고 옛 쪽이 나중에 써서 반영 지점을 되돌린다.
+     *
+     * <p>측정 불가 구간(§7.1)도 여기서 잰다. 순서 판단을 통과한 오프셋은 항상 증가하므로 구간 길이가 음수가 될 수 없다. 따로 재면 통과한 관측들 사이에서 순서가 뒤바뀌어 음수가 나오고, 그러면
+     * 측정이 불가한데도 분모로 되돌아간다. 구간이 없을 때는 {@code -1} 을 돌려준다.
      */
     private static final RedisScript<List> APPLY_OBSERVATION = RedisScript.of("""
             local function apply(key, step, ttl)
@@ -74,35 +78,29 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
               end
             end
             local ttl = tonumber(ARGV[3])
+            local observed = tonumber(ARGV[4])
             local applied = redis.call('GET', KEYS[3])
-            if applied and tonumber(applied) >= tonumber(ARGV[4]) then
+            if applied and observed <= tonumber(applied) then
               return nil
             end
             local counters = { apply(KEYS[1], ARGV[1], ttl), apply(KEYS[2], ARGV[2], ttl) }
             redis.call('SET', KEYS[3], ARGV[4], 'EX', ttl)
+            local outage = -1
+            if ARGV[5] == 'SUSPENDED' then
+              local startedAt = redis.call('GET', KEYS[4])
+              if startedAt then
+                redis.call('EXPIRE', KEYS[4], ttl)
+                outage = observed - tonumber(startedAt)
+              else
+                redis.call('SET', KEYS[4], ARGV[4], 'EX', ttl)
+                outage = 0
+              end
+            else
+              redis.call('DEL', KEYS[4])
+            end
+            counters[3] = outage
             return counters
             """, List.class);
-
-    /**
-     * 측정 불가 구간의 시작 지점을 심거나 지우고, 지금까지 이어진 길이를 돌려준다(§7.1).
-     *
-     * <p>읽고-쓰기로 나누면 같은 학생의 관측이 겹쳐 들어올 때 둘 다 "내가 이 구간의 시작"이라고 판단해, 1분을 넘긴 구간이 계속 0으로 되돌아간다. 시작 지점은 처음 한 번만 심고 이후에는 TTL 만
-     * 늘린다.
-     */
-    private static final RedisScript<Long> TRACK_OUTAGE = RedisScript.of("""
-            local ttl = tonumber(ARGV[3])
-            if ARGV[1] ~= 'SUSPENDED' then
-              redis.call('DEL', KEYS[1])
-              return -1
-            end
-            local startedAt = redis.call('GET', KEYS[1])
-            if not startedAt then
-              redis.call('SET', KEYS[1], ARGV[2], 'EX', ttl)
-              return 0
-            end
-            redis.call('EXPIRE', KEYS[1], ttl)
-            return tonumber(ARGV[2]) - tonumber(startedAt)
-            """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
 
@@ -155,23 +153,6 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     }
 
     @Override
-    public OptionalLong trackMeasurementOutage(
-            long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
-        try {
-            Long outageMs = redisTemplate.execute(
-                    TRACK_OUTAGE,
-                    List.of(outageKey(sessionId, participantId)),
-                    suspended ? "SUSPENDED" : "MEASURABLE",
-                    Long.toString(observedOffsetMs),
-                    Long.toString(ttl.toSeconds()));
-            // -1 은 측정이 가능해져 구간이 없다는 뜻이다.
-            return outageMs == null || outageMs < 0 ? OptionalLong.empty() : OptionalLong.of(outageMs);
-        } catch (DataAccessException exception) {
-            throw new AttentionStateUnavailableException(exception);
-        }
-    }
-
-    @Override
     public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
         try {
             redisTemplate.opsForValue().set(excludedKey(sessionId, participantId), MARKER_VALUE, ttl);
@@ -190,29 +171,35 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     }
 
     @Override
-    public Optional<DetectionRunCounters> applyObservation(
+    public Optional<ObservationApplied> applyObservation(
             long sessionId,
             long participantId,
             DetectionRunTransition transition,
+            boolean measurementSuspended,
             long observedOffsetMs,
             Duration ttl) {
         try {
-            List<Long> counters = redisTemplate.execute(
+            List<Long> result = redisTemplate.execute(
                     APPLY_OBSERVATION,
                     List.of(
                             lowRunKey(sessionId, participantId),
                             unmeasurableRunKey(sessionId, participantId),
-                            appliedKey(sessionId, participantId)),
+                            appliedKey(sessionId, participantId),
+                            outageKey(sessionId, participantId)),
                     transition.lowEngagement().name(),
                     transition.unmeasurable().name(),
                     Long.toString(ttl.toSeconds()),
-                    Long.toString(observedOffsetMs));
+                    Long.toString(observedOffsetMs),
+                    measurementSuspended ? "SUSPENDED" : "MEASURABLE");
             // nil 은 더 최신 판정이 이미 반영됐다는 뜻이다. 스크립트가 아무것도 건드리지 않았다.
-            if (counters == null || counters.size() < 2) {
+            if (result == null || result.size() < 3) {
                 return Optional.empty();
             }
-            return Optional.of(new DetectionRunCounters(
-                    counters.get(0).intValue(), counters.get(1).intValue()));
+            long outageMs = result.get(2);
+            return Optional.of(new ObservationApplied(
+                    new DetectionRunCounters(
+                            result.get(0).intValue(), result.get(1).intValue()),
+                    outageMs < 0 ? OptionalLong.empty() : OptionalLong.of(outageMs)));
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }

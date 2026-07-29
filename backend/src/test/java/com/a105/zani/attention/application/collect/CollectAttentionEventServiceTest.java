@@ -21,6 +21,7 @@ import com.a105.zani.attention.application.exception.NotSessionStudentException;
 import com.a105.zani.attention.application.exception.UnsupportedDetectorContractException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRecord;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
@@ -518,17 +519,6 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
-        public OptionalLong trackMeasurementOutage(
-                long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
-            if (!suspended) {
-                outageStartedAt.remove(participantId);
-                return OptionalLong.empty();
-            }
-            Long startedAt = outageStartedAt.putIfAbsent(participantId, observedOffsetMs);
-            return OptionalLong.of(startedAt == null ? 0L : observedOffsetMs - startedAt);
-        }
-
-        @Override
         public void excludeFromDenominator(long sessionId, long participantId, Duration ttl) {
             excluded.add(participantId);
         }
@@ -539,16 +529,18 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
-        public Optional<DetectionRunCounters> applyObservation(
+        public Optional<ObservationApplied> applyObservation(
                 long sessionId,
                 long participantId,
                 DetectionRunTransition transition,
+                boolean measurementSuspended,
                 long observedOffsetMs,
                 Duration ttl) {
             if (failAdvance) {
                 throw new IllegalStateException("redis down");
             }
-            // 실제 어댑터는 순서 판단·카운터·반영 지점을 Lua 한 번으로 처리한다. 갈라지면 옛 판정이 최신 상태를 덮어쓴다.
+            // 실제 어댑터는 순서 판단·카운터·반영 지점·측정 불가 구간을 Lua 한 번으로 처리한다.
+            // 갈라지면 옛 판정이 최신 상태를 덮어쓰거나 구간 길이가 음수로 나온다.
             Long applied = appliedOffsets.get(participantId);
             if (applied != null && applied >= observedOffsetMs) {
                 return Optional.empty();
@@ -558,7 +550,17 @@ class CollectAttentionEventServiceTest {
                     apply(transition.unmeasurable(), counters.unmeasurable()));
             lastCounters = counters;
             appliedOffsets.put(participantId, observedOffsetMs);
-            return Optional.of(counters);
+            return Optional.of(
+                    new ObservationApplied(counters, outage(participantId, measurementSuspended, observedOffsetMs)));
+        }
+
+        private OptionalLong outage(long participantId, boolean suspended, long observedOffsetMs) {
+            if (!suspended) {
+                outageStartedAt.remove(participantId);
+                return OptionalLong.empty();
+            }
+            Long startedAt = outageStartedAt.putIfAbsent(participantId, observedOffsetMs);
+            return OptionalLong.of(startedAt == null ? 0L : observedOffsetMs - startedAt);
         }
 
         @Override
