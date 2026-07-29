@@ -7,6 +7,7 @@ import {
   type PromptAnswer,
   type PromptResponseSender,
 } from "../infrastructure/promptResponseApi";
+import { isTabHidden } from "./promptVisibility";
 import { usePromptTimer } from "./usePromptTimer";
 
 /** 학생이 직접 고를 수 있는 답. 무응답은 훅이 `NON_RESPONSE` 로 대신 보낸다. */
@@ -104,6 +105,7 @@ export function useUnderstandingCheckPrompt(
 
   const trigger = useCallback((nextPromptId: string) => {
     if (promptIdRef.current !== null) return; // 이미 하나가 떠 있으면 무시한다.
+    if (isTabHidden()) return; // 안 보이는 화면에 띄우면 무응답으로 닫히고 쿨타임만 깎인다(§4.3).
     const lastClosedAt = lastClosedAtRef.current;
     if (lastClosedAt !== null && Date.now() - lastClosedAt < UNDERSTANDING_CHECK_COOLDOWN_MS) {
       return; // 쿨다운 중.

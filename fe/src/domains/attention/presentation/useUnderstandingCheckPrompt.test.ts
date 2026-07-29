@@ -17,6 +17,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("useUnderstandingCheckPrompt", () => {
@@ -110,6 +111,18 @@ describe("useUnderstandingCheckPrompt", () => {
       "prompt-1",
       expect.objectContaining({ answer: "OK" }),
     );
+  });
+
+  it("does not open while the tab is hidden", () => {
+    // jsdom 의 visibilityState 는 getter 라 spy 로 덮는다.
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const { result } = renderHook(() =>
+      useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse: vi.fn() }),
+    );
+
+    act(() => result.current.trigger("prompt-1"));
+
+    expect(result.current.prompt).toBeNull();
   });
 
   it("ignores a trigger while a prompt is already open", () => {

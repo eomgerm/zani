@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
   CoachingPromptPanel,
+  useCameraGuidePrompt,
+  usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
+  type CameraGuideCause,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
 import {
@@ -44,6 +47,22 @@ type RoomScreenProps = {
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
+
+/** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
+const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
+  disabled: {
+    title: "카메라를 켜주세요 📷",
+    body: "수업 참여도를 확인하려면 카메라가 필요해요. 지금 켜실 수 있나요?",
+  },
+  denied: {
+    title: "카메라 권한이 필요해요 🔒",
+    body: "브라우저에서 카메라 권한을 허용해주세요. 주소창 옆 자물쇠 아이콘에서 바꿀 수 있어요.",
+  },
+  muted: {
+    title: "카메라를 사용할 수 없어요 ⚠️",
+    body: "다른 앱이 카메라를 사용 중인지 확인해주세요.",
+  },
+};
 
 const UNDERSTANDING_CHECK_FEEDBACK: Record<UnderstandingCheckResponse, string> = {
   OK: "응답을 보냈어요.",
@@ -117,6 +136,11 @@ function RoomScreenContent({
   const [sharing, setSharing] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
+  const postureGuide = usePostureGuidePrompt();
+  // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않는다 — 판정 파이프라인(75)이 채운다.
+  const cameraGuide = useCameraGuidePrompt({
+    camera: media.cameraBlocked ? "denied" : media.cameraEnabled ? "on" : "off",
+  });
   const [alertOpen, setAlertOpen] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
@@ -408,6 +432,57 @@ function RoomScreenContent({
           ]}
         />
       )}
+      {/* 자세 안내 (학생) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
+      {postureGuide.prompt && (
+        <CoachingPromptPanel
+          title="얼굴이 잘 보이지 않아요 🙂"
+          body="카메라에 얼굴이 나오도록 조정해주세요."
+          remainingMs={postureGuide.prompt.remainingMs}
+          durationMs={postureGuide.prompt.durationMs}
+          onSelect={postureGuide.acknowledge}
+          options={[
+            {
+              value: "ACKNOWLEDGED",
+              label: "확인",
+              toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+            },
+          ]}
+        />
+      )}
+
+      {/* 카메라 안내 (학생) — 권한 거부·트랙 muted 는 답을 물어도 소용이 없어 확인만 받는다 */}
+      {cameraGuide.prompt && (
+        <CoachingPromptPanel
+          title={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].title}
+          body={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].body}
+          remainingMs={cameraGuide.prompt.remainingMs}
+          durationMs={cameraGuide.prompt.durationMs}
+          onSelect={cameraGuide.answer}
+          options={
+            cameraGuide.prompt.cause === "disabled"
+              ? [
+                  {
+                    value: "WILL_ENABLE",
+                    label: "지금 켤게요",
+                    toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+                  },
+                  {
+                    value: "CANNOT_ENABLE",
+                    label: "못 켜요",
+                    toneClassName: "border-line-muted bg-primary-softer text-ink-muted",
+                  },
+                ]
+              : [
+                  {
+                    value: "WILL_ENABLE",
+                    label: "확인",
+                    toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
+                  },
+                ]
+          }
+        />
+      )}
+
       {promptToast && (
         <div
           role="status"
