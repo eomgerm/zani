@@ -12,10 +12,13 @@ interval.
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 #: Filenames the publisher moves. ``best.pt``, ONNX exports and the HTML report
 #: are deliberately absent: they are large or binary, and judging a run needs
@@ -161,14 +164,52 @@ def publish_once(
     return len(written)
 
 
+def default_source_label() -> str:
+    """Short hostname, which is what distinguishes one training box from another."""
+    return socket.gethostname().split(".")[0]
+
+
+def run_forever(
+    *,
+    artifacts_root: Path,
+    worktree: Path,
+    source_label: str,
+    branch: str,
+    interval: float,
+) -> NoReturn:
+    """Publish every ``interval`` seconds, surviving anything one cycle throws.
+
+    A push that fails on a flaky network must not end the loop: the next cycle
+    sends the same snapshot. Misconfiguration is checked by the caller before
+    the loop, so what reaches here is worth retrying.
+    """
+    while True:
+        try:
+            written = publish_once(
+                artifacts_root=artifacts_root,
+                worktree=worktree,
+                source_label=source_label,
+                branch=branch,
+            )
+        except (RuntimeError, OSError) as error:
+            print(f"publish failed, retrying in {interval:.0f}s: {error}", flush=True)
+        else:
+            if written:
+                print(f"published {written} file(s)", flush=True)
+        time.sleep(interval)
+
+
 __all__ = [
     "DEFAULT_RESULTS_BRANCH",
     "LOCK_FILENAME",
     "METRIC_FILENAMES",
+    "SKIP_CI_MARKER",
     "MetricFile",
     "collect_metrics",
     "commit_subject",
+    "default_source_label",
     "publish_once",
     "require_results_branch",
+    "run_forever",
     "sync_metrics",
 ]

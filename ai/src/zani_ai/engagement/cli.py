@@ -11,6 +11,15 @@ from zani_ai.engagement.contracts import (
     DatasetContractError,
     load_dataset_contract,
 )
+from zani_ai.engagement.locking import DirectoryLock
+from zani_ai.engagement.publish import (
+    DEFAULT_RESULTS_BRANCH,
+    LOCK_FILENAME,
+    default_source_label,
+    publish_once,
+    require_results_branch,
+    run_forever,
+)
 from zani_ai.engagement.runtime import parse_device
 
 type Command = Callable[[argparse.Namespace], int]
@@ -42,6 +51,17 @@ def _sample_fps(value: str) -> float:
     if not 0 < rate <= 120:
         raise argparse.ArgumentTypeError(f"sample-fps must be in (0, 120], got {rate}")
     return rate
+
+
+def _interval(value: str) -> float:
+    """argparse type for ``--interval``: seconds, or 0 to publish once and exit."""
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"interval must be a number, got {value!r}") from error
+    if seconds < 0:
+        raise argparse.ArgumentTypeError(f"interval must not be negative, got {seconds}")
+    return seconds
 
 
 def _add_experiment_options(parser: argparse.ArgumentParser) -> None:
@@ -306,6 +326,37 @@ def _train(args: argparse.Namespace) -> int:
     return 0
 
 
+def _publish_results(args: argparse.Namespace) -> int:
+    """Publish metrics once, or every ``--interval`` seconds until killed."""
+    source_label = args.source or default_source_label()
+    # Both checks belong outside the loop: a wrong branch or a second publisher
+    # is a mistake to report now, not something to retry every interval.
+    require_results_branch(args.worktree, args.branch)
+    with DirectoryLock(
+        args.worktree / LOCK_FILENAME,
+        busy_message=(
+            f"another publisher already holds {args.worktree / LOCK_FILENAME}; "
+            "stop it before starting a second one"
+        ),
+    ):
+        if args.interval == 0:
+            written = publish_once(
+                artifacts_root=args.artifacts,
+                worktree=args.worktree,
+                source_label=source_label,
+                branch=args.branch,
+            )
+            print(f"published {written} file(s)")
+            return 0
+        run_forever(
+            artifacts_root=args.artifacts,
+            worktree=args.worktree,
+            source_label=source_label,
+            branch=args.branch,
+            interval=args.interval,
+        )
+
+
 def _export(args: argparse.Namespace) -> int:
     from zani_ai.engagement.export import DeploymentMetadata, export_onnx
     from zani_ai.engagement.training import load_checkpoint
@@ -443,16 +494,32 @@ def build_parser() -> argparse.ArgumentParser:
 
         finalize = commands.add_parser(
             f"finalize-{command}",
-            help=(
-                f"evaluate frozen {description} checkpoints once "
-                "and write the HTML report"
-            ),
+            help=(f"evaluate frozen {description} checkpoints once and write the HTML report"),
         )
         _add_experiment_options(finalize)
         finalize.add_argument("--face-landmarker-model", type=Path)
         finalize.add_argument("--preparation-manifest", type=Path)
         finalize.add_argument("--threshold-manifest", type=Path)
         finalize.set_defaults(handler=_finalize(protocol))
+
+    publish = commands.add_parser(
+        "publish-results",
+        help="copy training metrics into the results-branch worktree and push them",
+    )
+    publish.add_argument("--artifacts", type=Path, required=True)
+    publish.add_argument("--worktree", type=Path, required=True)
+    publish.add_argument(
+        "--source",
+        help="path prefix inside the branch; defaults to the short hostname",
+    )
+    publish.add_argument("--branch", default=DEFAULT_RESULTS_BRANCH)
+    publish.add_argument(
+        "--interval",
+        type=_interval,
+        default=300.0,
+        help="seconds between snapshots; 0 publishes once and exits",
+    )
+    publish.set_defaults(handler=_publish_results)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)
