@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.a105.zani.attention.application.collect.CollectAttentionEventCommand;
 import com.a105.zani.attention.application.collect.CollectAttentionEventResult;
 import com.a105.zani.attention.application.collect.CollectAttentionEventUseCase;
-import com.a105.zani.attention.domain.model.DetectionSignal;
 import com.a105.zani.attention.presentation.request.AttentionEventRequest;
 import com.a105.zani.attention.presentation.response.AttentionEventResponse;
 import com.a105.zani.common.response.ApiResponse;
@@ -70,12 +69,11 @@ public class AttentionEventController {
         CollectAttentionEventResult result = collectAttentionEventUseCase.collect(new CollectAttentionEventCommand(
                 sessionId,
                 Long.parseLong(jwt.getSubject()),
-                new DetectionSignal(request.outcome(), Boolean.TRUE.equals(request.lowEngagement())),
+                request.outcome(),
                 request.windowStartedAt(),
                 request.observedAt(),
                 request.signalQuality(),
                 request.featureSchemaVersion(),
-                request.engineVersion(),
                 request.clientEventId()));
         return ApiResponse.success(AttentionEventResponse.from(result));
     }
