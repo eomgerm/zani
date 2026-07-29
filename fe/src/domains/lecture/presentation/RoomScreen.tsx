@@ -46,7 +46,7 @@ type RoomScreenProps = {
 type FloatingReaction = { key: number; emoji: string; left: number };
 
 const UNDERSTANDING_CHECK_FEEDBACK: Record<UnderstandingCheckResponse, string> = {
-  UNDERSTOOD: "응답을 보냈어요.",
+  OK: "응답을 보냈어요.",
   CONFUSED: "응답을 보냈어요.",
   MISSED: "응답을 보냈어요.",
 };
@@ -388,7 +388,7 @@ function RoomScreenContent({
           onSelect={answerPrompt}
           options={[
             {
-              value: "UNDERSTOOD",
+              value: "OK",
               label: "이해했어요",
               emoji: "👍",
               toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",

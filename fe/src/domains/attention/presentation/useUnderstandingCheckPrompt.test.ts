@@ -8,6 +8,7 @@ import {
 } from "./useUnderstandingCheckPrompt";
 
 const NOW = new Date("2026-07-27T12:00:00Z");
+const DURATION_MS = UNDERSTANDING_CHECK_SECONDS * 1000;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -29,7 +30,7 @@ describe("useUnderstandingCheckPrompt", () => {
 
     expect(result.current.prompt).toMatchObject({
       promptId: "prompt-1",
-      remainingMs: UNDERSTANDING_CHECK_SECONDS * 1000,
+      remainingMs: DURATION_MS,
     });
   });
 
@@ -48,22 +49,45 @@ describe("useUnderstandingCheckPrompt", () => {
 
     expect(sent).toBe(true);
     expect(result.current.prompt).toBeNull();
-    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", "CONFUSED");
+    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", {
+      kind: "UNDERSTANDING_CHECK",
+      answer: "CONFUSED",
+      shownAt: NOW.toISOString(),
+      respondedAt: new Date(NOW.getTime() + 8_000).toISOString(),
+    });
   });
 
-  it("auto-closes as a non-response after 30 seconds without sending anything", () => {
-    const sendResponse = vi.fn();
+  // 무전송을 신호로 쓰면 서버가 학생의 무응답과 브라우저 중단을 구분할 수 없다.
+  it("sends NON_RESPONSE when the prompt closes without an answer", () => {
+    const sendResponse = vi.fn().mockResolvedValue(undefined);
     const onTimedOut = vi.fn();
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse, onTimedOut }),
     );
 
     act(() => result.current.trigger("prompt-1"));
-    act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_SECONDS * 1000));
+    act(() => vi.advanceTimersByTime(DURATION_MS));
 
     expect(result.current.prompt).toBeNull();
     expect(onTimedOut).toHaveBeenCalledTimes(1);
-    expect(sendResponse).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", {
+      kind: "UNDERSTANDING_CHECK",
+      answer: "NON_RESPONSE",
+      shownAt: NOW.toISOString(),
+      respondedAt: new Date(NOW.getTime() + DURATION_MS).toISOString(),
+    });
+  });
+
+  it("does not throw when the automatic NON_RESPONSE fails to send", () => {
+    const sendResponse = vi.fn().mockRejectedValue(new Error("network down"));
+    const { result } = renderHook(() =>
+      useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),
+    );
+
+    act(() => result.current.trigger("prompt-1"));
+
+    expect(() => act(() => vi.advanceTimersByTime(DURATION_MS))).not.toThrow();
+    expect(result.current.prompt).toBeNull();
   });
 
   it("ignores a second response to the same prompt", async () => {
@@ -74,14 +98,18 @@ describe("useUnderstandingCheckPrompt", () => {
 
     act(() => result.current.trigger("prompt-1"));
     await act(async () => {
-      await result.current.respond("UNDERSTOOD");
+      await result.current.respond("OK");
     });
     await act(async () => {
       await result.current.respond("MISSED");
     });
 
     expect(sendResponse).toHaveBeenCalledTimes(1);
-    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", "UNDERSTOOD");
+    expect(sendResponse).toHaveBeenCalledWith(
+      "s1",
+      "prompt-1",
+      expect.objectContaining({ answer: "OK" }),
+    );
   });
 
   it("ignores a trigger while a prompt is already open", () => {
@@ -97,12 +125,15 @@ describe("useUnderstandingCheckPrompt", () => {
 
   it("ignores a retrigger within the 5-minute cooldown after the last prompt closed", async () => {
     const { result } = renderHook(() =>
-      useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse: vi.fn().mockResolvedValue(undefined) }),
+      useUnderstandingCheckPrompt({
+        sessionId: "s1",
+        sendResponse: vi.fn().mockResolvedValue(undefined),
+      }),
     );
 
     act(() => result.current.trigger("prompt-1"));
     await act(async () => {
-      await result.current.respond("UNDERSTOOD");
+      await result.current.respond("OK");
     });
     act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS - 1));
     act(() => result.current.trigger("prompt-2"));
@@ -112,17 +143,42 @@ describe("useUnderstandingCheckPrompt", () => {
 
   it("allows a retrigger once the 5-minute cooldown has passed", async () => {
     const { result } = renderHook(() =>
-      useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse: vi.fn().mockResolvedValue(undefined) }),
+      useUnderstandingCheckPrompt({
+        sessionId: "s1",
+        sendResponse: vi.fn().mockResolvedValue(undefined),
+      }),
     );
 
     act(() => result.current.trigger("prompt-1"));
     await act(async () => {
-      await result.current.respond("UNDERSTOOD");
+      await result.current.respond("OK");
     });
     act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS));
     act(() => result.current.trigger("prompt-2"));
 
     expect(result.current.prompt?.promptId).toBe("prompt-2");
+  });
+
+  // 표시 시각이 아니라 닫힌 시각부터 재는지 — 30초를 다 쓴 프롬프트에서만 차이가 드러난다.
+  it("measures the cooldown from when the prompt closed, not when it opened", () => {
+    const { result } = renderHook(() =>
+      useUnderstandingCheckPrompt({
+        sessionId: "s1",
+        sendResponse: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    act(() => result.current.trigger("prompt-1"));
+    act(() => vi.advanceTimersByTime(DURATION_MS)); // 무응답으로 자동 종료.
+
+    // 표시 시각 기준이라면 이 시점에 쿨다운이 끝나지만, 닫힌 시각 기준이면 아직 30초 남았다.
+    act(() => vi.advanceTimersByTime(UNDERSTANDING_CHECK_COOLDOWN_MS - DURATION_MS));
+    act(() => result.current.trigger("prompt-2"));
+    expect(result.current.prompt).toBeNull();
+
+    act(() => vi.advanceTimersByTime(DURATION_MS));
+    act(() => result.current.trigger("prompt-3"));
+    expect(result.current.prompt?.promptId).toBe("prompt-3");
   });
 
   it("resolves to false instead of throwing when sending the response fails", async () => {
@@ -149,7 +205,7 @@ describe("useUnderstandingCheckPrompt", () => {
 
     act(() => result.current.trigger("prompt-1"));
     await act(async () => {
-      await result.current.respond("UNDERSTOOD");
+      await result.current.respond("OK");
     });
 
     let secondAttempt: boolean | undefined;

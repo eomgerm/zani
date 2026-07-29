@@ -7,10 +7,10 @@ afterEach(() => {
   cleanup();
 });
 
-type Choice = "UNDERSTOOD" | "CONFUSED" | "MISSED";
+type Choice = "OK" | "CONFUSED" | "MISSED";
 
 const OPTIONS: { value: Choice; label: string; emoji: string; toneClassName: string }[] = [
-  { value: "UNDERSTOOD", label: "이해했어요", emoji: "👍", toneClassName: "bg-primary-mint" },
+  { value: "OK", label: "이해했어요", emoji: "👍", toneClassName: "bg-primary-mint" },
   { value: "CONFUSED", label: "헷갈려요", emoji: "🤔", toneClassName: "bg-warn-soft" },
   { value: "MISSED", label: "놓쳤어요", emoji: "😅", toneClassName: "bg-primary-softer" },
 ];
