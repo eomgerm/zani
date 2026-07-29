@@ -12,6 +12,7 @@ interval.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -53,4 +54,22 @@ def collect_metrics(artifacts_root: Path) -> list[MetricFile]:
     return collected
 
 
-__all__ = ["METRIC_FILENAMES", "MetricFile", "collect_metrics"]
+def sync_metrics(metrics: Sequence[MetricFile], destination: Path) -> list[Path]:
+    """Write the metrics whose bytes differ from what is already there.
+
+    Returns the relative paths actually written, which is what decides whether
+    there is anything to commit. Writing unchanged files would produce a commit
+    every interval with no new information.
+    """
+    written: list[Path] = []
+    for metric in metrics:
+        target = destination / metric.relative
+        if target.is_file() and target.read_bytes() == metric.data:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(metric.data)
+        written.append(metric.relative)
+    return written
+
+
+__all__ = ["METRIC_FILENAMES", "MetricFile", "collect_metrics", "sync_metrics"]

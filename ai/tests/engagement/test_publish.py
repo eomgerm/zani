@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from zani_ai.engagement.publish import collect_metrics
+from zani_ai.engagement.publish import collect_metrics, sync_metrics
 
 
 def _write(path: Path, text: str) -> None:
@@ -63,3 +63,44 @@ def test_carries_the_bytes_that_parsed(tmp_path: Path) -> None:
 
     assert by_name["summary.json"].data == b'{"protocol": "E1"}\n'
     assert json.loads(by_name["summary.json"].data) == {"protocol": "E1"}
+
+
+def test_writes_every_metric_on_the_first_run(tmp_path: Path) -> None:
+    artifacts = _artifacts(tmp_path)
+    destination = tmp_path / "worktree" / "l40s"
+
+    written = sync_metrics(collect_metrics(artifacts), destination)
+
+    assert len(written) == 4
+    assert (destination / "e1" / "seed-42" / "record.json").read_bytes() == b'{"seed": 42}\n'
+
+
+def test_writes_nothing_when_content_is_unchanged(tmp_path: Path) -> None:
+    artifacts = _artifacts(tmp_path)
+    destination = tmp_path / "worktree" / "l40s"
+    sync_metrics(collect_metrics(artifacts), destination)
+
+    written = sync_metrics(collect_metrics(artifacts), destination)
+
+    assert written == []
+
+
+def test_rewrites_only_the_file_that_changed(tmp_path: Path) -> None:
+    artifacts = _artifacts(tmp_path)
+    destination = tmp_path / "worktree" / "l40s"
+    sync_metrics(collect_metrics(artifacts), destination)
+    _write(artifacts / "e1" / "summary.json", '{"protocol": "E1", "seeds": 5}\n')
+
+    written = sync_metrics(collect_metrics(artifacts), destination)
+
+    assert [str(path).replace("\\", "/") for path in written] == ["e1/summary.json"]
+
+
+def test_preserves_bytes_exactly(tmp_path: Path) -> None:
+    """A newline rewritten as CRLF would look like a change on every interval."""
+    artifacts = _artifacts(tmp_path)
+    destination = tmp_path / "worktree" / "l40s"
+
+    sync_metrics(collect_metrics(artifacts), destination)
+
+    assert b"\r\n" not in (destination / "e1" / "summary.json").read_bytes()
