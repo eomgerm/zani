@@ -23,31 +23,27 @@ public class DetectionRecordPersistenceAdapter implements DetectionRecordReposit
 
     private static final String INSERT_IGNORE = """
             INSERT IGNORE INTO attention_events
-                (id, session_id, session_participant_id, detector_outcome, low_engagement, attention_score,
+                (id, session_id, session_participant_id, detector_outcome, attention_score,
                  occurred_offset_ms, window_started_offset_ms, signal_quality,
-                 feature_schema_version, engine_version, client_event_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
+                 feature_schema_version, client_event_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
             """;
 
     private final JdbcTemplate jdbcTemplate;
 
     @Override
     public boolean saveIfNew(DetectionRecord record) {
-        Byte level = record.signal().outcome().engagementLevel().orElse(null);
-        Boolean lowEngagement = level == null ? null : record.signal().lowEngagement();
         int inserted = jdbcTemplate.update(
                 INSERT_IGNORE,
                 TsidGenerator.generate(),
                 record.sessionId(),
                 record.participantId(),
-                record.signal().outcome().name(),
-                lowEngagement,
-                level,
+                record.outcome().name(),
+                record.outcome().engagementLevel().orElse(null),
                 record.occurredOffsetMs(),
                 record.windowStartedOffsetMs(),
                 record.signalQuality(),
                 record.featureSchemaVersion(),
-                record.engineVersion(),
                 record.clientEventId());
         return inserted > 0;
     }
