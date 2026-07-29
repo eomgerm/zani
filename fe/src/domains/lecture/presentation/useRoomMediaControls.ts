@@ -156,9 +156,9 @@ function snapshot(room: Room | null): MediaSnapshot {
  * 화면 상태는 localParticipant를 그대로 스냅샷하므로, 서버·다른 기기에서 트랙이 바뀌어도 같은 값을 보여준다.
  * 재연결 중에는 조작을 막고, 언마운트/room 교체 시 리스너와 진행 중인 요청 결과를 모두 버린다.
  *
- * @param prejoinInviteCode 입장 전 점검에서 고른 장치를 이어 쓰기 위한 초대 코드. 저장값이 없으면 기본 장치로 진행한다.
+ * @param prejoinSessionId 입장 전 점검 결과를 찾을 세션 ID. 저장값이 없으면 기본 장치로 진행한다(강사는 점검을 거치지 않는다).
  */
-export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaControls {
+export function useRoomMediaControls(prejoinSessionId?: string): RoomMediaControls {
   const { room, connectionState } = useRoomConnection();
   const [state, setState] = useState<MediaSnapshot>(disconnectedSnapshot);
   const [devices, setDevices] = useState<DeviceOptions>(noDeviceOptions);
@@ -337,10 +337,10 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
    * <p>실패는 삼킨다. 여기서 못 켜도 사용자가 직접 켤 수 있고, 권한 거부는 토글 경로가 이미 안내한다.
    */
   useEffect(() => {
-    if (!room || !prejoinInviteCode) {
+    if (!room || !prejoinSessionId) {
       return;
     }
-    const prejoin = readPrejoinResult(prejoinInviteCode);
+    const prejoin = readPrejoinResult(prejoinSessionId);
     if (!prejoin) {
       return;
     }
@@ -362,7 +362,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
       }
     }, 0);
     return () => clearTimeout(applyPrejoin);
-  }, [room, prejoinInviteCode, switchDevice]);
+  }, [room, prejoinSessionId, switchDevice]);
 
   return {
     microphoneEnabled: state.microphoneEnabled,

@@ -37,11 +37,6 @@ type RoomScreenProps = {
    * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
    */
   expiresAt?: string;
-  /**
-   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
-   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
-   */
-  prejoinInviteCode?: string;
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
@@ -98,14 +93,13 @@ function PanelToggle({
   );
 }
 
-export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
       <RoomScreenContent
         sessionId={sessionId}
         roomTitle={roomTitle}
         expiresAt={expiresAt}
-        prejoinInviteCode={prejoinInviteCode ?? sessionId}
       />
     </RoomProvider>
   );
@@ -115,12 +109,11 @@ function RoomScreenContent({
   sessionId,
   roomTitle = "React 상태관리 심화",
   expiresAt,
-  prejoinInviteCode,
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
   const { sessionExpiresAt } = useRoomConnection();
-  const media = useRoomMediaControls(prejoinInviteCode);
+  const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();

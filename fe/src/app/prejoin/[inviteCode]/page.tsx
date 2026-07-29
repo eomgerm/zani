@@ -119,8 +119,9 @@ export default function Page({
     try {
       // 서버가 상태·정원·초대 코드를 검증하고 세션 ID 를 확정한다. 실패하면 방으로 넘어가지 않는다.
       const joined = await joinSession(inviteCode, accessToken);
-      // 강의실이 같은 장치로 붙도록 선택 결과를 남긴다. 장치 원본 데이터는 저장하지 않는다.
-      writePrejoinResult(inviteCode, {
+      // 강의실이 같은 장치로 붙도록 선택 결과를 남긴다. 강의실은 초대 코드를 모르므로 서버가 확정한 세션 ID 로 저장한다.
+      // 장치 원본 데이터는 저장하지 않는다.
+      writePrejoinResult(joined.sessionId, {
         cameraDeviceId: deviceState.cameraDeviceId,
         microphoneDeviceId: deviceState.microphoneDeviceId,
         testedAt,

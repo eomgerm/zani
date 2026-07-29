@@ -144,7 +144,8 @@ describe('Prejoin Page', () => {
 
     await waitFor(() => expect(joinSession).toHaveBeenCalledWith('ABC123', 'access-token'));
 
-    const stored = sessionStorage.getItem('zani:prejoin:ABC123');
+    // 강의실은 초대 코드를 모른다. 서버가 확정한 세션 ID 로 저장해야 강의실이 찾을 수 있다.
+    const stored = sessionStorage.getItem('zani:prejoin:4242');
     expect(stored).not.toBeNull();
     const payload = JSON.parse(stored ?? '{}');
     expect(payload.cameraDeviceId).toBe('cam-1');
@@ -168,7 +169,7 @@ describe('Prejoin Page', () => {
     expect(await screen.findByTestId('prejoin-join-error')).toHaveTextContent('정원이 가득 찼어요');
     expect(pushMock).not.toHaveBeenCalled();
     // 실패했으므로 장치 결과도 남기지 않는다.
-    expect(sessionStorage.getItem('zani:prejoin:ABC123')).toBeNull();
+    expect(sessionStorage.getItem('zani:prejoin:4242')).toBeNull();
   });
 
   it('아직 시작하지 않은 수업이면 다시 시도할 수 있게 안내하고 버튼을 되살린다', async () => {
