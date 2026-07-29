@@ -7,6 +7,16 @@ import type { MediaToken } from "../infrastructure/mediaTokenApi";
 import type { LiveKitRoomFactory } from "../infrastructure/liveKitRoom";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 
+const { authState } = vi.hoisted(() => ({
+  authState: { accessToken: "test-access-token" as string | null },
+}));
+
+// 미디어 토큰 발급은 Bearer Access Token 이 필요하다. 인증 컨텍스트 전체를 띄우지 않고 토큰만 흉내 낸다.
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => authState,
+}));
+
+
 const token: MediaToken = {
   liveKitUrl: "wss://livekit.example.com",
   accessToken: "signed-token",
@@ -78,7 +88,11 @@ function renderProvider({
   roomFactory = vi.fn(() => createFakeRoom()),
   children = <Probe />,
 }: {
-  requestToken?: (sessionId: string, signal?: AbortSignal) => Promise<MediaToken>;
+  requestToken?: (
+    sessionId: string,
+    accessToken: string,
+    signal?: AbortSignal,
+  ) => Promise<MediaToken>;
   roomFactory?: ReturnType<typeof vi.fn>;
   children?: ReactNode;
 } = {}) {

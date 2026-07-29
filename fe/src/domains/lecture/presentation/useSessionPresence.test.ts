@@ -4,7 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PresenceReportError, type PresenceSnapshot } from "../infrastructure/presenceApi";
 import { useSessionPresence } from "./useSessionPresence";
 
-const hoisted = vi.hoisted(() => ({ status: "stable" as string }));
+const hoisted = vi.hoisted(() => ({
+  status: "stable" as string,
+  authState: { accessToken: "test-access-token" as string | null },
+}));
+
+// presence 보고는 Bearer Access Token 이 필요하다. 인증 컨텍스트 전체를 띄우지 않고 토큰만 흉내 낸다.
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => hoisted.authState,
+}));
 
 vi.mock("./useRoomReconnect", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./useRoomReconnect")>();

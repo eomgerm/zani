@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const ACCESS_TOKEN = "test-access-token";
+
 import { PresenceReportError, reportPresence } from "./presenceApi";
 
 const HEARTBEAT = { heartbeatAt: "2026-07-26T12:00:00.000Z", connectionState: "CONNECTED" } as const;
@@ -28,7 +30,7 @@ describe("reportPresence", () => {
       jsonResponse({ isSuccess: true, data: { reconnectStatus: "CONNECTED", sessionEnded: false } }),
     );
 
-    const snapshot = await reportPresence("session-1", HEARTBEAT);
+    const snapshot = await reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN);
 
     expect(snapshot).toEqual({ reconnectStatus: "CONNECTED", sessionEnded: false });
     const [url, init] = fetchMock.mock.calls[0];
@@ -43,7 +45,7 @@ describe("reportPresence", () => {
       jsonResponse({ isSuccess: true, data: { reconnectStatus: "CONNECTED", sessionEnded: false } }),
     );
 
-    await reportPresence("a/b?c", HEARTBEAT);
+    await reportPresence("a/b?c", HEARTBEAT, ACCESS_TOKEN);
 
     expect(fetchMock.mock.calls[0][0]).toContain("/sessions/a%2Fb%3Fc/presence");
   });
@@ -56,7 +58,7 @@ describe("reportPresence", () => {
       }),
     );
 
-    await expect(reportPresence("session-1", HEARTBEAT)).resolves.toEqual({
+    await expect(reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN)).resolves.toEqual({
       reconnectStatus: "SESSION_ENDED",
       sessionEnded: true,
     });
@@ -65,7 +67,7 @@ describe("reportPresence", () => {
   it("keeps the HTTP status so the caller can stop on a rejected report", async () => {
     fetchMock.mockResolvedValue(jsonResponse({}, 403));
 
-    await expect(reportPresence("session-1", HEARTBEAT)).rejects.toMatchObject({
+    await expect(reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN)).rejects.toMatchObject({
       name: "PresenceReportError",
       status: 403,
     });
@@ -74,7 +76,7 @@ describe("reportPresence", () => {
   it("rejects a response whose envelope is not a success", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ isSuccess: false, data: null }));
 
-    await expect(reportPresence("session-1", HEARTBEAT)).rejects.toBeInstanceOf(
+    await expect(reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN)).rejects.toBeInstanceOf(
       PresenceReportError,
     );
   });
@@ -84,7 +86,7 @@ describe("reportPresence", () => {
       jsonResponse({ isSuccess: true, data: { reconnectStatus: "WAT", sessionEnded: false } }),
     );
 
-    await expect(reportPresence("session-1", HEARTBEAT)).rejects.toBeInstanceOf(
+    await expect(reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN)).rejects.toBeInstanceOf(
       PresenceReportError,
     );
   });
@@ -96,7 +98,7 @@ describe("reportPresence", () => {
       json: () => Promise.reject(new Error("not json")),
     } as unknown as Response);
 
-    await expect(reportPresence("session-1", HEARTBEAT)).rejects.toBeInstanceOf(
+    await expect(reportPresence("session-1", HEARTBEAT, ACCESS_TOKEN)).rejects.toBeInstanceOf(
       PresenceReportError,
     );
   });

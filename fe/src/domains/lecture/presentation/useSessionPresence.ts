@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useAuth } from "@/domains/auth";
 import {
   PresenceReportError,
   reportPresence,
@@ -61,6 +62,7 @@ export function useSessionPresence(
 ): SessionPresenceState {
   const { intervalMs = HEARTBEAT_INTERVAL_MS, report = reportPresence } = options;
   const { status } = useRoomReconnect();
+  const { accessToken } = useAuth();
   const connectionState = toConnectionState(status);
 
   const [reconnectStatus, setReconnectStatus] = useState<PresenceReconnectStatus | null>(null);
@@ -69,7 +71,8 @@ export function useSessionPresence(
   const stopped = sessionEnded || error !== null;
 
   useEffect(() => {
-    if (stopped) {
+    // 로그인 없이는 heartbeat 를 보고할 수 없다. 401 을 반복하는 대신 보내지 않는다.
+    if (stopped || accessToken === null) {
       return;
     }
 
@@ -81,6 +84,7 @@ export function useSessionPresence(
         const snapshot = await report(
           sessionId,
           { heartbeatAt: new Date().toISOString(), connectionState },
+          accessToken,
           abortController.signal,
         );
         if (!isCurrent) {
@@ -110,7 +114,7 @@ export function useSessionPresence(
       clearTimeout(initial);
       clearInterval(timer);
     };
-  }, [sessionId, connectionState, intervalMs, report, stopped]);
+  }, [sessionId, connectionState, intervalMs, report, stopped, accessToken]);
 
   return { reconnectStatus, sessionEnded, error };
 }

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const ACCESS_TOKEN = "test-access-token";
+
 import {
   MediaTokenRequestError,
   requestMediaToken,
@@ -33,7 +35,7 @@ describe("requestMediaToken", () => {
       ),
     );
 
-    await expect(requestMediaToken("55")).resolves.toMatchObject({
+    await expect(requestMediaToken("55", ACCESS_TOKEN)).resolves.toMatchObject({
       roomName: "session-55",
     });
     expect(fetch).toHaveBeenCalledWith(
@@ -63,7 +65,7 @@ describe("requestMediaToken", () => {
       ),
     );
 
-    await requestMediaToken("course/55?role=student");
+    await requestMediaToken("course/55?role=student", ACCESS_TOKEN);
 
     expect(fetch).toHaveBeenCalledWith(
       "https://api.example.com/api/v1/sessions/course%2F55%3Frole%3Dstudent/media-token",
@@ -74,7 +76,7 @@ describe("requestMediaToken", () => {
   it("rejects a forbidden response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 403 })));
 
-    await expect(requestMediaToken("55")).rejects.toBeInstanceOf(
+    await expect(requestMediaToken("55", ACCESS_TOKEN)).rejects.toBeInstanceOf(
       MediaTokenRequestError,
     );
   });
@@ -87,7 +89,7 @@ describe("requestMediaToken", () => {
       ),
     );
 
-    await expect(requestMediaToken("55")).rejects.toBeInstanceOf(
+    await expect(requestMediaToken("55", ACCESS_TOKEN)).rejects.toBeInstanceOf(
       MediaTokenRequestError,
     );
   });
@@ -121,7 +123,7 @@ describe("requestMediaToken", () => {
       ),
     );
 
-    await expect(requestMediaToken("55")).rejects.toBeInstanceOf(
+    await expect(requestMediaToken("55", ACCESS_TOKEN)).rejects.toBeInstanceOf(
       MediaTokenRequestError,
     );
   });
