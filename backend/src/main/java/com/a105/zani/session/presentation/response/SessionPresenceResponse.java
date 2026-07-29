@@ -22,7 +22,7 @@ public record SessionPresenceResponse(
     @Schema(description = "참가자 presence 상태")
     public record ParticipantState(
             @Schema(description = "세션 참가자 ID", example = "456")
-            Long participantId,
+            String participantId,
 
             @Schema(description = "역할", example = "STUDENT") SessionParticipantRole role,
 
@@ -35,7 +35,10 @@ public record SessionPresenceResponse(
     public static SessionPresenceResponse from(PresenceResult result) {
         return new SessionPresenceResponse(
                 new ParticipantState(
-                        result.participantId(), result.role(), result.connectionState(), result.heartbeatAt()),
+                        String.valueOf(result.participantId()),
+                        result.role(),
+                        result.connectionState(),
+                        result.heartbeatAt()),
                 result.reconnectStatus(),
                 result.sessionEnded());
     }

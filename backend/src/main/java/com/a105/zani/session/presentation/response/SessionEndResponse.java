@@ -7,7 +7,7 @@ import com.a105.zani.session.domain.model.SessionStatus;
 
 @Schema(description = "수업 종료 응답")
 public record SessionEndResponse(
-        @Schema(description = "세션 ID", example = "123") Long sessionId,
+        @Schema(description = "세션 ID", example = "123") String sessionId,
 
         @Schema(description = "종료 후 세션 상태", example = "ENDED")
         SessionStatus status,
@@ -16,6 +16,6 @@ public record SessionEndResponse(
         boolean ended) {
 
     public static SessionEndResponse from(EndSessionResult result) {
-        return new SessionEndResponse(result.sessionId(), result.status(), result.ended());
+        return new SessionEndResponse(String.valueOf(result.sessionId()), result.status(), result.ended());
     }
 }
