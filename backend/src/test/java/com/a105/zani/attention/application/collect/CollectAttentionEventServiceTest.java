@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -526,6 +528,11 @@ class CollectAttentionEventServiceTest {
         @Override
         public void includeInDenominator(long sessionId, long participantId) {
             excluded.remove(participantId);
+        }
+
+        @Override
+        public Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds) {
+            return participantIds.stream().filter(excluded::contains).collect(Collectors.toSet());
         }
 
         @Override
