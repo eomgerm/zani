@@ -127,6 +127,12 @@ function RoomScreenContent({
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
+  // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
+  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
+  const connected = tileParticipants.length > 0;
+  const isInstructor =
+    !connected ||
+    tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -138,10 +144,13 @@ function RoomScreenContent({
   const [promptToast, setPromptToast] = useState<string | null>(null);
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
-  // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않는다 — 판정 파이프라인(75)이 채운다.
+  // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
   const cameraGuide = useCameraGuidePrompt({
     sessionId,
-    camera: media.cameraBlocked ? "denied" : media.cameraEnabled ? "on" : "off",
+    camera: media.cameraPermissionDenied ? "denied" : media.cameraEnabled ? "on" : "off",
+    // 학생 프롬프트라 강사 화면에서는 돌리지 않는다. 역할이 확인되기 전에는 isInstructor 가
+    // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
+    enabled: !isInstructor,
   });
   const [alertOpen, setAlertOpen] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
@@ -159,13 +168,6 @@ function RoomScreenContent({
   const track = useCallback((id: ReturnType<typeof setTimeout>) => {
     timers.current.push(id);
   }, []);
-
-  // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
-  // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
-  const connected = tileParticipants.length > 0;
-  const isInstructor =
-    !connected ||
-    tileParticipants.find((p) => p.id === localParticipantId)?.role === "instructor";
 
   // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
   // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
@@ -419,8 +421,8 @@ function RoomScreenContent({
         )}
       </div>
 
-      {/* 확인 프롬프트 (학생) */}
-      {understandingCheck.prompt && (
+      {/* 확인 프롬프트 (학생 전용 — 강사는 판정 대상이 아니다) */}
+      {!isInstructor && understandingCheck.prompt && (
         <CoachingPromptPanel
           title="잠깐 확인할게요 ✋"
           body="방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요."
@@ -449,8 +451,8 @@ function RoomScreenContent({
           ]}
         />
       )}
-      {/* 자세 안내 (학생) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
-      {postureGuide.prompt && (
+      {/* 자세 안내 (학생 전용) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
+      {!isInstructor && postureGuide.prompt && (
         <CoachingPromptPanel
           title="얼굴이 잘 보이지 않아요 🙂"
           body="카메라에 얼굴이 나오도록 조정해주세요."
@@ -467,8 +469,8 @@ function RoomScreenContent({
         />
       )}
 
-      {/* 카메라 안내 (학생) — 권한 거부·트랙 muted 는 답을 물어도 소용이 없어 확인만 받는다 */}
-      {cameraGuide.prompt && (
+      {/* 카메라 안내 (학생 전용) — 권한 거부·트랙 muted 는 답을 물어도 소용이 없어 확인만 받는다 */}
+      {!isInstructor && cameraGuide.prompt && (
         <CoachingPromptPanel
           title={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].title}
           body={CAMERA_GUIDE_COPY[cameraGuide.prompt.cause].body}

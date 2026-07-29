@@ -44,6 +44,11 @@ export interface UseCameraGuidePromptOptions {
   onClosed?: () => void;
   /** "못 켜요" 억제를 새로고침 뒤에도 유지하기 위한 저장소. 테스트가 가짜 구현을 넣는다. */
   suppressionStore?: CameraGuideSuppressionStore;
+  /**
+   * 이 프롬프트를 쓸 화면인지. 학생 프롬프트라 강사 화면에서는 꺼둔다(§5).
+   * false 로 바뀌면 떠 있던 프롬프트도 닫는다.
+   */
+  enabled?: boolean;
 }
 
 export interface UseCameraGuidePromptResult {
@@ -73,8 +78,9 @@ export function useCameraGuidePrompt(
     camera,
     onClosed,
     suppressionStore = sessionStorageCameraGuideSuppression,
+    enabled = true,
   } = options;
-  const cameraOff = camera !== "on";
+  const cameraOff = enabled && camera !== "on";
 
   const [prompt, setPrompt] = useState<{ promptId: string; cause: CameraGuideCause } | null>(null);
   /** 카메라가 꺼진 시각. 켜질 때만 지운다 — 프롬프트가 닫혀도 계속 센다. */

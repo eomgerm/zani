@@ -123,6 +123,31 @@ describe("useCameraGuidePrompt", () => {
     expect(second.result.current.prompt).toBeNull();
   });
 
+  // 학생 프롬프트라 강사 화면에서는 돌지 않아야 한다(§5).
+  it("stays quiet while disabled, even with the camera off", () => {
+    const { result } = renderHook(() =>
+      useCameraGuidePrompt({ sessionId: "s1", camera: "off", enabled: false }),
+    );
+
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS * 3));
+
+    expect(result.current.prompt).toBeNull();
+  });
+
+  it("closes an open prompt when it becomes disabled", () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useCameraGuidePrompt({ sessionId: "s1", camera: "off", enabled }),
+      { initialProps: { enabled: true } },
+    );
+
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    expect(result.current.prompt).not.toBeNull();
+
+    rerender({ enabled: false });
+
+    expect(result.current.prompt).toBeNull();
+  });
+
   // presentation 은 저장소 구현이 아니라 계약에만 의존한다.
   it("reads and writes suppression through the injected store", () => {
     const suppressionStore = { isSuppressed: vi.fn().mockReturnValue(false), suppress: vi.fn() };
