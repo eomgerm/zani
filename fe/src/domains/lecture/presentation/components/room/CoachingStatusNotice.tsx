@@ -11,12 +11,13 @@ import type { CoachingAvailability } from "../../../domain/coachingAvailability"
  * 정상일 때 아무것도 띄우지 않는 것은 학생 배지와 같은 이유다 — 팁은 10분에 한 번 수준이라
  * 그동안 계속 "정상"을 띄우면 화면만 시끄러워진다.
  *
+ * 팁을 못 만든 사유는 여기 담지 않는다. 그건 트리거 하나가 실패한 것이라 강사가 할 일이
+ * 없고, 다음 트리거에서 회복된다(85 계약).
+ *
  * 상단 바 안에 흐름대로 놓이는 칩이다. 띄워 얹으면 수업 조작을 가린다.
  */
 const COPY: Record<CoachingAvailability, string | null> = {
   ACTIVE: null,
-  TRANSCRIPTION_FAILED: "수업 음성을 인식하지 못하고 있어요",
-  TIP_FAILED: "수업 팁을 만들지 못하고 있어요",
   POLL_FAILED: "수업 팁을 받아오지 못하고 있어요",
 };
 

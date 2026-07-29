@@ -2,14 +2,10 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COACH_POLL_INTERVAL_MS, useCoachingStatus } from "./useCoachingStatus";
+import { COACH_POLL_FAILURE_THRESHOLD } from "../domain/coachingAvailability";
 import type { CoachPollResult } from "../infrastructure/coachPollApi";
 
-const idle: CoachPollResult = {
-  triggerId: null,
-  tip: null,
-  unavailableReason: null,
-  audioUploadRequest: null,
-};
+const idle: CoachPollResult = { triggerId: null, tip: null, unavailableReason: null };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -23,6 +19,13 @@ afterEach(() => {
 const flushFirstPoll = async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
+  });
+};
+
+/** 주기를 n 번 흘려보낸다. */
+const advancePolls = async (n: number) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(COACH_POLL_INTERVAL_MS * n);
   });
 };
 
@@ -42,10 +45,7 @@ describe("useCoachingStatus", () => {
 
     renderHook(() => useCoachingStatus({ sessionId: "s1", enabled: true, poll }));
     await flushFirstPoll();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(COACH_POLL_INTERVAL_MS * 2);
-    });
+    await advancePolls(2);
 
     expect(poll).toHaveBeenCalledTimes(3);
   });
@@ -55,62 +55,65 @@ describe("useCoachingStatus", () => {
     const poll = vi.fn().mockResolvedValue(idle);
 
     renderHook(() => useCoachingStatus({ sessionId: "s1", enabled: false, poll }));
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(COACH_POLL_INTERVAL_MS * 3);
-    });
+    await advancePolls(3);
 
     expect(poll).not.toHaveBeenCalled();
   });
 
-  it("reports a server-side failure so the instructor knows coaching broke", async () => {
-    const poll = vi.fn().mockResolvedValue({ ...idle, unavailableReason: "TRANSCRIPTION_FAILED" });
+  // 트리거 하나가 실패한 것은 코칭이 죽은 것이 아니다. 다음 트리거에서 회복된다(85 계약).
+  it.each([
+    "NO_TRANSCRIPT",
+    "TRANSCRIPTION_FAILED",
+    "TIP_GENERATION_FAILED",
+    "LOW_CONFIDENCE",
+  ] as const)("stays quiet when the server reports %s", async (unavailableReason) => {
+    const poll = vi.fn().mockResolvedValue({ ...idle, unavailableReason });
 
     const { result } = renderHook(() =>
       useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
     );
     await flushFirstPoll();
 
-    expect(result.current.availability).toBe("TRANSCRIPTION_FAILED");
+    expect(result.current.availability).toBe("ACTIVE");
   });
 
-  // 버퍼 부족·낮은 신뢰도는 정상 동작이라 알릴 것이 없다.
-  it.each(["NO_TRANSCRIPT", "LOW_CONFIDENCE"] as const)(
-    "stays quiet for %s",
-    async (unavailableReason) => {
-      const poll = vi.fn().mockResolvedValue({ ...idle, unavailableReason });
-
-      const { result } = renderHook(() =>
-        useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
-      );
-      await flushFirstPoll();
-
-      expect(result.current.availability).toBe("ACTIVE");
-    },
-  );
-
-  it("reports a failed poll — a tip the instructor cannot receive is the same to them", async () => {
+  // 한 번의 실패는 네트워크가 잠깐 흔들린 것일 수 있다.
+  it("tolerates failures until they repeat enough", async () => {
     const poll = vi.fn().mockRejectedValue(new Error("network down"));
 
     const { result } = renderHook(() =>
       useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
     );
     await flushFirstPoll();
+    await advancePolls(COACH_POLL_FAILURE_THRESHOLD - 2);
 
-    expect(result.current.availability).toBe("POLL_FAILED");
+    expect(result.current.availability).toBe("ACTIVE");
   });
 
-  it("recovers once a later poll succeeds", async () => {
-    const poll = vi.fn().mockRejectedValueOnce(new Error("network down")).mockResolvedValue(idle);
+  it("reports once the failures reach the threshold", async () => {
+    const poll = vi.fn().mockRejectedValue(new Error("network down"));
 
     const { result } = renderHook(() =>
       useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
     );
     await flushFirstPoll();
+    await advancePolls(COACH_POLL_FAILURE_THRESHOLD - 1);
+
+    expect(result.current.availability).toBe("POLL_FAILED");
+  });
+
+  it("clears the notice as soon as one poll succeeds again", async () => {
+    const poll = vi.fn().mockRejectedValue(new Error("network down"));
+
+    const { result } = renderHook(() =>
+      useCoachingStatus({ sessionId: "s1", enabled: true, poll }),
+    );
+    await flushFirstPoll();
+    await advancePolls(COACH_POLL_FAILURE_THRESHOLD - 1);
     expect(result.current.availability).toBe("POLL_FAILED");
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(COACH_POLL_INTERVAL_MS);
-    });
+    poll.mockResolvedValue(idle);
+    await advancePolls(1);
 
     expect(result.current.availability).toBe("ACTIVE");
   });
@@ -121,13 +124,12 @@ describe("useCoachingStatus", () => {
     const result: CoachPollResult = {
       triggerId: "t-1",
       tip: {
-        tipType: "CONFUSED_HIGH",
-        title: "추가 설명이 필요해요",
-        message: "전체 학생의 30%가 ...",
-        targetConcept: "클로저",
+        tipType: "CONFUSED",
+        title: "지금 다시 짚고 갈 개념이 있습니다",
+        message: "전체 학생의 34%가 헷갈려하고 있습니다.",
+        targetConcept: "재귀 호출의 종료 조건",
       },
       unavailableReason: null,
-      audioUploadRequest: null,
     };
     const poll = vi.fn().mockResolvedValue(result);
 
@@ -145,10 +147,7 @@ describe("useCoachingStatus", () => {
     );
     await flushFirstPoll();
     unmount();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(COACH_POLL_INTERVAL_MS * 3);
-    });
+    await advancePolls(3);
 
     expect(poll).toHaveBeenCalledTimes(1);
   });

@@ -27,8 +27,9 @@ export interface UseCoachingStatusResult {
 /**
  * 강사 코칭 가용 상태(티켓 76).
  *
- * 10초마다 조회해 서버가 알려준 미표시 사유를 강사에게 보여줄 상태로 접는다. 조회 자체가
- * 실패하면 `POLL_FAILED` 다 — 서버가 팁을 만들었더라도 받지 못하면 강사에겐 같은 결과다.
+ * 10초마다 조회하고, **폴링이 연속으로 실패할 때만** 강사에게 알린다. 서버가 알려준 미표시
+ * 사유는 배지에 쓰지 않는다 — 트리거 하나가 실패한 것이지 코칭이 죽은 것이 아니다(85 계약).
+ * 근거는 `coachingAvailability.ts` 에 있다.
  *
  * 실패해도 예외를 올리지 않는다. 코칭이 죽는 것이 수업을 막아서는 안 된다(76 요구사항).
  *
@@ -39,9 +40,9 @@ export interface UseCoachingStatusResult {
 export function useCoachingStatus(options: UseCoachingStatusOptions): UseCoachingStatusResult {
   const { sessionId, enabled, poll = pollCoach, onResult } = options;
 
-  // 폴링으로 알게 된 값만 상태로 둔다. 꺼져 있을 때의 "ACTIVE" 는 렌더에서 파생한다 —
+  // 연속 실패 횟수만 상태로 둔다. 꺼져 있을 때의 "ACTIVE" 는 렌더에서 파생한다 —
   // 효과 안에서 setState 로 되돌리면 불필요한 렌더가 한 번 더 돈다.
-  const [polled, setPolled] = useState<CoachingAvailability>("ACTIVE");
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
 
   // 콜백·폴러 identity 가 바뀌어도 주기를 다시 잡지 않도록 ref 로 미러링한다.
   const pollRef = useRef(poll);
@@ -61,11 +62,11 @@ export function useCoachingStatus(options: UseCoachingStatusOptions): UseCoachin
       try {
         const result = await pollRef.current(sessionId, controller.signal);
         if (cancelled) return;
-        setPolled(coachingAvailabilityOf(result.unavailableReason));
+        setConsecutiveFailures(0);
         onResultRef.current?.(result);
       } catch {
-        // 조회 실패는 강사에게 알리되 수업은 그대로 둔다.
-        if (!cancelled) setPolled("POLL_FAILED");
+        // 한 번의 실패는 아직 알리지 않는다. 연속으로 이어질 때만 배지가 뜬다.
+        if (!cancelled) setConsecutiveFailures((count) => count + 1);
       }
     };
 
@@ -79,5 +80,5 @@ export function useCoachingStatus(options: UseCoachingStatusOptions): UseCoachin
     };
   }, [sessionId, enabled]);
 
-  return { availability: enabled ? polled : "ACTIVE" };
+  return { availability: enabled ? coachingAvailabilityOf(consecutiveFailures) : "ACTIVE" };
 }

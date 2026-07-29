@@ -9,7 +9,7 @@ const ok = (data: unknown) =>
   });
 
 const tip = {
-  tipType: "CONFUSED_HIGH",
+  tipType: "CONFUSED",
   title: "추가 설명이 필요해요",
   message: "전체 학생의 30%가 현재 내용을 헷갈려 하고 있어요.",
   targetConcept: "클로저",
@@ -25,23 +25,16 @@ describe("pollCoach", () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com/");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        ok({ triggerId: "t-1", tip, unavailableReason: null, audioUploadRequest: null }),
-      ),
+      vi.fn().mockResolvedValue(ok({ triggerId: "t-1", tip, unavailableReason: null })),
     );
 
     const result = await pollCoach("55");
 
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.example.com/api/v1/sessions/55/coach/poll",
+      "https://api.example.com/api/v1/sessions/55/coaching-tip",
       expect.objectContaining({ method: "GET", credentials: "include" }),
     );
-    expect(result).toEqual({
-      triggerId: "t-1",
-      tip,
-      unavailableReason: null,
-      audioUploadRequest: null,
-    });
+    expect(result).toEqual({ triggerId: "t-1", tip, unavailableReason: null });
   });
 
   it("reports an idle poll as nothing waiting", async () => {
@@ -78,13 +71,19 @@ describe("pollCoach", () => {
     expect((await pollCoach("55")).tip).toBeNull();
   });
 
-  // 업로드 요청은 85 소유라 형태를 해석하지 않고 그대로 넘긴다.
-  it("passes the audio upload request through untouched", async () => {
+  // 계약에 없는 값이 늘어도 무시한다. 85 가 나중에 필드를 더해도 이 어댑터는 흔들리지 않는다.
+  it("ignores fields the contract does not define", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
-    const audioUploadRequest = { anything: "the server decides" };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok({ tip: null, audioUploadRequest })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(ok({ tip: null, somethingAddedLater: { any: "shape" } })),
+    );
 
-    expect((await pollCoach("55")).audioUploadRequest).toEqual(audioUploadRequest);
+    expect(await pollCoach("55")).toEqual({
+      triggerId: null,
+      tip: null,
+      unavailableReason: null,
+    });
   });
 
   it("reports a failed status with the code so the caller can react", async () => {
@@ -108,7 +107,7 @@ describe("pollCoach", () => {
     await pollCoach("s/55");
 
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.example.com/api/v1/sessions/s%2F55/coach/poll",
+      "https://api.example.com/api/v1/sessions/s%2F55/coaching-tip",
       expect.anything(),
     );
   });

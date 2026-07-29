@@ -381,19 +381,19 @@ describe("RoomScreen coaching wiring", () => {
 
   it("polls and shows the coaching notice for an instructor", () => {
     asInstructor();
-    coaching.availability = "TRANSCRIPTION_FAILED";
+    coaching.availability = "POLL_FAILED";
 
     render(<RoomScreen sessionId="123" />);
 
     expect(everEnabled()).toBe(true);
     expect(screen.getByTestId("coaching-status-notice")).toHaveTextContent(
-      "수업 음성을 인식하지 못하고 있어요",
+      "수업 팁을 받아오지 못하고 있어요",
     );
   });
 
   it("keeps the coaching notice away from students", () => {
     asStudent();
-    coaching.availability = "TRANSCRIPTION_FAILED";
+    coaching.availability = "POLL_FAILED";
 
     render(<RoomScreen sessionId="123" />);
 
@@ -406,7 +406,7 @@ describe("RoomScreen coaching wiring", () => {
   it("waits for the role to be confirmed before polling", () => {
     roomParticipants.participants = [];
     roomParticipants.localParticipantId = null;
-    coaching.availability = "TRANSCRIPTION_FAILED";
+    coaching.availability = "POLL_FAILED";
 
     render(<RoomScreen sessionId="123" />);
 
