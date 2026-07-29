@@ -14,7 +14,7 @@ import { columnMajorTransformToRowMajor } from "./faceTransform";
 
 export interface BrowserFaceLandmarker {
   /** 프레임 1장에서 랜드마크·변환행렬·blendshape 를 뽑는다. 얼굴이 없으면 null. */
-  detect(video: HTMLVideoElement, timestampMs: number): FrameLandmarkerValues | null;
+  detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null;
   close(): void;
 }
 
@@ -45,8 +45,8 @@ export async function createBrowserFaceLandmarker(
     });
   }
   return {
-    detect(video: HTMLVideoElement, timestampMs: number): FrameLandmarkerValues | null {
-      const result = landmarker.detectForVideo(video, timestampMs);
+    detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null {
+      const result = landmarker.detectForVideo(frame, timestampMs);
       const landmarks = result.faceLandmarks[0];
       const matrix = result.facialTransformationMatrixes[0];
       if (!landmarks || !matrix || matrix.rows !== 4 || matrix.columns !== 4) return null;

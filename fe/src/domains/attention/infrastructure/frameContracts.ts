@@ -22,6 +22,8 @@ export interface TimedFrameFeatures {
 
 export interface WindowOptions {
   windowMs: number;
+  expectedFrameCount: number;
   segmentCount: number;
+  minimumValidFrameRatio: number;
   minimumValidFrames: number;
 }

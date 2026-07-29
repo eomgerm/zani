@@ -1,4 +1,5 @@
 import type { TimedFrameFeatures, WindowOptions } from "./frameContracts";
+import { ATTENTION_DETECTION_CONFIG } from "./attentionDetectionConfig";
 import { RAW_FEATURE_COUNT, TOKEN_FEATURE_COUNT } from "./frameFeatures";
 
 /**
@@ -7,10 +8,17 @@ import { RAW_FEATURE_COUNT, TOKEN_FEATURE_COUNT } from "./frameFeatures";
  */
 
 const DEFAULT_OPTIONS: WindowOptions = {
-  windowMs: 10_000,
-  segmentCount: 20,
-  minimumValidFrames: 3,
+  windowMs: ATTENTION_DETECTION_CONFIG.windowMs,
+  expectedFrameCount: ATTENTION_DETECTION_CONFIG.expectedFrameCount,
+  segmentCount: ATTENTION_DETECTION_CONFIG.segmentCount,
+  minimumValidFrameRatio: ATTENTION_DETECTION_CONFIG.minimumValidFrameRatio,
+  minimumValidFrames: ATTENTION_DETECTION_CONFIG.minimumValidFramesPerSegment,
 };
+
+export type WindowEvaluation =
+  | { readonly kind: "pending" }
+  | { readonly kind: "unmeasurable" }
+  | { readonly kind: "measurable"; readonly tokens: Float32Array };
 
 export class RollingFeatureWindow {
   readonly options: WindowOptions;
@@ -40,8 +48,8 @@ export class RollingFeatureWindow {
     return Math.min(1, Math.max(0, (nowMs - this.startedAtMs) / this.options.windowMs));
   }
 
-  tokens(nowMs: number): Float32Array | null {
-    if (this.progress(nowMs) < 1) return null;
+  evaluate(nowMs: number): WindowEvaluation {
+    if (this.progress(nowMs) < 1) return { kind: "pending" };
     const start = nowMs - this.options.windowMs;
     const segmentMs = this.options.windowMs / this.options.segmentCount;
     const buckets: Float32Array[][] = Array.from(
@@ -60,7 +68,14 @@ export class RollingFeatureWindow {
       );
       buckets[index]?.push(frame.values);
     }
-    if (buckets.some((bucket) => bucket.length < this.options.minimumValidFrames)) return null;
+    const validFrameCount = buckets.reduce((total, bucket) => total + bucket.length, 0);
+    const minimumValidFrameCount = Math.ceil(
+      this.options.expectedFrameCount * this.options.minimumValidFrameRatio,
+    );
+    if (validFrameCount < minimumValidFrameCount) return { kind: "unmeasurable" };
+    if (buckets.some((bucket) => bucket.length < this.options.minimumValidFrames)) {
+      return { kind: "unmeasurable" };
+    }
 
     const output = new Float32Array(this.options.segmentCount * TOKEN_FEATURE_COUNT);
     buckets.forEach((bucket, segment) => {
@@ -80,7 +95,12 @@ export class RollingFeatureWindow {
         );
       }
     });
-    return output;
+    return { kind: "measurable", tokens: output };
+  }
+
+  tokens(nowMs: number): Float32Array | null {
+    const evaluation = this.evaluate(nowMs);
+    return evaluation.kind === "measurable" ? evaluation.tokens : null;
   }
 
   clear(): void {

@@ -1,14 +1,17 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { AttentionPrediction } from "../domain/attentionPrediction";
+import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
+import type { DetectorReport } from "../domain/detectionOutcome";
 import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
 import type {
   AttentionInferenceClient,
   AttentionInferenceFailure,
 } from "../infrastructure/attentionInferenceClient";
 import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
-import { useAttentionDetection, type FrameScheduler } from "./useAttentionDetection";
+import type { BrowserFaceLandmarker } from "../infrastructure/faceLandmarker";
+import type { TrackProcessorFrameSourceOptions } from "../infrastructure/trackProcessorFrameSource";
+import { useAttentionDetection } from "./useAttentionDetection";
 
 /**
  * 판정 흐름 자체는 `application/attentionDetectionSession.test.ts` 가 검증한다.
@@ -34,37 +37,25 @@ function detectedFace(): FrameLandmarkerValues {
   };
 }
 
-function manualScheduler() {
-  const callbacks = new Map<number, (timestampMs: number) => void>();
-  let nextHandle = 1;
-  const scheduler: FrameScheduler = {
-    request(callback) {
-      const handle = nextHandle;
-      nextHandle += 1;
-      callbacks.set(handle, callback);
-      return handle;
-    },
-    cancel(handle) {
-      callbacks.delete(handle);
-    },
-  };
+function manualFrameSource() {
+  let options: TrackProcessorFrameSourceOptions | null = null;
+  const stop = vi.fn<() => void>(() => {
+    options = null;
+  });
   return {
-    scheduler,
-    get pending() {
-      return callbacks.size;
+    createFrameSource(next: TrackProcessorFrameSourceOptions) {
+      options = next;
+      return { stop };
     },
-    tick(timestampMs: number) {
-      const due = [...callbacks.values()];
-      callbacks.clear();
-      due.forEach((callback) => callback(timestampMs));
+    stop,
+    get pending() {
+      return options === null ? 0 : 1;
+    },
+    emit(timestampMs: number) {
+      const frame = { close: vi.fn<() => void>() } as unknown as VideoFrame;
+      options?.onFrame(frame, timestampMs);
     },
   };
-}
-
-function readyVideoRef() {
-  const video = document.createElement("video");
-  Object.defineProperty(video, "readyState", { value: 2, configurable: true });
-  return { current: video };
 }
 
 const PREDICTION: AttentionPrediction = {
@@ -73,22 +64,24 @@ const PREDICTION: AttentionPrediction = {
 };
 
 describe("useAttentionDetection", () => {
-  let frames: ReturnType<typeof manualScheduler>;
-  let close: ReturnType<typeof vi.fn>;
-  let terminate: ReturnType<typeof vi.fn>;
-  let createLandmarker: ReturnType<typeof vi.fn>;
-  let onPrediction: ReturnType<typeof vi.fn>;
-  let onStatusChange: ReturnType<typeof vi.fn>;
+  let frames: ReturnType<typeof manualFrameSource>;
+  let close: Mock<() => void>;
+  let terminate: Mock<AttentionInferenceClient["terminate"]>;
+  let createLandmarker: Mock<() => Promise<BrowserFaceLandmarker>>;
+  let onPrediction: Mock<(prediction: AttentionPrediction) => void>;
+  let onStatusChange: Mock<(status: AttentionStatus) => void>;
+  let onReport: ReturnType<typeof vi.fn<(report: DetectorReport) => void>>;
   let emitPrediction: (prediction: AttentionPrediction) => void;
   let renderCount: number;
 
   beforeEach(() => {
-    frames = manualScheduler();
+    frames = manualFrameSource();
     close = vi.fn();
     terminate = vi.fn();
     createLandmarker = vi.fn(async () => ({ detect: () => detectedFace(), close }));
     onPrediction = vi.fn();
     onStatusChange = vi.fn();
+    onReport = vi.fn();
     renderCount = 0;
   });
 
@@ -100,17 +93,23 @@ describe("useAttentionDetection", () => {
     return { submit: vi.fn(), terminate };
   }
 
-  function render(camera: "on" | "off" | "denied" = "on") {
-    const videoRef = readyVideoRef();
+  function render(
+    camera: "on" | "off" | "denied" = "on",
+    track: MediaStreamTrack | null = {
+      readyState: "live",
+      muted: false,
+    } as MediaStreamTrack,
+  ) {
     return renderHook(
       (props: { camera: "on" | "off" | "denied" }) => {
         renderCount += 1;
         return useAttentionDetection({
-          videoRef,
           camera: props.camera,
+          track,
           onPrediction,
           onStatusChange,
-          scheduler: frames.scheduler,
+          onReport,
+          createFrameSource: frames.createFrameSource,
           createLandmarker,
           createInferenceClient,
         });
@@ -121,7 +120,7 @@ describe("useAttentionDetection", () => {
 
   async function advance(untilMs: number, fromMs = 0) {
     for (let timestamp = fromMs; timestamp <= untilMs; timestamp += 100) {
-      await act(async () => frames.tick(timestamp));
+      await act(async () => frames.emit(timestamp));
     }
   }
 
@@ -132,6 +131,66 @@ describe("useAttentionDetection", () => {
     expect(result.current.status).toBe("idle");
     expect(createLandmarker).not.toHaveBeenCalled();
     expect(frames.pending).toBe(0);
+  });
+
+  it("reports CAMERA_OFF immediately and every ten seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const view = render("off");
+    await act(async () => {});
+
+    expect(onReport).toHaveBeenNthCalledWith(1, {
+      outcome: "CAMERA_OFF",
+      observedAtMs: 0,
+    });
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onReport).toHaveBeenNthCalledWith(2, {
+      outcome: "CAMERA_OFF",
+      observedAtMs: 10_000,
+    });
+
+    view.unmount();
+    vi.useRealTimers();
+  });
+
+  it("treats a missing local camera track as CAMERA_OFF", async () => {
+    const { result } = render("on", null);
+    await act(async () => {});
+
+    expect(result.current.status).toBe("idle");
+    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(onReport).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "CAMERA_OFF" }),
+    );
+  });
+
+  it("reports detector startup failure immediately and every ten seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createLandmarker.mockRejectedValue(new Error("wasm 404"));
+
+    const view = render("on");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onReport).toHaveBeenNthCalledWith(1, {
+      outcome: "DETECTOR_UNAVAILABLE",
+      observedAtMs: 0,
+    });
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onReport).toHaveBeenNthCalledWith(2, {
+      outcome: "DETECTOR_UNAVAILABLE",
+      observedAtMs: 10_000,
+    });
+
+    view.unmount();
+    warn.mockRestore();
+    vi.useRealTimers();
   });
 
   it("reports a denied camera permission without starting a session", async () => {
