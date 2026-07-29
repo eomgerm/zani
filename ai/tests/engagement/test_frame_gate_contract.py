@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
+from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,15 @@ import pytest
 
 from zani_ai.engagement import segments
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract
-from zani_ai.engagement.extraction import FrameResult, VideoFrame, _build_provenance
+from zani_ai.engagement.extraction import (
+    MINIMUM_VALID_FRAMES,
+    SAMPLE_FPS,
+    SEGMENT_COUNT,
+    WINDOW_SECONDS,
+    FrameResult,
+    VideoFrame,
+    _build_provenance,
+)
 from zani_ai.engagement.features import get_schema
 from zani_ai.engagement.raw_cache import (
     InsufficientRawCoverageError,
@@ -36,10 +45,10 @@ def _runtime_config_value(name: str) -> float:
         / "domain"
         / "attentionDetectionConfig.ts"
     ).read_text(encoding="utf-8")
-    match = re.search(rf"\b{name}:\s*([\d.]+)", source)
+    match = re.search(rf"\b{name}:\s*([\d_]+(?:\.\d+)?)", source)
     if match is None:
         raise AssertionError(f"runtime attention config has no numeric {name}")
-    return float(match.group(1))
+    return float(match.group(1).replace("_", ""))
 
 
 def _valid_mask(counts: list[int]) -> np.ndarray:
@@ -84,6 +93,21 @@ class _TwoHundredNineFaceLandmarker:
         )
 
 
+class _SeventyFaceLandmarker:
+    def detect(self, rgb_frame: np.ndarray, timestamp_ms: int) -> FrameResult | None:
+        del rgb_frame
+        segment = timestamp_ms // 500
+        offset = timestamp_ms % 500 // 100
+        valid_count = 4 if segment < 10 else 3
+        if offset >= valid_count:
+            return None
+        return FrameResult(
+            np.zeros((478, 3), dtype=np.float32),
+            np.eye(4, dtype=np.float32),
+            {},
+        )
+
+
 def _hundred_frames(_: Path) -> Iterator[VideoFrame]:
     image = np.zeros((2, 2, 3), dtype=np.uint8)
     for timestamp_ms in range(0, 10_000, 100):
@@ -97,12 +121,18 @@ def _three_hundred_frames(_: Path) -> Iterator[VideoFrame]:
 
 
 def test_python_frame_gate_matches_browser_runtime_contract() -> None:
+    assert 1000 / _runtime_config_value("sampleIntervalMs") == SAMPLE_FPS
+    assert _runtime_config_value("windowMs") / 1000 == WINDOW_SECONDS
     assert getattr(segments, "EXPECTED_FRAME_COUNT", None) == _runtime_config_value(
         "expectedFrameCount"
     )
+    assert _runtime_config_value("segmentCount") == SEGMENT_COUNT
     assert getattr(segments, "MINIMUM_VALID_FRAME_RATIO", None) == _runtime_config_value(
         "minimumValidFrameRatio"
     )
+    assert _runtime_config_value(
+        "minimumValidFramesPerSegment"
+    ) == MINIMUM_VALID_FRAMES
 
 
 def test_raw_cache_rejects_sixty_to_sixty_nine_valid_frames() -> None:
@@ -194,7 +224,23 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
         timestamps_ms=clip.timestamps_ms,
         valid_mask=clip.valid_mask,
     )
-    (raw_root / "manifest.json").write_text(
+    passing_feature = raw_root / "test" / "passing.npz"
+    passing_feature.parent.mkdir(parents=True)
+    passing_clip = collect_raw_clip(
+        tmp_path / "passing.mp4",
+        _SeventyFaceLandmarker(),
+        frame_source=_hundred_frames,
+    )
+    np.savez_compressed(
+        passing_feature,
+        landmarks=passing_clip.landmarks,
+        transform=passing_clip.transform,
+        blendshapes=passing_clip.blendshapes,
+        timestamps_ms=passing_clip.timestamps_ms,
+        valid_mask=passing_clip.valid_mask,
+    )
+    raw_manifest_path = raw_root / "manifest.json"
+    raw_manifest_path.write_text(
         json.dumps(
             {
                 "schema": "raw_frames_v1",
@@ -206,7 +252,13 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
                         "split": "train",
                         "feature_path": "train/clip.npz",
                         "source_fingerprint": "fixture",
-                    }
+                    },
+                    {
+                        "clip_id": "passing",
+                        "split": "test",
+                        "feature_path": "test/passing.npz",
+                        "source_fingerprint": "passing-fixture",
+                    },
                 ],
                 "excluded": [],
             }
@@ -221,9 +273,17 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
         tmp_path / "clip.mp4",
         "subject",
     )
+    passing_record = ClipRecord(
+        "passing",
+        "Highly-Engaged",
+        3,
+        "test",
+        tmp_path / "passing.mp4",
+        "passing-subject",
+    )
     contract = DatasetContract(
         tmp_path,
-        {"train": (record,), "valid": (), "test": ()},
+        {"train": (record,), "valid": (), "test": (passing_record,)},
     )
     output = tmp_path / "features"
 
@@ -235,7 +295,7 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
     )
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert manifest["included"] == []
+    assert [item["clip_id"] for item in manifest["included"]] == ["passing"]
     assert manifest["excluded"] == [
         {
             "clip_id": "clip",
@@ -246,3 +306,24 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
             ),
         }
     ]
+    provenance = manifest["provenance"]
+    assert provenance["raw_manifest_sha256"] == sha256(
+        raw_manifest_path.read_bytes()
+    ).hexdigest()
+    assert provenance["raw_schema"] == "raw_frames_v1"
+    assert provenance["representation_name"] == "mediapipe_98_v1"
+    assert provenance["expected_frame_count"] == 100
+    assert provenance["minimum_valid_frame_ratio"] == 0.7
+    assert len(provenance["representation_source_sha256"]) == 64
+    assert len(provenance["segment_aggregation_source_sha256"]) == 64
+    assert len(provenance["representation_fingerprint"]) == 64
+
+    feature_path = output / manifest["included"][0]["feature_path"]
+    with np.load(feature_path, allow_pickle=False) as cached:
+        assert cached["expected_frame_count"].item() == 100
+        assert cached["minimum_valid_frame_ratio"].item() == 0.7
+        assert (
+            cached["representation_fingerprint"].item()
+            == provenance["representation_fingerprint"]
+        )
+        assert cached["raw_manifest_sha256"].item() == provenance["raw_manifest_sha256"]

@@ -91,13 +91,16 @@ def _add_data_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--video-extension", default=".mp4")
 
 
-def _load_contract(args: argparse.Namespace) -> DatasetContract:
+def _load_contract(
+    args: argparse.Namespace, *, require_videos: bool = True
+) -> DatasetContract:
     return load_dataset_contract(
         args.data_root,
         id_column=args.id_column,
         label_column=args.label_column,
         subject_column=args.subject_column or None,
         video_extension=args.video_extension,
+        require_videos=require_videos,
     )
 
 
@@ -158,7 +161,7 @@ def _build_features(args: argparse.Namespace) -> int:
         TokenRepresentation,
     )
 
-    contract = _load_contract(args)
+    contract = _load_contract(args, require_videos=False)
     representation: representations.Representation
     if args.schema.startswith("landmark_78"):
         representation = LandmarkSequenceRepresentation.for_sample_fps(args.sample_fps)
@@ -182,7 +185,9 @@ def _audit_frame_gate(args: argparse.Namespace) -> int:
         write_frame_gate_audit,
     )
 
-    report = audit_frame_gate_gap(_load_contract(args), args.raw_root)
+    report = audit_frame_gate_gap(
+        _load_contract(args, require_videos=False), args.raw_root
+    )
     write_frame_gate_audit(report, args.output)
     print(
         f"Frame gate audit | mismatched={report['mismatch_clip_count']} | {args.output}"

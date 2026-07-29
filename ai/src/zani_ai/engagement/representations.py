@@ -26,8 +26,10 @@ wrapper dataclass.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -36,9 +38,11 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    MINIMUM_VALID_FRAMES,
     SAMPLE_FPS,
-    WINDOW_SECONDS,
     SEGMENT_COUNT,
+    WINDOW_SECONDS,
+    DerivedFeatureProvenance,
     ExcludedClip,
     ExtractionManifest,
     IncludedClip,
@@ -53,6 +57,8 @@ from zani_ai.engagement.features import (
 from zani_ai.engagement.landmark_graph import LANDMARK_78_INDICES
 from zani_ai.engagement.raw_cache import RAW_SCHEMA_NAME, RawClip
 from zani_ai.engagement.segments import (
+    EXPECTED_FRAME_COUNT,
+    MINIMUM_VALID_FRAME_RATIO,
     TimedFeatures,
     aggregate_segments,
 )
@@ -240,6 +246,7 @@ def _save_representation_tokens(
     schema_name: str,
     source_fingerprint: str,
     array_key: str,
+    provenance: DerivedFeatureProvenance,
 ) -> Path:
     """Save one clip's representation tensor in the training-consumed npz shape.
 
@@ -263,6 +270,14 @@ def _save_representation_tokens(
                 label_index=np.int64(label_index),
                 schema=np.asarray(schema_name),
                 source_fingerprint=np.asarray(source_fingerprint),
+                expected_frame_count=np.int64(provenance.expected_frame_count),
+                minimum_valid_frame_ratio=np.float64(
+                    provenance.minimum_valid_frame_ratio
+                ),
+                representation_fingerprint=np.asarray(
+                    provenance.representation_fingerprint
+                ),
+                raw_manifest_sha256=np.asarray(provenance.raw_manifest_sha256),
                 **{array_key: tokens},
             )
         temporary.replace(feature_path)
@@ -294,7 +309,8 @@ def build_feature_manifest(
     raw_manifest_path = raw_root / "manifest.json"
     if not raw_manifest_path.is_file():
         raise FileNotFoundError(f"raw manifest not found: {raw_manifest_path}")
-    raw_payload = json.loads(raw_manifest_path.read_text(encoding="utf-8"))
+    raw_manifest_bytes = raw_manifest_path.read_bytes()
+    raw_payload = json.loads(raw_manifest_bytes.decode("utf-8"))
     if not isinstance(raw_payload, dict):
         raise ValueError("raw manifest must be a JSON object")
     if raw_payload.get("schema") != RAW_SCHEMA_NAME:
@@ -308,6 +324,45 @@ def build_feature_manifest(
     raw_excluded = raw_payload.get("excluded")
     if not isinstance(raw_included, list) or not isinstance(raw_excluded, list):
         raise ValueError("raw manifest must contain included and excluded lists")
+
+    representation_source_sha256 = sha256(
+        inspect.getsource(type(representation)).encode("utf-8")
+    ).hexdigest()
+    segment_aggregation_source_sha256 = sha256(
+        inspect.getsource(aggregate_segments).encode("utf-8")
+    ).hexdigest()
+    provenance_payload: dict[str, object] = {
+        "raw_schema": RAW_SCHEMA_NAME,
+        "raw_manifest_sha256": sha256(raw_manifest_bytes).hexdigest(),
+        "representation_name": representation.name,
+        "expected_frame_count": EXPECTED_FRAME_COUNT,
+        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
+        "window_seconds": WINDOW_SECONDS,
+        "segment_count": SEGMENT_COUNT,
+        "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "representation_source_sha256": representation_source_sha256,
+        "segment_aggregation_source_sha256": segment_aggregation_source_sha256,
+    }
+    representation_fingerprint = sha256(
+        json.dumps(
+            provenance_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    provenance = DerivedFeatureProvenance(
+        raw_schema=RAW_SCHEMA_NAME,
+        raw_manifest_sha256=sha256(raw_manifest_bytes).hexdigest(),
+        representation_name=representation.name,
+        expected_frame_count=EXPECTED_FRAME_COUNT,
+        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        window_seconds=WINDOW_SECONDS,
+        segment_count=SEGMENT_COUNT,
+        minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        representation_source_sha256=representation_source_sha256,
+        segment_aggregation_source_sha256=segment_aggregation_source_sha256,
+        representation_fingerprint=representation_fingerprint,
+    )
 
     label_index_by_clip: dict[tuple[str, str], int] = {
         (record.split, record.clip_id): record.label_index
@@ -362,6 +417,7 @@ def build_feature_manifest(
             representation.name,
             source_fingerprint,
             representation.array_key,
+            provenance,
         )
         included.append(
             IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint)
@@ -375,6 +431,7 @@ def build_feature_manifest(
         status="complete",
         total_count=total,
         cached_count=0,
+        provenance=provenance,
     )
     _write_manifest(output_root, manifest)
     return output_root / "manifest.json"
@@ -382,11 +439,11 @@ def build_feature_manifest(
 
 __all__ = [
     "LANDMARK_SEQUENCE_NAME",
-    "landmark_sequence_name",
     "LANDMARK_SEQUENCE_SHAPE",
     "LandmarkSequenceRepresentation",
     "Representation",
     "TokenRepresentation",
     "build_feature_manifest",
+    "landmark_sequence_name",
     "load_raw_clip",
 ]

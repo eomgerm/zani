@@ -199,6 +199,21 @@ class ExtractionProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class DerivedFeatureProvenance:
+    raw_schema: str
+    raw_manifest_sha256: str
+    representation_name: str
+    expected_frame_count: int
+    minimum_valid_frame_ratio: float
+    window_seconds: float
+    segment_count: int
+    minimum_valid_frames: int
+    representation_source_sha256: str
+    segment_aggregation_source_sha256: str
+    representation_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractionManifest:
     schema: str
     included: tuple[IncludedClip, ...]
@@ -206,7 +221,7 @@ class ExtractionManifest:
     status: str = "complete"
     total_count: int | None = None
     cached_count: int = 0
-    provenance: ExtractionProvenance | None = None
+    provenance: ExtractionProvenance | DerivedFeatureProvenance | None = None
     scanned_count: int | None = None
 
     def to_json_dict(self, root: Path) -> dict[str, object]:
@@ -973,6 +988,7 @@ def extract_contract_parallel(
 
 __all__ = [
     "ActiveExtractionError",
+    "DerivedFeatureProvenance",
     "ExcludedClip",
     "ExtractionManifest",
     "ExtractionProvenance",

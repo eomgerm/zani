@@ -52,8 +52,7 @@ def test_audit_frame_gate_writes_mismatch_counts_by_split_and_label(
     tmp_path: Path,
 ) -> None:
     data_root = tmp_path / "raw"
-    videos = data_root / "videos"
-    videos.mkdir(parents=True)
+    data_root.mkdir(parents=True)
     clips = (
         ("train_gap", "train", "Barely-Engaged", 60),
         ("valid_gap", "valid", "Engaged", 69),
@@ -71,7 +70,6 @@ def test_audit_frame_gate_writes_mismatch_counts_by_split_and_label(
     for split in ("train", "valid", "test"):
         clip_id = next(clip_id for clip_id, item_split, _, _ in clips if item_split == split)
         (data_root / f"{split}.txt").write_text(f"{clip_id}\n", encoding="utf-8")
-        (videos / f"{clip_id}.mp4").touch()
 
     raw_root = tmp_path / "raw-cache"
     included = []
