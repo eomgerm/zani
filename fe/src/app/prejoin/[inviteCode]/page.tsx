@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/domains/auth/presentation/AuthProvider";
+import { canonicalInviteCode } from "@/domains/lecture/domain/inviteCode";
 import {
   JoinSessionRequestError,
   joinSession as joinSessionApi,
@@ -32,7 +33,7 @@ const BROWSER_FAILURE_MESSAGES: Record<BrowserSupportFailure, string> = {
 };
 
 /** 입장 실패 원인별 사용자 안내 문구. 서버가 돌려준 업무 코드를 우선 본다. */
-const joinFailureMessage = (error: unknown): string => {
+const joinFailureMessage = (error: unknown, code: string): string => {
   if (error instanceof JoinSessionRequestError) {
     if (error.code === "SESSION_APP_007") {
       return "정원이 가득 찼어요. 강사에게 문의해 주세요.";
@@ -40,11 +41,15 @@ const joinFailureMessage = (error: unknown): string => {
     if (error.code === "SESSION_APP_008") {
       return "아직 시작하지 않았거나 이미 끝난 수업이에요. 강사가 수업을 시작하면 다시 시도해 주세요.";
     }
+    if (error.code === "SESSION_APP_009") {
+      return "강사가 아직 수업을 시작하지 않았어요. 시작한 뒤 다시 시도해 주세요.";
+    }
     if (error.status === 404) {
       return "그런 초대 코드의 수업이 없어요. 코드를 다시 확인해 주세요.";
     }
     if (error.status === 400) {
-      return "초대 코드 형식이 올바르지 않아요.";
+      // 서버가 코드 모양을 거절한 경우다. 어떤 값을 보냈는지 같이 보여줘야 링크가 잘린 건지 코드가 바뀐 건지 사용자가 구분할 수 있다.
+      return `초대 코드 형식이 올바르지 않아요. 영문·숫자 8자여야 합니다. (보낸 코드: ${code})`;
     }
     if (error.status === 401) {
       return "로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.";
@@ -122,7 +127,7 @@ export default function Page({
       });
       router.push(`/room/${joined.sessionId}`);
     } catch (caught) {
-      setJoinError(joinFailureMessage(caught));
+      setJoinError(joinFailureMessage(caught, canonicalInviteCode(inviteCode)));
       setJoining(false);
     }
   }, [canEnter, deviceState, testedAt, joining, accessToken, joinSession, inviteCode, router]);

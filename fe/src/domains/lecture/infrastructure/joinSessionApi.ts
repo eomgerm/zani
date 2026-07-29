@@ -1,3 +1,5 @@
+import { canonicalInviteCode } from "@/domains/lecture/domain/inviteCode";
+
 export type JoinedSession = {
   /** TSID 라 JS 안전 정수 범위를 넘는다. 문자열로만 다뤄야 값이 깨지지 않는다. */
   sessionId: string;
@@ -81,8 +83,7 @@ export const joinSession: SessionJoiner = async (inviteCode, accessToken, signal
       Authorization: `Bearer ${accessToken}`,
     },
     credentials: "include",
-    // 하이픈·대소문자 정규화는 서버가 담당한다. 화면 입력을 그대로 보낸다.
-    body: JSON.stringify({ inviteCode }),
+    body: JSON.stringify({ inviteCode: canonicalInviteCode(inviteCode) }),
     signal,
   });
 

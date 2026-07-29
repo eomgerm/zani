@@ -1,7 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/domains/auth";
+import { inviteCodeFrom } from "@/domains/lecture/domain/inviteCode";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { useActiveInstructorSession } from "./useActiveInstructorSession";
@@ -20,6 +23,19 @@ export function HomeScreen({
   requestSessionList?: SessionListRequester;
 } = {}) {
   const { member } = useAuth();
+  const router = useRouter();
+  const [inviteInput, setInviteInput] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // 코드 형식은 여기서 판정한다. 서버까지 보내 400 을 받은 뒤 입장 전 점검 화면에서 알려주면, 사용자는 이미 화면을 옮긴 뒤라 어디를 고쳐야 하는지 알기 어렵다.
+  const enterPrejoin = () => {
+    const code = inviteCodeFrom(inviteInput);
+    if (code === null) {
+      setInviteError("초대 코드 또는 초대 링크를 확인해 주세요. 코드는 영문·숫자 8자예요.");
+      return;
+    }
+    router.push(`/prejoin/${code}`);
+  };
   // 조회 실패는 화면에 띄우지 않는다. 이 배너의 용도는 "돌아가기·종료"뿐이라, 상태를 알 수 없을 때
   // 경고를 내밀면 진행 중인 수업이 없는 사용자에게도 고장처럼 보인다. 실패 원인은 콘솔에만 남긴다.
   const { session: activeSession, refresh } = useActiveInstructorSession(requestSessionList);
@@ -136,16 +152,31 @@ export function HomeScreen({
           <div className="flex-1" />
           <div className="flex gap-3">
             <input
+              aria-label="초대 코드 또는 초대 링크"
+              value={inviteInput}
+              onChange={(event) => {
+                setInviteInput(event.target.value);
+                setInviteError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") enterPrejoin();
+              }}
               placeholder="초대 코드 또는 초대 링크 입력"
               className="z-input min-w-0 flex-1 rounded-[13px] px-4 py-[15px] text-sm"
             />
-            <Link
-              href="/prejoin/ZANI-8KQ"
+            <button
+              type="button"
+              onClick={enterPrejoin}
               className="z-btn z-btn-primary z-btn-lg whitespace-nowrap"
             >
               참여하기
-            </Link>
+            </button>
           </div>
+          {inviteError !== null && (
+            <div role="alert" className="mt-2.5 text-[13px] text-danger">
+              {inviteError}
+            </div>
+          )}
         </div>
       </div>
     </>
