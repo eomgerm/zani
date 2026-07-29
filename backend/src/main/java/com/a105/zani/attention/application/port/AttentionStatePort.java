@@ -2,6 +2,7 @@ package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -50,6 +51,15 @@ public interface AttentionStatePort {
 
     /** 분모 제외를 되돌린다. 카메라를 다시 쓸 수 있게 된 학생은 곧바로 분모로 돌아온다(확정 문서 §7.1). */
     void includeInDenominator(long sessionId, long participantId);
+
+    /**
+     * 주어진 참가자들 중 최근 5분 창에 각 유의 상태를 겪은 사람(§7.3).
+     *
+     * <p>유의 상태 넷만 담고, 아무도 없는 상태는 빈 집합으로 온다. "최근 5분"은 표시의 TTL 이 대신하므로 창을 따로 계산하지 않는다.
+     *
+     * <p>후보를 밖에서 받는 이유는 키 공간을 훑지 않기 위해서다(SCAN 금지). 분모에 든 학생만 물으면 되므로 그 ID 들만 조회한다.
+     */
+    Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds);
 
     /**
      * 주어진 참가자들 중 지금 분모에서 빠져 있는 사람.
