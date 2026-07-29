@@ -93,7 +93,7 @@ def test_makes_no_commit_when_nothing_changed(worktree: Path, artifacts: Path) -
 
 
 def test_pushes_a_stranded_commit_on_the_next_cycle(
-    worktree: Path, artifacts: Path, tmp_path: Path
+    worktree: Path, artifacts: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A cycle whose push failed must send the same commit on the next one.
 
@@ -102,6 +102,10 @@ def test_pushes_a_stranded_commit_on_the_next_cycle(
     second time round. Deciding purely on written files would leave the commit
     on the server until the idle culler took the box, losing every metric since
     the failure rather than one interval's worth.
+
+    The recovery has to say so. The guide makes ``publish.log`` the operator's
+    only liveness surface, and a silent recovery leaves that log ending on the
+    earlier failure line even though the snapshot landed.
     """
     origin = tmp_path / "origin.git"
     moved = tmp_path / "origin.git.gone"
@@ -126,6 +130,7 @@ def test_pushes_a_stranded_commit_on_the_next_cycle(
     )
 
     assert written == 0
+    assert "could not send" in capsys.readouterr().out
     pushed = _git(worktree, "ls-tree", "-r", "--name-only", f"origin/{DEFAULT_RESULTS_BRANCH}")
     assert "l40s/e1/summary.json" in pushed
     remaining = _git(worktree, "rev-list", "--count", f"origin/{DEFAULT_RESULTS_BRANCH}..HEAD")

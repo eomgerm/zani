@@ -213,6 +213,12 @@ def publish_once(
         _abort_rebase(worktree)
         raise
     _git(worktree, "push", "origin", branch)
+    if not written:
+        # Nothing was written, so the caller's own report stays silent while the
+        # log still ends on the earlier failure line. Said here rather than from a
+        # flag in run_forever: a flag would also fire for the git-identity case,
+        # where the next cycle returns 0 having sent nothing.
+        print("pushed a snapshot an earlier cycle could not send", flush=True)
     return len(written)
 
 
