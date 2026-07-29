@@ -25,6 +25,8 @@ import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.CheckPrompt;
 import com.a105.zani.attention.domain.model.CheckPromptStatus;
+import com.a105.zani.attention.domain.model.DetectionRunCounters;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.attention.domain.model.PromptAnswer;
 import com.a105.zani.attention.domain.model.PromptKind;
 import com.a105.zani.attention.domain.repository.CheckPromptRepository;
@@ -319,6 +321,8 @@ class RecordPromptResponseServiceTest {
         assertEquals(1, promptRepository.saved.size());
         assertTrue(statePort.currentState.isEmpty());
         assertTrue(statePort.significant.isEmpty());
+        // 4분 전 답이 지금 쌓이고 있는 연속 판정을 지우면, 이미 이탈한 학생의 프롬프트가 다시 미뤄진다.
+        assertFalse(statePort.runsReset);
     }
 
     @Test
@@ -346,6 +350,14 @@ class RecordPromptResponseServiceTest {
         // 저장소가 죽었다고 답을 거절하면 안 된다. 중복 판단만 DB 조회로 물러선다.
         assertTrue(retry.duplicate());
         assertEquals(1, promptRepository.saved.size());
+    }
+
+    @Test
+    void clearsTheServerRunCountersWhenAPromptIsAnswered() {
+        service.record(command(PromptAnswer.CONFUSED));
+
+        // 프롬프트가 닫히면 브라우저 카운터가 0이 된다. 서버 사본만 남으면 다음 관측 한 건이 곧바로 분자에 다시 든다.
+        assertTrue(statePort.runsReset);
     }
 
     @Test
@@ -483,6 +495,24 @@ class RecordPromptResponseServiceTest {
         public void includeInDenominator(long sessionId, long participantId) {
             failFast();
             excluded.remove(participantId);
+        }
+
+        private boolean runsReset;
+
+        @Override
+        public Optional<DetectionRunCounters> applyObservation(
+                long sessionId,
+                long participantId,
+                DetectionRunTransition transition,
+                long observedOffsetMs,
+                Duration ttl) {
+            return Optional.of(DetectionRunCounters.none());
+        }
+
+        @Override
+        public void resetRuns(long sessionId, long participantId) {
+            failFast();
+            runsReset = true;
         }
 
         private void failFast() {

@@ -201,6 +201,10 @@ public class RecordPromptResponseService implements RecordPromptResponseUseCase 
                 log.debug("코칭에 반영하기에는 오래된 답입니다. sessionId={}, promptId={}", sessionId, command.promptId());
                 return;
             }
+            // 프롬프트가 닫히면 브라우저 카운터가 0이 된다(§5). 서버 사본만 3 이상으로 남으면
+            // 다음 관측 한 건이 곧바로 상태를 다시 확정하고 분자 마커를 새로 건다.
+            // 오래된 답에는 하지 않는다 — 그 사이 새로 쌓인 연속 판정까지 지운다.
+            attentionStatePort.resetRuns(sessionId, participantId);
             command.kind().confirmedState(command.answer()).ifPresent(state -> {
                 // 프롬프트에 답했다는 것은 학생이 화면 앞에 있다는 뜻이라, 신호 품질은 최댓값으로 본다.
                 // 이 값은 "측정 가능 학생 비율"에 쓰이며 프레임 판정이 아니라 상호작용에서 나온 확신이다.
