@@ -20,6 +20,7 @@ vi.mock("@/domains/auth", () => ({
 const token: MediaToken = {
   liveKitUrl: "wss://livekit.example.com",
   accessToken: "signed-token",
+  sessionTitle: "테스트 강의",
   roomName: "session-55",
   participantIdentity: "user-42",
   sessionExpiresAt: "2026-07-24T15:00:00Z",

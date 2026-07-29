@@ -7,6 +7,12 @@ export type MediaToken = {
   expiresAt: string;
   /** 최대 수업 시간(3시간)에 도달해 수업이 자동 종료될 시각. 강의실 종료 임박 안내의 기준이다. */
   sessionExpiresAt: string;
+  /**
+   * 강사가 입력한 강의명.
+   *
+   * <p>필수 검증에 넣지 않는다. 제목을 못 받았다고 강의실 입장을 막을 이유가 없고, 서버가 아직 안 내려주는 구성에서도 연결은 되어야 한다.
+   */
+  sessionTitle: string | null;
 };
 
 export type MediaTokenRequester = (
@@ -82,5 +88,7 @@ export const requestMediaToken: MediaTokenRequester = async (sessionId, accessTo
     throw new MediaTokenRequestError("Media token response had an invalid envelope.");
   }
 
-  return (envelope as { data: MediaToken }).data;
+  const data = (envelope as { data: MediaToken }).data;
+  // 서버가 제목을 아직 안 내려주는 구성에서도 형태를 고정해 호출자가 분기하지 않게 한다.
+  return { ...data, sessionTitle: data.sessionTitle ?? null };
 };

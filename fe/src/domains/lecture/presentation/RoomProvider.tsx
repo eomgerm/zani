@@ -23,6 +23,8 @@ export type RoomConnectionContextValue = {
   error: string | null;
   /** 서버가 알려준 수업 자동 종료 예정 시각(ISO-8601). 연결 전이거나 실패했으면 null. */
   sessionExpiresAt: string | null;
+  /** 서버가 내려준 강의명. 아직 받지 못했으면 null. */
+  sessionTitle: string | null;
   retry: () => void;
 };
 
@@ -53,6 +55,7 @@ const connectingSnapshot: Omit<RoomConnectionContextValue, "retry"> = {
   connectionState: "connecting",
   error: null,
   sessionExpiresAt: null,
+  sessionTitle: null,
 };
 
 const connectionFailureMessage = "실시간 강의 연결에 실패했습니다.";
@@ -106,6 +109,7 @@ export function RoomProvider({
     const room = connectionKey.roomFactory();
     // 재연결·종료 이벤트에서도 유지해야 하는 값이라 effect 스코프에 담아둔다.
     let sessionExpiresAt: string | null = null;
+    let sessionTitle: string | null = null;
     const handleReconnecting = () => {
       if (!isCurrent) return;
 
@@ -114,6 +118,7 @@ export function RoomProvider({
         connectionState: "connecting",
         error: null,
         sessionExpiresAt,
+        sessionTitle,
         key: connectionKey,
       });
     };
@@ -125,6 +130,7 @@ export function RoomProvider({
         connectionState: "connected",
         error: null,
         sessionExpiresAt,
+        sessionTitle,
         key: connectionKey,
       });
     };
@@ -136,6 +142,7 @@ export function RoomProvider({
         connectionState: "error",
         error: connectionFailureMessage,
         sessionExpiresAt,
+        sessionTitle,
         key: connectionKey,
       });
     };
@@ -156,6 +163,7 @@ export function RoomProvider({
         if (!isCurrent) return;
 
         sessionExpiresAt = mediaToken.sessionExpiresAt;
+        sessionTitle = mediaToken.sessionTitle;
         await room.connect(mediaToken.liveKitUrl, mediaToken.accessToken);
         if (!isCurrent) return;
 
@@ -167,6 +175,7 @@ export function RoomProvider({
           connectionState: "connected",
           error: null,
           sessionExpiresAt,
+          sessionTitle,
           key: connectionKey,
         });
       } catch (error) {
@@ -177,6 +186,7 @@ export function RoomProvider({
           connectionState: "error",
           error: connectionErrorMessage(error),
           sessionExpiresAt,
+          sessionTitle,
           key: connectionKey,
         });
       }

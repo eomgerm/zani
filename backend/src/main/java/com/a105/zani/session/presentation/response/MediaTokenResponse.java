@@ -28,7 +28,10 @@ public record MediaTokenResponse(
         @Schema(
                 description = "최대 수업 시간(3시간)에 도달해 수업이 자동 종료될 시각(UTC). 강의실은 이 값으로 종료 10분 전 안내를 띄운다.",
                 example = "2026-07-24T15:00:00Z")
-        Instant sessionExpiresAt) {
+        Instant sessionExpiresAt,
+
+        @Schema(description = "강사가 입력한 강의명", example = "React 상태관리 심화")
+        String sessionTitle) {
 
     public static MediaTokenResponse from(IssueMediaTokenResult result) {
         return new MediaTokenResponse(
@@ -37,6 +40,7 @@ public record MediaTokenResponse(
                 result.roomName(),
                 result.participantIdentity(),
                 result.expiresAt(),
-                result.sessionExpiresAt());
+                result.sessionExpiresAt(),
+                result.sessionTitle());
     }
 }
