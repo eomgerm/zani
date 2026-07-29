@@ -1,9 +1,7 @@
 package com.a105.zani.attention.application.collect;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -49,8 +47,15 @@ class CollectAttentionEventServiceTest {
     private static final long STUDENT_USER = 8L;
     private static final long STUDENT_PARTICIPANT = 2L;
     private static final Instant SESSION_STARTED_AT = Instant.parse("2026-07-28T09:00:00Z");
-    private static final Instant SERVER_NOW = SESSION_STARTED_AT.plusSeconds(600);
     private static final String SCHEMA = "mediapipe_98_v1";
+
+    /**
+     * 관측이 도착하는 시각을 따라 움직인다.
+     *
+     * <p>고정 시계를 쓰면 창이 만들어진 시각과 서버 시각이 벌어져, 모든 관측이 이미 5분 창을 넘긴 상태가 된다. 실제로는 관측이 만들어진 직후 도착하므로 시계도 함께 움직여야 분자 창을 제대로 검증할
+     * 수 있다.
+     */
+    private final MutableClock clock = new MutableClock(SESSION_STARTED_AT);
 
     private final InMemoryAttentionStatePort statePort = new InMemoryAttentionStatePort();
     private final InMemoryDetectionRecordRepository records = new InMemoryDetectionRecordRepository();
@@ -64,11 +69,7 @@ class CollectAttentionEventServiceTest {
     @BeforeEach
     void setUp() {
         service = new CollectAttentionEventService(
-                resolveParticipant,
-                records,
-                statePort,
-                new DetectorContractProperties(Set.of(SCHEMA)),
-                Clock.fixed(SERVER_NOW, ZoneOffset.UTC));
+                resolveParticipant, records, statePort, new DetectorContractProperties(Set.of(SCHEMA)), clock);
         window = 0;
     }
 
@@ -226,8 +227,8 @@ class CollectAttentionEventServiceTest {
                 SESSION_ID,
                 STUDENT_USER,
                 DetectorOutcome.ENGAGED,
-                SERVER_NOW.plusSeconds(3_600),
-                SERVER_NOW.plusSeconds(3_610),
+                clock.instant().plusSeconds(3_600),
+                clock.instant().plusSeconds(3_610),
                 0.9d,
                 SCHEMA,
                 "future");
@@ -361,6 +362,41 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
+    void keepsAStaleObservationOutOfTheNumerator() {
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        CollectAttentionEventCommand third = next(DetectorOutcome.UNMEASURABLE);
+        statePort.significant.clear();
+        statePort.seenEvents.clear();
+        statePort.appliedOffsets.clear();
+
+        // 네트워크가 복구되며 6분 전 관측이 지금 도착한다.
+        clock.set(third.observedAt().plus(Duration.ofMinutes(6)));
+        service.collect(third);
+
+        // 지금부터 5분 창을 새로 열면 이미 창을 벗어난 신호가 30% 트리거를 만든다.
+        assertTrue(statePort.significant.isEmpty());
+        assertTrue(statePort.currentState.isEmpty());
+    }
+
+    @Test
+    void leavesAnObservationInTheNumeratorForWhatIsLeftOfItsWindow() {
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        CollectAttentionEventCommand third = next(DetectorOutcome.UNMEASURABLE);
+        statePort.significant.clear();
+        statePort.seenEvents.clear();
+        statePort.appliedOffsets.clear();
+
+        clock.set(third.observedAt().plus(Duration.ofMinutes(2)));
+        service.collect(third);
+
+        // 2분 전에는 실제로 유의했으므로 남은 3분만큼은 분자에 남는 것이 맞다.
+        assertTrue(statePort.significant.contains(AttentionState.UNMEASURABLE));
+        assertEquals(Duration.ofMinutes(3), statePort.significantWindow);
+    }
+
+    @Test
     void rejectsAnObservationSentByTheInstructor() {
         resolveParticipant.role = SessionParticipantRole.INSTRUCTOR;
 
@@ -388,9 +424,12 @@ class CollectAttentionEventServiceTest {
 
     /** 10초씩 앞으로 나아가는 창 하나. */
     private CollectAttentionEventCommand next(DetectorOutcome outcome) {
-        return at(outcome, ++window);
+        CollectAttentionEventCommand command = at(outcome, ++window);
+        clock.set(command.observedAt());
+        return command;
     }
 
+    /** 창을 만들되 시계는 옮기지 않는다. 늦게 도착한 옛 관측을 흉내 낼 때 쓴다. */
     private CollectAttentionEventCommand at(DetectorOutcome outcome, int windowIndex) {
         Instant start = SESSION_STARTED_AT.plusSeconds(10L * (windowIndex - 1));
         return new CollectAttentionEventCommand(
@@ -411,6 +450,7 @@ class CollectAttentionEventServiceTest {
 
     private void outcomeAt(DetectorOutcome outcome, long observedOffsetMs) {
         Instant observedAt = SESSION_STARTED_AT.plusMillis(observedOffsetMs);
+        clock.set(observedAt);
         boolean windowed = outcome.needsObservationWindow();
         service.collect(new CollectAttentionEventCommand(
                 SESSION_ID,
@@ -426,6 +466,7 @@ class CollectAttentionEventServiceTest {
     /** 창 없이 그 자리에서 확정되는 출력(§4.2). */
     private CollectAttentionEventCommand immediate(DetectorOutcome outcome) {
         window++;
+        clock.set(SESSION_STARTED_AT.plusSeconds(10L * window));
         return new CollectAttentionEventCommand(
                 SESSION_ID,
                 STUDENT_USER,
@@ -476,6 +517,7 @@ class CollectAttentionEventServiceTest {
         private final Set<String> seenEvents = new HashSet<>();
         private final Map<Long, AttentionSnapshot> currentState = new HashMap<>();
         private final Set<AttentionState> significant = new HashSet<>();
+        private Duration significantWindow;
         private final Set<Long> excluded = new HashSet<>();
         private final Map<Long, Long> appliedOffsets = new HashMap<>();
         private final Map<Long, Long> outageStartedAt = new HashMap<>();
@@ -505,6 +547,7 @@ class CollectAttentionEventServiceTest {
         @Override
         public void markSignificant(long sessionId, long participantId, AttentionState state, Duration window) {
             significant.add(state);
+            significantWindow = window;
         }
 
         @Override
