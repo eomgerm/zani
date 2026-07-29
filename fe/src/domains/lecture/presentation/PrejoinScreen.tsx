@@ -1,21 +1,144 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-const MIC_BARS = Array.from({ length: 14 }, (_, i) => ({
-  duration: 0.6 + (i % 5) * 0.12,
-  delay: i * 0.05,
-}));
+import { useAuth } from "@/domains/auth";
+import { canonicalInviteCode } from "../domain/inviteCode";
+import {
+  JoinSessionRequestError,
+  joinSession as joinSessionApi,
+  type SessionJoiner,
+} from "../infrastructure/joinSessionApi";
+import {
+  detectBrowserSupport,
+  readBrowserEnvironment,
+  type BrowserSupportFailure,
+  type BrowserSupportResult,
+} from "@/features/media/browserSupport";
+import { DevicePreview, type DevicePreviewState } from "@/features/media/DevicePreview";
+import { writePrejoinResult } from "@/features/media/prejoinResult";
+
+/** 브라우저 실패 코드별 사용자 안내 문구. */
+const BROWSER_FAILURE_MESSAGES: Record<BrowserSupportFailure, string> = {
+  NOT_CHROME:
+    "Chrome 브라우저에서만 수업에 입장할 수 있어요. Chrome 으로 다시 접속해 주세요.",
+  MEDIA_DEVICES_UNSUPPORTED:
+    "이 브라우저는 카메라·마이크 장치 접근을 지원하지 않아요. 최신 Chrome 으로 접속해 주세요.",
+  GET_USER_MEDIA_UNSUPPORTED:
+    "이 브라우저는 카메라·마이크 캡처를 지원하지 않아요. 최신 Chrome 으로 접속해 주세요.",
+  PERMISSIONS_API_UNSUPPORTED:
+    "이 브라우저는 권한 확인을 지원하지 않아요. 최신 Chrome 으로 접속해 주세요.",
+};
+
+/** 입장 실패 원인별 사용자 안내 문구. 서버가 돌려준 업무 코드를 우선 본다. */
+const joinFailureMessage = (error: unknown, code: string): string => {
+  if (error instanceof JoinSessionRequestError) {
+    if (error.code === "SESSION_APP_007") {
+      return "정원이 가득 찼어요. 강사에게 문의해 주세요.";
+    }
+    if (error.code === "SESSION_APP_008") {
+      return "아직 시작하지 않았거나 이미 끝난 수업이에요. 강사가 수업을 시작하면 다시 시도해 주세요.";
+    }
+    if (error.code === "SESSION_APP_009") {
+      return "강사가 아직 수업을 시작하지 않았어요. 시작한 뒤 다시 시도해 주세요.";
+    }
+    if (error.status === 404) {
+      return "그런 초대 코드의 수업이 없어요. 코드를 다시 확인해 주세요.";
+    }
+    if (error.status === 400) {
+      // 서버가 코드 모양을 거절한 경우다. 어떤 값을 보냈는지 같이 보여줘야 링크가 잘린 건지 코드가 바뀐 건지 사용자가 구분할 수 있다.
+      return `초대 코드 형식이 올바르지 않아요. 영문·숫자 8자여야 합니다. (보낸 코드: ${code})`;
+    }
+    if (error.status === 401) {
+      return "로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.";
+    }
+  }
+  return "입장하지 못했어요. 잠시 후 다시 시도해 주세요.";
+};
 
 /**
- * SC-08 입장 전 점검. 얼굴 위치·움직임 확인 단계를 거쳐 강의실로 입장한다.
- * 실제 카메라 대신 단계 스텝을 로컬 상태로 시연한다.
+ * SC-08 입장 전 점검. 브라우저(Chrome)·카메라·마이크를 검증하고, 모두 통과해야 입장 버튼을 활성화한다.
+ *
+ * <p>입장은 서버가 확정한다(POST /api/v1/sessions/join). 장치 점검을 통과했더라도 수업이 진행 중이 아니거나 정원이 찼으면 서버가 거절하며, 그때는 방으로 이동하지 않고
+ * 재시도할 수 있는 오류를 보여준다.
+ *
+ * <p>이동 주소에는 **응답의 세션 ID** 를 쓴다. 초대 코드와 세션 ID 는 다른 값이라, 코드를 그대로 넣으면 강의실의 미디어 토큰 발급이 실패한다.
+ *
+ * <p>선택한 장치 ID 와 통과 시각은 강의실이 같은 장치로 붙도록 로컬에 남긴다. 서버 측 장치 검증(서명·만료)은 아직 백엔드가 없어 연동하지 않는다.
  */
-export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
+export function PrejoinScreen({
+  inviteCode,
+  joinSession = joinSessionApi,
+}: {
+  /** 학생이 받은 초대 코드. 경로 파라미터를 페이지가 풀어 넘긴다. */
+  inviteCode: string;
+  /** 테스트에서 API 경계를 대체하기 위한 주입점. */
+  joinSession?: SessionJoiner;
+}) {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const { accessToken } = useAuth();
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  // SSR 시점에는 navigator 가 없으므로 마운트 후 판정한다. null 은 판정 전 상태.
+  const [browserSupport, setBrowserSupport] = useState<BrowserSupportResult | null>(null);
+  const [deviceState, setDeviceState] = useState<DevicePreviewState | null>(null);
+  const [testedAt, setTestedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    // SSR HTML 과의 hydration 불일치를 피하기 위해 마운트 후 한 번만 판정한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBrowserSupport(detectBrowserSupport(readBrowserEnvironment()));
+  }, []);
+
+  // 장치 판정 보고를 받을 때 통과 시각도 함께 기록한다.
+  // 통과가 깨지면 초기화하고 다시 통과할 때 새로 기록한다.
+  const handleDeviceStateChange = useCallback((state: DevicePreviewState) => {
+    setDeviceState(state);
+    setTestedAt((prev) => (state.result.passed ? (prev ?? new Date().toISOString()) : null));
+  }, []);
+
+  const devicePassed = deviceState?.result.passed ?? false;
+
+  const browserSupported = browserSupport?.supported ?? false;
+  const canEnter = browserSupported && devicePassed && testedAt !== null;
+
+  const handleEnter = useCallback(async () => {
+    if (!canEnter || !deviceState || !testedAt || joining) {
+      return;
+    }
+    if (accessToken === null) {
+      setJoinError("로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.");
+      return;
+    }
+
+    setJoining(true);
+    setJoinError(null);
+    try {
+      // 서버가 상태·정원·초대 코드를 검증하고 세션 ID 를 확정한다. 실패하면 방으로 넘어가지 않는다.
+      const joined = await joinSession(inviteCode, accessToken);
+      // 강의실이 같은 장치로 붙도록 선택 결과를 남긴다. 강의실은 초대 코드를 모르므로 서버가 확정한 세션 ID 로 저장한다.
+      // 장치 원본 데이터는 저장하지 않는다.
+      writePrejoinResult(joined.sessionId, {
+        cameraDeviceId: deviceState.cameraDeviceId,
+        microphoneDeviceId: deviceState.microphoneDeviceId,
+        testedAt,
+      });
+      router.push(`/room/${joined.sessionId}`);
+    } catch (caught) {
+      setJoinError(joinFailureMessage(caught, canonicalInviteCode(inviteCode)));
+      setJoining(false);
+    }
+  }, [canEnter, deviceState, testedAt, joining, accessToken, joinSession, inviteCode, router]);
+
+  const deviceFailures = deviceState?.result.failures ?? [];
+  const cameraOk =
+    devicePassed || (deviceState !== null && !deviceFailures.some((f) => f.startsWith("CAMERA")));
+  const microphoneOk =
+    devicePassed ||
+    (deviceState !== null && !deviceFailures.some((f) => f.startsWith("MICROPHONE")));
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-mint p-7">
@@ -36,117 +159,73 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-[1.55fr_1fr] items-stretch gap-[22px]">
-          {/* 카메라 프리뷰 */}
-          <div className="relative min-h-[540px] overflow-hidden rounded-[22px] bg-[#1a1d30]">
-            <div className="absolute inset-0 [background:repeating-linear-gradient(135deg,#1e2138,#1e2138_16px,#232744_16px,#232744_32px)]" />
-
-            <div className="absolute inset-0">
-              {/* 상단 좌 */}
-              <div className="absolute left-[18px] top-[18px] flex items-center gap-2.5">
-                {step < 3 ? (
-                  <>
-                    <span className="rounded-[9px] bg-primary px-[11px] py-[5px] text-[12.5px] font-extrabold text-white">
-                      {step} / 2
-                    </span>
-                    <span className="text-sm font-extrabold text-white [text-shadow:0_1px_6px_#0007]">
-                      {step === 1 ? "얼굴 위치 맞추기" : "움직임 확인"}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="z-pill bg-primary-mint px-[11px] py-[5px] text-[12.5px] text-primary-dark">
-                      ✓ 완료
-                    </span>
-                    <span className="text-sm font-extrabold text-white [text-shadow:0_1px_6px_#0007]">
-                      점검 완료
-                    </span>
-                  </>
-                )}
+        <div className="grid grid-cols-[1.55fr_1fr] items-start gap-[22px] max-lg:grid-cols-1">
+          {/* 좌: 미리보기·장치 선택·오류 복구 (브라우저가 장치 접근을 지원할 때만) */}
+          {browserSupport === null ? (
+            <div className="flex min-h-[420px] items-center justify-center rounded-[22px] bg-[#1a1d30] text-sm font-bold text-white/80">
+              브라우저 환경을 확인하고 있어요…
+            </div>
+          ) : browserSupport.failures.includes("GET_USER_MEDIA_UNSUPPORTED") ? (
+            <div
+              data-testid="browser-unsupported-panel"
+              className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-[22px] bg-[#1a1d30] px-[30px] text-center"
+            >
+              <span className="text-4xl">🚫</span>
+              <div className="text-lg font-extrabold text-white">
+                이 브라우저에서는 장치 테스트를 할 수 없어요
               </div>
-
-              {/* 상단 우 */}
-              <div className="absolute right-[18px] top-[18px]">
-                <span className="z-stage-chip">
-                  {step === 1 ? "⧉ 인식 준비 중" : step === 2 ? "◌ 움직임 분석 중" : "✓ 확인 완료"}
-                </span>
-              </div>
-
-              {/* 중앙 */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center px-[30px] text-center">
-                {step === 3 ? (
-                  <>
-                    <div className="mb-5 flex size-24 items-center justify-center rounded-full bg-[#41cb96] text-[46px] text-white shadow-[0_0_0_10px_#2fb57238,0_0_40px_#2fb57266]">
-                      ✓
-                    </div>
-                    <div className="text-[26px] font-extrabold text-white [text-shadow:0_2px_10px_#0008]">
-                      점검이 완료되었어요
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <FaceFrame moving={step === 2} />
-                    <div className="mb-2 text-2xl font-extrabold text-white [text-shadow:0_2px_10px_#0008]">
-                      {step === 1
-                        ? "얼굴을 프레임 안에 맞춰 주세요"
-                        : "고개를 천천히 좌우로 움직여 주세요"}
-                    </div>
-                    <div className="text-[14.5px] leading-[1.55] text-white/85 [text-shadow:0_1px_8px_#0009]">
-                      {step === 1
-                        ? "얼굴과 어깨가 프레임 안에 보이도록 위치를 조정해 주세요"
-                        : "얼굴 각도와 움직임이 잘 인식되는지 확인하고 있어요"}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="absolute bottom-[18px] left-[18px] z-stage-chip font-bold">
-                🎥 카메라 · 720p
+              <div className="text-[13.5px] leading-[1.55] text-white/80">
+                최신 Chrome 브라우저로 다시 접속해 주세요
               </div>
             </div>
-          </div>
+          ) : (
+            <DevicePreview onStateChange={handleDeviceStateChange} />
+          )}
 
-          {/* 우측 */}
+          {/* 우: 점검 결과·안내·입장 */}
           <div className="flex flex-col gap-4">
             <div className="z-card-lg px-[22px] py-5">
               <div className="mb-[15px] text-base font-extrabold">장치 확인</div>
               <div className="flex flex-col gap-[13px]">
-                {["브라우저 · Chrome", "카메라 · 720p 로지텍", "마이크 입력 레벨"].map((t) => (
-                  <div key={t} className="flex items-center gap-[11px]">
-                    <span className="z-check">✓</span>
-                    <span className="flex-1 text-sm font-semibold">{t}</span>
-                  </div>
-                ))}
-                <div className="flex h-[26px] items-end gap-[3px] pl-[35px]">
-                  {MIC_BARS.map((b, i) => (
-                    <span
-                      key={i}
-                      className="w-1.5 rounded-[3px] bg-primary"
-                      style={{ animation: `zLevel ${b.duration}s ease-in-out ${b.delay}s infinite` }}
-                    />
-                  ))}
-                </div>
-                {step === 3 && (
-                  <div className="flex items-center gap-[11px]">
-                    <span className="z-check">✓</span>
-                    <span className="flex-1 text-sm font-semibold">
-                      얼굴 인식 및 움직임 확인 완료
-                    </span>
-                  </div>
-                )}
+                <ChecklistItem
+                  testId="checklist-browser"
+                  ok={browserSupported}
+                  pending={browserSupport === null}
+                >
+                  브라우저 · Chrome
+                </ChecklistItem>
+                <ChecklistItem
+                  testId="checklist-camera"
+                  ok={cameraOk}
+                  pending={deviceState === null}
+                >
+                  카메라 영상
+                </ChecklistItem>
+                <ChecklistItem
+                  testId="checklist-microphone"
+                  ok={microphoneOk}
+                  pending={deviceState === null}
+                >
+                  마이크 입력 레벨
+                </ChecklistItem>
               </div>
             </div>
 
-            <div className="z-card-lg flex flex-col gap-2 px-[22px] py-[18px]">
-              <div className="text-[13px] font-bold text-ink-faint">카메라</div>
-              <div className="flex items-center justify-between rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm">
-                Logitech C920 HD
+            {/* 브라우저 원인별 안내 */}
+            {browserSupport !== null && browserSupport.failures.length > 0 && (
+              <div className="flex flex-col gap-[9px] rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px]">
+                {browserSupport.failures.map((failure) => (
+                  <div
+                    key={failure}
+                    data-testid={`browser-failure-${failure}`}
+                    className="flex gap-2 text-[12.5px] leading-[1.6] text-ink-faint"
+                  >
+                    <span className="shrink-0 text-primary">!</span>
+                    {BROWSER_FAILURE_MESSAGES[failure]}
+                  </div>
+                ))}
               </div>
-              <div className="mt-1 text-[13px] font-bold text-ink-faint">마이크</div>
-              <div className="flex items-center justify-between rounded-xl border border-line-soft bg-faint px-[15px] py-3 text-sm">
-                기본 - 내장 마이크
-              </div>
-            </div>
+            )}
 
             <div className="flex gap-[13px] rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px]">
               <span className="shrink-0 text-xl text-primary">⧉</span>
@@ -160,24 +239,26 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
               </div>
             </div>
 
-            <div className="flex-1" />
-            <div className="flex gap-3">
-              {step < 3 ? (
-                <button
-                  onClick={() => setStep((s) => (s < 3 ? ((s + 1) as 2 | 3) : s))}
-                  className="z-btn z-btn-primary z-btn-block"
-                >
-                  다음 단계
-                </button>
-              ) : (
-                <button
-                  onClick={() => router.push(`/room/${inviteCode}`)}
-                  className="z-btn z-btn-primary z-btn-block"
-                >
-                  수업 입장하기
-                </button>
-              )}
-            </div>
+            {joinError !== null && (
+              <div
+                role="alert"
+                data-testid="prejoin-join-error"
+                className="flex gap-2 rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px] text-[12.5px] font-semibold leading-[1.6] text-danger"
+              >
+                <span className="shrink-0">!</span>
+                {joinError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              data-testid="prejoin-enter-button"
+              disabled={!canEnter || joining}
+              onClick={handleEnter}
+              className="z-btn z-btn-primary z-btn-block disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {joining ? "입장하고 있어요…" : "수업 입장하기"}
+            </button>
           </div>
         </div>
       </div>
@@ -185,20 +266,34 @@ export function PrejoinScreen({ inviteCode }: { inviteCode: string }) {
   );
 }
 
-/** 얼굴 정렬 가이드 프레임 (모서리 4개 + 좌우 화살표) */
-function FaceFrame({ moving }: { moving: boolean }) {
+/** 장치 확인 체크리스트 한 줄. 통과 여부에 따라 ✓/! 아이콘을 바꾼다. */
+function ChecklistItem({
+  ok,
+  pending,
+  testId,
+  children,
+}: {
+  ok: boolean;
+  pending: boolean;
+  /** 상태를 관찰하기 위한 testid. data-ok 로 통과 여부를, data-pending 으로 판정 전 여부를 노출한다. */
+  testId?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="relative mb-[22px] h-[270px] w-[230px]">
-      <span className="absolute left-0 top-0 size-10 rounded-tl-2xl border-l-[3px] border-t-[3px] border-white" />
-      <span className="absolute right-0 top-0 size-10 rounded-tr-2xl border-r-[3px] border-t-[3px] border-white" />
-      <span className="absolute bottom-0 left-0 size-10 rounded-bl-2xl border-b-[3px] border-l-[3px] border-white" />
-      <span className="absolute bottom-0 right-0 size-10 rounded-br-2xl border-b-[3px] border-r-[3px] border-white" />
-      {moving && (
-        <>
-          <span className="absolute -left-16 top-1/2 -translate-y-1/2 text-3xl text-white/70">‹</span>
-          <span className="absolute -right-16 top-1/2 -translate-y-1/2 text-3xl text-white/70">›</span>
-        </>
+    <div
+      data-testid={testId}
+      data-ok={ok}
+      data-pending={pending}
+      className="flex items-center gap-[11px]"
+    >
+      {pending ? (
+        <span className="z-check bg-faint text-ink-faint">…</span>
+      ) : ok ? (
+        <span className="z-check">✓</span>
+      ) : (
+        <span className="z-check bg-[#ffe9e3] text-[#d9534f]">!</span>
       )}
+      <span className="flex-1 text-sm font-semibold">{children}</span>
     </div>
   );
 }

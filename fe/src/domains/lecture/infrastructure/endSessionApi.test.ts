@@ -23,12 +23,12 @@ afterEach(() => {
 describe("endSession", () => {
   it("posts to the session end endpoint with credentials", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ isSuccess: true, data: { sessionId: 123, status: "ENDED", ended: true } }),
+      jsonResponse({ isSuccess: true, data: { sessionId: "123", status: "ENDED", ended: true } }),
     );
 
     const result = await endSession("123", "test-access-token");
 
-    expect(result).toEqual({ sessionId: 123, status: "ENDED", ended: true });
+    expect(result).toEqual({ sessionId: "123", status: "ENDED", ended: true });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain("/api/v1/sessions/123/end");
     expect(init.method).toBe("POST");
@@ -37,7 +37,7 @@ describe("endSession", () => {
 
   it("sends the access token so the server can identify the instructor", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ isSuccess: true, data: { sessionId: 123, status: "ENDED", ended: true } }),
+      jsonResponse({ isSuccess: true, data: { sessionId: "123", status: "ENDED", ended: true } }),
     );
 
     await endSession("123", "test-access-token");
@@ -47,7 +47,7 @@ describe("endSession", () => {
 
   it("reports an already ended session as a non-transition", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ isSuccess: true, data: { sessionId: 123, status: "ENDED", ended: false } }),
+      jsonResponse({ isSuccess: true, data: { sessionId: "123", status: "ENDED", ended: false } }),
     );
 
     await expect(endSession("123", "t")).resolves.toMatchObject({ ended: false });
@@ -70,7 +70,7 @@ describe("endSession", () => {
 
   it("rejects a payload missing the ended flag", async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ isSuccess: true, data: { sessionId: 123, status: "ENDED" } }),
+      jsonResponse({ isSuccess: true, data: { sessionId: "123", status: "ENDED" } }),
     );
 
     await expect(endSession("123", "t")).rejects.toBeInstanceOf(EndSessionRequestError);

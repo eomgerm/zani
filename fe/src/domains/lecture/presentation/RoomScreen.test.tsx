@@ -6,6 +6,7 @@ const roomConnection = vi.hoisted(() => ({
   error: null,
   room: null,
   sessionExpiresAt: null as string | null,
+  sessionTitle: null as string | null,
   retry: vi.fn(),
 }));
 
@@ -129,6 +130,8 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   roomConnection.sessionExpiresAt = null;
+  roomConnection.sessionTitle = null;
+  roomConnection.connectionState = "connected";
   media.cameraEnabled = true;
   media.microphoneEnabled = true;
   media.ready = true;
@@ -160,8 +163,12 @@ describe("RoomScreen side panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
 
-    expect(screen.getByText("✋ 손든 참가자")).toBeVisible();
     expect(screen.getByRole("button", { name: "참여자" })).toHaveAttribute("aria-pressed", "true");
+    // 참여자 탭에는 채팅 입력이 없다. 손든 참가자 목록은 실제로 손을 든 사람이 있을 때만 나오므로
+    // (업무 WebSocket 소관) 패널이 열렸는지는 탭 구분으로 확인한다.
+    expect(
+      screen.queryByRole("textbox", { name: "전체에게 메시지 보내기" }),
+    ).not.toBeInTheDocument();
   });
 
   it("switches between people and chat without closing the panel", () => {
@@ -513,5 +520,71 @@ describe("RoomScreen attention wiring", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("attention-camera-source")).not.toBeInTheDocument();
+  });
+  /** 강의명은 강사가 입력한 값이다. 픽스처 기본값을 보여주면 다른 수업에 들어온 것처럼 읽힌다. */
+  it("서버가 내려준 강의명을 보여준다", () => {
+    roomConnection.sessionTitle = "JavaScript 기초 1강";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("JavaScript 기초 1강")).toBeVisible();
+  });
+
+  /** 아직 못 받았을 때 픽스처 제목이 새지 않아야 한다. */
+  it("강의명을 못 받았으면 픽스처 제목을 보여주지 않는다", () => {
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByText("React 상태관리 심화")).not.toBeInTheDocument();
+  });
+
+  /** 발표자 보기는 강사 화면을 크게 보는 기능이다. 영상이 없으면 아바타만 남아 목데이터처럼 보인다. */
+  it("발표자 보기에서 강사 카메라를 붙인다", () => {
+    roomParticipants.participants = [
+      {
+        id: "host-1",
+        name: "김강사",
+        color: "#2aa584",
+        role: "instructor",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+      },
+    ];
+    roomParticipants.localParticipantId = "host-1";
+
+    render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByTestId("speaker-video")).toBeInTheDocument();
+  });
+  /**
+   * 제목은 미디어 토큰 응답으로 오므로 연결이 끝나기 전에는 알 수 없다. 그 동안 최종값처럼 보이는 문구를 그리면
+   * 제목이 "수업" 에서 실제 이름으로 바뀌는 것처럼 보인다.
+   */
+  it("연결 중에는 제목 대신 자리만 잡는다", () => {
+    roomConnection.connectionState = "connecting";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByTestId("room-title-loading")).toBeVisible();
+    expect(screen.queryByText("수업")).not.toBeInTheDocument();
+  });
+
+  /** 서버가 제목을 안 내려주는 구성에서 자리만 잡고 영원히 기다리면 안 된다. */
+  it("연결이 끝났는데 제목이 없으면 기본 문구를 쓴다", () => {
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("room-title-loading")).not.toBeInTheDocument();
+    expect(screen.getByText("수업")).toBeVisible();
+  });
+
+  /** 강사가 아직 안 잡혔을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */
+  it("발표자 보기에서 강사가 아직 없으면 기다린다고 알린다", () => {
+    roomParticipants.participants = [];
+
+    render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByText("강의자를 기다리고 있어요")).toBeVisible();
   });
 });

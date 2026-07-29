@@ -12,6 +12,10 @@ type EndSessionButtonProps = {
   redirectTo?: string;
   /** 종료 어댑터. 테스트에서 대체한다. */
   endSessionRequest?: SessionEnder;
+  /**
+   * 종료 성공 직후 호출된다. 이미 {@link redirectTo} 화면에 있는 호출자(홈 배너 등)는 이동만으로는 화면이 갱신되지 않으므로, 이 콜백으로 목록을 다시 읽는다.
+   */
+  onEnded?: () => void;
 };
 
 const FORBIDDEN_MESSAGE = "수업을 연 강사만 종료할 수 있습니다.";
@@ -32,6 +36,7 @@ export function EndSessionButton({
   sessionId,
   redirectTo = "/home",
   endSessionRequest = endSession,
+  onEnded,
 }: EndSessionButtonProps) {
   const router = useRouter();
   const { accessToken } = useAuth();
@@ -55,6 +60,7 @@ export function EndSessionButton({
     setError(null);
     try {
       await endSessionRequest(sessionId, accessToken);
+      onEnded?.();
       router.push(redirectTo);
     } catch (failure) {
       requested.current = false;
@@ -62,7 +68,7 @@ export function EndSessionButton({
       setConfirming(false);
       setError(failureMessage(failure));
     }
-  }, [accessToken, endSessionRequest, redirectTo, router, sessionId]);
+  }, [accessToken, endSessionRequest, onEnded, redirectTo, router, sessionId]);
 
   if (!confirming) {
     return (

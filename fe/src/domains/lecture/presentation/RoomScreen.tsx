@@ -12,13 +12,10 @@ import {
   type CameraGuideCause,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
-import {
-  participantTiles,
-  participants as participantsFixture,
-  publicMessages,
-} from "./fixtures";
+import { publicMessages } from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
+import { useParticipantVideos } from "./useParticipantVideos";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -44,11 +41,6 @@ type RoomScreenProps = {
    * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
    */
   expiresAt?: string;
-  /**
-   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
-   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
-   */
-  prejoinInviteCode?: string;
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
@@ -105,14 +97,13 @@ function PanelToggle({
   );
 }
 
-export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
       <RoomScreenContent
         sessionId={sessionId}
         roomTitle={roomTitle}
         expiresAt={expiresAt}
-        prejoinInviteCode={prejoinInviteCode ?? sessionId}
       />
     </RoomProvider>
   );
@@ -120,17 +111,18 @@ export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode 
 
 function RoomScreenContent({
   sessionId,
-  roomTitle = "React 상태관리 심화",
+  roomTitle,
   expiresAt,
-  prejoinInviteCode,
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt } = useRoomConnection();
-  const media = useRoomMediaControls(prejoinInviteCode);
+  const { sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
+  const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
+  // 로컬·원격 카메라 화면을 타일에 붙인다. 훅은 여기서 한 번만 부르고 ref 를 내려보낸다.
+  const participantVideos = useParticipantVideos();
   // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
   // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
   const connected = tileParticipants.length > 0;
@@ -182,14 +174,29 @@ function RoomScreenContent({
     timers.current.push(id);
   }, []);
 
-  // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
-  // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
-  const galleryParticipants = connected ? tileParticipants : participantTiles;
+  // 갤러리는 LiveKit 이 알려주는 실제 참가자만 보여준다. 아직 아무도 없으면 빈 화면이 맞다 —
+  // 시연용 픽스처로 채우면 들어오지 않은 학생이 참가 중인 것처럼 보인다.
+  const galleryParticipants = tileParticipants;
 
-  // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
-  const meId = isInstructor ? "p0" : "p7";
-  const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  const hostName = "박서준";
+  // 사이드 패널 사람 목록도 갤러리와 같은 실제 참가자를 쓴다. 내 마이크·카메라는 LiveKit 반영보다
+  // 로컬 토글이 먼저 움직이므로, 내 행만 로컬 상태로 덮어 즉시 반응하게 한다.
+  // 손들기는 업무 WebSocket 소관이라 아직 항상 내려간 상태다.
+  const meId = localParticipantId;
+  const list = tileParticipants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    color: participant.color,
+    host: participant.role === "instructor",
+    cam: participant.cameraEnabled,
+    mic: participant.microphoneEnabled,
+    hand: participant.handRaised,
+    ...(participant.id === meId ? me : {}),
+  }));
+  // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
+  // 자리만 잡고 기다리지 않고 기본 문구를 쓴다. 그러지 않으면 스켈레톤이 영원히 뛴다.
+  const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
+  const host = tileParticipants.find((participant) => participant.role === "instructor");
+  const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
 
@@ -252,7 +259,20 @@ function RoomScreenContent({
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
-        <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
+        {/*
+          강의명은 서버가 미디어 토큰 응답으로 내려주므로 연결이 끝나기 전에는 알 수 없다.
+          그 동안 "수업" 같은 최종값처럼 보이는 문구를 그리면 제목이 바뀌는 것처럼 보인다. 자리만 잡아 둔다.
+          prop 은 테스트·스토리북 강제 지정용이다.
+        */}
+        <div className="text-[14.5px] font-extrabold">
+          {title ?? (
+            <span
+              data-testid="room-title-loading"
+              aria-label="강의명을 불러오는 중"
+              className="inline-block h-[15px] w-28 animate-pulse rounded bg-white/15 align-middle"
+            />
+          )}
+        </div>
         <div className="flex-1" />
         {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
         {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
@@ -334,7 +354,8 @@ function RoomScreenContent({
             ) : view === "gallery" ? (
               <ParticipantGrid
                 participants={galleryParticipants}
-                currentParticipantId={localParticipantId ?? "p0"}
+                currentParticipantId={localParticipantId ?? undefined}
+                videoRefFor={participantVideos.refFor}
                 isInstructor={isInstructor}
                 narrow={panelOpen}
               />
@@ -345,13 +366,39 @@ function RoomScreenContent({
                     {hostName.charAt(0)}
                   </div>
                 </div>
+                {/*
+                  강사 카메라. 아바타 뒤에 두어 영상이 위에 그려지고, 카메라가 꺼져 있으면 감춰 아바타가 보이게 한다.
+                  요소를 항상 마운트해 둬야 트랙 부착 훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유).
+                  내 화면일 때만 거울처럼 뒤집는다.
+                */}
+                {host !== undefined && (
+                  <video
+                    ref={participantVideos.refFor(host.id)}
+                    autoPlay
+                    muted
+                    playsInline
+                    data-testid="speaker-video"
+                    className={`absolute inset-0 size-full object-contain ${
+                      host.id === localParticipantId ? "scale-x-[-1]" : ""
+                    } ${host.cameraEnabled ? "" : "invisible"}`}
+                  />
+                )}
+                {/* 강사 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
                 <div className="pointer-events-none absolute inset-0">
-                  <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                    강의: {hostName} 선생님
-                  </div>
-                  <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                    📶 {hostName} 선생님
-                  </div>
+                  {hostName === "" ? (
+                    <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                      강의자를 기다리고 있어요
+                    </div>
+                  ) : (
+                    <>
+                      <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                        강의: {hostName} 선생님
+                      </div>
+                      <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
+                        📶 {hostName} 선생님
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -430,7 +477,7 @@ function RoomScreenContent({
             panel={panel}
             participants={list}
             messages={publicMessages}
-            meId={meId}
+            meId={meId ?? ""}
             isInstructor={isInstructor}
           />
         )}

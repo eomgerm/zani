@@ -2,9 +2,11 @@ package com.a105.zani.session.application.create;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,9 @@ import com.a105.zani.session.application.exception.InviteCodeGenerationFailedExc
 import com.a105.zani.session.application.port.SessionActivationLockPort;
 import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionParticipant;
+import com.a105.zani.session.domain.model.SessionParticipantRole;
+import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,13 +28,38 @@ class CreateSessionServiceTest {
 
     private static final long INSTRUCTOR_ID = 1L;
 
+    /**
+     * 강사도 자기 수업의 참가자여야 한다.
+     *
+     * <p>미디어 토큰 발급과 presence 보고가 모두 참가자 행에서 참가자 ID 와 역할을 읽는다. 이 행이 없으면 강사는 자기가 만든 방에서 403 을 받아 카메라·마이크를 켤 수 없다.
+     */
+    @Test
+    void enrollsTheInstructorAsAParticipantOfTheNewSession() {
+        RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
+        InMemoryParticipantRepository participants = new InMemoryParticipantRepository();
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository, participants),
+                new AlwaysAcquireLockPort(),
+                new StubInviteCodeGenerator("AAAAAAAA"));
+
+        CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "강사 멤버십"));
+
+        SessionParticipant instructor = participants
+                .findBySessionIdAndUserId(result.sessionId(), INSTRUCTOR_ID)
+                .orElseThrow();
+        assertEquals(SessionParticipantRole.INSTRUCTOR, instructor.role());
+        assertEquals(1, participants.findBySessionId(result.sessionId()).size());
+    }
+
     @Test
     void retriesWithANewCodeWhenTheFirstCodeIsAlreadyTaken() {
         Set<String> takenCodes = new HashSet<>(List.of("AAAAAAAA"));
         StubInviteCodeGenerator codeGenerator = new StubInviteCodeGenerator("AAAAAAAA", "BBBBBBBB");
         RecordingSessionRepository repository = new RecordingSessionRepository(takenCodes);
-        CreateSessionService service =
-                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository, new InMemoryParticipantRepository()),
+                new AlwaysAcquireLockPort(),
+                codeGenerator);
 
         CreateSessionResult result = service.create(new CreateSessionCommand(INSTRUCTOR_ID, "재시도 테스트"));
 
@@ -42,8 +72,10 @@ class CreateSessionServiceTest {
         StubInviteCodeGenerator codeGenerator =
                 new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA");
         RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
-        CreateSessionService service =
-                new CreateSessionService(new NewSessionSaver(repository), new AlwaysAcquireLockPort(), codeGenerator);
+        CreateSessionService service = new CreateSessionService(
+                new NewSessionSaver(repository, new InMemoryParticipantRepository()),
+                new AlwaysAcquireLockPort(),
+                codeGenerator);
 
         assertThrows(
                 InviteCodeGenerationFailedException.class,
@@ -112,5 +144,34 @@ class CreateSessionServiceTest {
 
         @Override
         public void release(long instructorId) {}
+    }
+
+    /** 강사 멤버십이 세션과 함께 저장되는지 확인하기 위한 최소 구현. */
+    private static class InMemoryParticipantRepository implements SessionParticipantRepository {
+
+        private final List<SessionParticipant> saved = new ArrayList<>();
+
+        @Override
+        public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
+            return saved.stream()
+                    .filter(p -> sessionId.equals(p.sessionId()) && userId.equals(p.userId()))
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<SessionParticipant> findById(Long id) {
+            return saved.stream().filter(p -> id.equals(p.id())).findFirst();
+        }
+
+        @Override
+        public List<SessionParticipant> findBySessionId(Long sessionId) {
+            return saved.stream().filter(p -> sessionId.equals(p.sessionId())).toList();
+        }
+
+        @Override
+        public SessionParticipant save(SessionParticipant sessionParticipant) {
+            saved.add(sessionParticipant);
+            return sessionParticipant;
+        }
     }
 }

@@ -1,6 +1,9 @@
 package com.a105.zani.session.application.create;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -17,6 +20,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.a105.zani.session.application.exception.ActiveSessionExistsException;
 import com.a105.zani.session.domain.InviteCodeGenerator;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionParticipant;
+import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 import com.a105.zani.session.infrastructure.redis.SessionActivationLockRedisAdapter;
 
@@ -46,8 +51,10 @@ class CreateSessionConcurrencyTest {
 
         SessionActivationLockRedisAdapter lockPort = new SessionActivationLockRedisAdapter(redisTemplate);
         SessionRepository sessionRepository = new InMemorySessionRepository();
-        createSessionService =
-                new CreateSessionService(new NewSessionSaver(sessionRepository), lockPort, new InviteCodeGenerator());
+        createSessionService = new CreateSessionService(
+                new NewSessionSaver(sessionRepository, new InMemoryParticipantRepository()),
+                lockPort,
+                new InviteCodeGenerator());
 
         redisTemplate.delete("session:active-lock:" + INSTRUCTOR_ID);
     }
@@ -120,6 +127,35 @@ class CreateSessionConcurrencyTest {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))
                     .findFirst();
+        }
+    }
+
+    /** 강사 멤버십이 세션과 함께 저장되는지 확인하기 위한 최소 구현. */
+    private static class InMemoryParticipantRepository implements SessionParticipantRepository {
+
+        private final List<SessionParticipant> saved = new ArrayList<>();
+
+        @Override
+        public Optional<SessionParticipant> findBySessionIdAndUserId(Long sessionId, Long userId) {
+            return saved.stream()
+                    .filter(p -> sessionId.equals(p.sessionId()) && userId.equals(p.userId()))
+                    .findFirst();
+        }
+
+        @Override
+        public Optional<SessionParticipant> findById(Long id) {
+            return saved.stream().filter(p -> id.equals(p.id())).findFirst();
+        }
+
+        @Override
+        public List<SessionParticipant> findBySessionId(Long sessionId) {
+            return saved.stream().filter(p -> sessionId.equals(p.sessionId())).toList();
+        }
+
+        @Override
+        public SessionParticipant save(SessionParticipant sessionParticipant) {
+            saved.add(sessionParticipant);
+            return sessionParticipant;
         }
     }
 }
