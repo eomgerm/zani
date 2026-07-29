@@ -8,6 +8,7 @@ import {
   useCameraGuidePrompt,
   usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
+  type AnalysisAvailability,
   type CameraGuideCause,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
@@ -25,6 +26,9 @@ import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
+import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
+import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
+import { useCoachingStatus } from "./useCoachingStatus";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -142,6 +146,15 @@ function RoomScreenContent({
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
+  // 판정 상태가 아니라 접힌 가용 상태만 들고 있다. 카메라·검출기가 실제로 바뀔 때만 갱신된다.
+  const [analysisAvailability, setAnalysisAvailability] = useState<AnalysisAvailability>("ACTIVE");
+  // 팁을 받는 쪽이 강사라 강사 화면에서만 폴링한다. 팁 카드 배선은 86 소관이다.
+  //
+  // 역할이 확정되기 전(connected=false)에는 isInstructor 가 true 이므로 그것만 보면 학생도
+  // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
+  // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
+  const isConfirmedInstructor = connected && isInstructor;
+  const coaching = useCoachingStatus({ sessionId, enabled: isConfirmedInstructor });
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
@@ -176,7 +189,6 @@ function RoomScreenContent({
   // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
   const meId = isInstructor ? "p0" : "p7";
   const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  const meCamOff = !list.find((p) => p.id === meId)?.cam;
   const hostName = "박서준";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
@@ -226,6 +238,7 @@ function RoomScreenContent({
         <AttentionCameraSource
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
+          onAvailabilityChange={setAnalysisAvailability}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -241,6 +254,10 @@ function RoomScreenContent({
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
         <div className="flex-1" />
+        {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
+        {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
+        {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 역할이 확정된 강사에게만 알린다. */}
+        {isConfirmedInstructor && <CoachingStatusNotice availability={coaching.availability} />}
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
         {!isInstructor && process.env.NODE_ENV !== "production" && (
           <button
@@ -339,13 +356,11 @@ function RoomScreenContent({
               </>
             )}
 
-            {/* 카메라 꺼짐 안내 (학생) */}
-            {!isInstructor && meCamOff && (
-              <div className="absolute left-1/2 top-[18px] z-[5] -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-[#f3dc90] bg-warn-soft px-[18px] py-[11px] text-[13px] font-bold text-[#836607] shadow-[0_8px_24px_#0004]">
-                📷 카메라가 10분 이상 꺼져 있어요. 켜면 학습 신호 분석에 참여할 수 있어요.{" "}
-                <span className="font-semibold opacity-80">(이후 5분마다 안내)</span>
-              </div>
-            )}
+            {/*
+              카메라 꺼짐 안내는 카메라 안내 프롬프트(81)가 원인별로 맡는다. 여기 있던 프로토타입
+              배너는 "10분 이상·이후 5분마다"라는 옛 규칙이라 확정된 1분 발동·5분 재권유와
+              어긋나고 문구도 겹쳐 제거했다(76: 중복 구현하지 않는다).
+            */}
 
             {/* 집단 알림 (강사) */}
             {isInstructor && alertOpen && (

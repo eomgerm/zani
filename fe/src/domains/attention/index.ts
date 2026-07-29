@@ -6,6 +6,8 @@ export type {
   UseAttentionDetectionOptions,
 } from "./presentation/useAttentionDetection";
 export { ATTENTION_LABELS } from "./domain/attentionPrediction";
+export { analysisAvailabilityOf } from "./domain/analysisAvailability";
+export type { AnalysisAvailability } from "./domain/analysisAvailability";
 export type {
   AttentionLabel,
   AttentionPrediction,
