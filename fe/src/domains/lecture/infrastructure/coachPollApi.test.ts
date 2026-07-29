@@ -63,13 +63,31 @@ describe("pollCoach", () => {
     ["tipType", { ...tip, tipType: "SOMETHING_ELSE" }],
     ["title", { ...tip, title: "" }],
     ["message", { ...tip, message: "  " }],
-    ["targetConcept", { ...tip, targetConcept: undefined }],
   ])("drops a tip whose %s is missing or invalid", async (_field, broken) => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(ok({ triggerId: "t-1", tip: broken })));
 
     expect((await pollCoach("55", "test-access-token")).tip).toBeNull();
   });
+
+  // 무응답·자리비움 팁은 §8 에 자리표시자가 없어 LLM 을 호출하지 않는다(204).
+  // 필수로 보면 다섯 유형 중 둘이 통째로 버려진다.
+  it.each([undefined, null, "", "  "])(
+    "keeps a tip whose targetConcept is %p",
+    async (targetConcept) => {
+      vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          ok({ triggerId: "t-1", tip: { ...tip, tipType: "NON_RESPONSE", targetConcept } }),
+        ),
+      );
+
+      const result = await pollCoach("55", "test-access-token");
+
+      expect(result.tip).toMatchObject({ tipType: "NON_RESPONSE", targetConcept: null });
+    },
+  );
 
   // 계약에 없는 값이 늘어도 무시한다. 85 가 나중에 필드를 더해도 이 어댑터는 흔들리지 않는다.
   it("ignores fields the contract does not define", async () => {
