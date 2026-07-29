@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -102,6 +103,12 @@ class AttentionEventStoreFailureIntegrationTest {
 
                 @Override
                 public Set<Long> excludedFromDenominator(long sessionId, Collection<Long> participantIds) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
+
+                @Override
+                public Map<AttentionState, Set<Long>> significantParticipants(
+                        long sessionId, Collection<Long> participantIds) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
 

@@ -202,6 +202,23 @@ def _resolve_device(args: argparse.Namespace) -> str:
     return args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def _analyze_label_reliability(args: argparse.Namespace) -> int:
+    from zani_ai.engagement.reliability import analyze_label_reliability
+
+    result = analyze_label_reliability(
+        args.features,
+        args.baseline_output,
+        args.output,
+        device=_resolve_device(args),
+    )
+    print(
+        f"Label reliability analysis complete | decision={result.decision} "
+        f"| {result.manifest_path}",
+        flush=True,
+    )
+    return 0
+
+
 def _reproduce(protocol: str) -> Command:
     """Build the ``reproduce-<protocol>`` handler.
 
@@ -216,6 +233,7 @@ def _reproduce(protocol: str) -> Command:
         shared = {
             "device": _resolve_device(args),
             "graph_path": getattr(args, "graph", None),
+            "reliability_path": getattr(args, "reliability", None),
             "allow_environment_drift": args.allow_environment_drift,
         }
         if args.collect_only:
@@ -401,6 +419,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train.set_defaults(handler=_train)
 
+    analyze_reliability = commands.add_parser(
+        "analyze-label-reliability",
+        help="classify Train/Validation clips by E0 five-seed disagreement",
+    )
+    analyze_reliability.add_argument("--features", type=Path, required=True)
+    analyze_reliability.add_argument("--baseline-output", type=Path, required=True)
+    analyze_reliability.add_argument("--output", type=Path, required=True)
+    analyze_reliability.add_argument("--device", type=_device)
+    analyze_reliability.set_defaults(handler=_analyze_label_reliability)
+
     for command, protocol, description in (
         ("e0", "E0", "E0"),
         ("e0a", "E0-A", "E0-A"),
@@ -411,6 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0f", "E0-F", "E0-F (balanced sampler, unweighted loss)"),
         ("e0g", "E0-G", "E0-G (aligned training schedule)"),
         ("e0h", "E0-H", "E0-H (SORD soft ordinal targets)"),
+        ("e0i", "E0-I", "E0-I (label-reliability curriculum)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
@@ -430,6 +459,13 @@ def build_parser() -> argparse.ArgumentParser:
                     "landmark graph .npz; defaults to ZANI_LANDMARK_GRAPH, then "
                     "landmark_78_v1_graph.npz beside or above --features"
                 ),
+            )
+        if protocol == "E0-I":
+            reproduce.add_argument(
+                "--reliability",
+                type=Path,
+                required=True,
+                help="go reliability_manifest.json produced by analyze-label-reliability",
             )
         reproduce.set_defaults(handler=_reproduce(protocol))
 

@@ -1,9 +1,13 @@
 package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -156,6 +160,42 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     public void includeInDenominator(long sessionId, long participantId) {
         try {
             redisTemplate.delete(excludedKey(sessionId, participantId));
+        } catch (DataAccessException exception) {
+            throw new AttentionStateUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds) {
+        List<AttentionState> states = Arrays.stream(AttentionState.values())
+                .filter(AttentionState::isSignificant)
+                .toList();
+        Map<AttentionState, Set<Long>> found = new EnumMap<>(AttentionState.class);
+        states.forEach(state -> found.put(state, new HashSet<>()));
+        if (participantIds.isEmpty()) {
+            return found;
+        }
+
+        // 상태마다 왕복하지 않는다. 상태 4개 × 참가자 N명 키를 한 번에 읽고 순서로 되짚는다.
+        List<Long> ordered = List.copyOf(participantIds);
+        List<String> keys = new ArrayList<>(states.size() * ordered.size());
+        for (AttentionState state : states) {
+            for (Long participantId : ordered) {
+                keys.add(significantKey(sessionId, participantId, state));
+            }
+        }
+        try {
+            List<String> markers = redisTemplate.opsForValue().multiGet(keys);
+            if (markers == null) {
+                return found;
+            }
+            for (int index = 0; index < keys.size() && index < markers.size(); index++) {
+                if (markers.get(index) == null) {
+                    continue;
+                }
+                found.get(states.get(index / ordered.size())).add(ordered.get(index % ordered.size()));
+            }
+            return found;
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }

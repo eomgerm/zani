@@ -14,7 +14,9 @@ leaked an environment detail (a path, a device index, a hostname) into
 
 from __future__ import annotations
 
-from dataclasses import replace
+import hashlib
+import json
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -29,17 +31,28 @@ from zani_ai.engagement.experiment import (
     E0F_SPEC,
     E0G_SPEC,
     E0H_SPEC,
+    E0I_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
     SPECS,
     ExperimentSpec,
+    _assert_file_record_unchanged,
     _build_configuration,
     _canonical_hash,
     _environment_matches,
     _graph_record,
+    _reliability_record,
+    _seed_is_complete,
     _validate_inputs_identity,
     stgcn_model_builder,
+)
+from zani_ai.engagement.reliability import (
+    ClipReliability,
+    ReliabilityCriteria,
+    _json_safe,
+    assess_reliability_signal,
+    summarize_reliability,
 )
 
 #: (spec, device) -> configuration_sha256, measured on the pre-change tree.
@@ -62,6 +75,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-G", "cuda"): "ddf2e00582eaa1c5b7d38220c0622f8a5b6f8acbc042aae9a32fc6d3283ddea8",
     ("E0-H", "cpu"): "1ff748ff0a1148f3c90d2af760690bf0eac13f690958c77100fe1e32553b8c01",
     ("E0-H", "cuda"): "766e2ceb2272162a63756ecd23d3add33c20cf0a99e2a2a09228a313ce13d864",
+    ("E0-I", "cpu"): "2b1c6bc1ac3225b60f3df609f00c1e6e67b79f4c2569acd0d4c499c10e337ac9",
+    ("E0-I", "cuda"): "0da85a5f7b898984ae7f79bf959b0f604fba1c5177b3a6028fab0eb7b3e656f2",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -80,6 +95,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0F_SPEC,
     E0G_SPEC,
     E0H_SPEC,
+    E0I_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -195,6 +211,120 @@ def test_e0h_keeps_the_head_and_leaves_the_loss_weighting_alone() -> None:
 
     assert "loss" not in configuration
     assert configuration["class_weighting"] is False
+
+
+def test_curriculum_alone_separates_e0i_from_e0() -> None:
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    variant = _build_configuration(E0I_SPEC, "cuda")
+
+    differing = {key for key in base | variant if base.get(key) != variant.get(key)}
+    assert differing == {
+        "curriculum",
+        "reliable_warmup_epochs",
+        "ambiguous_target_encoding",
+        "ambiguous_neighbor_mass",
+    }
+    assert variant["curriculum"] == "label_reliability_v1"
+    assert variant["reliable_warmup_epochs"] == 10
+    assert variant["ambiguous_target_encoding"] == "adjacent_smoothing"
+    assert variant["ambiguous_neighbor_mass"] == 0.2
+
+
+def test_reliability_input_is_fingerprinted_and_must_be_go(tmp_path: Path) -> None:
+    path = tmp_path / "reliability.json"
+    def record(clip_id: str, split: str, label: int, predictions: tuple[int, ...]):
+        return ClipReliability.from_seed_logits(
+            clip_id=clip_id,
+            split=split,
+            label=label,
+            seeds=(42, 43, 44, 45, 46),
+            seed_logits=tuple(
+                tuple(4.0 if column == prediction else -4.0 for column in range(4))
+                for prediction in predictions
+            ),
+        )
+
+    records = [record(f"train-{label}", "train", label, (label,) * 5) for label in range(4)]
+    records.append(record("train-ambiguous", "train", 0, (0, 1, 0, 1, 0)))
+    for label in range(4):
+        records.extend(
+            [
+                record(f"valid-{label}-a", "valid", label, (label,) * 5),
+                record(f"valid-{label}-b", "valid", label, (label,) * 5),
+            ]
+        )
+    records[5] = record("valid-0-a", "valid", 0, (1,) * 5)
+    for label in range(4):
+        wrong = (label + 1) % 4
+        records.append(
+            record(f"valid-ambiguous-{label}", "valid", label, (wrong, wrong, label, wrong, wrong))
+        )
+    criteria = ReliabilityCriteria()
+    assessment = assess_reliability_signal(records, criteria=criteria)
+    assert assessment.decision == "go"
+    payload = _json_safe({
+        "schema_version": "label_reliability_v1",
+        "decision": assessment.decision,
+        "inputs": {"feature_manifest": {"sha256": "feature-hash"}},
+        "criteria": asdict(criteria),
+        "assessment": asdict(assessment),
+        "summary": asdict(summarize_reliability(records)),
+        "clips": [asdict(item) for item in records],
+    })
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    record = _reliability_record(path, feature_manifest_sha256="feature-hash")
+
+    assert record == {
+        "path": str(path.resolve()),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size_bytes": path.stat().st_size,
+    }
+
+    payload["decision"] = "no-go"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="decision does not match"):
+        _reliability_record(path, feature_manifest_sha256="feature-hash")
+
+
+def test_e0i_seed_completion_rejects_a_different_reliability_input(tmp_path: Path) -> None:
+    configuration = _build_configuration(E0I_SPEC, "cpu")
+    record: dict[str, object] = {
+        "seed": 42,
+        "status": "complete",
+        "feature_manifest_sha256": "feature-hash",
+        "configuration_sha256": _canonical_hash(configuration),
+        "inputs": {"label_reliability": {"sha256": "old"}},
+        "artifacts": {},
+    }
+
+    complete, reason = _seed_is_complete(
+        record,
+        seed=42,
+        output_dir=tmp_path,
+        manifest_sha256="feature-hash",
+        configuration=configuration,
+        inputs={"label_reliability": {"sha256": "new"}},
+        spec=E0I_SPEC,
+    )
+
+    assert complete is False
+    assert "label_reliability" in reason
+
+
+def test_reliability_file_change_is_rejected_at_training_boundary(tmp_path: Path) -> None:
+    path = tmp_path / "reliability.json"
+    path.write_text("original", encoding="utf-8")
+    record = {
+        "path": str(path.resolve()),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "size_bytes": path.stat().st_size,
+    }
+    path.write_text("changed", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="label_reliability changed before training"):
+        _assert_file_record_unchanged(record, "label_reliability", "before training")
 
 
 def test_target_encoding_enters_the_identity_only_when_it_leaves_one_hot() -> None:

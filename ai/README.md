@@ -253,6 +253,62 @@ lr 1e-4 · patience 20 · 감쇠 없음을 그대로 상속하고, E0과의 차�
 수렴하므로 α 값마다 별도 프로토콜입니다. 기존 프로토콜의 `configuration_sha256`은
 바뀌지 않고 완료된 seed도 그대로 재사용됩니다.
 
+### E0-I 라벨 신뢰도 커리큘럼
+
+E0-I는 E0의 5개 seed가 같은 클립에 내린 예측의 합의를 라벨 신뢰도 근사로 사용합니다.
+5개가 모두 같은 등급을 예측하면 `reliable`, 하나라도 갈리면 `ambiguous`입니다. 먼저 E0
+체크포인트와 feature manifest의 SHA-256을 검증한 뒤 Train/Validation만 다시 추론합니다.
+Test는 분석과 go/no-go 판정에서 제외됩니다.
+
+```bash
+uv run python -m zani_ai engagement analyze-label-reliability \
+  --features <features> \
+  --baseline-output <e0-output> \
+  --output <reliability-output> \
+  --device cuda
+```
+
+분석 디렉터리에는 다음 파일이 원자적으로 기록됩니다.
+
+- `reliability_manifest.json`: seed별 logits·예측, vote entropy, 라벨/분할 분포, 입력 SHA,
+  go/no-go 조건과 판정
+- `clips.csv`: 클립별 신뢰도와 seed별 예측
+- `report.md`: 불일치 규모, 인접 오류 관계, 지표 상한, VLM Accepted/Rejected와의 차이
+
+`go`는 다음 다섯 조건을 모두 만족해야 합니다: 네 라벨 모두 신뢰 Train 클립 보유,
+Train/Validation 모두 ambiguous 클립 보유, Validation ambiguous 오류율이 reliable의 1.5배
+이상, ambiguous 제외 시 ensemble macro-F1과 QWK가 각각 2.0%p 이상 상승. 하나라도 실패하면
+`no-go`이며 E0-I 학습 명령은 해당 manifest를 거부합니다.
+
+`go`일 때 E0-I는 신뢰 Train 클립만 one-hot CE로 10 epoch 선학습한 뒤 전체 Train을
+합류합니다. 두 번째 단계에서 reliable은 one-hot을 유지하고 ambiguous만 정답 확률 0.8,
+인접 등급 총확률 0.2를 사용합니다. 가운데 등급은 양옆에 0.1씩, 끝 등급은 유일한 이웃에
+0.2를 주므로 E0-H SORD처럼 끝 등급의 정답 질량이 더 커지지 않습니다. optimizer는 이어
+쓰지만 조기 종료와 최종 checkpoint 선택은 두 번째 단계에서 새로 시작합니다.
+
+```bash
+uv run python -m zani_ai engagement reproduce-e0i \
+  --features <features> \
+  --reliability <reliability-output>/reliability_manifest.json \
+  --output <e0i-output> \
+  --device cuda
+
+uv run python -m zani_ai engagement finalize-e0i \
+  --features <features> \
+  --output <e0i-output> \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline <e0-output> --variant <e0i-output>
+```
+
+baseline과 variant는 같은 기계에서 학습한 산출물이어야 합니다. 다르면
+`compare_protocols.py`가 경고를 찍고, 그 차이에는 프로토콜 효과와 런타임이 섞입니다.
+
+identity에는 `curriculum=label_reliability_v1`, warmup 10 epoch,
+`ambiguous_target_encoding=adjacent_smoothing`, `ambiguous_neighbor_mass=0.2`가 들어갑니다.
+`inputs.label_reliability`에는 manifest 경로·크기·SHA-256이 기록되며 병렬 seed record도 같은
+SHA를 검증합니다. E0-I 해시는 cpu `2b1c6bc1…`, cuda `0da85a5f…`입니다.
+
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
 학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고

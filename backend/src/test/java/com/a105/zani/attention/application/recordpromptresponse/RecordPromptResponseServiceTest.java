@@ -417,6 +417,11 @@ class RecordPromptResponseServiceTest {
             return participantIds.stream().filter(excluded::contains).collect(Collectors.toSet());
         }
 
+        @Override
+        public Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds) {
+            return Map.of();
+        }
+
         private boolean runsReset;
 
         @Override

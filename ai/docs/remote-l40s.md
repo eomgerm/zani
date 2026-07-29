@@ -50,11 +50,15 @@ TLJH의 공용 파이썬(`/opt/tljh/user/`)은 다른 사용자와 공유하므�
 않습니다.** `uv`가 프로젝트 `.venv`를 홈 아래에 만들고 Python 3.12도 알아서 받아옵니다.
 
 ```bash
-cd ~/zani/ai && uv sync --extra train --group dev
+cd ~/zani/ai && uv sync --extra vision --extra train --group dev
 ```
 
-MediaPipe(`--extra vision`)는 원본 영상에서 특징을 다시 뽑을 때만 필요합니다.
-`reproduce-e1`·`finalize-e1` 경로는 MediaPipe를 임포트하지 않으므로 처음에는 생략하세요.
+특징을 다시 뽑지 않고 학습만 할 때도 `--extra vision`이 필요합니다. `experiment.py`가
+`representations`를, 그것이 `extraction`을 최상위에서 임포트하고 `extraction`은 `cv2`를
+씁니다. `cv2`는 MediaPipe가 의존성으로 끌어오므로, `--extra train`만 설치하면
+`reproduce-*`·`finalize-*`가 임포트 단계에서 `ModuleNotFoundError: No module named 'cv2'`로
+죽습니다. `uv sync`는 선택되지 않은 패키지를 제거하므로 extra를 빼고 다시 동기화하면
+멀쩡했던 환경도 같은 상태가 됩니다.
 
 ## 3. 사용할 GPU 고정
 
@@ -91,9 +95,9 @@ features 디렉터리의 부모에서 자동으로 찾습니다.
 mkdir -p ~/zani/ai/datasets/processed/engagenet && tar -xf ~/e1.tar -C ~/zani/ai/datasets/processed/engagenet && rm ~/e1.tar && ls ~/zani/ai/datasets/processed/engagenet
 ```
 
-표현을 바꿔가며 실험하려면 `raw_frames_v1`(5.2 GB)도 같은 방식으로 올리고
-`--extra vision`을 추가 설치한 뒤 `build-features`를 실행합니다. 원본 MP4(31.5 GB)는
-GPU가 기여하지 않는 구간이라 반입하지 않습니다.
+표현을 바꿔가며 실험하려면 `raw_frames_v1`(5.2 GB)도 같은 방식으로 올린 뒤
+`build-features`를 실행합니다. 원본 MP4(31.5 GB)는 GPU가 기여하지 않는 구간이라
+반입하지 않습니다.
 
 브라우저와 오프라인의 유효 프레임 비율 게이트를 정합한 뒤에는 먼저 60~69프레임
 불일치 대역을 집계합니다. 결과 JSON에는 전체·분할별·등급별 수와 clip ID가 기록됩니다.
