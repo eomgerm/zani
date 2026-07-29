@@ -1,8 +1,13 @@
 """The publish-results subcommand.
 
 ``--interval 0`` is the single-shot mode the training wrapper uses at exit. A
-second publisher must be rejected immediately rather than queue, matching how
-parallel seeds treat ``.seed.lock``.
+second *loop* must be rejected immediately rather than queue, matching how
+parallel seeds treat ``.seed.lock``; a single shot that meets the periodic
+publisher's lock has nothing to complain about, because that publisher will send
+the same snapshot within one interval.
+
+Misconfiguration must be loud. A wrong ``--artifacts`` or ``--source`` is a typo
+nobody will notice from a loop that quietly publishes nothing forever.
 """
 
 from __future__ import annotations
@@ -49,7 +54,7 @@ def artifacts(tmp_path: Path) -> Path:
     return root.parent
 
 
-def _argv(artifacts: Path, worktree: Path) -> list[str]:
+def _argv(artifacts: Path, worktree: Path, interval: str = "0") -> list[str]:
     return [
         "publish-results",
         "--artifacts",
@@ -59,7 +64,7 @@ def _argv(artifacts: Path, worktree: Path) -> list[str]:
         "--source",
         "l40s",
         "--interval",
-        "0",
+        interval,
     ]
 
 
@@ -70,13 +75,51 @@ def test_single_shot_publishes_and_exits_zero(artifacts: Path, worktree: Path) -
     assert "l40s/e1/summary.json" in pushed
 
 
-def test_second_publisher_is_refused(artifacts: Path, worktree: Path) -> None:
+def test_a_second_loop_is_refused(artifacts: Path, worktree: Path) -> None:
     held = DirectoryLock(worktree / LOCK_FILENAME, busy_message="already publishing")
     held.acquire()
     try:
-        assert main(_argv(artifacts, worktree)) == 2
+        assert main(_argv(artifacts, worktree, interval="300")) == 2
     finally:
         held.release()
+
+
+def test_single_shot_defers_to_the_periodic_publisher(
+    artifacts: Path, worktree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The documented setup runs both, so the exit publish must not always fail.
+
+    Reporting failure when the periodic publisher holds the lock trains the
+    operator to ignore ``publish failed`` in ``run_seeds_parallel.sh``'s output,
+    which will one day mean something.
+    """
+    held = DirectoryLock(worktree / LOCK_FILENAME, busy_message="already publishing")
+    held.acquire()
+    try:
+        assert main(_argv(artifacts, worktree)) == 0
+    finally:
+        held.release()
+
+    assert "within one interval" in capsys.readouterr().out
+
+
+def test_a_missing_artifacts_directory_exits_nonzero(worktree: Path, tmp_path: Path) -> None:
+    """A typo'd --artifacts otherwise loops forever collecting nothing."""
+    assert main(_argv(tmp_path / "typo", worktree)) == 2
+
+    assert not (worktree / LOCK_FILENAME).exists()
+
+
+@pytest.mark.parametrize("source", ["a/b", "a\\b", "..", "."])
+def test_a_source_that_is_not_one_segment_is_rejected(
+    artifacts: Path, worktree: Path, source: str
+) -> None:
+    """A separator nests the snapshot silently; ``..`` escapes the worktree."""
+    argv = _argv(artifacts, worktree)
+    argv[argv.index("l40s")] = source
+
+    with pytest.raises(SystemExit):
+        main(argv)
 
 
 def test_wrong_branch_exits_nonzero(artifacts: Path, worktree: Path) -> None:

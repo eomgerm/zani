@@ -11,7 +11,7 @@ from zani_ai.engagement.contracts import (
     DatasetContractError,
     load_dataset_contract,
 )
-from zani_ai.engagement.locking import DirectoryLock
+from zani_ai.engagement.locking import DirectoryLock, LockUnavailableError
 from zani_ai.engagement.publish import (
     DEFAULT_RESULTS_BRANCH,
     LOCK_FILENAME,
@@ -51,6 +51,25 @@ def _sample_fps(value: str) -> float:
     if not 0 < rate <= 120:
         raise argparse.ArgumentTypeError(f"sample-fps must be in (0, 120], got {rate}")
     return rate
+
+
+def _source(value: str) -> str:
+    """argparse type for ``--source``: exactly one path segment.
+
+    The label is the top-level directory of the snapshot inside the branch. A
+    separator would nest it where nobody looks for it, ``.`` would stage every
+    other box's directory, and ``..`` writes outside the worktree before failing
+    on the ``git add`` pathspec.
+    """
+    if not value:
+        raise argparse.ArgumentTypeError("source must not be empty")
+    if "/" in value or "\\" in value:
+        raise argparse.ArgumentTypeError(
+            f"source must be one path segment without separators, got {value!r}"
+        )
+    if value in {".", ".."}:
+        raise argparse.ArgumentTypeError(f"source must name a directory, got {value!r}")
+    return value
 
 
 def _interval(value: str) -> float:
@@ -329,25 +348,45 @@ def _train(args: argparse.Namespace) -> int:
 def _publish_results(args: argparse.Namespace) -> int:
     """Publish metrics once, or every ``--interval`` seconds until killed."""
     source_label = args.source or default_source_label()
+    # Checked before anything is locked or written: collect_metrics returns an
+    # empty list for a root that is not there, so a typo'd --artifacts would
+    # otherwise buy a loop that logs nothing and publishes nothing forever.
+    if not args.artifacts.is_dir():
+        raise ValueError(f"--artifacts is not an existing directory: {args.artifacts}")
     # Both checks belong outside the loop: a wrong branch or a second publisher
     # is a mistake to report now, not something to retry every interval.
     require_results_branch(args.worktree, args.branch)
-    with DirectoryLock(
+    lock = DirectoryLock(
         args.worktree / LOCK_FILENAME,
         busy_message=(
             f"another publisher already holds {args.worktree / LOCK_FILENAME}; "
             "stop it before starting a second one"
         ),
-    ):
-        if args.interval == 0:
-            written = publish_once(
-                artifacts_root=args.artifacts,
-                worktree=args.worktree,
-                source_label=source_label,
-                branch=args.branch,
+    )
+    if args.interval == 0:
+        try:
+            with lock:
+                written = publish_once(
+                    artifacts_root=args.artifacts,
+                    worktree=args.worktree,
+                    source_label=source_label,
+                    branch=args.branch,
+                )
+        except LockUnavailableError:
+            # The documented setup runs the periodic publisher too, and it holds
+            # the lock for its whole life. This snapshot is on disk and that loop
+            # will send it, so a single shot has nothing to report as a failure;
+            # saying otherwise teaches the operator to ignore the message.
+            print(
+                f"a periodic publisher holds {lock.path}; "
+                "it will publish this snapshot within one interval"
             )
-            print(f"published {written} file(s)")
             return 0
+        print(f"published {written} file(s)")
+        return 0
+    # A second loop in one worktree is a real misconfiguration: two processes
+    # would race on the same index.lock. That one stays fatal.
+    with lock:
         run_forever(
             artifacts_root=args.artifacts,
             worktree=args.worktree,
@@ -510,7 +549,8 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--worktree", type=Path, required=True)
     publish.add_argument(
         "--source",
-        help="path prefix inside the branch; defaults to the short hostname",
+        type=_source,
+        help="one path segment inside the branch; defaults to the short hostname",
     )
     publish.add_argument("--branch", default=DEFAULT_RESULTS_BRANCH)
     publish.add_argument(
