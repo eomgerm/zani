@@ -103,8 +103,7 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                 return CollectAttentionEventResult.recordedButSuperseded();
             }
 
-            applyToCoachingState(sessionId, participantId, command.signal());
-            attentionStatePort.recordAppliedOffsetMs(sessionId, participantId, observedOffsetMs, CURRENT_STATE_TTL);
+            applyToCoachingState(sessionId, participantId, command.signal(), observedOffsetMs);
         } catch (RuntimeException exception) {
             // 멱등 표시만 남으면 재시도가 "이미 처리했다"는 거짓 성공을 받고 그 관측이 영영 사라진다.
             clearMarkerQuietly(sessionId, participantId, command.clientEventId());
@@ -118,10 +117,14 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
      *
      * <p>3·4단계와 {@code CAMERA_OFF} 는 그 자리에서 확정되고, 저참여와 {@code UNMEASURABLE} 은 3연속이어야 한다. 저참여 3연속은 상태를 바로 정하지 않는다 — 이해
      * 확인 응답이 와야 CONFUSED·MISSED·NON_RESPONSE 중 무엇인지 갈린다(§2).
+     *
+     * <p>연속 카운터와 반영 지점은 저장소가 한 번에 쓴다. 뒤이은 상태 기록이 실패하면 이 관측의 상태 확정은 잃지만, 10초 뒤 다음 관측이 곧바로 다시 확정한다. 카운터를 두 번 올리는 쪽은 그렇게
+     * 저절로 낫지 않는다 — 3연속이 관측 두 건으로 앞당겨진 채 남는다.
      */
-    private void applyToCoachingState(long sessionId, long participantId, DetectionSignal signal) {
-        DetectionRunCounters counters = attentionStatePort.advanceRun(
-                sessionId, participantId, DetectionRunTransition.of(signal), RUN_COUNTER_TTL);
+    private void applyToCoachingState(
+            long sessionId, long participantId, DetectionSignal signal, long observedOffsetMs) {
+        DetectionRunCounters counters = attentionStatePort.applyObservation(
+                sessionId, participantId, DetectionRunTransition.of(signal), observedOffsetMs, RUN_COUNTER_TTL);
 
         Optional<AttentionState> confirmed = signal.outcome() == DetectorOutcome.UNMEASURABLE
                 ? unmeasurableStateWhenRunComplete(counters)

@@ -174,10 +174,8 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void countsUpAndArmsTheTtlInOneStep() {
-        DetectionRunCounters first = adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
-        DetectionRunCounters second = adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
+        DetectionRunCounters first = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 10_000L);
+        DetectionRunCounters second = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 20_000L);
 
         assertEquals(1, first.lowEngagement());
         assertEquals(2, second.lowEngagement());
@@ -189,11 +187,9 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void keepsACounterWithoutChangingItAndStillRefreshesItsTtl() {
-        adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), RUN_TTL);
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 10_000L);
 
-        DetectionRunCounters kept = adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT), RUN_TTL);
+        DetectionRunCounters kept = apply(new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT), 20_000L);
 
         assertEquals(1, kept.lowEngagement());
         assertEquals(1, kept.unmeasurable());
@@ -204,11 +200,9 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void clearsACounterOnReset() {
-        adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), RUN_TTL);
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), 10_000L);
 
-        DetectionRunCounters reset = adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.RESET, RunStep.RESET), RUN_TTL);
+        DetectionRunCounters reset = apply(new DetectionRunTransition(RunStep.RESET, RunStep.RESET), 20_000L);
 
         assertEquals(0, reset.lowEngagement());
         assertEquals(0, reset.unmeasurable());
@@ -217,8 +211,7 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void clearsBothCountersWhenAPromptCloses() {
-        adapter.advanceRun(
-                SESSION_ID, PARTICIPANT_ID, new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), RUN_TTL);
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), 10_000L);
 
         adapter.resetRuns(SESSION_ID, PARTICIPANT_ID);
 
@@ -227,15 +220,31 @@ class AttentionStateRedisAdapterTest {
     }
 
     @Test
-    void remembersTheLastAppliedJudgementOffset() {
+    void remembersTheLastAppliedJudgementOffsetInTheSameStepAsTheCounters() {
         assertTrue(adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).isEmpty());
 
-        adapter.recordAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID, 70_000L, Duration.ofSeconds(30));
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 70_000L);
 
+        // 카운터만 오르고 반영 지점이 빠지면, 재시도가 그 사실을 몰라 같은 관측으로 카운터를 한 번 더 올린다.
         assertEquals(
                 70_000L, adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).getAsLong());
         Long ttl = redisTemplate.getExpire(APPLIED_KEY);
         assertNotNull(ttl);
-        assertTrue(ttl > 0 && ttl <= 30, "TTL should be armed, was " + ttl);
+        assertTrue(ttl > 0 && ttl <= 120, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void keepsTheAppliedOffsetWhenAPromptClearsTheCounters() {
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), 30_000L);
+
+        adapter.resetRuns(SESSION_ID, PARTICIPANT_ID);
+
+        // 프롬프트에 답했다고 어디까지 반영했는지를 잊으면, 뒤늦게 도착한 옛 관측이 다시 반영된다.
+        assertEquals(
+                30_000L, adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).getAsLong());
+    }
+
+    private DetectionRunCounters apply(DetectionRunTransition transition, long observedOffsetMs) {
+        return adapter.applyObservation(SESSION_ID, PARTICIPANT_ID, transition, observedOffsetMs, RUN_TTL);
     }
 }

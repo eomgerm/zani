@@ -299,6 +299,22 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
+    void doesNotAdvanceTheRunTwiceWhenAnEarlierAttemptDiedAfterTheCounterMoved() {
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        service.collect(next(DetectorOutcome.UNMEASURABLE));
+        CollectAttentionEventCommand third = next(DetectorOutcome.UNMEASURABLE);
+        statePort.failRecordState = true;
+        assertThrows(IllegalStateException.class, () -> service.collect(third));
+
+        statePort.failRecordState = false;
+        CollectAttentionEventResult retry = service.collect(third);
+
+        // 카운터가 4가 되면 관측 세 건이 아니라 두 건 반이 3연속을 만든 셈이 된다. 반영 지점이 카운터와 같이 쓰이기에 걸린다.
+        assertTrue(retry.supersededByNewerJudgement());
+        assertEquals(3, statePort.lastCounters.unmeasurable());
+    }
+
+    @Test
     void rejectsAnObservationSentByTheInstructor() {
         resolveParticipant.role = SessionParticipantRole.INSTRUCTOR;
 
@@ -403,6 +419,7 @@ class CollectAttentionEventServiceTest {
         private DetectionRunCounters counters = DetectionRunCounters.none();
         private DetectionRunCounters lastCounters = DetectionRunCounters.none();
         private boolean failAdvance;
+        private boolean failRecordState;
 
         @Override
         public boolean registerEvent(long sessionId, long participantId, String clientEventId, Duration ttl) {
@@ -416,6 +433,9 @@ class CollectAttentionEventServiceTest {
 
         @Override
         public void recordCurrentState(long sessionId, long participantId, AttentionSnapshot snapshot, Duration ttl) {
+            if (failRecordState) {
+                throw new IllegalStateException("redis down");
+            }
             currentState.put(participantId, snapshot);
         }
 
@@ -435,15 +455,21 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
-        public DetectionRunCounters advanceRun(
-                long sessionId, long participantId, DetectionRunTransition transition, Duration ttl) {
+        public DetectionRunCounters applyObservation(
+                long sessionId,
+                long participantId,
+                DetectionRunTransition transition,
+                long observedOffsetMs,
+                Duration ttl) {
             if (failAdvance) {
                 throw new IllegalStateException("redis down");
             }
+            // 실제 어댑터는 카운터와 반영 지점을 Lua 한 번으로 쓴다. 갈라지면 재시도가 카운터를 두 번 올린다.
             counters = new DetectionRunCounters(
                     apply(transition.lowEngagement(), counters.lowEngagement()),
                     apply(transition.unmeasurable(), counters.unmeasurable()));
             lastCounters = counters;
+            appliedOffsets.put(participantId, observedOffsetMs);
             return counters;
         }
 
@@ -465,11 +491,6 @@ class CollectAttentionEventServiceTest {
         public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
             Long value = appliedOffsets.get(participantId);
             return value == null ? OptionalLong.empty() : OptionalLong.of(value);
-        }
-
-        @Override
-        public void recordAppliedOffsetMs(long sessionId, long participantId, long offsetMs, Duration ttl) {
-            appliedOffsets.put(participantId, offsetMs);
         }
     }
 }

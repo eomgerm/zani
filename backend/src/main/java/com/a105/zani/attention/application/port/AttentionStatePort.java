@@ -51,13 +51,18 @@ public interface AttentionStatePort {
     void includeInDenominator(long sessionId, long participantId);
 
     /**
-     * 연속 카운터 두 개에 주어진 조작을 적용하고 결과를 돌려준다(§4.1).
+     * 연속 카운터 두 개에 주어진 조작을 적용하고, 어디까지 반영했는지를 함께 기록한다(§4.1).
      *
      * <p>어떤 조작을 할지는 도메인({@link DetectionRunTransition})이 정하고, 저장소는 그것을 <b>한 번에</b> 적용하기만 한다. 읽고-쓰기로 나누면 같은 참가자의 판정이 겹쳐
      * 들어올 때 읽은 값이 서로를 덮어써 연속 횟수가 실제보다 적게 세어진다.
+     *
+     * <p>반영 지점을 따로 쓰지 않고 여기서 같이 쓰는 이유는, 카운터만 오르고 반영 지점이 빠지면 재시도가 그 사실을 알 길이 없어 같은 관측으로 카운터를 한 번 더 올리기 때문이다. 3연속이 관측 두
+     * 건으로 앞당겨진다.
+     *
+     * @param observedOffsetMs 이 관측이 반영된 지점. 뒤이어 온 더 옛 판정을 걸러내는 기준이 된다
      */
-    DetectionRunCounters advanceRun(
-            long sessionId, long participantId, DetectionRunTransition transition, Duration ttl);
+    DetectionRunCounters applyObservation(
+            long sessionId, long participantId, DetectionRunTransition transition, long observedOffsetMs, Duration ttl);
 
     /**
      * 마지막으로 반영한 판정 창의 종료 시각(ms). 아직 없으면 비어 있다.
@@ -65,9 +70,6 @@ public interface AttentionStatePort {
      * <p>늦게 도착한 옛 판정이 최신 상태를 덮어쓰지 않게 하는 데 쓴다.
      */
     OptionalLong lastAppliedOffsetMs(long sessionId, long participantId);
-
-    /** 마지막으로 반영한 판정 창의 종료 시각(ms)을 기록한다. */
-    void recordAppliedOffsetMs(long sessionId, long participantId, long offsetMs, Duration ttl);
 
     /**
      * 연속 카운터 두 개를 모두 0으로 되돌린다.

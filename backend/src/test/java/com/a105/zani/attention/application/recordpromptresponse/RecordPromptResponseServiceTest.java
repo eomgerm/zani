@@ -501,8 +501,12 @@ class RecordPromptResponseServiceTest {
         private boolean runsReset;
 
         @Override
-        public DetectionRunCounters advanceRun(
-                long sessionId, long participantId, DetectionRunTransition transition, Duration ttl) {
+        public DetectionRunCounters applyObservation(
+                long sessionId,
+                long participantId,
+                DetectionRunTransition transition,
+                long observedOffsetMs,
+                Duration ttl) {
             return DetectionRunCounters.none();
         }
 
@@ -516,9 +520,6 @@ class RecordPromptResponseServiceTest {
         public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
             return OptionalLong.empty();
         }
-
-        @Override
-        public void recordAppliedOffsetMs(long sessionId, long participantId, long offsetMs, Duration ttl) {}
 
         private void failFast() {
             if (failWrites) {

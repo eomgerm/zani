@@ -99,8 +99,12 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public DetectionRunCounters advanceRun(
-                        long sessionId, long participantId, DetectionRunTransition transition, Duration ttl) {
+                public DetectionRunCounters applyObservation(
+                        long sessionId,
+                        long participantId,
+                        DetectionRunTransition transition,
+                        long observedOffsetMs,
+                        Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
 
@@ -111,11 +115,6 @@ class AttentionEventStoreFailureIntegrationTest {
 
                 @Override
                 public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
-                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
-                }
-
-                @Override
-                public void recordAppliedOffsetMs(long sessionId, long participantId, long offsetMs, Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
             };
