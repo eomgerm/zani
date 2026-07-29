@@ -2,46 +2,67 @@ package com.a105.zani.attention.application.collect;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.a105.zani.attention.application.exception.InvalidDetectionTimelineException;
 import com.a105.zani.attention.application.exception.NotSessionStudentException;
+import com.a105.zani.attention.application.exception.UnsupportedDetectorContractException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.domain.model.AttentionState;
+import com.a105.zani.attention.domain.model.DetectionRecord;
+import com.a105.zani.attention.domain.model.DetectionRunCounters;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
+import com.a105.zani.attention.domain.model.DetectionSignal;
+import com.a105.zani.attention.domain.model.DetectorOutcome;
+import com.a105.zani.attention.domain.repository.DetectionRecordRepository;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantResult;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantUseCase;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
- * 학생 브라우저가 보낸 10초 판정을 받아 Redis 현재 상태로 반영한다.
+ * 브라우저 검출기가 10초마다 보낸 관측을 받아, 기록으로 남기고 학생 상태를 파생한다.
  *
- * <p>세션 멤버십 확인은 session 도메인의 읽기 유스케이스에 맡긴다(비멤버 403, 종료된 세션 409). 판정을 만드는 쪽은 학생뿐이라 강사 참가자는 거절한다. 같은 clientEventId가 다시 오면
- * 상태를 건드리지 않고 멱등하게 성공으로 응답한다.
+ * <p>서버가 받는 것은 <b>관측(검출기 출력 7종)</b>이고, 집계에 쓰는 <b>학생 상태 6종</b>은 서버가 만든다(확정 문서 §1·§2). 저참여와 {@code UNMEASURABLE} 은 3연속이어야
+ * 확정되므로 연속 카운터를 서버가 들고 있는다(§4.1).
+ *
+ * <p>DB 쓰기 하나뿐이라 이 경로를 트랜잭션으로 감싸지 않는다. 감싸면 잦은 관측이 Redis 왕복 동안 DB 커넥션을 붙든다. presence heartbeat 가 같은 이유로 트랜잭션을 쓰지 않는다.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CollectAttentionEventService implements CollectAttentionEventUseCase {
 
-    /**
-     * 현재 상태 키의 TTL. 판정 주기(10초)보다 넉넉히 잡아 짧은 지연에도 상태가 비지 않게 한다.
-     *
-     * <p>티켓 본문의 6초는 판정 단위가 "6초 지속"이던 시절의 값이라, 10초 판정에서는 다음 판정이 도착하기 전에 키가 만료된다. presence TTL(30초)과 같은 값을 써서 분자와 분모가 같은
-     * 생존 구간을 갖게 한다. 판정 상태가 presence보다 먼저 사라지면 비율이 실제보다 낮게 나온다.
-     */
+    /** 현재 상태 키의 TTL. presence TTL 과 같은 값이라 분자와 분모가 같은 생존 구간을 갖는다(§6.2). */
     private static final Duration CURRENT_STATE_TTL = Duration.ofSeconds(30);
 
-    /** 코칭 트리거 관찰 창(확정 문서 §4의 5분 슬라이딩 윈도우). */
+    /** 분자에 남는 기간(§7.3). 프롬프트 쿨타임과 같아 "띄울 만한 상태였다"가 곧 "분자에 있다"가 된다. */
     private static final Duration SIGNIFICANT_WINDOW = Duration.ofMinutes(5);
 
-    /** 멱등 판정에 쓰는 clientEventId 기록 보관 기간. 관찰 창을 넘겨 잡아 늦은 재시도도 걸러낸다. */
+    /**
+     * 연속 카운터 보관 기간. 판정이 10초마다 오므로 몇 주기를 건너뛰어도 이어지도록 넉넉히 잡는다.
+     *
+     * <p>짧게 잡으면 네트워크가 잠깐 흔들린 학생의 카운터가 0으로 돌아가 프롬프트가 늦어지고, 길게 잡으면 한참 뒤 재입장한 학생이 옛 카운터를 물려받는다.
+     */
+    private static final Duration RUN_COUNTER_TTL = Duration.ofMinutes(2);
+
+    /** 멱등 판정에 쓰는 clientEventId 기록 보관 기간. */
     private static final Duration EVENT_ID_TTL = Duration.ofMinutes(10);
 
+    /** 클라이언트 시계가 조금 빠른 것은 받아 준다. 이보다 미래면 시간선이 깨진 것으로 본다. */
+    private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(1);
+
     private final ResolveSessionParticipantUseCase resolveSessionParticipantUseCase;
+    private final DetectionRecordRepository detectionRecordRepository;
     private final AttentionStatePort attentionStatePort;
+    private final DetectorContractProperties detectorContract;
     private final Clock clock;
 
     @Override
@@ -49,53 +70,160 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
         ResolveSessionParticipantResult participant = resolveSessionParticipantUseCase.resolve(
                 new ResolveSessionParticipantQuery(command.sessionId(), command.userId()));
 
-        // 판정은 학생만 만든다(확정 문서 §1). 강사 이벤트가 섞이면 분자에만 끼어 코칭 비율이 부풀어 오른다.
+        // 판정은 학생만 만든다(§2). 강사 관측이 섞이면 분자에만 끼어 코칭 비율이 부풀어 오른다.
         if (participant.role() != SessionParticipantRole.STUDENT) {
             throw new NotSessionStudentException();
         }
+        validateContract(command);
+        validateTimeline(participant.sessionStartedAt(), command);
 
         long sessionId = command.sessionId();
         long participantId = participant.participantId();
+        long observedOffsetMs = offsetMs(participant.sessionStartedAt(), command.observedAt());
 
-        // 멱등 표시를 먼저 심는다. 상태를 쓴 뒤에 심으면 두 요청이 겹칠 때 같은 판정이 두 번 반영된다.
         if (!attentionStatePort.registerEvent(sessionId, participantId, command.clientEventId(), EVENT_ID_TTL)) {
-            log.debug("이미 처리한 판정 이벤트입니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
+            log.debug("이미 처리한 판정입니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
             return CollectAttentionEventResult.alreadyRecorded();
         }
 
-        boolean stateRecorded = false;
         try {
-            // 기록 시각은 서버 시계를 쓴다. 클라이언트 시계가 틀어져 있으면 집계 창이 통째로 어긋난다.
-            attentionStatePort.recordCurrentState(
-                    sessionId,
-                    participantId,
-                    new AttentionSnapshot(command.state(), command.signalQuality(), clock.instant()),
-                    CURRENT_STATE_TTL);
-            stateRecorded = true;
+            // 기록이 먼저다. 집계는 30초면 사라지지만 이 행은 수업 후 리포트의 근거로 남는다.
+            boolean stored = detectionRecordRepository.saveIfNew(
+                    record(sessionId, participantId, command, participant, observedOffsetMs));
 
-            // 트리거 분자는 "5분 안에 한 번이라도"라서 현재 상태와 보관 기간이 다르다. 별도 흔적을 남긴다.
-            if (command.state().isSignificant()) {
-                attentionStatePort.markSignificant(sessionId, participantId, command.state(), SIGNIFICANT_WINDOW);
+            // 멱등 표시가 TTL 로 사라진 뒤 도착한 재시도는 여기서 걸린다. 그냥 두면 같은 관측이 카운터를 두 번 올린다.
+            if (!stored) {
+                log.debug("이미 기록된 판정입니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
+                return CollectAttentionEventResult.alreadyRecorded();
             }
+
+            if (isSupersededByNewerJudgement(sessionId, participantId, observedOffsetMs)) {
+                // 늦게 도착한 옛 관측이 최신 상태를 덮어쓰면 학생이 과거로 되돌아간다. 기록만 남기고 집계는 건드리지 않는다.
+                log.debug("더 최신 관측이 이미 반영됐습니다. sessionId={}, offsetMs={}", sessionId, observedOffsetMs);
+                return CollectAttentionEventResult.recordedButSuperseded();
+            }
+
+            applyToCoachingState(sessionId, participantId, command.signal());
+            attentionStatePort.recordAppliedOffsetMs(sessionId, participantId, observedOffsetMs, CURRENT_STATE_TTL);
         } catch (RuntimeException exception) {
-            // 아무것도 못 쓴 채 멱등 표시만 남으면, 재시도가 "이미 처리했다"는 거짓 응답을 받고 그 창의 판정이 영영 사라진다.
-            // 반대로 상태를 이미 쓴 뒤라면 표시를 남긴다. 지웠다가는 뒤늦게 도착한 재시도가
-            // 그 사이 들어온 더 최신 판정을 옛 판정으로 덮어쓴다. 유의 흔적 한 건을 잃는 쪽이 낫다.
-            if (!stateRecorded) {
-                clearEventQuietly(sessionId, participantId, command.clientEventId());
-            }
+            // 멱등 표시만 남으면 재시도가 "이미 처리했다"는 거짓 성공을 받고 그 관측이 영영 사라진다.
+            clearMarkerQuietly(sessionId, participantId, command.clientEventId());
             throw exception;
         }
-
         return CollectAttentionEventResult.recorded();
     }
 
-    private void clearEventQuietly(long sessionId, long participantId, String clientEventId) {
+    /**
+     * 관측을 학생 상태로 바꿔 집계에 반영한다.
+     *
+     * <p>3·4단계와 {@code CAMERA_OFF} 는 그 자리에서 확정되고, 저참여와 {@code UNMEASURABLE} 은 3연속이어야 한다. 저참여 3연속은 상태를 바로 정하지 않는다 — 이해
+     * 확인 응답이 와야 CONFUSED·MISSED·NON_RESPONSE 중 무엇인지 갈린다(§2).
+     */
+    private void applyToCoachingState(long sessionId, long participantId, DetectionSignal signal) {
+        DetectionRunCounters counters = attentionStatePort.advanceRun(
+                sessionId, participantId, DetectionRunTransition.of(signal), RUN_COUNTER_TTL);
+
+        Optional<AttentionState> confirmed = signal.outcome() == DetectorOutcome.UNMEASURABLE
+                ? unmeasurableStateWhenRunComplete(counters)
+                : signal.outcome().immediateState();
+
+        confirmed.ifPresent(state -> {
+            attentionStatePort.recordCurrentState(
+                    sessionId,
+                    participantId,
+                    new AttentionSnapshot(state, observedSignalQuality(state), clock.instant()),
+                    CURRENT_STATE_TTL);
+            if (state.isSignificant()) {
+                attentionStatePort.markSignificant(sessionId, participantId, state, SIGNIFICANT_WINDOW);
+            }
+        });
+    }
+
+    /**
+     * {@code UNMEASURABLE} 은 3연속일 때만 학생 상태가 된다(§7.3).
+     *
+     * <p>고개를 크게 돌리거나 자세를 고쳐 앉는 것만으로도 그 10초의 검출률이 70%에 못 미친다. 한 건으로 분자에 넣으면 잠깐 몸을 움직인 학생이 이탈자로 계산된다.
+     */
+    private Optional<AttentionState> unmeasurableStateWhenRunComplete(DetectionRunCounters counters) {
+        return counters.unmeasurableRunComplete() ? Optional.of(AttentionState.UNMEASURABLE) : Optional.empty();
+    }
+
+    /** 확정된 상태의 신호 품질. 관측이 아예 없는 상태는 0 이다. */
+    private double observedSignalQuality(AttentionState state) {
+        return state == AttentionState.GOOD ? 1.0d : 0.0d;
+    }
+
+    /** 이 관측보다 더 최신 관측이 이미 반영됐는지. 같은 시각이면 재전송으로 보고 반영하지 않는다. */
+    private boolean isSupersededByNewerJudgement(long sessionId, long participantId, long observedOffsetMs) {
+        OptionalLong applied = attentionStatePort.lastAppliedOffsetMs(sessionId, participantId);
+        return applied.isPresent() && applied.getAsLong() >= observedOffsetMs;
+    }
+
+    private void clearMarkerQuietly(long sessionId, long participantId, String clientEventId) {
         try {
             attentionStatePort.clearEvent(sessionId, participantId, clientEventId);
         } catch (RuntimeException exception) {
-            // 되돌리기까지 실패하면 표시는 TTL로 사라진다. 원래 실패를 가리지 않도록 여기서 삼킨다.
-            log.warn("판정 이벤트 표시를 되돌리지 못했습니다. sessionId={}, clientEventId={}", sessionId, clientEventId, exception);
+            log.warn("멱등 표시를 되돌리지 못했습니다. TTL 로 사라집니다. sessionId={}", sessionId, exception);
         }
+    }
+
+    private DetectionRecord record(
+            long sessionId,
+            long participantId,
+            CollectAttentionEventCommand command,
+            ResolveSessionParticipantResult participant,
+            long observedOffsetMs) {
+        Long windowStartedOffsetMs = command.windowStartedAt() == null
+                ? null
+                : offsetMs(participant.sessionStartedAt(), command.windowStartedAt());
+        return new DetectionRecord(
+                sessionId,
+                participantId,
+                command.signal(),
+                observedOffsetMs,
+                windowStartedOffsetMs,
+                command.signalQuality(),
+                command.featureSchemaVersion(),
+                command.engineVersion(),
+                command.clientEventId());
+    }
+
+    /**
+     * 서버가 해석할 수 있는 검출기 계약인지 본다.
+     *
+     * <p>다른 특징 추출 계약이나 다른 모델이 낸 판정은 같은 기준으로 읽을 수 없다. 그대로 받으면 서로 다른 잣대로 잰 값이 한 집계에 섞인다.
+     */
+    private void validateContract(CollectAttentionEventCommand command) {
+        if (!detectorContract.acceptsFeatureSchema(command.featureSchemaVersion())
+                || !detectorContract.acceptsEngine(command.engineVersion())) {
+            // 구버전 FE 한 반이면 분당 수백 줄이 된다. 잘못된 요청은 다른 4xx 와 같이 debug 로 남기고 400 응답 자체를 신호로 쓴다.
+            log.debug(
+                    "지원하지 않는 검출기 계약입니다. featureSchemaVersion={}, engineVersion={}",
+                    command.featureSchemaVersion(),
+                    command.engineVersion());
+            throw new UnsupportedDetectorContractException();
+        }
+    }
+
+    /**
+     * 관측 시각이 수업 시간선과 맞는지 본다.
+     *
+     * <p>어긋난 값을 눌러 담으면 서로 다른 관측이 같은 오프셋을 갖게 되고 순서 판단이 무너진다. 미래 쪽도 막는다 — 시계가 크게 빠른 브라우저는 늘 "가장 최신"이 되어 이후 정상 관측을 전부
+     * 밀어낸다.
+     */
+    private void validateTimeline(Instant sessionStartedAt, CollectAttentionEventCommand command) {
+        Instant futureLimit = clock.instant().plus(FUTURE_TOLERANCE);
+        boolean windowBroken = command.windowStartedAt() != null
+                && (command.windowStartedAt().isBefore(sessionStartedAt)
+                        || command.observedAt().isBefore(command.windowStartedAt()));
+        if (command.observedAt().isBefore(sessionStartedAt)
+                || command.observedAt().isAfter(futureLimit)
+                || windowBroken) {
+            throw new InvalidDetectionTimelineException();
+        }
+    }
+
+    private long offsetMs(Instant sessionStartedAt, Instant at) {
+        return Duration.between(sessionStartedAt, at).toMillis();
     }
 }

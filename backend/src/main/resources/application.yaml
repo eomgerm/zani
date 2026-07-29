@@ -60,6 +60,14 @@ gms:
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
 
+attention:
+  detector:
+    # 서버가 해석할 수 있는 검출기 계약. 배포 계약은 확정 문서 §3.1 의 mediapipe_98_v1 이다.
+    # 비워 두면 버전을 따지지 않는다(로컬·시연 편의).
+    supported-feature-schema-versions:
+      - mediapipe_98_v1
+    supported-engine-versions: []
+
 livekit:
   url: ${LIVEKIT_URL:}
   api-key: ${LIVEKIT_API_KEY:}
