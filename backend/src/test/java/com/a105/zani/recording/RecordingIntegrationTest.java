@@ -153,7 +153,8 @@ class RecordingIntegrationTest {
                 null,
                 null,
                 null,
-                List.of());
+                List.of(),
+                SESSION_START);
         webhookUseCase.process("{}", "signature");
     }
 
@@ -165,7 +166,18 @@ class RecordingIntegrationTest {
             String trackSid,
             List<EgressFileResult> files) {
         webhookFixture.nextEvent = new RecordingWebhookEvent(
-                eventKey(eventId), type, sessionId, null, null, null, egressId, complete, trackSid, null, files);
+                eventKey(eventId),
+                type,
+                sessionId,
+                null,
+                null,
+                null,
+                egressId,
+                complete,
+                trackSid,
+                null,
+                files,
+                SESSION_START);
         webhookUseCase.process("{}", "signature");
     }
 

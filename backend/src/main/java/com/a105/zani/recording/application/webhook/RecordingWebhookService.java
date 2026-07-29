@@ -1,6 +1,7 @@
 package com.a105.zani.recording.application.webhook;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,8 @@ import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.domain.model.RecordingFile;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.trackmediaconnection.MediaConnectionCommand;
+import com.a105.zani.session.application.trackmediaconnection.TrackMediaConnectionUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
@@ -50,6 +53,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository sessionParticipantRepository;
     private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
+    private final TrackMediaConnectionUseCase trackMediaConnectionUseCase;
     private final Clock clock;
 
     @Override
@@ -63,18 +67,31 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             log.debug("Duplicate webhook event {} ignored", event.eventId());
             return;
         }
-        if (isAudioStreamEgress(event)) {
+        // egress 이벤트에만 해당하는 판정이다. participant_* 는 egressId 가 없어 레지스트리를 조회할 키조차 없다.
+        if (event.egressId() != null && isAudioStreamEgress(event)) {
             log.debug("Audio stream egress event {} needs no recording handling", event.eventId());
             eventStore.markProcessed(event.eventId());
             return;
         }
         switch (event.type()) {
+            case PARTICIPANT_JOINED -> trackMediaConnectionUseCase.confirmJoined(connectionOf(event));
+            case PARTICIPANT_LEFT -> trackMediaConnectionUseCase.recordLeft(connectionOf(event));
             case TRACK_PUBLISHED -> handleTrackPublished(event);
             case EGRESS_STARTED, EGRESS_UPDATED -> handleEgressProgress(event);
             case EGRESS_ENDED -> handleEgressEnded(event);
             default -> log.debug("Webhook event {} needs no handling", event.type());
         }
         eventStore.markProcessed(event.eventId());
+    }
+
+    /**
+     * 참가 관계 갱신은 session 도메인의 몫이라 그 도메인이 연 UseCase로 넘긴다(DDD 가이드 §12). identity 해석도 session 도메인이 한다.
+     *
+     * <p>이벤트에 발생 시각이 없을 때만 처리 시점 시계로 대체한다. 재전송된 webhook은 원래 발생보다 늦게 도착하므로 수신 시각을 그대로 쓰면 출석 시각이 밀린다.
+     */
+    private MediaConnectionCommand connectionOf(RecordingWebhookEvent event) {
+        Instant occurredAt = event.occurredAt() != null ? event.occurredAt() : clock.instant();
+        return new MediaConnectionCommand(event.sessionId(), event.participantIdentity(), occurredAt);
     }
 
     /**
@@ -153,7 +170,15 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private void saveFiles(Recording recording, RecordingWebhookEvent event) {
         Session session =
                 sessionRepository.findById(recording.sessionId()).orElseThrow(RecordingNotReadyException::new);
-        long timelineStartMs = session.startedAt().toEpochMilli();
+        // 시작 시각은 수업이 실제로 시작될 때 정해진다. Egress는 시작 이후에만 도는 것이 정상이지만, 그렇지 않은
+        // 페이로드가 오더라도 offset을 0 기준으로 지어내지 않고 "알 수 없음"으로 남긴다(후처리가 누락 구간으로 다룬다).
+        Instant sessionStart = session.startedAt();
+        if (sessionStart == null) {
+            log.warn(
+                    "Egress files for session {} that never started; storing them without timeline offsets",
+                    recording.sessionId());
+        }
+        Long timelineStartMs = sessionStart == null ? null : sessionStart.toEpochMilli();
         boolean trackSidTaken = false;
         for (EgressFileResult file : event.files()) {
             String relativePath = sessionRelativePath(file.filepath(), recording.sessionId());
@@ -170,8 +195,8 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
                 continue;
             }
             // 시작/종료 offset은 수업 타임라인 기준이다. 파일별 구간 사이의 공백이 곧 누락 구간의 근거가 된다.
-            Long startedOffset = file.startedAtMs() > 0 ? Math.max(0, file.startedAtMs() - timelineStartMs) : null;
-            Long endedOffset = file.endedAtMs() > 0 ? Math.max(0, file.endedAtMs() - timelineStartMs) : null;
+            Long startedOffset = offsetOf(file.startedAtMs(), timelineStartMs);
+            Long endedOffset = offsetOf(file.endedAtMs(), timelineStartMs);
             // UK(recording_id, livekit_track_sid)는 한 녹화에 트랙당 한 행만 허용한다. Track Egress는 트랙당 파일 하나가
             // 정상이며, 세그먼트가 여러 개로 오면 첫 행만 trackSid를 갖고 나머지는 null로 남긴다(MySQL은 NULL을 중복으로 보지 않음).
             String trackSid = trackSidTaken ? null : event.egressTrackSid();
@@ -185,6 +210,14 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
                     startedOffset,
                     endedOffset));
         }
+    }
+
+    /** 수업 타임라인 기준 offset. 파일 시각이 없거나 수업 시작 시각을 모르면 기록하지 않는다. */
+    private static Long offsetOf(long fileAtMs, Long timelineStartMs) {
+        if (fileAtMs <= 0 || timelineStartMs == null) {
+            return null;
+        }
+        return Math.max(0, fileAtMs - timelineStartMs);
     }
 
     private Recording findRecording(String egressId) {

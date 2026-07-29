@@ -27,6 +27,8 @@ import com.a105.zani.recording.domain.model.TrackRecordingDecision;
 import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.trackmediaconnection.MediaConnectionCommand;
+import com.a105.zani.session.application.trackmediaconnection.TrackMediaConnectionUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -69,7 +71,8 @@ class RecordingWebhookServiceTest {
                 null,
                 null,
                 null,
-                List.of());
+                List.of(),
+                NOW);
     }
 
     private static RecordingWebhookEvent egressEvent(
@@ -79,7 +82,13 @@ class RecordingWebhookServiceTest {
             Boolean complete,
             List<EgressFileResult> files) {
         return new RecordingWebhookEvent(
-                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files);
+                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files, NOW);
+    }
+
+    private static RecordingWebhookEvent participantEvent(
+            String eventId, RecordingWebhookEventType type, String identity, Instant occurredAt) {
+        return new RecordingWebhookEvent(
+                eventId, type, SESSION_ID, identity, null, null, null, null, null, null, List.of(), occurredAt);
     }
 
     @BeforeEach
@@ -128,7 +137,10 @@ class RecordingWebhookServiceTest {
                         false,
                         SESSION_START,
                         SessionStatus.LIVE,
-                        SessionAnalysisStatus.NOT_STARTED));
+                        SessionAnalysisStatus.NOT_STARTED,
+                        null,
+                        null,
+                        null));
             }
 
             @Override
@@ -137,8 +149,23 @@ class RecordingWebhookServiceTest {
             }
 
             @Override
+            public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+                return Optional.empty();
+            }
+
+            @Override
             public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
                 // 이 테스트는 만료 세션 조회를 쓰지 않는다(자동 종료 스케줄러 전용 경로).
+                return List.of();
+            }
+
+            @Override
+            public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+                return List.of();
+            }
+
+            @Override
+            public List<Session> findNotePendingDueBefore(Instant dueBefore, int limit) {
                 return List.of();
             }
         };
@@ -159,6 +186,11 @@ class RecordingWebhookServiceTest {
                         .filter(p -> p.sessionId().equals(sessionId))
                         .sorted((a, b) -> Long.compare(a.id(), b.id()))
                         .toList();
+            }
+
+            @Override
+            public long countBySessionId(Long sessionId) {
+                return participantsById.size();
             }
 
             @Override
@@ -195,8 +227,27 @@ class RecordingWebhookServiceTest {
                 sessionRepository,
                 participantRepository,
                 audioStreamRegistry,
+                mediaConnections,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
+
+    /** 참가 관계 갱신은 session 도메인이 하므로, 여기서는 위임됐는지만 확인한다. */
+    private final List<MediaConnectionCommand> joined = new java.util.ArrayList<>();
+
+    private final List<MediaConnectionCommand> left = new java.util.ArrayList<>();
+
+    private final TrackMediaConnectionUseCase mediaConnections = new TrackMediaConnectionUseCase() {
+        @Override
+        public boolean confirmJoined(MediaConnectionCommand command) {
+            joined.add(command);
+            return true;
+        }
+
+        @Override
+        public void recordLeft(MediaConnectionCommand command) {
+            left.add(command);
+        }
+    };
 
     /** 코칭용 스트림 Egress 표시. 테스트가 직접 등록해 webhook 분기를 검증한다. */
     private final java.util.Set<String> audioStreamEgressIds = new java.util.HashSet<>();
@@ -216,7 +267,44 @@ class RecordingWebhookServiceTest {
 
     private void addParticipant(long id, SessionParticipantRole role) {
         participantsById.put(
-                id, SessionParticipant.reconstitute(id, SESSION_ID, id + 500, role, SESSION_START, SESSION_START));
+                id,
+                SessionParticipant.reconstitute(
+                        id, SESSION_ID, id + 500, role, SESSION_START, SESSION_START, null, SESSION_START));
+    }
+
+    /** 출석 확정은 session 도메인 소관이므로 webhook 은 위임만 하면 된다. 발생 시각을 그대로 넘겨야 접속 1분 판정이 어긋나지 않는다. */
+    @Test
+    void 참가자_입장_이벤트를_세션_도메인에_넘긴다() {
+        Instant occurredAt = NOW.minusSeconds(90);
+        nextEvent = participantEvent("EV_joined", RecordingWebhookEventType.PARTICIPANT_JOINED, "p-1", occurredAt);
+
+        service.process("{}", "ok");
+
+        assertEquals(1, joined.size());
+        assertEquals("p-1", joined.get(0).participantIdentity());
+        assertEquals(SESSION_ID, joined.get(0).sessionId());
+        assertEquals(occurredAt, joined.get(0).occurredAt());
+        assertTrue(processedEvents.contains("EV_joined"));
+    }
+
+    @Test
+    void 참가자_이탈_이벤트를_세션_도메인에_넘긴다() {
+        nextEvent = participantEvent("EV_left", RecordingWebhookEventType.PARTICIPANT_LEFT, "p-1", NOW);
+
+        service.process("{}", "ok");
+
+        assertEquals(1, left.size());
+        assertEquals("p-1", left.get(0).participantIdentity());
+    }
+
+    /** 페이로드에 시각이 없을 때만 처리 시점 시계로 대체한다. */
+    @Test
+    void 발생_시각이_없는_입장_이벤트는_처리_시점_시계를_쓴다() {
+        nextEvent = participantEvent("EV_no_time", RecordingWebhookEventType.PARTICIPANT_JOINED, "p-1", null);
+
+        service.process("{}", "ok");
+
+        assertEquals(NOW, joined.get(0).occurredAt());
     }
 
     @Test
@@ -389,7 +477,8 @@ class RecordingWebhookServiceTest {
                 null,
                 "TR_src",
                 false,
-                List.of());
+                List.of(),
+                NOW);
 
         // 녹화 경로로 들어갔다면 recordings 행이 없으므로 재전송을 유도하는 예외가 나야 한다.
         // 표시를 우선했다면 조용히 PROCESSED 로 끝나 버려 정상 녹화가 통째로 누락된다.
@@ -410,7 +499,8 @@ class RecordingWebhookServiceTest {
                 null,
                 "TR_src",
                 true,
-                List.of());
+                List.of(),
+                NOW);
     }
 
     @Test
