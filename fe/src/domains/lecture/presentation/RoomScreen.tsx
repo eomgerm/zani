@@ -28,7 +28,9 @@ import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
 import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
+import { CoachTipCard } from "./components/room/CoachTipCard";
 import { useCoachingStatus } from "./useCoachingStatus";
+import { useCoachTipCard } from "./useCoachTipCard";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -154,7 +156,14 @@ function RoomScreenContent({
   // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
   // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
   const isConfirmedInstructor = connected && isInstructor;
-  const coaching = useCoachingStatus({ sessionId, enabled: isConfirmedInstructor });
+  // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
+  // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
+  const coachTip = useCoachTipCard();
+  const coaching = useCoachingStatus({
+    sessionId,
+    enabled: isConfirmedInstructor,
+    onResult: coachTip.accept,
+  });
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
@@ -165,7 +174,6 @@ function RoomScreenContent({
     // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
     enabled: !isInstructor,
   });
-  const [alertOpen, setAlertOpen] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -362,31 +370,13 @@ function RoomScreenContent({
               어긋나고 문구도 겹쳐 제거했다(76: 중복 구현하지 않는다).
             */}
 
-            {/* 집단 알림 (강사) */}
-            {isInstructor && alertOpen && (
-              <div className="absolute right-2.5 top-2 z-[5] w-[290px] animate-[zPop_.2s] rounded-[18px] bg-surface p-[18px] text-ink shadow-[0_16px_44px_#0006]">
-                <div className="mb-2.5 flex items-center justify-between">
-                  <span className="z-pill bg-warn-soft px-3 py-[5px] text-[13px] text-warn">
-                    ⚠ 개념 확인 필요
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setAlertOpen(false)}
-                    aria-label="알림 닫기"
-                    className="cursor-pointer border-0 bg-transparent text-base text-ink-quiet"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex flex-col gap-2.5">
-                  <p className="m-0 text-[13.5px] font-bold leading-[1.5] text-ink">
-                    학생 <b className="text-warn">30%</b>에게서 신호가 나타났어요.
-                  </p>
-                  <p className="m-0 text-[13.5px] leading-[1.5] text-ink-label">
-                    잠시 속도를 늦추거나 짚어주면 좋아요.
-                  </p>
-                </div>
-              </div>
+            {/*
+              수업 팁 (강사). 문구는 서버가 §8 템플릿으로 완성해 내려주므로 그대로 표시한다.
+              여기 있던 프로토타입 카드는 "학생 30%에게서 신호가 나타났어요" 라는 고정 문구라
+              실제 집계와 무관했다(86).
+            */}
+            {isConfirmedInstructor && coachTip.tip !== null && (
+              <CoachTipCard tip={coachTip.tip} onDismiss={coachTip.dismiss} />
             )}
 
             {/* 플로팅 반응 */}

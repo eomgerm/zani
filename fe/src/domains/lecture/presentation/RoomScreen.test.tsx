@@ -82,10 +82,13 @@ vi.mock("./useRoomParticipants", () => ({
 const coaching = vi.hoisted(() => ({
   enabledCalls: [] as boolean[],
   availability: "ACTIVE" as string,
+  /** 팁 카드가 폴링 결과를 받아 가는 통로. 테스트가 여기로 팁을 흘려 넣는다. */
+  onResult: null as ((result: unknown) => void) | null,
 }));
 vi.mock("./useCoachingStatus", () => ({
-  useCoachingStatus: (options: { enabled: boolean }) => {
+  useCoachingStatus: (options: { enabled: boolean; onResult?: (result: unknown) => void }) => {
     coaching.enabledCalls.push(options.enabled);
+    coaching.onResult = options.onResult ?? null;
     return { availability: coaching.availability };
   },
 }));
@@ -137,6 +140,7 @@ afterEach(() => {
   attentionSource.props = [];
   coaching.enabledCalls = [];
   coaching.availability = "ACTIVE";
+  coaching.onResult = null;
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
   vi.useRealTimers();
@@ -412,6 +416,66 @@ describe("RoomScreen coaching wiring", () => {
 
     expect(everEnabled()).toBe(false);
     expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  /** 폴링이 팁을 물어 왔다고 알린다. */
+  const deliverTip = (triggerId: string, title: string) =>
+    act(() =>
+      coaching.onResult?.({
+        triggerId,
+        tip: {
+          tipType: "CONFUSED",
+          title,
+          message: "전체 학생의 30%가 현재 내용을 헷갈려 하고 있어요.",
+          targetConcept: "클로저",
+        },
+        unavailableReason: null,
+      }),
+    );
+
+  it("shows a tip the poll delivered to an instructor", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    expect(screen.getByTestId("coach-tip-card")).toHaveTextContent("추가 설명이 필요해요");
+  });
+
+  it("closes the tip card on 확인", () => {
+    asInstructor();
+    render(<RoomScreen sessionId="123" />);
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    fireEvent.click(screen.getByRole("button", { name: "확인" }));
+
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+  });
+
+  // 학생은 팁을 받지 않는다(86 요구사항). 폴링이 꺼져 있는 것과 별개로 카드도 막혀야 한다 —
+  // 나중에 폴링 조건이 바뀌어도 이 겹이 남는다.
+  it("never renders the tip card for a student", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    // 학생 화면에서는 폴링이 돌지 않으므로 결과가 전달될 통로 자체가 없다.
+    expect(coaching.enabledCalls.some(Boolean)).toBe(false);
+
+    // 어떤 경로로든 결과가 흘러 들어와도 카드는 뜨지 않는다.
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+  });
+
+  // 팁 카드는 폴러를 따로 두지 않는다. 두 번 돌면 분모 조회와 쿨타임 소모가 두 배가 된다.
+  it("feeds the tip card from the coaching poll instead of its own poller", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(coaching.onResult).not.toBeNull();
   });
 
   it("says nothing while coaching works", () => {
