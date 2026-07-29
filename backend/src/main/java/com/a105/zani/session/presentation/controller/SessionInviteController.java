@@ -51,11 +51,13 @@ public class SessionInviteController {
     }
 
     @Operation(summary = "수업 생성 (강사)", description = """
-                    강사가 수업을 개설합니다. 만들자마자 `LIVE` 상태가 되고, 학생에게 공유할 **8자리 초대 코드**가 함께 발급됩니다.
+                    강사가 수업방을 준비합니다. 만들면 `PREPARING` 상태가 되고, 학생에게 공유할 **8자리 초대 코드**가 함께 발급됩니다.
 
+                    - **아직 수업이 시작된 것은 아닙니다.** 강사가 마이크·카메라를 붙이고 수업을 시작해야 `LIVE`가 되며,
+                      그 전에는 이 초대 코드로 학생이 들어올 수 없습니다.
+                    - 자동 종료 시각(`expiresAt`)도 시작 시점에 정해지므로 이 응답에서는 `null` 입니다.
+                    - 강사는 생성과 동시에 참가자로 등록되므로, 곧바로 미디어 토큰을 발급받을 수 있습니다.
                     - 한 강사는 **동시에 하나의 수업만** 열 수 있습니다. 이전 수업이 진행 중이면 409 가 납니다.
-                    - 수업은 시작 시각으로부터 **3시간** 뒤 자동 종료됩니다(응답의 `expiresAt`).
-                    - 강사는 생성과 동시에 참가자로 등록되므로 따로 입장할 필요가 없습니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "수업이 생성되었습니다."),
@@ -102,19 +104,26 @@ public class SessionInviteController {
     @Operation(summary = "초대 코드로 입장 (학생)", description = """
                     학생이 강사에게 받은 **8자리 초대 코드**로 수업에 들어갑니다. 성공하면 세션 ID 를 돌려주며, 이 값으로 강의실 화면과 미디어 토큰 발급을 이어서 호출합니다.
 
+                    - 코드는 **하이픈과 소문자를 허용합니다.** `A7KM-2PQR` 과 `a7km2pqr` 모두 같은 수업으로 들어갑니다.
                     - **같은 코드로 여러 번 호출해도 안전합니다.** 이미 들어온 학생이면 참가자를 새로 만들지 않고 기존 정보를 그대로 돌려줍니다(새로고침·재입장 대비).
-                    - 이미 끝난 수업의 코드로는 들어갈 수 없습니다.
+                    - **진행 중(`LIVE`)인 수업에만** 들어갈 수 있습니다. 아직 시작 전이거나 이미 끝난 수업은 거절합니다.
+                    - 강사를 포함해 **30명**이 정원입니다.
+
+                    이 API 는 강의실에 들어갈 자격만 만듭니다. 출석은 실제로 화상에 연결됐을 때 확정되므로,
+                    이 호출만 하고 접속하지 않으면 출석·사후 자료 접근 자격을 얻지 않습니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "입장 성공"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "400",
-                description = "초대 코드 형식이 올바르지 않습니다."),
+                description = "초대 코드 형식이 올바르지 않습니다. (`SESSION_002`)"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인이 필요합니다."),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
                 description = "그런 초대 코드의 수업이 없습니다. 코드를 다시 확인해 주세요. (`SESSION_APP_005`)"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 종료된 수업입니다.")
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "정원 30명이 찼거나(`SESSION_APP_007`), 아직 시작 전이거나 이미 종료된 수업입니다(`SESSION_APP_008`).")
     })
     @PostMapping("/join")
     public ApiResponse<JoinSessionResponse> join(
