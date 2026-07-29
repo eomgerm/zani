@@ -58,6 +58,10 @@ public class SecurityConfig {
                         // LiveKit webhook은 사용자 JWT가 아니라 LiveKit 서명 토큰으로 인증한다(컨트롤러에서 검증, 불일치 401).
                         .requestMatchers(HttpMethod.POST, "/api/v1/internal/recordings/webhook")
                         .permitAll()
+                        // Egress 노드가 강사 오디오를 밀어 넣는 내부 WebSocket. 사용자 JWT가 아니라
+                        // 핸들러가 공유 시크릿으로 검증한다.
+                        .requestMatchers("/internal/audio/**")
+                        .permitAll()
                         .requestMatchers(
                                 "/actuator/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error")
                         .permitAll()

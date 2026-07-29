@@ -53,6 +53,8 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
                 egress != null ? egress.getEgressId() : null,
                 egress != null ? terminalStateOf(egress.getStatus()) : null,
                 egress != null && egress.hasTrack() ? egress.getTrack().getTrackId() : null,
+                // 출력 종류는 페이로드에 그대로 실려 온다. track 정보가 없는 이벤트는 판단하지 않고 null 로 둔다.
+                egress != null && egress.hasTrack() ? egress.getTrack().hasWebsocketUrl() : null,
                 egress != null ? filesOf(egress) : List.of());
     }
 

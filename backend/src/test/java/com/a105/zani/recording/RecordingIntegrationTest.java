@@ -152,6 +152,7 @@ class RecordingIntegrationTest {
                 null,
                 null,
                 null,
+                null,
                 List.of());
         webhookUseCase.process("{}", "signature");
     }
@@ -164,7 +165,7 @@ class RecordingIntegrationTest {
             String trackSid,
             List<EgressFileResult> files) {
         webhookFixture.nextEvent = new RecordingWebhookEvent(
-                eventKey(eventId), type, sessionId, null, null, null, egressId, complete, trackSid, files);
+                eventKey(eventId), type, sessionId, null, null, null, egressId, complete, trackSid, null, files);
         webhookUseCase.process("{}", "signature");
     }
 
@@ -281,7 +282,8 @@ class RecordingIntegrationTest {
         assertEquals("STARTING", recordingStatus("EG-TR_part_cam"));
         assertNull(recordingStatus("EG-TR_part_mic"));
         assertEquals(1, outboxCount("COMPLETED"));
-        assertEquals(1, outboxCount("FAILED"));
+        // 강사 마이크는 파일 Egress 와 코칭 스트림 Egress 두 작업이라, 마이크가 죽으면 둘 다 FAILED 로 남는다.
+        assertEquals(2, outboxCount("FAILED"));
 
         // 성공한 트랙의 종료 콜백은 정상 처리된다.
         egressCallback(
@@ -306,7 +308,8 @@ class RecordingIntegrationTest {
 
         assertEquals(0, recordingCount());
         assertEquals(0, outboxCount("COMPLETED"));
-        assertEquals(2, outboxCount("FAILED"));
+        // 카메라 1건 + 마이크 2건(파일·코칭 스트림).
+        assertEquals(3, outboxCount("FAILED"));
         assertTrue(fileKeys().isEmpty());
     }
 
@@ -377,9 +380,33 @@ class RecordingIntegrationTest {
     static class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
+        private final List<com.a105.zani.recording.application.port.AudioStreamEgressRequest> audioStreamRequests =
+                new ArrayList<>();
         private final Set<String> activeTrackSids = new HashSet<>();
+        private final Set<String> liveAudioStreamTrackSids = new HashSet<>();
         private final Set<String> failTrackSids = new HashSet<>();
         private boolean failAll;
+
+        /** 코칭 버퍼용 WebSocket Egress. 파일 Egress 와 별개 실행이라 따로 기록한다. */
+        @Override
+        public IssuedTrackEgress startAudioStream(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            if (failAll || failTrackSids.contains(request.trackSid())) {
+                throw new TrackEgressUnavailableException(new IllegalStateException("egress unavailable"));
+            }
+            audioStreamRequests.add(request);
+            liveAudioStreamTrackSids.add(request.trackSid());
+            return new IssuedTrackEgress("EG_WS_" + request.trackSid());
+        }
+
+        /** 실제 어댑터처럼 아직 살아 있는 스트림만 되돌린다. 종료된 실행은 채택 대상이 아니다. */
+        @Override
+        public java.util.Optional<String> findLiveAudioStreamEgressId(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            return liveAudioStreamTrackSids.contains(request.trackSid())
+                    ? java.util.Optional.of("EG_WS_" + request.trackSid())
+                    : java.util.Optional.empty();
+        }
 
         @Override
         public IssuedTrackEgress start(TrackEgressRequest request) {

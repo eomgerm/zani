@@ -13,6 +13,7 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
+import com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort;
 import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
 import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
@@ -48,6 +49,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private final RecordingFileRepository recordingFileRepository;
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository sessionParticipantRepository;
+    private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
     private final Clock clock;
 
     @Override
@@ -61,6 +63,11 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             log.debug("Duplicate webhook event {} ignored", event.eventId());
             return;
         }
+        if (isAudioStreamEgress(event)) {
+            log.debug("Audio stream egress event {} needs no recording handling", event.eventId());
+            eventStore.markProcessed(event.eventId());
+            return;
+        }
         switch (event.type()) {
             case TRACK_PUBLISHED -> handleTrackPublished(event);
             case EGRESS_STARTED, EGRESS_UPDATED -> handleEgressProgress(event);
@@ -68,6 +75,20 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             default -> log.debug("Webhook event {} needs no handling", event.type());
         }
         eventStore.markProcessed(event.eventId());
+    }
+
+    /**
+     * 코칭용 스트림 Egress 인지. 파일을 만들지 않아 {@code recordings} 행이 없고, 아래 egress 처리는 행이 없으면 "아직 커밋 전"으로 보고 5xx 를 돌려주므로 여기서 걸러야
+     * LiveKit 이 무한히 재전송하지 않는다.
+     *
+     * <p>근거를 두 겹으로 둔다. 이벤트 페이로드의 출력 종류가 1차다 — 외부 상태에 기대지 않아 Redis 가 죽어도 판정이 흔들리지 않는다. 페이로드에 track 정보가 없는 이벤트만 시작 시점에 남겨
+     * 둔 표시로 되돌아간다.
+     */
+    private boolean isAudioStreamEgress(RecordingWebhookEvent event) {
+        if (event.egressAudioStream() != null) {
+            return event.egressAudioStream();
+        }
+        return audioStreamEgressRegistry.isAudioStream(event.egressId());
     }
 
     private void handleTrackPublished(RecordingWebhookEvent event) {
