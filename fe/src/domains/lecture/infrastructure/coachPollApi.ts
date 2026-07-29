@@ -35,7 +35,11 @@ export interface CoachTip {
   readonly tipType: CoachTipType;
   readonly title: string;
   readonly message: string;
-  readonly targetConcept: string;
+  /**
+   * LLM 이 채운 핵심 개념. **없을 수 있다** — 무응답·자리비움 팁은 §8 에 자리표시자가 없어
+   * LLM 을 호출하지 않는다(204). 필수로 보면 다섯 유형 중 둘이 통째로 버려진다.
+   */
+  readonly targetConcept: string | null;
 }
 
 export interface CoachPollResult {
@@ -97,11 +101,11 @@ const parseTip = (value: unknown): CoachTip | null => {
   }
 
   const tip = value as Record<string, unknown>;
+  // targetConcept 은 유형에 따라 없는 것이 정상이라 필수에서 뺀다.
   if (
     !TIP_TYPES.includes(tip.tipType as CoachTipType) ||
     !isNonBlankString(tip.title) ||
-    !isNonBlankString(tip.message) ||
-    !isNonBlankString(tip.targetConcept)
+    !isNonBlankString(tip.message)
   ) {
     return null;
   }
@@ -110,7 +114,7 @@ const parseTip = (value: unknown): CoachTip | null => {
     tipType: tip.tipType as CoachTipType,
     title: tip.title,
     message: tip.message,
-    targetConcept: tip.targetConcept,
+    targetConcept: isNonBlankString(tip.targetConcept) ? tip.targetConcept : null,
   };
 };
 
