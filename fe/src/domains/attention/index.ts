@@ -38,6 +38,7 @@ export type {
   CameraGuidePrompt,
   UseCameraGuidePromptOptions,
 } from "./presentation/useCameraGuidePrompt";
+export type { CameraGuideSuppressionStore } from "./infrastructure/cameraGuideSuppression";
 export {
   UNDERSTANDING_CHECK_COOLDOWN_MS,
   UNDERSTANDING_CHECK_SECONDS,

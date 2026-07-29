@@ -123,6 +123,20 @@ describe("useCameraGuidePrompt", () => {
     expect(second.result.current.prompt).toBeNull();
   });
 
+  // presentation 은 저장소 구현이 아니라 계약에만 의존한다.
+  it("reads and writes suppression through the injected store", () => {
+    const suppressionStore = { isSuppressed: vi.fn().mockReturnValue(false), suppress: vi.fn() };
+    const { result } = renderHook(() =>
+      useCameraGuidePrompt({ sessionId: "s1", camera: "off", suppressionStore }),
+    );
+
+    act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));
+    act(() => result.current.answer("CANNOT_ENABLE"));
+
+    expect(suppressionStore.isSuppressed).toHaveBeenCalledWith("s1");
+    expect(suppressionStore.suppress).toHaveBeenCalledWith("s1");
+  });
+
   it("keeps the suppression scoped to its own class", () => {
     const first = renderCameraGuide("off", "session-a");
     act(() => vi.advanceTimersByTime(CAMERA_GUIDE_OFF_DURATION_MS));

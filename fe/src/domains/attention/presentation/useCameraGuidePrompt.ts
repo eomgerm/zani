@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  sessionStorageCameraGuideSuppression,
+  type CameraGuideSuppressionStore,
+} from "../infrastructure/cameraGuideSuppression";
 import { isTabHidden, useTabVisibleTick } from "./promptVisibility";
 import { usePromptTimer } from "./usePromptTimer";
 import type { CameraAvailability } from "./useAttentionDetection";
@@ -38,6 +42,8 @@ export interface UseCameraGuidePromptOptions {
    * 판정 파이프라인(75)이 연속 카운터를 0으로 되돌리는 신호다(§5).
    */
   onClosed?: () => void;
+  /** "못 켜요" 억제를 새로고침 뒤에도 유지하기 위한 저장소. 테스트가 가짜 구현을 넣는다. */
+  suppressionStore?: CameraGuideSuppressionStore;
 }
 
 export interface UseCameraGuidePromptResult {
@@ -49,28 +55,6 @@ export interface UseCameraGuidePromptResult {
 const causeOf = (camera: CameraAvailability): CameraGuideCause =>
   camera === "denied" ? "denied" : camera === "muted" ? "muted" : "disabled";
 
-const suppressionKey = (sessionId: string) => `zani.camera-guide.suppressed.${sessionId}`;
-
-/**
- * "못 켜요"는 수업이 끝날 때까지 유효해야 한다(§5.2). 메모리에만 두면 새로고침 한 번에 풀려
- * 1분 뒤 다시 뜨므로 `sessionStorage` 에 남긴다. 탭을 닫으면 사라지므로 수업 단위와 맞고,
- * 집계에 쓰이지 않는 값이라 서버로 보낼 이유도 없다.
- */
-function readSuppressed(sessionId: string): boolean {
-  try {
-    return globalThis.sessionStorage?.getItem(suppressionKey(sessionId)) === "1";
-  } catch {
-    return false; // 저장소 접근이 막힌 환경에서는 억제하지 않는다.
-  }
-}
-
-function writeSuppressed(sessionId: string): void {
-  try {
-    globalThis.sessionStorage?.setItem(suppressionKey(sessionId), "1");
-  } catch {
-    // 저장에 실패해도 이번 화면이 살아 있는 동안은 메모리 상태로 억제된다.
-  }
-}
 
 /**
  * "카메라 안내" 프롬프트. 카메라가 1분 이어서 꺼져 있으면 뜬다.
@@ -84,7 +68,12 @@ function writeSuppressed(sessionId: string): void {
 export function useCameraGuidePrompt(
   options: UseCameraGuidePromptOptions,
 ): UseCameraGuidePromptResult {
-  const { sessionId, camera, onClosed } = options;
+  const {
+    sessionId,
+    camera,
+    onClosed,
+    suppressionStore = sessionStorageCameraGuideSuppression,
+  } = options;
   const cameraOff = camera !== "on";
 
   const [prompt, setPrompt] = useState<{ promptId: string; cause: CameraGuideCause } | null>(null);
@@ -106,9 +95,14 @@ export function useCameraGuidePrompt(
     onClosedRef.current = onClosed;
   });
 
+  const suppressionStoreRef = useRef(suppressionStore);
+  useEffect(() => {
+    suppressionStoreRef.current = suppressionStore;
+  });
+
   // 새로고침·재입장으로 훅이 다시 마운트돼도 "못 켜요"는 유지돼야 한다.
   useEffect(() => {
-    suppressedRef.current = readSuppressed(sessionId);
+    suppressedRef.current = suppressionStoreRef.current.isSuppressed(sessionId);
   }, [sessionId]);
 
   const close = useCallback(() => {
@@ -171,7 +165,7 @@ export function useCameraGuidePrompt(
       if (value === "CANNOT_ENABLE") {
         // 수업 내내 다시 띄우지 않는다. 새로고침을 견디도록 저장까지 한다.
         suppressedRef.current = true;
-        writeSuppressed(sessionId);
+        suppressionStoreRef.current.suppress(sessionId);
       }
       close();
     },
