@@ -6,6 +6,7 @@ const roomConnection = vi.hoisted(() => ({
   error: null,
   room: null,
   sessionExpiresAt: null as string | null,
+  sessionTitle: null as string | null,
   retry: vi.fn(),
 }));
 
@@ -109,6 +110,7 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   roomConnection.sessionExpiresAt = null;
+  roomConnection.sessionTitle = null;
   media.cameraEnabled = true;
   media.microphoneEnabled = true;
   media.ready = true;
@@ -416,5 +418,41 @@ describe("RoomScreen attention wiring", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("attention-camera-source")).not.toBeInTheDocument();
+  });
+  /** 강의명은 강사가 입력한 값이다. 픽스처 기본값을 보여주면 다른 수업에 들어온 것처럼 읽힌다. */
+  it("서버가 내려준 강의명을 보여준다", () => {
+    roomConnection.sessionTitle = "JavaScript 기초 1강";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("JavaScript 기초 1강")).toBeVisible();
+  });
+
+  /** 아직 못 받았을 때 픽스처 제목이 새지 않아야 한다. */
+  it("강의명을 못 받았으면 픽스처 제목을 보여주지 않는다", () => {
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByText("React 상태관리 심화")).not.toBeInTheDocument();
+  });
+
+  /** 발표자 보기는 강사 화면을 크게 보는 기능이다. 영상이 없으면 아바타만 남아 목데이터처럼 보인다. */
+  it("발표자 보기에서 강사 카메라를 붙인다", () => {
+    roomParticipants.participants = [
+      {
+        id: "host-1",
+        name: "김강사",
+        color: "#2aa584",
+        role: "instructor",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+      },
+    ];
+    roomParticipants.localParticipantId = "host-1";
+
+    render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByTestId("speaker-video")).toBeInTheDocument();
   });
 });

@@ -107,12 +107,12 @@ export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps)
 
 function RoomScreenContent({
   sessionId,
-  roomTitle = "React 상태관리 심화",
+  roomTitle,
   expiresAt,
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt } = useRoomConnection();
+  const { sessionExpiresAt, sessionTitle } = useRoomConnection();
   const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
@@ -180,7 +180,8 @@ function RoomScreenContent({
     ...(participant.id === meId ? me : {}),
   }));
   const meCamOff = !list.find((p) => p.id === meId)?.cam;
-  const hostName = list.find((p) => p.host)?.name ?? "";
+  const host = tileParticipants.find((participant) => participant.role === "instructor");
+  const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
 
@@ -242,7 +243,10 @@ function RoomScreenContent({
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
-        <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
+        {/* 강의명은 서버가 미디어 토큰 응답으로 내려준다. prop 은 테스트·스토리북 강제 지정용이다. */}
+        <div className="text-[14.5px] font-extrabold">
+          {roomTitle ?? sessionTitle ?? "수업"}
+        </div>
         <div className="flex-1" />
         {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
         {!isInstructor && process.env.NODE_ENV !== "production" && (
@@ -332,6 +336,23 @@ function RoomScreenContent({
                     {hostName.charAt(0)}
                   </div>
                 </div>
+                {/*
+                  강사 카메라. 아바타 뒤에 두어 영상이 위에 그려지고, 카메라가 꺼져 있으면 감춰 아바타가 보이게 한다.
+                  요소를 항상 마운트해 둬야 트랙 부착 훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유).
+                  내 화면일 때만 거울처럼 뒤집는다.
+                */}
+                {host !== undefined && (
+                  <video
+                    ref={participantVideos.refFor(host.id)}
+                    autoPlay
+                    muted
+                    playsInline
+                    data-testid="speaker-video"
+                    className={`absolute inset-0 size-full object-contain ${
+                      host.id === localParticipantId ? "scale-x-[-1]" : ""
+                    } ${host.cameraEnabled ? "" : "invisible"}`}
+                  />
+                )}
                 <div className="pointer-events-none absolute inset-0">
                   <div className="z-stage-chip absolute left-4 top-4 font-bold">
                     강의: {hostName} 선생님
