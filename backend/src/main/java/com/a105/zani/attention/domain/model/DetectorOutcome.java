@@ -68,8 +68,8 @@ public enum DetectorOutcome {
     /**
      * 이 출력이 그 자리에서 확정하는 학생 상태. 없으면 상태를 바꾸지 않는다.
      *
-     * <p>저참여는 프롬프트 응답이 와야 상태가 정해지므로 비어 있고, {@code UNMEASURABLE} 은 3연속이어야 하므로 여기서 정하지 않는다({@link DetectionRunCounters}
-     * 참조). {@code DETECTOR_UNAVAILABLE} 은 학생 상태가 아니라 분모 제외 판단에만 쓴다.
+     * <p>저참여는 프롬프트 응답이 와야 상태가 정해지므로 비어 있고, {@code UNMEASURABLE} 은 3연속이어야 하므로 여기서 정하지 않는다({@link UnmeasurableRun} 참조).
+     * {@code DETECTOR_UNAVAILABLE} 은 학생 상태가 아니라 분모 제외 판단에만 쓴다.
      */
     public Optional<AttentionState> immediateState() {
         if (isEngaged()) {

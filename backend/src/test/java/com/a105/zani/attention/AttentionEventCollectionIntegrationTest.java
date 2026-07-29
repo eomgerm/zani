@@ -44,7 +44,6 @@ class AttentionEventCollectionIntegrationTest {
     private static final long PARTICIPANT_ID = 9_100_913L;
     private static final long INSTRUCTOR_PARTICIPANT_ID = 9_100_914L;
     private static final String SCHEMA = "mediapipe_98_v1";
-    private static final String ENGINE = "e0g-1";
 
     private static final String STATE_KEY = "attention:" + SESSION_ID + ":state:" + PARTICIPANT_ID;
     private static final String EXCLUDED_KEY = "attention:" + SESSION_ID + ":excluded:" + PARTICIPANT_ID;
@@ -116,9 +115,10 @@ class AttentionEventCollectionIntegrationTest {
         Map<String, Object> row = onlyEventRow();
         assertEquals("BARELY_ENGAGED", row.get("detector_outcome"));
         assertEquals(2, ((Number) row.get("attention_score")).intValue());
-        assertEquals(Boolean.TRUE, row.get("low_engagement"));
+        // 저참여 여부는 받지 않으므로 컬럼이 항상 비어 있다(티켓 61).
+        assertNull(row.get("low_engagement"));
+        assertNull(row.get("engine_version"));
         assertEquals(SCHEMA, row.get("feature_schema_version"));
-        assertEquals(ENGINE, row.get("engine_version"));
         assertNotNull(row.get("window_started_offset_ms"));
 
         // JPA 를 거치지 않아 감사 컬럼도 직접 넣는다. NOW(6) 을 쓰면 이 행만 다른 테이블보다 9시간 앞선다.
@@ -206,22 +206,23 @@ class AttentionEventCollectionIntegrationTest {
     }
 
     @Test
-    void refusesAWindowedOutcomeThatCarriesNoWindowStart() throws Exception {
-        send("{\"outcome\":\"ENGAGED\",\"lowEngagement\":false,\"observedAt\":\"" + observedAt(1)
-                        + "\",\"signalQuality\":0.92"
-                        + ",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"engineVersion\":\"" + ENGINE
+    void acceptsAWindowedOutcomeThatCarriesNoWindowStart() throws Exception {
+        // 창 시작 시각은 기록용이라 없어도 받는다. 창 길이가 10초로 고정이라 필요하면 유도할 수 있다.
+        send("{\"outcome\":\"ENGAGED\",\"observedAt\":\"" + observedAt(1) + "\",\"featureSchemaVersion\":\"" + SCHEMA
                         + "\",\"clientEventId\":\"no-window\"}")
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
 
-        assertTrue(eventRows().isEmpty());
+        Map<String, Object> row = onlyEventRow();
+        assertEquals("ENGAGED", row.get("detector_outcome"));
+        assertNull(row.get("window_started_offset_ms"));
+        assertNull(row.get("signal_quality"));
     }
 
     @Test
-    void refusesAnEngagementLevelThatCarriesNoLowEngagementFlag() throws Exception {
-        // 단계값만으로는 §3.3 의 확률 합 판단을 되짚을 수 없다.
-        send("{\"outcome\":\"ENGAGED\",\"windowStartedAt\":\"" + windowStartedAt(1) + "\",\"observedAt\":\""
-                        + observedAt(1) + "\",\"signalQuality\":0.92,\"featureSchemaVersion\":\"" + SCHEMA
-                        + "\",\"engineVersion\":\"" + ENGINE + "\",\"clientEventId\":\"no-flag\"}")
+    void refusesTheRetiredLowEngagementAndEngineVersionFields() throws Exception {
+        // 서버에 소비자가 없어 받지 않기로 했다. 조용히 버리면 클라이언트는 서버가 그 값을 쓴다고 믿는다.
+        send(bodyFor("ENGAGED", "\"lowEngagement\":false", 1, "retired-flag")).andExpect(status().isBadRequest());
+        send(bodyFor("ENGAGED", "\"engineVersion\":\"e0g-1\"", 1, "retired-engine"))
                 .andExpect(status().isBadRequest());
 
         assertTrue(eventRows().isEmpty());
@@ -229,10 +230,10 @@ class AttentionEventCollectionIntegrationTest {
 
     @Test
     void refusesAnObservationFromAnUnsupportedFeatureSchema() throws Exception {
-        send("{\"outcome\":\"ENGAGED\",\"lowEngagement\":false,\"windowStartedAt\":\"" + windowStartedAt(1)
-                        + "\",\"observedAt\":\"" + observedAt(1)
+        send("{\"outcome\":\"ENGAGED\",\"windowStartedAt\":\"" + windowStartedAt(1) + "\",\"observedAt\":\""
+                        + observedAt(1)
                         + "\",\"signalQuality\":0.92,\"featureSchemaVersion\":\"mediapipe_64_v0\""
-                        + ",\"engineVersion\":\"" + ENGINE + "\",\"clientEventId\":\"other-schema\"}")
+                        + ",\"clientEventId\":\"other-schema\"}")
                 .andExpect(status().isBadRequest());
 
         assertTrue(eventRows().isEmpty());
@@ -287,22 +288,16 @@ class AttentionEventCollectionIntegrationTest {
     private ResultActions observeImmediate(String outcome) throws Exception {
         window++;
         return send("{\"outcome\":\"" + outcome + "\",\"observedAt\":\"" + observedAt(window)
-                + "\",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"engineVersion\":\"" + ENGINE
-                + "\",\"clientEventId\":\"event-" + window + "\"}");
+                + "\",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"clientEventId\":\"event-" + window
+                + "\"}");
     }
 
     private String bodyFor(String outcome, String extraField, int windowIndex, String clientEventId) {
         String extra = extraField == null ? "" : "," + extraField;
-        return "{\"outcome\":\"" + outcome + "\",\"lowEngagement\":" + lowEngagement(outcome)
-                + ",\"windowStartedAt\":\"" + windowStartedAt(windowIndex)
+        return "{\"outcome\":\"" + outcome + "\",\"windowStartedAt\":\"" + windowStartedAt(windowIndex)
                 + "\",\"observedAt\":\"" + observedAt(windowIndex) + "\",\"signalQuality\":0.92"
-                + ",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"engineVersion\":\"" + ENGINE
-                + "\",\"clientEventId\":\"" + clientEventId + "\"" + extra + "}";
-    }
-
-    /** 4단계 출력에는 저참여 여부가 필요하다. 1·2단계를 저참여로 보내 서버 카운터를 굴린다. */
-    private boolean lowEngagement(String outcome) {
-        return outcome.equals("NOT_ENGAGED") || outcome.equals("BARELY_ENGAGED");
+                + ",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"clientEventId\":\"" + clientEventId + "\""
+                + extra + "}";
     }
 
     private String windowStartedAt(int windowIndex) {
@@ -322,12 +317,12 @@ class AttentionEventCollectionIntegrationTest {
         String observedAt = sessionStartedAt.plusMillis(observedOffsetMs).toString();
         boolean windowed = !outcome.equals("CAMERA_OFF") && !outcome.equals("DETECTOR_UNAVAILABLE");
         String windowFields = windowed
-                ? "\"windowStartedAt\":\"" + sessionStartedAt.plusMillis(observedOffsetMs - 10_000) + "\","
-                        + "\"lowEngagement\":" + lowEngagement(outcome) + ",\"signalQuality\":0.92,"
+                ? "\"windowStartedAt\":\"" + sessionStartedAt.plusMillis(observedOffsetMs - 10_000)
+                        + "\",\"signalQuality\":0.92,"
                 : "";
         return send("{\"outcome\":\"" + outcome + "\"," + windowFields + "\"observedAt\":\"" + observedAt
-                + "\",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"engineVersion\":\"" + ENGINE
-                + "\",\"clientEventId\":\"at-" + observedOffsetMs + "-" + outcome + "\"}");
+                + "\",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"clientEventId\":\"at-" + observedOffsetMs
+                + "-" + outcome + "\"}");
     }
 
     private ResultActions send(String body) throws Exception {

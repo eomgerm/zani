@@ -16,8 +16,8 @@ import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
 import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
+import com.a105.zani.attention.domain.model.UnmeasurableRun;
 
 /**
  * 참여도 판정 상태를 Redis에 보관한다. 네 종류의 키를 쓰며 모두 TTL로 자연 소멸한다.
@@ -28,7 +28,7 @@ import com.a105.zani.attention.domain.model.DetectionRunTransition;
  *   <li>{@code attention:{sessionId}:significant:{state}:{participantId}} — 최근 5분 유의 상태 흔적
  *   <li>{@code attention:{sessionId}:excluded:{participantId}} — 집단 비율 분모 제외 표시
  *   <li>{@code attention:{sessionId}:outage:{participantId}} — 측정 불가 구간의 시작 지점(§7.1)
- *   <li>{@code attention:{sessionId}:run:{kind}:{participantId}} — 검출기 출력 연속 횟수(§4.1)
+ *   <li>{@code attention:{sessionId}:run:unmeasurable:{participantId}} — UNMEASURABLE 연속 횟수(§7.3)
  *   <li>{@code attention:{sessionId}:applied:{participantId}} — 마지막으로 반영한 판정 창 종료 시각
  * </ul>
  *
@@ -47,7 +47,7 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     private static final String FIELD_SEPARATOR = "|";
 
     /**
-     * 더 최신 판정이 아직 없을 때만 연속 카운터와 반영 지점을 쓴다. 이미 있으면 아무것도 건드리지 않고 nil 을 돌려준다.
+     * 더 최신 판정이 아직 없을 때만 연속 횟수와 반영 지점을 쓴다. 이미 있으면 아무것도 건드리지 않고 nil 을 돌려준다.
      *
      * <p>INCR 과 EXPIRE 를 왕복 두 번으로 나누면 그 사이에 연결이 끊겼을 때 TTL 없는 카운터가 남아, 한참 뒤 재입장한 학생이 옛 값을 그대로 물려받는다. 같은 이유로 현재 상태도 SET 한
      * 번으로 쓴다.
@@ -60,46 +60,34 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
      * 측정이 불가한데도 분모로 되돌아간다. 구간이 없을 때는 {@code -1} 을 돌려준다.
      */
     private static final RedisScript<List> APPLY_OBSERVATION = RedisScript.of("""
-            local function apply(key, step, ttl)
-              if step == 'INCREMENT' then
-                local value = redis.call('INCR', key)
-                redis.call('EXPIRE', key, ttl)
-                return value
-              elseif step == 'RESET' then
-                redis.call('DEL', key)
-                return 0
-              else
-                local value = redis.call('GET', key)
-                if value then
-                  redis.call('EXPIRE', key, ttl)
-                  return tonumber(value)
-                end
-                return 0
-              end
-            end
-            local ttl = tonumber(ARGV[3])
-            local observed = tonumber(ARGV[4])
-            local applied = redis.call('GET', KEYS[3])
+            local ttl = tonumber(ARGV[2])
+            local observed = tonumber(ARGV[3])
+            local applied = redis.call('GET', KEYS[2])
             if applied and observed <= tonumber(applied) then
               return nil
             end
-            local counters = { apply(KEYS[1], ARGV[1], ttl), apply(KEYS[2], ARGV[2], ttl) }
-            redis.call('SET', KEYS[3], ARGV[4], 'EX', ttl)
+            local run = 0
+            if ARGV[1] == 'INCREMENT' then
+              run = redis.call('INCR', KEYS[1])
+              redis.call('EXPIRE', KEYS[1], ttl)
+            else
+              redis.call('DEL', KEYS[1])
+            end
+            redis.call('SET', KEYS[2], ARGV[3], 'EX', ttl)
             local outage = -1
-            if ARGV[5] == 'SUSPENDED' then
-              local startedAt = redis.call('GET', KEYS[4])
+            if ARGV[4] == 'SUSPENDED' then
+              local startedAt = redis.call('GET', KEYS[3])
               if startedAt then
-                redis.call('EXPIRE', KEYS[4], ttl)
+                redis.call('EXPIRE', KEYS[3], ttl)
                 outage = observed - tonumber(startedAt)
               else
-                redis.call('SET', KEYS[4], ARGV[4], 'EX', ttl)
+                redis.call('SET', KEYS[3], ARGV[3], 'EX', ttl)
                 outage = 0
               end
             else
-              redis.call('DEL', KEYS[4])
+              redis.call('DEL', KEYS[3])
             end
-            counters[3] = outage
-            return counters
+            return { run, outage }
             """, List.class);
 
     private final StringRedisTemplate redisTemplate;
@@ -182,23 +170,20 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
             List<Long> result = redisTemplate.execute(
                     APPLY_OBSERVATION,
                     List.of(
-                            lowRunKey(sessionId, participantId),
                             unmeasurableRunKey(sessionId, participantId),
                             appliedKey(sessionId, participantId),
                             outageKey(sessionId, participantId)),
-                    transition.lowEngagement().name(),
                     transition.unmeasurable().name(),
                     Long.toString(ttl.toSeconds()),
                     Long.toString(observedOffsetMs),
                     measurementSuspended ? "SUSPENDED" : "MEASURABLE");
             // nil 은 더 최신 판정이 이미 반영됐다는 뜻이다. 스크립트가 아무것도 건드리지 않았다.
-            if (result == null || result.size() < 3) {
+            if (result == null || result.size() < 2) {
                 return Optional.empty();
             }
-            long outageMs = result.get(2);
+            long outageMs = result.get(1);
             return Optional.of(new ObservationApplied(
-                    new DetectionRunCounters(
-                            result.get(0).intValue(), result.get(1).intValue()),
+                    new UnmeasurableRun(result.get(0).intValue()),
                     outageMs < 0 ? OptionalLong.empty() : OptionalLong.of(outageMs)));
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
@@ -206,10 +191,9 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     }
 
     @Override
-    public void resetRuns(long sessionId, long participantId) {
+    public void resetUnmeasurableRun(long sessionId, long participantId) {
         try {
-            redisTemplate.delete(
-                    List.of(lowRunKey(sessionId, participantId), unmeasurableRunKey(sessionId, participantId)));
+            redisTemplate.delete(unmeasurableRunKey(sessionId, participantId));
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }
@@ -229,10 +213,6 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
 
     private String excludedKey(long sessionId, long participantId) {
         return "attention:" + sessionId + ":excluded:" + participantId;
-    }
-
-    private String lowRunKey(long sessionId, long participantId) {
-        return "attention:" + sessionId + ":run:low:" + participantId;
     }
 
     private String unmeasurableRunKey(long sessionId, long participantId) {

@@ -26,10 +26,10 @@ import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.CheckPrompt;
 import com.a105.zani.attention.domain.model.CheckPromptStatus;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.attention.domain.model.PromptAnswer;
 import com.a105.zani.attention.domain.model.PromptKind;
+import com.a105.zani.attention.domain.model.UnmeasurableRun;
 import com.a105.zani.attention.domain.repository.CheckPromptRepository;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
@@ -420,11 +420,11 @@ class RecordPromptResponseServiceTest {
                 boolean measurementSuspended,
                 long observedOffsetMs,
                 Duration ttl) {
-            return Optional.of(new ObservationApplied(DetectionRunCounters.none(), OptionalLong.empty()));
+            return Optional.of(new ObservationApplied(UnmeasurableRun.none(), OptionalLong.empty()));
         }
 
         @Override
-        public void resetRuns(long sessionId, long participantId) {
+        public void resetUnmeasurableRun(long sessionId, long participantId) {
             failFast();
             runsReset = true;
         }

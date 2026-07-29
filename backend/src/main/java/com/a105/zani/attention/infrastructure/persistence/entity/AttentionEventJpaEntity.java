@@ -54,13 +54,12 @@ public class AttentionEventJpaEntity extends BaseCreatedJpaEntity {
      * 검출기 출력 7종.
      *
      * <p>아래 계약 컬럼들이 nullable 인 것은 확장 단계이기 때문이다. 티켓 78 시절 행에는 값이 없다. 계약 이전 행을 정리한 뒤 스키마와 이 매핑을 함께 NOT NULL 로 조인다.
+     *
+     * <p>{@code low_engagement}·{@code engine_version} 컬럼은 티켓 61 에서 받지 않기로 해 항상 NULL 이다. 매핑에서 뺐고, 컬럼 제거는 계약 마이그레이션에서 함께
+     * 판단한다.
      */
     @Column(name = "detector_outcome", length = 30)
     private String detectorOutcome;
-
-    /** 브라우저가 확률 합 0.35 기준으로 판단한 저참여 여부(§3.3). 4단계 출력에만 있다. */
-    @Column(name = "low_engagement")
-    private Boolean lowEngagement;
 
     /** 4단계 값. 4단계가 아닌 출력(UNMEASURABLE·CAMERA_OFF·DETECTOR_UNAVAILABLE)은 비어 있다. */
     @Column(name = "attention_score")
@@ -75,9 +74,6 @@ public class AttentionEventJpaEntity extends BaseCreatedJpaEntity {
 
     @Column(name = "feature_schema_version", length = 40)
     private String featureSchemaVersion;
-
-    @Column(name = "engine_version", length = 40)
-    private String engineVersion;
 
     @Column(name = "client_event_id", length = 64)
     private String clientEventId;
