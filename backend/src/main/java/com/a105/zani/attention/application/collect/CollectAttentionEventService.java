@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import com.a105.zani.attention.application.exception.NotSessionStudentException;
 import com.a105.zani.attention.application.exception.UnsupportedDetectorContractException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRecord;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
@@ -46,14 +48,22 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
     private static final Duration SIGNIFICANT_WINDOW = Duration.ofMinutes(5);
 
     /**
-     * 연속 카운터 보관 기간. 판정이 10초마다 오므로 몇 주기를 건너뛰어도 이어지도록 넉넉히 잡는다.
+     * 집계 진행 상태의 보관 기간. 연속 카운터·반영 지점·측정 불가 구간·분모 제외 표시가 모두 이 값을 쓴다.
      *
-     * <p>짧게 잡으면 네트워크가 잠깐 흔들린 학생의 카운터가 0으로 돌아가 프롬프트가 늦어지고, 길게 잡으면 한참 뒤 재입장한 학생이 옛 카운터를 물려받는다.
+     * <p>판정이 10초마다 오므로 몇 주기를 건너뛰어도 이어지도록 넉넉히 잡는다. 짧게 잡으면 네트워크가 잠깐 흔들린 학생의 카운터가 0으로 돌아가 프롬프트가 늦어지고, 길게 잡으면 한참 뒤 재입장한 학생이
+     * 옛 값을 물려받는다. 학생이 아예 사라지면 presence 가 분모에서 빼 주므로 제외 표시를 오래 붙들 필요도 없다.
      */
-    private static final Duration RUN_COUNTER_TTL = Duration.ofMinutes(2);
+    private static final Duration AGGREGATION_STATE_TTL = Duration.ofMinutes(2);
 
     /** 멱등 판정에 쓰는 clientEventId 기록 보관 기간. */
     private static final Duration EVENT_ID_TTL = Duration.ofMinutes(10);
+
+    /**
+     * 측정 불가가 이만큼 이어지면 집단 비율 분모에서 뺀다(§7.1).
+     *
+     * <p>빼는 데 1분이 걸리고 넣는 데는 즉시인 비대칭이 각각 맞다. 카메라를 켜는 순간 관측이 가능해지므로 기다릴 이유가 없고, 껐다 켰다를 반복해도 빼는 데 1분이 걸려 분모가 출렁이지 않는다.
+     */
+    private static final Duration SUSTAINED_OUTAGE = Duration.ofMinutes(1);
 
     /** 클라이언트 시계가 조금 빠른 것은 받아 준다. 이보다 미래면 시간선이 깨진 것으로 본다. */
     private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(1);
@@ -115,21 +125,28 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
      * <p>3·4단계와 {@code CAMERA_OFF} 는 그 자리에서 확정되고, 저참여와 {@code UNMEASURABLE} 은 3연속이어야 한다. 저참여 3연속은 상태를 바로 정하지 않는다 — 이해
      * 확인 응답이 와야 CONFUSED·MISSED·NON_RESPONSE 중 무엇인지 갈린다(§2).
      *
-     * <p>순서 판단·카운터·반영 지점은 저장소가 한 덩어리로 처리한다. 뒤이은 상태 기록이 실패하면 이 관측의 상태 확정은 잃지만, 10초 뒤 다음 관측이 곧바로 다시 확정한다. 카운터를 두 번 올리는 쪽은
-     * 그렇게 저절로 낫지 않는다 — 3연속이 관측 두 건으로 앞당겨진 채 남는다.
+     * <p>순서 판단·카운터·반영 지점·측정 불가 구간은 저장소가 한 덩어리로 처리한다. 뒤이은 상태 기록이 실패하면 이 관측의 상태 확정은 잃지만, 10초 뒤 다음 관측이 곧바로 다시 확정한다. 카운터를 두
+     * 번 올리는 쪽은 그렇게 저절로 낫지 않는다 — 3연속이 관측 두 건으로 앞당겨진 채 남는다.
      *
      * @return 반영했으면 {@code true}, 더 최신 판정이 이미 반영돼 있어 건드리지 않았으면 {@code false}
      */
     private boolean applyToCoachingState(
             long sessionId, long participantId, DetectionSignal signal, long observedOffsetMs) {
-        Optional<DetectionRunCounters> counters = attentionStatePort.applyObservation(
-                sessionId, participantId, DetectionRunTransition.of(signal), observedOffsetMs, RUN_COUNTER_TTL);
-        if (counters.isEmpty()) {
+        Optional<ObservationApplied> result = attentionStatePort.applyObservation(
+                sessionId,
+                participantId,
+                DetectionRunTransition.of(signal),
+                signal.outcome().suspendsMeasurement(),
+                observedOffsetMs,
+                AGGREGATION_STATE_TTL);
+        if (result.isEmpty()) {
             return false;
         }
+        ObservationApplied applied = result.get();
+        applyDenominatorMembership(sessionId, participantId, applied.measurementOutageMs());
 
         Optional<AttentionState> confirmed = signal.outcome() == DetectorOutcome.UNMEASURABLE
-                ? unmeasurableStateWhenRunComplete(counters.get())
+                ? unmeasurableStateWhenRunComplete(applied.counters())
                 : signal.outcome().immediateState();
 
         confirmed.ifPresent(state -> {
@@ -143,6 +160,22 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
             }
         });
         return true;
+    }
+
+    /**
+     * 집단 비율 분모에 넣을지 뺄지를 정한다(§7.1).
+     *
+     * <p>판단은 서버가 한다. 클라이언트가 "저를 빼주세요"라고 말하는 구조는 학생 입장에서 빠지는 게 늘 유리해져 분모가 계속 줄어든다. 그래서 학생의 카메라 안내 응답이 아니라 검출기 이벤트가 근거다.
+     */
+    private void applyDenominatorMembership(long sessionId, long participantId, OptionalLong measurementOutageMs) {
+        if (measurementOutageMs.isEmpty()) {
+            // 측정이 가능해진 순간 되돌린다. 표시가 없으면 지우는 것도 아무 일이 아니라 상태를 따로 읽지 않는다.
+            attentionStatePort.includeInDenominator(sessionId, participantId);
+            return;
+        }
+        if (measurementOutageMs.getAsLong() >= SUSTAINED_OUTAGE.toMillis()) {
+            attentionStatePort.excludeFromDenominator(sessionId, participantId, AGGREGATION_STATE_TTL);
+        }
     }
 
     /**

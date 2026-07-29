@@ -24,8 +24,8 @@ import org.springframework.web.context.WebApplicationContext;
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
-import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.auth.application.port.TokenProvider;
 
@@ -99,10 +99,11 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public Optional<DetectionRunCounters> applyObservation(
+                public Optional<ObservationApplied> applyObservation(
                         long sessionId,
                         long participantId,
                         DetectionRunTransition transition,
+                        boolean measurementSuspended,
                         long observedOffsetMs,
                         Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));

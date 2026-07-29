@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +47,8 @@ class AttentionEventCollectionIntegrationTest {
     private static final String ENGINE = "e0g-1";
 
     private static final String STATE_KEY = "attention:" + SESSION_ID + ":state:" + PARTICIPANT_ID;
+    private static final String EXCLUDED_KEY = "attention:" + SESSION_ID + ":excluded:" + PARTICIPANT_ID;
+    private static final String OUTAGE_KEY = "attention:" + SESSION_ID + ":outage:" + PARTICIPANT_ID;
 
     private static String significantKey(AttentionState state) {
         return "attention:" + SESSION_ID + ":significant:" + state.name() + ":" + PARTICIPANT_ID;
@@ -164,6 +167,37 @@ class AttentionEventCollectionIntegrationTest {
     }
 
     @Test
+    void keepsAStudentInTheDenominatorForAnOutageShorterThanAMinute() throws Exception {
+        observeAt("CAMERA_OFF", 0).andExpect(status().isOk());
+        observeAt("CAMERA_OFF", 59_000).andExpect(status().isOk());
+
+        assertNull(redisTemplate.opsForValue().get(EXCLUDED_KEY));
+    }
+
+    @Test
+    void dropsAStudentFromTheDenominatorOnceTheOutageReachesAMinute() throws Exception {
+        observeAt("CAMERA_OFF", 0).andExpect(status().isOk());
+        observeAt("CAMERA_OFF", 60_000).andExpect(status().isOk());
+
+        // 판단은 서버가 한다. 클라이언트가 "저를 빼주세요"라고 말하는 구조보다 안전하다(§7.1).
+        assertEquals("1", redisTemplate.opsForValue().get(EXCLUDED_KEY));
+    }
+
+    @Test
+    void bringsAStudentBackIntoTheDenominatorAsSoonAsMeasurementResumes() throws Exception {
+        observeAt("CAMERA_OFF", 0).andExpect(status().isOk());
+        observeAt("DETECTOR_UNAVAILABLE", 60_000).andExpect(status().isOk());
+        assertEquals("1", redisTemplate.opsForValue().get(EXCLUDED_KEY));
+
+        observeAt("CAMERA_OFF", 70_000).andExpect(status().isOk());
+        observeAt("ENGAGED", 80_000).andExpect(status().isOk());
+
+        // 카메라를 켜는 순간 관측이 가능해지므로 기다릴 이유가 없다.
+        assertNull(redisTemplate.opsForValue().get(EXCLUDED_KEY));
+        assertNull(redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    @Test
     void storesDetectorUnavailableSoTheServerCanTellItApartFromSilence() throws Exception {
         observeImmediate("DETECTOR_UNAVAILABLE").andExpect(status().isOk());
 
@@ -279,6 +313,23 @@ class AttentionEventCollectionIntegrationTest {
         return sessionStartedAt.plusSeconds(10L * windowIndex).toString();
     }
 
+    /**
+     * 지정한 오프셋에 관측 하나를 보낸다(§7.1 구간 검증용).
+     *
+     * <p>창이 필요한 출력에는 창 필드를 함께 실어야 400 이 되지 않는다. 오프셋을 직접 주는 이유는 측정 불가 구간의 길이가 검증 대상이기 때문이다.
+     */
+    private ResultActions observeAt(String outcome, long observedOffsetMs) throws Exception {
+        String observedAt = sessionStartedAt.plusMillis(observedOffsetMs).toString();
+        boolean windowed = !outcome.equals("CAMERA_OFF") && !outcome.equals("DETECTOR_UNAVAILABLE");
+        String windowFields = windowed
+                ? "\"windowStartedAt\":\"" + sessionStartedAt.plusMillis(observedOffsetMs - 10_000) + "\","
+                        + "\"lowEngagement\":" + lowEngagement(outcome) + ",\"signalQuality\":0.92,"
+                : "";
+        return send("{\"outcome\":\"" + outcome + "\"," + windowFields + "\"observedAt\":\"" + observedAt
+                + "\",\"featureSchemaVersion\":\"" + SCHEMA + "\",\"engineVersion\":\"" + ENGINE
+                + "\",\"clientEventId\":\"at-" + observedOffsetMs + "-" + outcome + "\"}");
+    }
+
     private ResultActions send(String body) throws Exception {
         return mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", SESSION_ID)
                 .header("Authorization", "Bearer " + token(STUDENT_ID))
@@ -306,19 +357,16 @@ class AttentionEventCollectionIntegrationTest {
         redisTemplate.delete("attention:" + SESSION_ID + ":applied:" + PARTICIPANT_ID);
         redisTemplate.delete("attention:" + SESSION_ID + ":run:low:" + PARTICIPANT_ID);
         redisTemplate.delete("attention:" + SESSION_ID + ":run:unmeasurable:" + PARTICIPANT_ID);
+        redisTemplate.delete(EXCLUDED_KEY);
+        redisTemplate.delete(OUTAGE_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
         }
-        for (String id : List.of(
-                "event-1",
-                "event-2",
-                "event-3",
-                "repeat-1",
-                "no-window",
-                "with-probabilities",
-                "no-flag",
-                "other-schema")) {
-            redisTemplate.delete("attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:" + id);
+        // 멱등 표시는 패턴으로 지운다. 목록을 손으로 관리하면 새 clientEventId 를 쓰는 테스트가
+        // 앞 테스트의 표시를 물려받아 "이미 처리했다"로 통과해 버린다.
+        Set<String> markers = redisTemplate.keys("attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:*");
+        if (markers != null && !markers.isEmpty()) {
+            redisTemplate.delete(markers);
         }
     }
 

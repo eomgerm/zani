@@ -47,9 +47,22 @@ public enum DetectorOutcome {
         return this == ENGAGED || this == HIGHLY_ENGAGED;
     }
 
-    /** 10초 창을 봐야 값이 정해지는 출력인지. 나머지는 보는 순간 확정된다(§4.2). */
+    /**
+     * 관측 자체가 불가능한 출력인지(§7.1). 이 상태가 연속 1분 이어지면 학생을 집단 비율 분모에서 뺀다.
+     *
+     * <p>카메라가 영상을 안 주거나 검출기가 못 도는 두 경우다. 카메라를 켤 수 없는 학생을 분모에 남겨 두면 그 학생이 무엇을 하든 비율이 낮아져, 실제로 어려움을 겪는 학생들이 가려진다.
+     */
+    public boolean suspendsMeasurement() {
+        return this == CAMERA_OFF || this == DETECTOR_UNAVAILABLE;
+    }
+
+    /**
+     * 10초 창을 봐야 값이 정해지는 출력인지. 나머지는 보는 순간 확정된다(§4.2).
+     *
+     * <p>{@link #suspendsMeasurement()} 의 부정과 같다. 우연이 아니라 같은 사실의 두 면이다 — 볼 것이 없으니 창을 볼 필요도 없다.
+     */
     public boolean needsObservationWindow() {
-        return this != CAMERA_OFF && this != DETECTOR_UNAVAILABLE;
+        return !suspendsMeasurement();
     }
 
     /**

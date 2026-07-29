@@ -3,6 +3,7 @@ package com.a105.zani.attention.infrastructure.redis;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import com.a105.zani.attention.application.port.AttentionSnapshot;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
 import com.a105.zani.attention.domain.model.DetectionRunTransition;
@@ -37,6 +39,7 @@ class AttentionStateRedisAdapterTest {
     private static final String UNMEASURABLE_RUN_KEY =
             "attention:" + SESSION_ID + ":run:unmeasurable:" + PARTICIPANT_ID;
     private static final String APPLIED_KEY = "attention:" + SESSION_ID + ":applied:" + PARTICIPANT_ID;
+    private static final String OUTAGE_KEY = "attention:" + SESSION_ID + ":outage:" + PARTICIPANT_ID;
     private static final Duration RUN_TTL = Duration.ofMinutes(2);
     private static final String EVENT_KEY = "attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:redis-adapter-1";
 
@@ -58,6 +61,7 @@ class AttentionStateRedisAdapterTest {
         redisTemplate.delete(LOW_RUN_KEY);
         redisTemplate.delete(UNMEASURABLE_RUN_KEY);
         redisTemplate.delete(APPLIED_KEY);
+        redisTemplate.delete(OUTAGE_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
         }
@@ -175,8 +179,10 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void countsUpAndArmsTheTtlInOneStep() {
-        DetectionRunCounters first = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 10_000L);
-        DetectionRunCounters second = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 20_000L);
+        DetectionRunCounters first = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 10_000L)
+                .counters();
+        DetectionRunCounters second = apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 20_000L)
+                .counters();
 
         assertEquals(1, first.lowEngagement());
         assertEquals(2, second.lowEngagement());
@@ -190,7 +196,8 @@ class AttentionStateRedisAdapterTest {
     void keepsACounterWithoutChangingItAndStillRefreshesItsTtl() {
         apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 10_000L);
 
-        DetectionRunCounters kept = apply(new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT), 20_000L);
+        DetectionRunCounters kept = apply(new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT), 20_000L)
+                .counters();
 
         assertEquals(1, kept.lowEngagement());
         assertEquals(1, kept.unmeasurable());
@@ -203,7 +210,8 @@ class AttentionStateRedisAdapterTest {
     void clearsACounterOnReset() {
         apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.INCREMENT), 10_000L);
 
-        DetectionRunCounters reset = apply(new DetectionRunTransition(RunStep.RESET, RunStep.RESET), 20_000L);
+        DetectionRunCounters reset = apply(new DetectionRunTransition(RunStep.RESET, RunStep.RESET), 20_000L)
+                .counters();
 
         assertEquals(0, reset.lowEngagement());
         assertEquals(0, reset.unmeasurable());
@@ -237,10 +245,11 @@ class AttentionStateRedisAdapterTest {
     void refusesAnObservationThatANewerOneHasAlreadyOvertaken() {
         apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 30_000L);
 
-        Optional<DetectionRunCounters> late = adapter.applyObservation(
+        Optional<ObservationApplied> late = adapter.applyObservation(
                 SESSION_ID,
                 PARTICIPANT_ID,
                 new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET),
+                false,
                 20_000L,
                 RUN_TTL);
 
@@ -254,10 +263,11 @@ class AttentionStateRedisAdapterTest {
     void refusesAResendOfTheJudgementItJustApplied() {
         apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 30_000L);
 
-        Optional<DetectionRunCounters> resent = adapter.applyObservation(
+        Optional<ObservationApplied> resent = adapter.applyObservation(
                 SESSION_ID,
                 PARTICIPANT_ID,
                 new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET),
+                false,
                 30_000L,
                 RUN_TTL);
 
@@ -275,8 +285,72 @@ class AttentionStateRedisAdapterTest {
         assertEquals("30000", redisTemplate.opsForValue().get(APPLIED_KEY));
     }
 
-    private DetectionRunCounters apply(DetectionRunTransition transition, long observedOffsetMs) {
-        return adapter.applyObservation(SESSION_ID, PARTICIPANT_ID, transition, observedOffsetMs, RUN_TTL)
+    @Test
+    void startsTheOutageClockOnTheFirstUnmeasurableObservation() {
+        OptionalLong outage = applySuspended(30_000L).measurementOutageMs();
+
+        assertEquals(0L, outage.getAsLong());
+        assertEquals("30000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+        Long ttl = redisTemplate.getExpire(OUTAGE_KEY);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 120, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void measuresTheOutageFromWhereItStartedNotFromTheLastObservation() {
+        applySuspended(30_000L);
+        applySuspended(60_000L);
+
+        OptionalLong outage = applySuspended(90_000L).measurementOutageMs();
+
+        // 시작 지점을 매번 새로 심으면 구간이 1분을 넘길 수 없어 아무도 분모에서 빠지지 않는다.
+        assertEquals(60_000L, outage.getAsLong());
+        assertEquals("30000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    @Test
+    void endsTheOutageTheMomentMeasurementBecomesPossibleAgain() {
+        applySuspended(30_000L);
+
+        OptionalLong outage = apply(new DetectionRunTransition(RunStep.RESET, RunStep.RESET), 40_000L)
+                .measurementOutageMs();
+
+        assertTrue(outage.isEmpty());
+        assertNull(redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    @Test
+    void neverReportsANegativeOutageBecauseTheOrderCheckRunsFirst() {
+        applySuspended(60_000L);
+
+        // 순서 판단을 통과하지 못한 옛 관측은 구간에도 손대지 못한다. 따로 재면 여기서 음수가 나와,
+        // 측정이 불가한데도 분모로 되돌아간다.
+        Optional<ObservationApplied> stale = adapter.applyObservation(
+                SESSION_ID,
+                PARTICIPANT_ID,
+                new DetectionRunTransition(RunStep.KEEP, RunStep.INCREMENT),
+                true,
+                30_000L,
+                RUN_TTL);
+
+        assertTrue(stale.isEmpty());
+        assertEquals("60000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    private ObservationApplied apply(DetectionRunTransition transition, long observedOffsetMs) {
+        return adapter.applyObservation(SESSION_ID, PARTICIPANT_ID, transition, false, observedOffsetMs, RUN_TTL)
+                .orElseThrow();
+    }
+
+    /** 측정 불가 관측. 창이 없는 출력은 두 카운터를 모두 되돌린다(§4.1). */
+    private ObservationApplied applySuspended(long observedOffsetMs) {
+        return adapter.applyObservation(
+                        SESSION_ID,
+                        PARTICIPANT_ID,
+                        new DetectionRunTransition(RunStep.RESET, RunStep.RESET),
+                        true,
+                        observedOffsetMs,
+                        RUN_TTL)
                 .orElseThrow();
     }
 }

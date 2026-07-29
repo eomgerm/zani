@@ -5,7 +5,6 @@ import com.a105.zani.common.error.ErrorType;
 
 public enum PromptResponseErrorCode implements ErrorCode {
     NOT_SESSION_STUDENT(ErrorType.FORBIDDEN, "PROMPT_RESPONSE_001", "Only session students can answer check prompts"),
-    MISMATCHED_ANSWER(ErrorType.BAD_REQUEST, "PROMPT_RESPONSE_002", "The answer does not belong to this prompt kind"),
     INVALID_PROMPT_TIMELINE(
             ErrorType.BAD_REQUEST,
             "PROMPT_RESPONSE_003",
