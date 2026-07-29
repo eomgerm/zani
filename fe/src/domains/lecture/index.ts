@@ -3,6 +3,7 @@
 // 확인 절차를 가진 presentation 컴포넌트(EndSessionButton)를 통해서만 실행되어야 한다.
 export { canonicalInviteCode, inviteCodeFrom } from "./domain/inviteCode";
 export { HomeScreen } from "./presentation/HomeScreen";
+export { PrejoinScreen } from "./presentation/PrejoinScreen";
 export { MyLecturesScreen } from "./presentation/MyLecturesScreen";
 export { ReportScreen } from "./presentation/ReportScreen";
 export { RoomScreen } from "./presentation/RoomScreen";

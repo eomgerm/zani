@@ -1,10 +1,9 @@
-import { Suspense } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { JoinSessionRequestError } from '@/domains/lecture/infrastructure/joinSessionApi';
+import { JoinSessionRequestError } from '../infrastructure/joinSessionApi';
 import type { DevicePreviewState } from '@/features/media/DevicePreview';
-import Page from './page';
+import { PrejoinScreen } from './PrejoinScreen';
 
 const { pushMock, deviceStateEmitter, authState } = vi.hoisted(() => ({
   pushMock: vi.fn(),
@@ -78,13 +77,9 @@ async function renderPage(
   inviteCode = 'ABC123',
   joinSession = vi.fn().mockResolvedValue(joinedSession()),
 ) {
-  // use(params) 서스펜션이 풀릴 때까지 비동기 act 안에서 렌더링한다.
+  // 마운트 직후 브라우저 판정 effect 가 상태를 세우므로 비동기 act 안에서 렌더링한다.
   await act(async () => {
-    render(
-      <Suspense fallback={null}>
-        <Page params={Promise.resolve({ inviteCode })} joinSession={joinSession} />
-      </Suspense>,
-    );
+    render(<PrejoinScreen inviteCode={inviteCode} joinSession={joinSession} />);
   });
   return joinSession;
 }
@@ -114,7 +109,7 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, 'permissions');
 });
 
-describe('Prejoin Page', () => {
+describe('PrejoinScreen', () => {
   it('비지원 브라우저면 입장 버튼을 비활성화하고 원인별 안내를 보여준다', async () => {
     // jsdom 기본 UA(비 Chrome) + mediaDevices 없음
     await renderPage();
