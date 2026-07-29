@@ -132,8 +132,8 @@ npm run generate:types
 npm run sync:attention-assets
 ```
 
-- 복사 대상: `@mediapipe/tasks-vision`의 wasm, `onnxruntime-web`의 `ort-wasm-*`, MediaPipe FaceLandmarker 모델
+- 복사 대상: `@mediapipe/tasks-vision`의 wasm, `onnxruntime-web`의 `ort-wasm-*`, MediaPipe FaceLandmarker 모델, 검증된 참여도 ONNX 모델과 배포 메타데이터
 - `public/attention/`은 커밋하지 않습니다 (`.gitignore`). 빌드마다 다시 만들어집니다.
 - 경로 계약은 `src/domains/attention/infrastructure/attentionAssets.ts`가 단일 소스입니다. 배포 경로가 다르면 `NEXT_PUBLIC_ATTENTION_ASSET_BASE`로 바꿉니다.
 
-학습된 참여도 모델(`engagement.onnx`, `engagement.metadata.json`)은 저장소에 없습니다. `ai/`에서 export해 `public/attention/models/`에 넣어야 판정이 켜지고, 없으면 판정만 비활성(`unavailable`)되고 수업은 그대로 진행됩니다. 자세한 명령은 `public/attention/models/README.md`에 있습니다.
+승인된 참여도 모델 원본은 `assets/attention-model/v1/`에 보관합니다. `engagement.manifest.json`은 ONNX와 metadata의 SHA-256, 특징 schema, `onnxruntime-web` 버전을 고정합니다. sync와 production build는 파일 누락·손상·계약 불일치가 있으면 실패하며, 성공한 경우에만 세 파일을 `public/attention/models/`로 복사합니다. 모델을 교체할 때는 ONNX와 metadata를 함께 검증한 뒤 manifest의 두 해시와 engine 버전을 갱신해야 합니다.

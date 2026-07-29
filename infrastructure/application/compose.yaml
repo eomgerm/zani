@@ -92,6 +92,7 @@ services:
       REDIS_PORT: "6379"
       REDIS_SSL_ENABLED: "false"
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?FRONTEND_ORIGIN is required}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID is required}
       AUTH_COOKIE_SAME_SITE: None
       # 브라우저가 접속할 LiveKit 주소. 이 값이 media-token 응답으로 그대로 내려간다.
       # 7880은 UFW로 막혀 있고 nginx가 443에서 프록시하므로 공개 URL을 쓴다.
