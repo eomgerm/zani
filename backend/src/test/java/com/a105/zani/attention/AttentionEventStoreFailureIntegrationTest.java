@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +86,12 @@ class AttentionEventStoreFailureIntegrationTest {
 
                 @Override
                 public void markSignificant(long sessionId, long participantId, AttentionState state, Duration window) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
+
+                @Override
+                public OptionalLong trackMeasurementOutage(
+                        long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
 

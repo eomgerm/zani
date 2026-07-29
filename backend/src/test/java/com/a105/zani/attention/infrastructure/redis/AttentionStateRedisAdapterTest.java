@@ -3,6 +3,7 @@ package com.a105.zani.attention.infrastructure.redis;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.OptionalLong;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ class AttentionStateRedisAdapterTest {
     private static final String UNMEASURABLE_RUN_KEY =
             "attention:" + SESSION_ID + ":run:unmeasurable:" + PARTICIPANT_ID;
     private static final String APPLIED_KEY = "attention:" + SESSION_ID + ":applied:" + PARTICIPANT_ID;
+    private static final String OUTAGE_KEY = "attention:" + SESSION_ID + ":outage:" + PARTICIPANT_ID;
     private static final Duration RUN_TTL = Duration.ofMinutes(2);
     private static final String EVENT_KEY = "attention:" + SESSION_ID + ":" + PARTICIPANT_ID + ":event:redis-adapter-1";
 
@@ -58,6 +60,7 @@ class AttentionStateRedisAdapterTest {
         redisTemplate.delete(LOW_RUN_KEY);
         redisTemplate.delete(UNMEASURABLE_RUN_KEY);
         redisTemplate.delete(APPLIED_KEY);
+        redisTemplate.delete(OUTAGE_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
         }
@@ -273,6 +276,39 @@ class AttentionStateRedisAdapterTest {
 
         // 프롬프트에 답했다고 어디까지 반영했는지를 잊으면, 뒤늦게 도착한 옛 관측이 다시 반영된다.
         assertEquals("30000", redisTemplate.opsForValue().get(APPLIED_KEY));
+    }
+
+    @Test
+    void startsTheOutageClockOnTheFirstUnmeasurableObservation() {
+        OptionalLong outage = adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, true, 30_000L, RUN_TTL);
+
+        assertEquals(0L, outage.getAsLong());
+        assertEquals("30000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+        Long ttl = redisTemplate.getExpire(OUTAGE_KEY);
+        assertNotNull(ttl);
+        assertTrue(ttl > 0 && ttl <= 120, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void measuresTheOutageFromWhereItStartedNotFromTheLastObservation() {
+        adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, true, 30_000L, RUN_TTL);
+        adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, true, 60_000L, RUN_TTL);
+
+        OptionalLong outage = adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, true, 90_000L, RUN_TTL);
+
+        // 시작 지점을 매번 새로 심으면 구간이 1분을 넘길 수 없어 아무도 분모에서 빠지지 않는다.
+        assertEquals(60_000L, outage.getAsLong());
+        assertEquals("30000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    @Test
+    void endsTheOutageTheMomentMeasurementBecomesPossibleAgain() {
+        adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, true, 30_000L, RUN_TTL);
+
+        OptionalLong outage = adapter.trackMeasurementOutage(SESSION_ID, PARTICIPANT_ID, false, 40_000L, RUN_TTL);
+
+        assertTrue(outage.isEmpty());
+        assertNull(redisTemplate.opsForValue().get(OUTAGE_KEY));
     }
 
     private DetectionRunCounters apply(DetectionRunTransition transition, long observedOffsetMs) {

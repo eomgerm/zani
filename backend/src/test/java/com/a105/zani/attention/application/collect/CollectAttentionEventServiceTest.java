@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -315,6 +316,57 @@ class CollectAttentionEventServiceTest {
     }
 
     @Test
+    void keepsAStudentInTheDenominatorUntilTheOutageHasLastedAFullMinute() {
+        // 59초까지는 포함이다. 껐다 켰다를 반복하는 학생 때문에 분모가 출렁이면 비율을 믿을 수 없다.
+        cameraOffAt(0);
+        cameraOffAt(59_000);
+
+        assertTrue(statePort.excluded.isEmpty());
+    }
+
+    @Test
+    void dropsAStudentFromTheDenominatorOnceTheOutageReachesAMinute() {
+        cameraOffAt(0);
+        cameraOffAt(60_000);
+
+        // 카메라를 켤 수 없는 학생을 분모에 남기면, 무엇을 하든 비율이 낮아져 어려움을 겪는 학생들이 가려진다(§7.1).
+        assertTrue(statePort.excluded.contains(STUDENT_PARTICIPANT));
+    }
+
+    @Test
+    void countsADetectorOutageTowardTheSameMinuteAsACameraOutage() {
+        // 검출기가 못 도는 것도 관측이 불가능한 것이라 같은 구간으로 센다(§2.1·§7.1).
+        outcomeAt(DetectorOutcome.DETECTOR_UNAVAILABLE, 0);
+        outcomeAt(DetectorOutcome.DETECTOR_UNAVAILABLE, 60_000);
+
+        assertTrue(statePort.excluded.contains(STUDENT_PARTICIPANT));
+    }
+
+    @Test
+    void bringsAStudentBackIntoTheDenominatorTheMomentMeasurementResumes() {
+        cameraOffAt(0);
+        cameraOffAt(60_000);
+        assertTrue(statePort.excluded.contains(STUDENT_PARTICIPANT));
+
+        outcomeAt(DetectorOutcome.ENGAGED, 70_000);
+
+        // 빼는 데 1분이 걸리고 넣는 데는 즉시인 비대칭이 각각 맞다. 카메라를 켜는 순간 관측이 가능해진다.
+        assertTrue(statePort.excluded.isEmpty());
+    }
+
+    @Test
+    void restartsTheOutageClockWhenMeasurementRecoversInBetween() {
+        cameraOffAt(0);
+        cameraOffAt(30_000);
+        outcomeAt(DetectorOutcome.ENGAGED, 40_000);
+        cameraOffAt(50_000);
+
+        // 구간이 끊겼으니 50초부터 다시 센다. 이어서 세면 켰다 끈 학생이 1분도 안 돼 빠진다.
+        cameraOffAt(100_000);
+        assertTrue(statePort.excluded.isEmpty());
+    }
+
+    @Test
     void rejectsAnObservationSentByTheInstructor() {
         resolveParticipant.role = SessionParticipantRole.INSTRUCTOR;
 
@@ -358,6 +410,26 @@ class CollectAttentionEventServiceTest {
                 SCHEMA,
                 ENGINE,
                 "event-" + windowIndex + "-" + outcome);
+    }
+
+    /** 측정 불가 관측을 지정한 오프셋에 보낸다(§7.1 구간 검증용). */
+    private void cameraOffAt(long observedOffsetMs) {
+        outcomeAt(DetectorOutcome.CAMERA_OFF, observedOffsetMs);
+    }
+
+    private void outcomeAt(DetectorOutcome outcome, long observedOffsetMs) {
+        Instant observedAt = SESSION_STARTED_AT.plusMillis(observedOffsetMs);
+        boolean windowed = outcome.needsObservationWindow();
+        service.collect(new CollectAttentionEventCommand(
+                SESSION_ID,
+                STUDENT_USER,
+                new DetectionSignal(outcome, false),
+                windowed ? observedAt.minusSeconds(10) : null,
+                observedAt,
+                windowed ? 0.9d : null,
+                SCHEMA,
+                ENGINE,
+                "event-at-" + observedOffsetMs + "-" + outcome));
     }
 
     /** 창 없이 그 자리에서 확정되는 출력(§4.2). */
@@ -416,6 +488,7 @@ class CollectAttentionEventServiceTest {
         private final Set<AttentionState> significant = new HashSet<>();
         private final Set<Long> excluded = new HashSet<>();
         private final Map<Long, Long> appliedOffsets = new HashMap<>();
+        private final Map<Long, Long> outageStartedAt = new HashMap<>();
         private DetectionRunCounters counters = DetectionRunCounters.none();
         private DetectionRunCounters lastCounters = DetectionRunCounters.none();
         private boolean failAdvance;
@@ -442,6 +515,17 @@ class CollectAttentionEventServiceTest {
         @Override
         public void markSignificant(long sessionId, long participantId, AttentionState state, Duration window) {
             significant.add(state);
+        }
+
+        @Override
+        public OptionalLong trackMeasurementOutage(
+                long sessionId, long participantId, boolean suspended, long observedOffsetMs, Duration ttl) {
+            if (!suspended) {
+                outageStartedAt.remove(participantId);
+                return OptionalLong.empty();
+            }
+            Long startedAt = outageStartedAt.putIfAbsent(participantId, observedOffsetMs);
+            return OptionalLong.of(startedAt == null ? 0L : observedOffsetMs - startedAt);
         }
 
         @Override
