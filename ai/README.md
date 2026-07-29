@@ -45,7 +45,7 @@ CUDA build는 필요한 CUDA runtime을 wheel에 포함하므로 별도 CUDA Too
 
 아래 명령들은 PowerShell 기준입니다. bash에서는 줄 이어쓰기를 백틱(`` ` ``) 대신
 백슬래시(`\`)로 바꾸면 그대로 동작합니다. 원격 L40S 서버(JupyterHub)에서의 실행 절차는
-[docs/remote-l40s.md](docs/remote-l40s.md)를 참고하세요.
+[../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md)를 참고하세요.
 
 ## EngageNet 데이터 준비
 
