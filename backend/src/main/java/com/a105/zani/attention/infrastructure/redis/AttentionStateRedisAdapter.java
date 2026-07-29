@@ -2,7 +2,7 @@ package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.OptionalLong;
+import java.util.Optional;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
@@ -44,12 +44,14 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     private static final String FIELD_SEPARATOR = "|";
 
     /**
-     * 연속 카운터 두 개와 반영 지점을 한 번에 쓴다.
+     * 더 최신 판정이 아직 없을 때만 연속 카운터와 반영 지점을 쓴다. 이미 있으면 아무것도 건드리지 않고 nil 을 돌려준다.
      *
      * <p>INCR 과 EXPIRE 를 왕복 두 번으로 나누면 그 사이에 연결이 끊겼을 때 TTL 없는 카운터가 남아, 한참 뒤 재입장한 학생이 옛 값을 그대로 물려받는다. 같은 이유로 현재 상태도 SET 한
      * 번으로 쓴다.
      *
      * <p>반영 지점을 뒤이은 별도 왕복으로 쓰면, 카운터는 올랐는데 반영 지점은 빠진 상태가 남는다. 그 뒤 재시도는 반영이 안 끝난 것으로 보고 카운터를 한 번 더 올린다.
+     *
+     * <p>순서 판단까지 이 안에서 하는 이유도 같다. 밖에서 읽고 비교한 뒤 쓰면, 같은 학생의 판정 두 건이 겹쳐 들어왔을 때 둘 다 "내가 최신"이라고 읽고 옛 쪽이 나중에 써서 반영 지점을 되돌린다.
      */
     private static final RedisScript<List> APPLY_OBSERVATION = RedisScript.of("""
             local function apply(key, step, ttl)
@@ -70,6 +72,10 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
               end
             end
             local ttl = tonumber(ARGV[3])
+            local applied = redis.call('GET', KEYS[3])
+            if applied and tonumber(applied) >= tonumber(ARGV[4]) then
+              return nil
+            end
             local counters = { apply(KEYS[1], ARGV[1], ttl), apply(KEYS[2], ARGV[2], ttl) }
             redis.call('SET', KEYS[3], ARGV[4], 'EX', ttl)
             return counters
@@ -144,7 +150,7 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
     }
 
     @Override
-    public DetectionRunCounters applyObservation(
+    public Optional<DetectionRunCounters> applyObservation(
             long sessionId,
             long participantId,
             DetectionRunTransition transition,
@@ -161,11 +167,12 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
                     transition.unmeasurable().name(),
                     Long.toString(ttl.toSeconds()),
                     Long.toString(observedOffsetMs));
+            // nil 은 더 최신 판정이 이미 반영됐다는 뜻이다. 스크립트가 아무것도 건드리지 않았다.
             if (counters == null || counters.size() < 2) {
-                return DetectionRunCounters.none();
+                return Optional.empty();
             }
-            return new DetectionRunCounters(
-                    counters.get(0).intValue(), counters.get(1).intValue());
+            return Optional.of(new DetectionRunCounters(
+                    counters.get(0).intValue(), counters.get(1).intValue()));
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }
@@ -176,16 +183,6 @@ public class AttentionStateRedisAdapter implements AttentionStatePort {
         try {
             redisTemplate.delete(
                     List.of(lowRunKey(sessionId, participantId), unmeasurableRunKey(sessionId, participantId)));
-        } catch (DataAccessException exception) {
-            throw new AttentionStateUnavailableException(exception);
-        }
-    }
-
-    @Override
-    public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
-        try {
-            String value = redisTemplate.opsForValue().get(appliedKey(sessionId, participantId));
-            return value == null ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(value));
         } catch (DataAccessException exception) {
             throw new AttentionStateUnavailableException(exception);
         }

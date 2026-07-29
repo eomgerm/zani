@@ -9,7 +9,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -455,7 +455,7 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
-        public DetectionRunCounters applyObservation(
+        public Optional<DetectionRunCounters> applyObservation(
                 long sessionId,
                 long participantId,
                 DetectionRunTransition transition,
@@ -464,13 +464,17 @@ class CollectAttentionEventServiceTest {
             if (failAdvance) {
                 throw new IllegalStateException("redis down");
             }
-            // 실제 어댑터는 카운터와 반영 지점을 Lua 한 번으로 쓴다. 갈라지면 재시도가 카운터를 두 번 올린다.
+            // 실제 어댑터는 순서 판단·카운터·반영 지점을 Lua 한 번으로 처리한다. 갈라지면 옛 판정이 최신 상태를 덮어쓴다.
+            Long applied = appliedOffsets.get(participantId);
+            if (applied != null && applied >= observedOffsetMs) {
+                return Optional.empty();
+            }
             counters = new DetectionRunCounters(
                     apply(transition.lowEngagement(), counters.lowEngagement()),
                     apply(transition.unmeasurable(), counters.unmeasurable()));
             lastCounters = counters;
             appliedOffsets.put(participantId, observedOffsetMs);
-            return counters;
+            return Optional.of(counters);
         }
 
         @Override
@@ -485,12 +489,6 @@ class CollectAttentionEventServiceTest {
                 case RESET -> 0;
                 case KEEP -> current;
             };
-        }
-
-        @Override
-        public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
-            Long value = appliedOffsets.get(participantId);
-            return value == null ? OptionalLong.empty() : OptionalLong.of(value);
         }
     }
 }

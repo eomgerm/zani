@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.util.OptionalLong;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +99,7 @@ class AttentionEventStoreFailureIntegrationTest {
                 }
 
                 @Override
-                public DetectionRunCounters applyObservation(
+                public Optional<DetectionRunCounters> applyObservation(
                         long sessionId,
                         long participantId,
                         DetectionRunTransition transition,
@@ -110,11 +110,6 @@ class AttentionEventStoreFailureIntegrationTest {
 
                 @Override
                 public void resetRuns(long sessionId, long participantId) {
-                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
-                }
-
-                @Override
-                public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
             };

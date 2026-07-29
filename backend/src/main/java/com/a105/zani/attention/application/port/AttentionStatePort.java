@@ -1,7 +1,7 @@
 package com.a105.zani.attention.application.port;
 
 import java.time.Duration;
-import java.util.OptionalLong;
+import java.util.Optional;
 
 import com.a105.zani.attention.domain.model.AttentionState;
 import com.a105.zani.attention.domain.model.DetectionRunCounters;
@@ -51,25 +51,23 @@ public interface AttentionStatePort {
     void includeInDenominator(long sessionId, long participantId);
 
     /**
-     * 연속 카운터 두 개에 주어진 조작을 적용하고, 어디까지 반영했는지를 함께 기록한다(§4.1).
+     * 이 관측이 이미 반영된 것보다 새로우면 연속 카운터에 조작을 적용하고 반영 지점을 옮긴다(§4.1). 더 최신 판정이 이미 반영돼 있으면 아무것도 하지 않고 빈 값을 돌려준다.
      *
      * <p>어떤 조작을 할지는 도메인({@link DetectionRunTransition})이 정하고, 저장소는 그것을 <b>한 번에</b> 적용하기만 한다. 읽고-쓰기로 나누면 같은 참가자의 판정이 겹쳐
      * 들어올 때 읽은 값이 서로를 덮어써 연속 횟수가 실제보다 적게 세어진다.
      *
-     * <p>반영 지점을 따로 쓰지 않고 여기서 같이 쓰는 이유는, 카운터만 오르고 반영 지점이 빠지면 재시도가 그 사실을 알 길이 없어 같은 관측으로 카운터를 한 번 더 올리기 때문이다. 3연속이 관측 두
-     * 건으로 앞당겨진다.
+     * <p>순서 판단·카운터·반영 지점 셋이 한 덩어리인 이유:
      *
-     * @param observedOffsetMs 이 관측이 반영된 지점. 뒤이어 온 더 옛 판정을 걸러내는 기준이 된다
+     * <ul>
+     *   <li>판단을 밖에서 하면 겹쳐 들어온 두 판정이 둘 다 "내가 최신"으로 읽고, 나중에 쓴 옛 쪽이 반영 지점을 되돌린다.
+     *   <li>카운터만 오르고 반영 지점이 빠지면 재시도가 그 사실을 알 길이 없어 같은 관측으로 카운터를 한 번 더 올린다. 3연속이 관측 두 건으로 앞당겨진다.
+     * </ul>
+     *
+     * @param observedOffsetMs 이 관측이 반영될 지점. 이미 반영된 지점보다 크지 않으면 거절된다
+     * @return 적용된 뒤의 연속 카운터. 더 최신 판정이 이미 반영돼 있었다면 빈 값
      */
-    DetectionRunCounters applyObservation(
+    Optional<DetectionRunCounters> applyObservation(
             long sessionId, long participantId, DetectionRunTransition transition, long observedOffsetMs, Duration ttl);
-
-    /**
-     * 마지막으로 반영한 판정 창의 종료 시각(ms). 아직 없으면 비어 있다.
-     *
-     * <p>늦게 도착한 옛 판정이 최신 상태를 덮어쓰지 않게 하는 데 쓴다.
-     */
-    OptionalLong lastAppliedOffsetMs(long sessionId, long participantId);
 
     /**
      * 연속 카운터 두 개를 모두 0으로 되돌린다.

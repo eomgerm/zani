@@ -4,7 +4,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.OptionalLong;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -97,13 +96,11 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                         "기록은 남아 있어 집계 반영만 다시 합니다. sessionId={}, clientEventId={}", sessionId, command.clientEventId());
             }
 
-            if (isSupersededByNewerJudgement(sessionId, participantId, observedOffsetMs)) {
-                // 늦게 도착한 옛 관측이 최신 상태를 덮어쓰면 학생이 과거로 되돌아간다. 기록만 남기고 집계는 건드리지 않는다.
+            // 늦게 도착한 옛 관측이 최신 상태를 덮어쓰면 학생이 과거로 되돌아간다. 기록만 남기고 집계는 건드리지 않는다.
+            if (!applyToCoachingState(sessionId, participantId, command.signal(), observedOffsetMs)) {
                 log.debug("더 최신 관측이 이미 반영됐습니다. sessionId={}, offsetMs={}", sessionId, observedOffsetMs);
                 return CollectAttentionEventResult.recordedButSuperseded();
             }
-
-            applyToCoachingState(sessionId, participantId, command.signal(), observedOffsetMs);
         } catch (RuntimeException exception) {
             // 멱등 표시만 남으면 재시도가 "이미 처리했다"는 거짓 성공을 받고 그 관측이 영영 사라진다.
             clearMarkerQuietly(sessionId, participantId, command.clientEventId());
@@ -118,16 +115,21 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
      * <p>3·4단계와 {@code CAMERA_OFF} 는 그 자리에서 확정되고, 저참여와 {@code UNMEASURABLE} 은 3연속이어야 한다. 저참여 3연속은 상태를 바로 정하지 않는다 — 이해
      * 확인 응답이 와야 CONFUSED·MISSED·NON_RESPONSE 중 무엇인지 갈린다(§2).
      *
-     * <p>연속 카운터와 반영 지점은 저장소가 한 번에 쓴다. 뒤이은 상태 기록이 실패하면 이 관측의 상태 확정은 잃지만, 10초 뒤 다음 관측이 곧바로 다시 확정한다. 카운터를 두 번 올리는 쪽은 그렇게
-     * 저절로 낫지 않는다 — 3연속이 관측 두 건으로 앞당겨진 채 남는다.
+     * <p>순서 판단·카운터·반영 지점은 저장소가 한 덩어리로 처리한다. 뒤이은 상태 기록이 실패하면 이 관측의 상태 확정은 잃지만, 10초 뒤 다음 관측이 곧바로 다시 확정한다. 카운터를 두 번 올리는 쪽은
+     * 그렇게 저절로 낫지 않는다 — 3연속이 관측 두 건으로 앞당겨진 채 남는다.
+     *
+     * @return 반영했으면 {@code true}, 더 최신 판정이 이미 반영돼 있어 건드리지 않았으면 {@code false}
      */
-    private void applyToCoachingState(
+    private boolean applyToCoachingState(
             long sessionId, long participantId, DetectionSignal signal, long observedOffsetMs) {
-        DetectionRunCounters counters = attentionStatePort.applyObservation(
+        Optional<DetectionRunCounters> counters = attentionStatePort.applyObservation(
                 sessionId, participantId, DetectionRunTransition.of(signal), observedOffsetMs, RUN_COUNTER_TTL);
+        if (counters.isEmpty()) {
+            return false;
+        }
 
         Optional<AttentionState> confirmed = signal.outcome() == DetectorOutcome.UNMEASURABLE
-                ? unmeasurableStateWhenRunComplete(counters)
+                ? unmeasurableStateWhenRunComplete(counters.get())
                 : signal.outcome().immediateState();
 
         confirmed.ifPresent(state -> {
@@ -140,6 +142,7 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
                 attentionStatePort.markSignificant(sessionId, participantId, state, SIGNIFICANT_WINDOW);
             }
         });
+        return true;
     }
 
     /**
@@ -154,12 +157,6 @@ public class CollectAttentionEventService implements CollectAttentionEventUseCas
     /** 확정된 상태의 신호 품질. 관측이 아예 없는 상태는 0 이다. */
     private double observedSignalQuality(AttentionState state) {
         return state == AttentionState.GOOD ? 1.0d : 0.0d;
-    }
-
-    /** 이 관측보다 더 최신 관측이 이미 반영됐는지. 같은 시각이면 재전송으로 보고 반영하지 않는다. */
-    private boolean isSupersededByNewerJudgement(long sessionId, long participantId, long observedOffsetMs) {
-        OptionalLong applied = attentionStatePort.lastAppliedOffsetMs(sessionId, participantId);
-        return applied.isPresent() && applied.getAsLong() >= observedOffsetMs;
     }
 
     private void clearMarkerQuietly(long sessionId, long participantId, String clientEventId) {

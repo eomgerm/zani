@@ -2,6 +2,7 @@ package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -221,16 +222,47 @@ class AttentionStateRedisAdapterTest {
 
     @Test
     void remembersTheLastAppliedJudgementOffsetInTheSameStepAsTheCounters() {
-        assertTrue(adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).isEmpty());
+        assertNull(redisTemplate.opsForValue().get(APPLIED_KEY));
 
         apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 70_000L);
 
         // 카운터만 오르고 반영 지점이 빠지면, 재시도가 그 사실을 몰라 같은 관측으로 카운터를 한 번 더 올린다.
-        assertEquals(
-                70_000L, adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).getAsLong());
+        assertEquals("70000", redisTemplate.opsForValue().get(APPLIED_KEY));
         Long ttl = redisTemplate.getExpire(APPLIED_KEY);
         assertNotNull(ttl);
         assertTrue(ttl > 0 && ttl <= 120, "TTL should be armed, was " + ttl);
+    }
+
+    @Test
+    void refusesAnObservationThatANewerOneHasAlreadyOvertaken() {
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 30_000L);
+
+        Optional<DetectionRunCounters> late = adapter.applyObservation(
+                SESSION_ID,
+                PARTICIPANT_ID,
+                new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET),
+                20_000L,
+                RUN_TTL);
+
+        // 판단을 밖에서 하면 겹쳐 들어온 두 판정이 둘 다 "내가 최신"으로 읽고, 옛 쪽이 나중에 써서 반영 지점을 되돌린다.
+        assertTrue(late.isEmpty());
+        assertEquals("1", redisTemplate.opsForValue().get(LOW_RUN_KEY));
+        assertEquals("30000", redisTemplate.opsForValue().get(APPLIED_KEY));
+    }
+
+    @Test
+    void refusesAResendOfTheJudgementItJustApplied() {
+        apply(new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET), 30_000L);
+
+        Optional<DetectionRunCounters> resent = adapter.applyObservation(
+                SESSION_ID,
+                PARTICIPANT_ID,
+                new DetectionRunTransition(RunStep.INCREMENT, RunStep.RESET),
+                30_000L,
+                RUN_TTL);
+
+        assertTrue(resent.isEmpty());
+        assertEquals("1", redisTemplate.opsForValue().get(LOW_RUN_KEY));
     }
 
     @Test
@@ -240,11 +272,11 @@ class AttentionStateRedisAdapterTest {
         adapter.resetRuns(SESSION_ID, PARTICIPANT_ID);
 
         // 프롬프트에 답했다고 어디까지 반영했는지를 잊으면, 뒤늦게 도착한 옛 관측이 다시 반영된다.
-        assertEquals(
-                30_000L, adapter.lastAppliedOffsetMs(SESSION_ID, PARTICIPANT_ID).getAsLong());
+        assertEquals("30000", redisTemplate.opsForValue().get(APPLIED_KEY));
     }
 
     private DetectionRunCounters apply(DetectionRunTransition transition, long observedOffsetMs) {
-        return adapter.applyObservation(SESSION_ID, PARTICIPANT_ID, transition, observedOffsetMs, RUN_TTL);
+        return adapter.applyObservation(SESSION_ID, PARTICIPANT_ID, transition, observedOffsetMs, RUN_TTL)
+                .orElseThrow();
     }
 }

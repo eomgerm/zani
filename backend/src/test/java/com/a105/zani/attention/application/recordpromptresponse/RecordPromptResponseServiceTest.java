@@ -10,7 +10,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -501,24 +500,19 @@ class RecordPromptResponseServiceTest {
         private boolean runsReset;
 
         @Override
-        public DetectionRunCounters applyObservation(
+        public Optional<DetectionRunCounters> applyObservation(
                 long sessionId,
                 long participantId,
                 DetectionRunTransition transition,
                 long observedOffsetMs,
                 Duration ttl) {
-            return DetectionRunCounters.none();
+            return Optional.of(DetectionRunCounters.none());
         }
 
         @Override
         public void resetRuns(long sessionId, long participantId) {
             failFast();
             runsReset = true;
-        }
-
-        @Override
-        public OptionalLong lastAppliedOffsetMs(long sessionId, long participantId) {
-            return OptionalLong.empty();
         }
 
         private void failFast() {
