@@ -4,6 +4,8 @@ import java.time.Duration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import com.a105.zani.audioclip.domain.model.PcmAudioFormat;
+
 /**
  * 강사 코칭 오디오 설정.
  *
@@ -27,6 +29,13 @@ public record AudioClipProperties(
         }
         if (sampleRate == null || sampleRate <= 0) {
             sampleRate = 48_000;
+        }
+        // 다운샘플이 정수배 데시메이션이라 16kHz 의 배수만 다룰 수 있다. 여기서 막지 않으면 기동도 되고 버퍼도
+        // 쌓이다가 첫 트리거에서야 IllegalArgumentException 이 나고, 그것도 BusinessException 이 아니라 500 이 된다.
+        int transcriptionRate = PcmAudioFormat.transcription().sampleRate();
+        if (sampleRate % transcriptionRate != 0) {
+            throw new IllegalArgumentException(
+                    "audio-clip.sample-rate must be a multiple of " + transcriptionRate + ": " + sampleRate);
         }
         if (maxSessions == null || maxSessions <= 0) {
             // 48kHz 5분 = 세션당 약 29MB. 8개면 약 230MB로, 동시 강의 수와 힙 여유 사이의 기본 절충이다.
