@@ -1,4 +1,4 @@
-package com.a105.zani.coach.infrastructure.gms;
+package com.a105.zani.common.infrastructure.gms;
 
 import java.time.Duration;
 
@@ -6,6 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * SSAFY GMS 접속 설정. API key 는 환경 변수에서만 읽고 응답·로그에 남기지 않는다.
+ *
+ * <p>여러 도메인이 공유하는 외부 시스템 설정이라 {@code common} 에 둔다({@link GmsClientConfig} 참고).
  *
  * <p>모델 이름은 실제 호출이 생기는 티켓에서 추가한다 — 전사 모델은 203, 팁 모델(gpt-5.4-mini)은 204. (ddd-development-guide ARCH-008)
  *
@@ -15,7 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param readTimeout 응답 대기 기본값. 호출별 요구가 다른 어댑터는 자기 client 를 구성한다
  * @param connectTimeout 연결 timeout
  * @param sttModel 전사 모델. 기본 whisper-1
- * @param transcribeTimeout 전사 호출 timeout. 재시도가 없으므로 초과하면 해당 트리거를 포기한다
+ * @param transcribeTimeout 전사 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 전사는 실패로 끝난다
  * @param transcribeLanguage 전사 언어. 한국어 강의를 전제로 기본값은 ko 다. 비우면 GMS 가 자동 감지한다
  */
 @ConfigurationProperties(prefix = "gms")

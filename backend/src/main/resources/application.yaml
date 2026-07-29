@@ -67,7 +67,9 @@ gms:
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
   stt-model: ${GMS_STT_MODEL:whisper-1}
-  transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:10s}
+  # 전사 전용 timeout. 실측에서 300초 클립이 GMS 부하에 따라 14~31초 걸렸다. 재시도가 없으므로
+  # 초과하면 그 트리거의 팁 1회를 포기한다.
+  transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
   transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
 
 livekit:

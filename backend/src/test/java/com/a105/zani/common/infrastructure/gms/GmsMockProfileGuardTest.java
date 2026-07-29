@@ -1,4 +1,4 @@
-package com.a105.zani.coach.infrastructure.gms;
+package com.a105.zani.common.infrastructure.gms;
 
 import java.time.Duration;
 
