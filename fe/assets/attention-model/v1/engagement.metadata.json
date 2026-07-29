@@ -1,0 +1,19 @@
+{
+  "schema": "mediapipe_98_v1",
+  "input_name": "tokens",
+  "input_shape": [
+    "batch",
+    20,
+    98
+  ],
+  "output_name": "logits",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "window_seconds": 10.0,
+  "segment_count": 20,
+  "sample_fps": 10.0
+}

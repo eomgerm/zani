@@ -66,6 +66,23 @@ gms:
   mock-enabled: ${GMS_MOCK_ENABLED:true}
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
+  stt-model: ${GMS_STT_MODEL:whisper-1}
+  # 전사 전용 timeout. 재시도는 없다.
+  # 실측: 300초 클립이 GMS 부하에 따라 14~31초. 기준 문서 §9의 10초는 300초 클립에서 거의 항상
+  # 실패해 20초로 올렸다. 다만 실측 최대치(31초)까지 기다리지는 않는다 — 느린 응답을 끊는 쪽이
+  # 낫다고 봤다. 팁을 보내지 않으면 쿨타임이 시작되지 않아(§10 "알림 1회 후 10분") 다음 트리거가
+  # 부하가 덜한 시점에 다시 시도할 수 있고, 300초 전 발화에 40초 지연을 더한 팁은 강사에게
+  # 효용이 떨어진다. 운영 데이터가 쌓이면 팀에서 재조정한다.
+  transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
+  transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
+
+attention:
+  detector:
+    # 서버가 해석할 수 있는 검출기 계약. 배포 계약은 확정 문서 §3.1 의 mediapipe_98_v1 이다.
+    # 비워 두면 버전을 따지지 않는다(로컬·시연 편의).
+    supported-feature-schema-versions:
+      - mediapipe_98_v1
+    supported-engine-versions: []
 
 livekit:
   url: ${LIVEKIT_URL:}

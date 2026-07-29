@@ -14,8 +14,16 @@ import { createAttentionInferenceClient } from "../infrastructure/attentionInfer
 import { createAttentionFeatureDetector } from "../infrastructure/faceLandmarker";
 import { createTrackProcessorFrameSource } from "../infrastructure/trackProcessorFrameSource";
 
-/** 카메라 가용 상태. 스트림을 소유한 상위 화면이 판단해 내려준다. */
-export type CameraAvailability = "on" | "off" | "denied";
+/**
+ * 카메라 가용 상태. 스트림을 소유한 상위 화면이 트랙을 보고 판단해 내려준다.
+ *
+ * `on` 이 아닌 셋은 기준 문서 §1.3 에서 모두 `CAMERA_OFF` 한 상태로 접히지만, 안내 문구는
+ * 원인별로 달라야 해서(§5.2) 여기서는 나눠 둔다.
+ * - `off`: 학생이 껐거나 트랙이 없다(`readyState === "ended"` 포함)
+ * - `denied`: 브라우저 권한 거부
+ * - `muted`: 트랙이 `muted` — 다른 앱이 점유했거나 장치가 동작하지 않는다
+ */
+export type CameraAvailability = "on" | "off" | "denied" | "muted";
 
 export interface UseAttentionDetectionOptions
   extends Partial<Pick<
@@ -87,7 +95,7 @@ export function useAttentionDetection(
   const status: AttentionStatus =
     effectiveCamera === "denied"
       ? "permissionDenied"
-      : effectiveCamera === "off"
+      : effectiveCamera === "off" || effectiveCamera === "muted"
         ? "idle"
         : (activeReport?.status ?? "preparing");
   const prediction = effectiveCamera === "on" ? (activeReport?.prediction ?? null) : null;

@@ -92,13 +92,16 @@ The following files are required and must not be committed:
 /etc/zani/application/runtime.env
 ```
 
-`GITLAB_TOKEN` should be a deploy token or project access token with repository read permission only. `GITLAB_WEBHOOK_TOKEN` is a separate random secret used only to authenticate incoming GitLab webhook requests. `GITLAB_REVIEW_TOKEN` is used only by `zani-mr-review`; it needs the GitLab `api` scope because the bot both fetches the merge request head and posts the review comment. Keep it separate from the read-only `GITLAB_TOKEN` so the deployment credential stays read-only. `CLAUDE_CODE_OAUTH_TOKEN` authenticates the Claude Code CLI in the review job. Both new secrets are read only by `zani-mr-review`; if either is missing, only the review job fails and deployment is unaffected. `runtime.env` contains only the currently approved frontend origin:
+`GITLAB_TOKEN` should be a deploy token or project access token with repository read permission only. `GITLAB_WEBHOOK_TOKEN` is a separate random secret used only to authenticate incoming GitLab webhook requests. `GITLAB_REVIEW_TOKEN` is used only by `zani-mr-review`; it needs the GitLab `api` scope because the bot both fetches the merge request head and posts the review comment. Keep it separate from the read-only `GITLAB_TOKEN` so the deployment credential stays read-only. `CLAUDE_CODE_OAUTH_TOKEN` authenticates the Claude Code CLI in the review job. Both new secrets are read only by `zani-mr-review`; if either is missing, only the review job fails and deployment is unaffected. `runtime.env` contains the approved frontend origin and Google Web Client ID:
 
 The controller secret directory is `root:root 0700`. Its six file-backed Docker secrets are `root:1000 0640`, where numeric GID `1000` is the Jenkins group in the pinned controller image. The root-only parent directory prevents ordinary host users from traversing to these files, while the non-root Jenkins process can read only the individual read-only bind mounts.
 
 ```dotenv
 FRONTEND_ORIGIN=https://i15a105.p.ssafy.io
+GOOGLE_OAUTH_CLIENT_ID=example.apps.googleusercontent.com
 ```
+
+The Google Web Client ID is a public identifier rather than a client secret. The backend receives it as `GOOGLE_OAUTH_CLIENT_ID`; the frontend Compose build maps the same value to `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, so only one server-side value is maintained.
 
 The installer retrieves the generated inbound-agent secret from the loopback Jenkins API and stores it in the separate agent-readable directory. It never prints the secret.
 

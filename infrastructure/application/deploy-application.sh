@@ -164,6 +164,7 @@ verify_backend() {
     -e LOCAL_DB_PASSWORD=zani-ci-root \
     -e LOCAL_REDIS_HOST=redis \
     -e LOCAL_REDIS_PORT=6379 \
+    -e GOOGLE_OAUTH_CLIENT_ID=zani-ci.apps.googleusercontent.com \
     "${CI_JDK_IMAGE}" \
     bash ./gradlew clean spotlessCheck test bootJar --no-daemon
 
@@ -178,6 +179,8 @@ load_runtime_environment() {
   source "${RUNTIME_ENV}"
   set +a
   [[ -n "${FRONTEND_ORIGIN:-}" ]] || die "FRONTEND_ORIGIN is missing from ${RUNTIME_ENV}."
+  [[ -n "${GOOGLE_OAUTH_CLIENT_ID:-}" ]] ||
+    die "GOOGLE_OAUTH_CLIENT_ID is missing from ${RUNTIME_ENV}."
 }
 
 compose_for_release() {

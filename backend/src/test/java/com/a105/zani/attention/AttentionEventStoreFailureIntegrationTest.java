@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +24,9 @@ import org.springframework.web.context.WebApplicationContext;
 import com.a105.zani.attention.application.exception.AttentionStateUnavailableException;
 import com.a105.zani.attention.application.port.AttentionSnapshot;
 import com.a105.zani.attention.application.port.AttentionStatePort;
+import com.a105.zani.attention.application.port.ObservationApplied;
 import com.a105.zani.attention.domain.model.AttentionState;
+import com.a105.zani.attention.domain.model.DetectionRunTransition;
 import com.a105.zani.auth.application.port.TokenProvider;
 
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -45,10 +48,15 @@ class AttentionEventStoreFailureIntegrationTest {
     private static final long SESSION_ID = 9_100_922L;
     private static final long PARTICIPANT_ID = 9_100_923L;
     private static final Instant NOW = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+    private static final Instant SESSION_STARTED_AT = NOW.minusSeconds(300);
 
-    private static final String BODY = """
-            {"type":"CONFUSED","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-            "durationSec":10,"signalQuality":0.92,"clientEventId":"store-down-1"}""";
+    /** 관측 시각은 세션 시작 기준으로 잡는다. 고정 시각을 쓰면 시간선 검증에 먼저 걸려 503 을 볼 수 없다. */
+    private static final String BODY = "{\"outcome\":\"BARELY_ENGAGED\",\"lowEngagement\":true,\"windowStartedAt\":\""
+            + SESSION_STARTED_AT.plusSeconds(60)
+            + "\",\"observedAt\":\""
+            + SESSION_STARTED_AT.plusSeconds(70)
+            + "\",\"signalQuality\":0.92,\"featureSchemaVersion\":\"mediapipe_98_v1\","
+            + "\"engineVersion\":\"e0g-1\",\"clientEventId\":\"store-down-1\"}";
 
     @TestConfiguration
     static class FailingStoreConfig {
@@ -87,6 +95,22 @@ class AttentionEventStoreFailureIntegrationTest {
 
                 @Override
                 public void includeInDenominator(long sessionId, long participantId) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
+
+                @Override
+                public Optional<ObservationApplied> applyObservation(
+                        long sessionId,
+                        long participantId,
+                        DetectionRunTransition transition,
+                        boolean measurementSuspended,
+                        long observedOffsetMs,
+                        Duration ttl) {
+                    throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
+                }
+
+                @Override
+                public void resetRuns(long sessionId, long participantId) {
                     throw new AttentionStateUnavailableException(new IllegalStateException("store down"));
                 }
             };
@@ -162,7 +186,7 @@ class AttentionEventStoreFailureIntegrationTest {
                 INSTRUCTOR_ID,
                 "저장소 장애 테스트",
                 "ATTEN920",
-                utc(NOW),
+                utc(SESSION_STARTED_AT),
                 utc(NOW),
                 utc(NOW));
     }
