@@ -269,8 +269,11 @@ uv run python -m zani_ai engagement finalize-e0i \
   --output <e0i-output> \
   --device cuda
 
-uv run python scripts/compare_protocols.py <e0-output> <e0i-output>
+uv run python scripts/compare_protocols.py --baseline <e0-output> --variant <e0i-output>
 ```
+
+baseline과 variant는 같은 기계에서 학습한 산출물이어야 합니다. 다르면
+`compare_protocols.py`가 경고를 찍고, 그 차이에는 프로토콜 효과와 런타임이 섞입니다.
 
 identity에는 `curriculum=label_reliability_v1`, warmup 10 epoch,
 `ambiguous_target_encoding=adjacent_smoothing`, `ambiguous_neighbor_mass=0.2`가 들어갑니다.
