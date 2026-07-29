@@ -2,8 +2,11 @@ package com.a105.zani.attention.infrastructure.redis;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -62,6 +65,8 @@ class AttentionStateRedisAdapterTest {
         redisTemplate.delete(OUTAGE_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete(significantKey(state));
+            redisTemplate.delete(
+                    "attention:" + SESSION_ID + ":significant:" + state.name() + ":" + OTHER_PARTICIPANT_ID);
         }
     }
 
@@ -300,6 +305,52 @@ class AttentionStateRedisAdapterTest {
 
         assertTrue(stale.isEmpty());
         assertEquals("60000", redisTemplate.opsForValue().get(OUTAGE_KEY));
+    }
+
+    @Test
+    void mapsEachSignificantMarkerToItsOwnStateAndParticipant() {
+        adapter.markSignificant(SESSION_ID, PARTICIPANT_ID, AttentionState.CONFUSED, Duration.ofMinutes(5));
+        adapter.markSignificant(SESSION_ID, OTHER_PARTICIPANT_ID, AttentionState.UNMEASURABLE, Duration.ofMinutes(5));
+
+        Map<AttentionState, Set<Long>> found =
+                adapter.significantParticipants(SESSION_ID, List.of(PARTICIPANT_ID, OTHER_PARTICIPANT_ID));
+
+        // 상태 4개 × 참가자 N명 키를 한 번에 읽고 순서로 되짚는다. 계산이 어긋나면 마커가 엉뚱한 상태나 학생에게 붙는다.
+        assertEquals(Set.of(PARTICIPANT_ID), found.get(AttentionState.CONFUSED));
+        assertEquals(Set.of(OTHER_PARTICIPANT_ID), found.get(AttentionState.UNMEASURABLE));
+        assertEquals(Set.of(), found.get(AttentionState.MISSED));
+        assertEquals(Set.of(), found.get(AttentionState.NON_RESPONSE));
+    }
+
+    @Test
+    void reportsTheSameStudentUnderEveryStateTheyExperienced() {
+        adapter.markSignificant(SESSION_ID, PARTICIPANT_ID, AttentionState.CONFUSED, Duration.ofMinutes(5));
+        adapter.markSignificant(SESSION_ID, PARTICIPANT_ID, AttentionState.MISSED, Duration.ofMinutes(5));
+
+        Map<AttentionState, Set<Long>> found = adapter.significantParticipants(SESSION_ID, List.of(PARTICIPANT_ID));
+
+        // 합집합으로 세는 것은 호출자 몫이다. 저장소는 상태별로 있는 그대로 돌려준다(§7.6 이 유형별 비율을 요구한다).
+        assertEquals(Set.of(PARTICIPANT_ID), found.get(AttentionState.CONFUSED));
+        assertEquals(Set.of(PARTICIPANT_ID), found.get(AttentionState.MISSED));
+    }
+
+    @Test
+    void leavesOutStatesThatCannotEnterTheNumerator() {
+        adapter.markSignificant(SESSION_ID, PARTICIPANT_ID, AttentionState.CONFUSED, Duration.ofMinutes(5));
+
+        Map<AttentionState, Set<Long>> found = adapter.significantParticipants(SESSION_ID, List.of(PARTICIPANT_ID));
+
+        // GOOD·CAMERA_OFF 는 분자가 아니므로 조회 대상 자체가 아니다(§7.2).
+        assertFalse(found.containsKey(AttentionState.GOOD));
+        assertFalse(found.containsKey(AttentionState.CAMERA_OFF));
+    }
+
+    @Test
+    void asksNothingWhenThereAreNoStudentsToCount() {
+        Map<AttentionState, Set<Long>> found = adapter.significantParticipants(SESSION_ID, List.of());
+
+        assertEquals(4, found.size());
+        found.values().forEach(participants -> assertTrue(participants.isEmpty()));
     }
 
     private ObservationApplied apply(DetectionRunTransition transition, long observedOffsetMs) {

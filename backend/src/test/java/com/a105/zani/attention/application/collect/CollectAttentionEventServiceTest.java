@@ -523,6 +523,11 @@ class CollectAttentionEventServiceTest {
         }
 
         @Override
+        public Map<AttentionState, Set<Long>> significantParticipants(long sessionId, Collection<Long> participantIds) {
+            return Map.of();
+        }
+
+        @Override
         public Optional<ObservationApplied> applyObservation(
                 long sessionId,
                 long participantId,
