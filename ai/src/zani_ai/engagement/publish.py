@@ -114,6 +114,41 @@ def _abort_rebase(worktree: Path) -> None:
     )
 
 
+def _ref_exists(worktree: Path, ref: str) -> bool:
+    """Whether ``ref`` resolves, without treating its absence as a failure."""
+    completed = subprocess.run(
+        ("git", "-C", str(worktree), "rev-parse", "--verify", "--quiet", ref),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def _unpushed_commits(worktree: Path, branch: str) -> int:
+    """How many commits ``HEAD`` has that ``origin/<branch>`` does not.
+
+    This is what makes a failed push recoverable. Whether a snapshot still needs
+    sending cannot be read off the metric files alone: they were already copied
+    into the worktree by the cycle whose push failed, so the next cycle sees
+    nothing to write while its commit sits there unpushed.
+
+    A missing ``origin/<branch>`` -- a clone that has never pushed or fetched the
+    branch -- counts as unpushed. An absent ref proves nothing about what the
+    remote holds, and the whole point is never to sit on work silently: the cycle
+    then tries ``pull --rebase`` and either succeeds, which creates the ref, or
+    fails loudly for the next cycle to retry. An unborn ``HEAD`` has nothing to
+    send and counts as 0.
+    """
+    if not _ref_exists(worktree, "HEAD"):
+        return 0
+    remote_ref = f"refs/remotes/origin/{branch}"
+    if not _ref_exists(worktree, remote_ref):
+        return 1
+    return int(_git(worktree, "rev-list", "--count", f"{remote_ref}..HEAD").strip() or "0")
+
+
 def require_results_branch(worktree: Path, branch: str) -> None:
     """Fail before writing anything unless ``worktree`` has ``branch`` out.
 
@@ -145,16 +180,26 @@ def publish_once(
 ) -> int:
     """Copy, commit and push one snapshot; return how many files were written.
 
-    Returns 0 without committing when nothing changed. Locking and the branch
-    check belong to the caller, which holds them for the whole process.
+    Returns 0 without touching git only when nothing changed **and** nothing is
+    waiting to be pushed. Skipping the push whenever no file changed would strand
+    the commit of a cycle whose push failed: its bytes are already in the
+    worktree, so no later cycle would ever write a file again and the snapshot
+    would sit on the box until the idle culler took it.
+
+    Locking and the branch check belong to the caller, which holds them for the
+    whole process.
     """
     written = sync_metrics(collect_metrics(artifacts_root), worktree / source_label)
-    if not written:
+    if written:
+        _git(worktree, "add", "--all", "--", source_label)
+        if _git(worktree, "status", "--porcelain", "--", source_label).strip():
+            _git(worktree, "commit", "-m", commit_subject(source_label, written))
+        else:
+            # Bytes changed on disk but git sees nothing to record, so there is
+            # no snapshot to report either.
+            written = []
+    if not written and not _unpushed_commits(worktree, branch):
         return 0
-    _git(worktree, "add", "--all", "--", source_label)
-    if not _git(worktree, "status", "--porcelain", "--", source_label).strip():
-        return 0
-    _git(worktree, "commit", "-m", commit_subject(source_label, written))
     try:
         _git(worktree, "pull", "--rebase", "origin", branch)
     except RuntimeError:

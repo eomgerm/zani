@@ -92,6 +92,68 @@ def test_makes_no_commit_when_nothing_changed(worktree: Path, artifacts: Path) -
     assert _git(worktree, "rev-parse", "HEAD").strip() == before
 
 
+def test_pushes_a_stranded_commit_on_the_next_cycle(
+    worktree: Path, artifacts: Path, tmp_path: Path
+) -> None:
+    """A cycle whose push failed must send the same commit on the next one.
+
+    ``sync_metrics`` compares candidates against the destination worktree, which
+    already holds the bytes the failed cycle wrote, so nothing is written the
+    second time round. Deciding purely on written files would leave the commit
+    on the server until the idle culler took the box, losing every metric since
+    the failure rather than one interval's worth.
+    """
+    origin = tmp_path / "origin.git"
+    moved = tmp_path / "origin.git.gone"
+    origin.rename(moved)
+
+    with pytest.raises(RuntimeError):
+        publish_once(
+            artifacts_root=artifacts,
+            worktree=worktree,
+            source_label="l40s",
+            branch=DEFAULT_RESULTS_BRANCH,
+        )
+    stranded = _git(worktree, "rev-list", "--count", f"origin/{DEFAULT_RESULTS_BRANCH}..HEAD")
+    assert stranded.strip() == "1"
+
+    moved.rename(origin)
+    written = publish_once(
+        artifacts_root=artifacts,
+        worktree=worktree,
+        source_label="l40s",
+        branch=DEFAULT_RESULTS_BRANCH,
+    )
+
+    assert written == 0
+    pushed = _git(worktree, "ls-tree", "-r", "--name-only", f"origin/{DEFAULT_RESULTS_BRANCH}")
+    assert "l40s/e1/summary.json" in pushed
+    remaining = _git(worktree, "rev-list", "--count", f"origin/{DEFAULT_RESULTS_BRANCH}..HEAD")
+    assert remaining.strip() == "0"
+
+
+def test_publishes_when_the_branch_was_never_pushed(worktree: Path, artifacts: Path) -> None:
+    """A missing ``origin/<branch>`` ref must not be read as nothing to do."""
+    publish_once(
+        artifacts_root=artifacts,
+        worktree=worktree,
+        source_label="l40s",
+        branch=DEFAULT_RESULTS_BRANCH,
+    )
+    _git(worktree, "update-ref", "-d", f"refs/remotes/origin/{DEFAULT_RESULTS_BRANCH}")
+
+    written = publish_once(
+        artifacts_root=artifacts,
+        worktree=worktree,
+        source_label="l40s",
+        branch=DEFAULT_RESULTS_BRANCH,
+    )
+
+    assert written == 0
+    pushed = _git(worktree, "ls-tree", "-r", "--name-only", f"origin/{DEFAULT_RESULTS_BRANCH}")
+    assert "l40s/e1/summary.json" in pushed
+
+
 def test_refuses_a_worktree_on_another_branch(worktree: Path) -> None:
     _git(worktree, "switch", "-c", "dev")
 
