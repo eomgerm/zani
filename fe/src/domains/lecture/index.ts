@@ -4,7 +4,6 @@
 export { HomeScreen } from "./presentation/HomeScreen";
 export { MyLecturesScreen } from "./presentation/MyLecturesScreen";
 export { ReportScreen } from "./presentation/ReportScreen";
-export { PrejoinScreen } from "./presentation/PrejoinScreen";
 export { RoomScreen } from "./presentation/RoomScreen";
 export { RoomProvider, useRoomConnection } from "./presentation/RoomProvider";
 export { useRoomParticipants } from "./presentation/useRoomParticipants";

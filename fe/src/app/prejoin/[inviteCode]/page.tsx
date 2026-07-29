@@ -4,6 +4,12 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { useAuth } from "@/domains/auth/presentation/AuthProvider";
+import {
+  JoinSessionRequestError,
+  joinSession as joinSessionApi,
+  type SessionJoiner,
+} from "@/domains/lecture/infrastructure/joinSessionApi";
 import {
   detectBrowserSupport,
   readBrowserEnvironment,
@@ -25,16 +31,51 @@ const BROWSER_FAILURE_MESSAGES: Record<BrowserSupportFailure, string> = {
     "이 브라우저는 권한 확인을 지원하지 않아요. 최신 Chrome 으로 접속해 주세요.",
 };
 
+/** 입장 실패 원인별 사용자 안내 문구. 서버가 돌려준 업무 코드를 우선 본다. */
+const joinFailureMessage = (error: unknown): string => {
+  if (error instanceof JoinSessionRequestError) {
+    if (error.code === "SESSION_APP_007") {
+      return "정원이 가득 찼어요. 강사에게 문의해 주세요.";
+    }
+    if (error.code === "SESSION_APP_008") {
+      return "아직 시작하지 않았거나 이미 끝난 수업이에요. 강사가 수업을 시작하면 다시 시도해 주세요.";
+    }
+    if (error.status === 404) {
+      return "그런 초대 코드의 수업이 없어요. 코드를 다시 확인해 주세요.";
+    }
+    if (error.status === 400) {
+      return "초대 코드 형식이 올바르지 않아요.";
+    }
+    if (error.status === 401) {
+      return "로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.";
+    }
+  }
+  return "입장하지 못했어요. 잠시 후 다시 시도해 주세요.";
+};
+
 /**
- * SC-08 입장 전 점검. 브라우저(Chrome)·카메라·마이크를 검증하고,
- * 모두 통과해야 입장 버튼을 활성화한다.
+ * SC-08 입장 전 점검. 브라우저(Chrome)·카메라·마이크를 검증하고, 모두 통과해야 입장 버튼을 활성화한다.
  *
- * 통과 시 선택 장치 ID 와 테스트 통과 시각을 입장 요청 정보로 저장한다.
- * (POST /api/v1/sessions/{sessionId}/prejoin 연동 시 이 값을 요청 본문으로 보낸다.)
+ * <p>입장은 서버가 확정한다(POST /api/v1/sessions/join). 장치 점검을 통과했더라도 수업이 진행 중이 아니거나 정원이 찼으면 서버가 거절하며, 그때는 방으로 이동하지 않고
+ * 재시도할 수 있는 오류를 보여준다.
+ *
+ * <p>이동 주소에는 **응답의 세션 ID** 를 쓴다. 초대 코드와 세션 ID 는 다른 값이라, 코드를 그대로 넣으면 강의실의 미디어 토큰 발급이 실패한다.
+ *
+ * <p>선택한 장치 ID 와 통과 시각은 강의실이 같은 장치로 붙도록 로컬에 남긴다. 서버 측 장치 검증(서명·만료)은 아직 백엔드가 없어 연동하지 않는다.
  */
-export default function Page({ params }: { params: Promise<{ inviteCode: string }> }) {
+export default function Page({
+  params,
+  joinSession = joinSessionApi,
+}: {
+  params: Promise<{ inviteCode: string }>;
+  /** 테스트에서 API 경계를 대체하기 위한 주입점. */
+  joinSession?: SessionJoiner;
+}) {
   const { inviteCode } = use(params);
   const router = useRouter();
+  const { accessToken } = useAuth();
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   // SSR 시점에는 navigator 가 없으므로 마운트 후 판정한다. null 은 판정 전 상태.
   const [browserSupport, setBrowserSupport] = useState<BrowserSupportResult | null>(null);
@@ -59,18 +100,32 @@ export default function Page({ params }: { params: Promise<{ inviteCode: string 
   const browserSupported = browserSupport?.supported ?? false;
   const canEnter = browserSupported && devicePassed && testedAt !== null;
 
-  const handleEnter = useCallback(() => {
-    if (!canEnter || !deviceState || !testedAt) {
+  const handleEnter = useCallback(async () => {
+    if (!canEnter || !deviceState || !testedAt || joining) {
       return;
     }
-    // 입장 요청(prejoin)에 포함할 값. 장치 원본 데이터는 저장하지 않는다.
-    writePrejoinResult(inviteCode, {
-      cameraDeviceId: deviceState.cameraDeviceId,
-      microphoneDeviceId: deviceState.microphoneDeviceId,
-      testedAt,
-    });
-    router.push(`/room/${inviteCode}`);
-  }, [canEnter, deviceState, testedAt, inviteCode, router]);
+    if (accessToken === null) {
+      setJoinError("로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.");
+      return;
+    }
+
+    setJoining(true);
+    setJoinError(null);
+    try {
+      // 서버가 상태·정원·초대 코드를 검증하고 세션 ID 를 확정한다. 실패하면 방으로 넘어가지 않는다.
+      const joined = await joinSession(inviteCode, accessToken);
+      // 강의실이 같은 장치로 붙도록 선택 결과를 남긴다. 장치 원본 데이터는 저장하지 않는다.
+      writePrejoinResult(inviteCode, {
+        cameraDeviceId: deviceState.cameraDeviceId,
+        microphoneDeviceId: deviceState.microphoneDeviceId,
+        testedAt,
+      });
+      router.push(`/room/${joined.sessionId}`);
+    } catch (caught) {
+      setJoinError(joinFailureMessage(caught));
+      setJoining(false);
+    }
+  }, [canEnter, deviceState, testedAt, joining, accessToken, joinSession, inviteCode, router]);
 
   const deviceFailures = deviceState?.result.failures ?? [];
   const cameraOk =
@@ -178,14 +233,25 @@ export default function Page({ params }: { params: Promise<{ inviteCode: string 
               </div>
             </div>
 
+            {joinError !== null && (
+              <div
+                role="alert"
+                data-testid="prejoin-join-error"
+                className="flex gap-2 rounded-[20px] border border-line-mint bg-canvas px-5 py-[18px] text-[12.5px] font-semibold leading-[1.6] text-danger"
+              >
+                <span className="shrink-0">!</span>
+                {joinError}
+              </div>
+            )}
+
             <button
               type="button"
               data-testid="prejoin-enter-button"
-              disabled={!canEnter}
+              disabled={!canEnter || joining}
               onClick={handleEnter}
               className="z-btn z-btn-primary z-btn-block disabled:cursor-not-allowed disabled:opacity-40"
             >
-              수업 입장하기
+              {joining ? "입장하고 있어요…" : "수업 입장하기"}
             </button>
           </div>
         </div>
