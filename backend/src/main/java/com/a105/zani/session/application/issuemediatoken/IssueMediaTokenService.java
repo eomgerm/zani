@@ -13,6 +13,7 @@ import com.a105.zani.session.application.port.LiveKitTokenPort;
 import com.a105.zani.session.application.port.MediaTokenRequest;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
+import com.a105.zani.session.domain.model.SessionParticipantIdentity;
 import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
@@ -57,7 +58,8 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
         String displayName = getMemberDisplayNameUseCase
                 .getDisplayName(new GetMemberDisplayNameQuery(command.userId()))
                 .orElse(DEFAULT_DISPLAY_NAME);
-        String identity = "p-" + participant.id();
+        // 업무 이벤트 봉투도 같은 값을 발신자 식별자로 쓴다(티켓 63). 두 곳이 갈리면 프론트가 참가자와 이벤트를 못 잇는다.
+        String identity = SessionParticipantIdentity.of(participant.id());
 
         IssuedMediaToken issued =
                 liveKitTokenPort.issue(new MediaTokenRequest(identity, displayName, participant.role(), session.id()));
