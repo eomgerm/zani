@@ -42,7 +42,6 @@ from datetime import UTC, datetime
 from functools import partial
 from hashlib import sha256
 from importlib import metadata
-from multiprocessing.util import Finalize
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +52,7 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    LANDMARKER_SCOPE,
     MINIMUM_VALID_FRAMES,
     SAMPLE_FPS,
     SEGMENT_COUNT,
@@ -147,6 +147,7 @@ class RawProvenance:
     minimum_valid_frames: int
     expected_frame_count: int
     minimum_valid_frame_ratio: float
+    landmarker_scope: str
     raw_landmark_count: int
     blendshape_count: int
     blendshape_names: tuple[str, ...]
@@ -511,6 +512,7 @@ def _build_raw_provenance(
         "blendshape_count": RAW_BLENDSHAPE_COUNT,
         "blendshape_names": list(BLENDSHAPE_NAMES_132),
         "stored": list(RAW_STORED_KEYS),
+        "landmarker_scope": LANDMARKER_SCOPE,
         "landmarker_options": {
             "running_mode": "VIDEO",
             "num_faces": 1,
@@ -532,6 +534,7 @@ def _build_raw_provenance(
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
         expected_frame_count=expected_frame_count,
         minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        landmarker_scope=LANDMARKER_SCOPE,
         raw_landmark_count=RAW_LANDMARK_COUNT,
         blendshape_count=RAW_BLENDSHAPE_COUNT,
         blendshape_names=BLENDSHAPE_NAMES_132,
@@ -555,37 +558,40 @@ class _RawWorkerTask:
     schema: str = RAW_SCHEMA_NAME
 
 
-_raw_worker_landmarker: FrameLandmarker | None = None
+# One landmarker per clip, not per worker: see the note above `_worker_model_path`
+# in `extraction.py`. VIDEO-mode tracking state leaking between clips makes the
+# cached valid mask -- and therefore the canonical included-clip set -- depend on
+# clip ordering and worker count.
+_raw_worker_model_path: Path | None = None
 
 
 def _initialize_raw_worker(
     model_asset_path: str, expected_sha256: str, expected_size_bytes: int
 ) -> None:
-    global _raw_worker_landmarker
+    global _raw_worker_model_path
     model_path = Path(model_asset_path)
     if (
         model_path.stat().st_size != expected_size_bytes
         or _file_sha256(model_path) != expected_sha256
     ):
         raise RuntimeError("Face Landmarker model changed after provenance was recorded")
-    landmarker = MediaPipeFaceLandmarker(model_path)
-    _raw_worker_landmarker = landmarker
-    Finalize(None, landmarker.close, exitpriority=10)
+    _raw_worker_model_path = model_path
 
 
 def _extract_raw_worker(task: _RawWorkerTask) -> RawIncludedClip | ExcludedClip:
-    if _raw_worker_landmarker is None:
+    if _raw_worker_model_path is None:
         raise RuntimeError("Face Landmarker worker was not initialized")
     record = task.record
     if _source_fingerprint(record.video_path) != task.source_fingerprint:
         raise OSError("source video changed before extraction started")
     try:
-        clip = _process_raw_clip(
-            record.video_path,
-            _raw_worker_landmarker,
-            frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
-            sample_fps=task.sample_fps,
-        )
+        with MediaPipeFaceLandmarker(_raw_worker_model_path) as landmarker:
+            clip = _process_raw_clip(
+                record.video_path,
+                landmarker,
+                frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
+                sample_fps=task.sample_fps,
+            )
     except (
         InvalidFrameFeaturesError,
         InsufficientRawCoverageError,
