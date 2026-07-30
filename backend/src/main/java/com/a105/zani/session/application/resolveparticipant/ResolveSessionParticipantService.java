@@ -28,7 +28,7 @@ public class ResolveSessionParticipantService implements ResolveSessionParticipa
                 .orElseThrow(NotSessionMemberException::new);
 
         Session session = sessionRepository.findById(query.sessionId()).orElseThrow(SessionNotFoundException::new);
-        if (session.isEnded()) {
+        if (session.isClosed()) {
             throw new SessionAlreadyEndedException();
         }
 

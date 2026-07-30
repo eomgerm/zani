@@ -1,7 +1,9 @@
 package com.a105.zani.session.application.end;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -9,8 +11,10 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.port.SessionActivationLockPort;
+import com.a105.zani.session.application.port.SessionStatusHistoryPort;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -23,13 +27,16 @@ class EndSessionServiceTest {
 
     private static final long SESSION_ID = 100L;
     private static final Instant STARTED_AT = Instant.parse("2026-07-26T00:00:00Z");
+    private static final Instant ENDED_AT = Instant.parse("2026-07-26T01:00:00Z");
     /** sessionWith 가 만드는 세션의 강사. 잠금은 이 강사 기준으로 반납돼야 한다. */
     private static final long INSTRUCTOR_ID = 1L;
 
     private final FakeSessionRepository sessionRepository = new FakeSessionRepository();
     private final RecordingReleaseUseCase audioRelease = new RecordingReleaseUseCase();
     private final RecordingActivationLockPort activationLock = new RecordingActivationLockPort();
-    private final EndSessionService service = new EndSessionService(sessionRepository, audioRelease, activationLock);
+    private final RecordingStatusHistoryPort statusHistory = new RecordingStatusHistoryPort();
+    private final EndSessionService service = new EndSessionService(
+            sessionRepository, audioRelease, activationLock, statusHistory, Clock.fixed(ENDED_AT, ZoneOffset.UTC));
 
     /**
      * 수업을 끝낸 강사는 곧바로 다음 수업을 열 수 있어야 한다.
@@ -54,6 +61,80 @@ class EndSessionServiceTest {
         EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
 
         assertTrue(result.ended());
+    }
+
+    /** 종료는 정리 단계를 거쳐 메모 대기로 끝난다. 정리 중에 들어온 입장·토큰 요청을 거절할 근거가 ENDING 이다. */
+    @Test
+    void endsALiveSessionAndLeavesItWaitingForTheInstructorNote() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+
+        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.MAX_DURATION_REACHED));
+
+        assertTrue(result.ended());
+        assertEquals(SessionStatus.NOTE_PENDING, result.status());
+        assertTrue(sessionRepository.session.isClosed());
+        assertEquals(1, sessionRepository.saveCount);
+        // 코칭 오디오 버퍼(세션당 수십 MB)를 반납하지 않으면 수업이 끝나도 메모리가 남는다.
+        assertEquals(List.of(SESSION_ID), audioRelease.released);
+    }
+
+    /** 왜 끝났는지가 로그에만 남으면 수업이 끝난 뒤 사라진다. 세션 행에 함께 저장돼야 한다. */
+    @Test
+    void storesTheEndReasonAndTime() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+
+        service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT));
+
+        assertEquals(SessionEndReason.INSTRUCTOR_ABSENT, sessionRepository.session.endReason());
+        assertEquals(ENDED_AT, sessionRepository.session.endedAt());
+    }
+
+    /** 세션 행은 현재 상태만 들고 있어, 언제 정리에 들어갔는지는 이력이 없으면 남지 않는다. */
+    @Test
+    void recordsBothTransitionsInTheStatusHistory() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+
+        service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
+
+        assertEquals(List.of("LIVE→ENDING", "ENDING→NOTE_PENDING"), statusHistory.transitions());
+    }
+
+    @Test
+    void isIdempotentWhenTheSessionHasAlreadyEnded() {
+        sessionRepository.session = sessionWith(SessionStatus.NOTE_PENDING);
+
+        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT));
+
+        assertFalse(result.ended());
+        assertEquals(SessionStatus.NOTE_PENDING, result.status());
+        assertEquals(0, sessionRepository.saveCount);
+        // 이미 끝난 세션의 버퍼는 첫 종료에서 이미 반납됐다. 중복 호출하지 않는다.
+        assertTrue(audioRelease.released.isEmpty());
+        // 멱등하게 무시된 요청까지 기록하면 이력이 중복 요청 횟수로 오염된다.
+        assertTrue(statusHistory.transitions().isEmpty());
+    }
+
+    @Test
+    void throwsWhenTheSessionDoesNotExist() {
+        sessionRepository.session = null;
+
+        assertThrows(
+                SessionNotFoundException.class,
+                () -> service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT)));
+    }
+
+    private static Session sessionWith(SessionStatus status) {
+        return Session.reconstitute(
+                SESSION_ID,
+                INSTRUCTOR_ID,
+                "제목",
+                "INVITE01",
+                false,
+                status,
+                SessionAnalysisStatus.NOT_STARTED,
+                STARTED_AT,
+                null,
+                null);
     }
 
     /** 잠금 반납 호출만 기록하는 페이크. */
@@ -88,7 +169,7 @@ class EndSessionServiceTest {
     private static final class RecordingReleaseUseCase
             implements com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase {
 
-        private final java.util.List<Long> released = new java.util.ArrayList<>();
+        private final List<Long> released = new java.util.ArrayList<>();
 
         @Override
         public void release(long sessionId) {
@@ -96,52 +177,18 @@ class EndSessionServiceTest {
         }
     }
 
-    private static Session sessionWith(SessionStatus status) {
-        return Session.reconstitute(
-                SESSION_ID,
-                INSTRUCTOR_ID,
-                "제목",
-                "INVITE01",
-                false,
-                STARTED_AT,
-                status,
-                SessionAnalysisStatus.NOT_STARTED);
-    }
+    private static final class RecordingStatusHistoryPort implements SessionStatusHistoryPort {
 
-    @Test
-    void endsALiveSessionAndReportsTheTransition() {
-        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+        private final List<String> transitions = new java.util.ArrayList<>();
 
-        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.MAX_DURATION_REACHED));
+        List<String> transitions() {
+            return transitions;
+        }
 
-        assertTrue(result.ended());
-        assertEquals(SessionStatus.ENDED, result.status());
-        assertTrue(sessionRepository.session.isEnded());
-        assertEquals(1, sessionRepository.saveCount);
-        // 코칭 오디오 버퍼(세션당 수십 MB)를 반납하지 않으면 수업이 끝나도 메모리가 남는다.
-        assertEquals(java.util.List.of(SESSION_ID), audioRelease.released);
-    }
-
-    @Test
-    void isIdempotentWhenTheSessionHasAlreadyEnded() {
-        sessionRepository.session = sessionWith(SessionStatus.ENDED);
-
-        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT));
-
-        assertFalse(result.ended());
-        assertEquals(SessionStatus.ENDED, result.status());
-        assertEquals(0, sessionRepository.saveCount);
-        // 이미 끝난 세션의 버퍼는 첫 종료에서 이미 반납됐다. 중복 호출하지 않는다.
-        assertTrue(audioRelease.released.isEmpty());
-    }
-
-    @Test
-    void throwsWhenTheSessionDoesNotExist() {
-        sessionRepository.session = null;
-
-        assertThrows(
-                SessionNotFoundException.class,
-                () -> service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT)));
+        @Override
+        public void record(long sessionId, SessionStatus from, SessionStatus to, Instant changedAt) {
+            transitions.add(from + "→" + to);
+        }
     }
 
     private static final class FakeSessionRepository implements SessionRepository {
@@ -168,6 +215,11 @@ class EndSessionServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }

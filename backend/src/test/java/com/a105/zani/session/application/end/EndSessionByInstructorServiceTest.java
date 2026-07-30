@@ -11,6 +11,7 @@ import com.a105.zani.session.application.exception.NotSessionInstructorException
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -37,9 +38,11 @@ class EndSessionByInstructorServiceTest {
                 "제목",
                 "INVITE01",
                 false,
-                STARTED_AT,
                 SessionStatus.LIVE,
-                SessionAnalysisStatus.NOT_STARTED);
+                SessionAnalysisStatus.NOT_STARTED,
+                STARTED_AT,
+                null,
+                null);
     }
 
     @Test
@@ -109,6 +112,11 @@ class EndSessionByInstructorServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
 

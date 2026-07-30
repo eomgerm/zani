@@ -1,6 +1,9 @@
 package com.a105.zani.session.application.create;
 
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -27,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class CreateSessionServiceTest {
 
     private static final long INSTRUCTOR_ID = 1L;
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-07-30T09:00:00Z"), ZoneOffset.UTC);
 
     /**
      * 강사도 자기 수업의 참가자여야 한다.
@@ -38,7 +42,7 @@ class CreateSessionServiceTest {
         RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>());
         InMemoryParticipantRepository participants = new InMemoryParticipantRepository();
         CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository, participants),
+                new NewSessionSaver(repository, participants, CLOCK),
                 new AlwaysAcquireLockPort(),
                 new StubInviteCodeGenerator("AAAAAAAA"));
 
@@ -57,7 +61,7 @@ class CreateSessionServiceTest {
         StubInviteCodeGenerator codeGenerator = new StubInviteCodeGenerator("AAAAAAAA", "BBBBBBBB");
         RecordingSessionRepository repository = new RecordingSessionRepository(takenCodes);
         CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository, new InMemoryParticipantRepository()),
+                new NewSessionSaver(repository, new InMemoryParticipantRepository(), CLOCK),
                 new AlwaysAcquireLockPort(),
                 codeGenerator);
 
@@ -73,7 +77,7 @@ class CreateSessionServiceTest {
                 new StubInviteCodeGenerator("AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA", "AAAAAAAA");
         RecordingSessionRepository repository = new RecordingSessionRepository(new HashSet<>(List.of("AAAAAAAA")));
         CreateSessionService service = new CreateSessionService(
-                new NewSessionSaver(repository, new InMemoryParticipantRepository()),
+                new NewSessionSaver(repository, new InMemoryParticipantRepository(), CLOCK),
                 new AlwaysAcquireLockPort(),
                 codeGenerator);
 
@@ -131,6 +135,11 @@ class CreateSessionServiceTest {
 
         @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
+        public java.util.Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             throw new UnsupportedOperationException("not needed for this test");
         }
     }

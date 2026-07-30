@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 /**

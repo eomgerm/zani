@@ -134,10 +134,11 @@ class SessionEndControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.isSuccess").value(true))
                 .andExpect(jsonPath("$.data.sessionId").value(SESSION_ID))
-                .andExpect(jsonPath("$.data.status").value("ENDED"))
+                // 종료는 정리를 마치고 강사 메모 대기로 끝난다. ENDED 는 메모가 확정된 뒤의 상태다.
+                .andExpect(jsonPath("$.data.status").value("NOTE_PENDING"))
                 .andExpect(jsonPath("$.data.ended").value(true));
 
-        assertEquals("ENDED", statusOf(SESSION_ID));
+        assertEquals("NOTE_PENDING", statusOf(SESSION_ID));
     }
 
     @Test
@@ -153,7 +154,7 @@ class SessionEndControllerTest {
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/end", SESSION_ID)
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("ENDED"))
+                .andExpect(jsonPath("$.data.status").value("NOTE_PENDING"))
                 .andExpect(jsonPath("$.data.ended").value(false));
     }
 }

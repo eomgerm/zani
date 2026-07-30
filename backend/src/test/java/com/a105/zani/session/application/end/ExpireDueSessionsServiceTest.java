@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -29,7 +30,16 @@ class ExpireDueSessionsServiceTest {
 
     private static Session liveSessionStartedAt(long id, Instant startedAt) {
         return Session.reconstitute(
-                id, 1L, "제목", "INVITE" + id, false, startedAt, SessionStatus.LIVE, SessionAnalysisStatus.NOT_STARTED);
+                id,
+                1L,
+                "제목",
+                "INVITE" + id,
+                false,
+                SessionStatus.LIVE,
+                SessionAnalysisStatus.NOT_STARTED,
+                startedAt,
+                null,
+                null);
     }
 
     @Test
@@ -116,6 +126,11 @@ class ExpireDueSessionsServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }

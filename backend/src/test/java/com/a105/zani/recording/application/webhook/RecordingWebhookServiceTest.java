@@ -126,13 +126,20 @@ class RecordingWebhookServiceTest {
                         "제목",
                         "INVITE01",
                         false,
-                        SESSION_START,
                         SessionStatus.LIVE,
-                        SessionAnalysisStatus.NOT_STARTED));
+                        SessionAnalysisStatus.NOT_STARTED,
+                        SESSION_START,
+                        null,
+                        null));
             }
 
             @Override
             public Optional<Session> findByInviteCode(String inviteCode) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
                 return Optional.empty();
             }
 

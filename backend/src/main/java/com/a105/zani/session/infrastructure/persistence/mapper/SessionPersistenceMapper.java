@@ -19,6 +19,8 @@ public class SessionPersistenceMapper {
                 .status(session.status())
                 .analysisStatus(session.analysisStatus())
                 .startedAt(session.startedAt())
+                .endedAt(session.endedAt())
+                .endReason(session.endReason())
                 .build();
     }
 
@@ -29,8 +31,10 @@ public class SessionPersistenceMapper {
                 entity.getTitle(),
                 entity.getInviteCode(),
                 false,
-                entity.getStartedAt(),
                 entity.getStatus(),
-                entity.getAnalysisStatus());
+                entity.getAnalysisStatus(),
+                entity.getStartedAt(),
+                entity.getEndedAt(),
+                entity.getEndReason());
     }
 }

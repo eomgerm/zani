@@ -9,13 +9,13 @@ import org.springframework.stereotype.Service;
 
 import com.a105.zani.session.application.end.EndSessionCommand;
 import com.a105.zani.session.application.end.EndSessionUseCase;
-import com.a105.zani.session.application.end.SessionEndReason;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.port.SessionPresencePort;
 import com.a105.zani.session.domain.model.ConnectionState;
 import com.a105.zani.session.domain.model.Session;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.repository.SessionParticipantRepository;
@@ -53,7 +53,8 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                 .orElseThrow(NotSessionMemberException::new);
 
         Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
-        if (session.isEnded()) {
+        // 준비 중에도 강사는 방에 붙어 있어 heartbeat 를 보낸다. 거절할 대상은 종료 절차에 들어간 세션이다.
+        if (session.isClosed()) {
             throw new SessionAlreadyEndedException();
         }
 

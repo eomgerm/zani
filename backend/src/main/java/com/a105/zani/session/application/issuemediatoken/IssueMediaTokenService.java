@@ -13,7 +13,6 @@ import com.a105.zani.session.application.port.LiveKitTokenPort;
 import com.a105.zani.session.application.port.MediaTokenRequest;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
-import com.a105.zani.session.domain.model.SessionStatus;
 import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -49,7 +48,9 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
 
         Session session =
                 sessionRepository.findById(command.sessionId()).orElseThrow(MediaTokenSessionNotFoundException::new);
-        if (session.status() == SessionStatus.ENDED) {
+        // PREPARING 도 허용한다. 강사는 수업을 시작하기 전에 방에 들어가 카메라·마이크를 맞춰야 하고, 그러려면 토큰이 필요하다.
+        // 막아야 하는 건 종료 절차에 들어간 세션이다 — 정리 중인 방에 새 연결을 들이면 정리가 끝나지 않는다.
+        if (session.isClosed()) {
             throw new SessionAlreadyEndedException();
         }
 

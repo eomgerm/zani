@@ -1,5 +1,7 @@
 package com.a105.zani.session.application.create;
 
+import java.time.Clock;
+
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,21 +27,26 @@ class NewSessionSaver {
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository participantRepository;
+    private final Clock clock;
 
-    NewSessionSaver(SessionRepository sessionRepository, SessionParticipantRepository participantRepository) {
+    NewSessionSaver(
+            SessionRepository sessionRepository, SessionParticipantRepository participantRepository, Clock clock) {
         this.sessionRepository = sessionRepository;
         this.participantRepository = participantRepository;
+        this.clock = clock;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Session save(Session session) {
         Session saved = sessionRepository.save(session);
+        // 강사 멤버십 시각은 세션 시작 시각이 아니라 등록 시각이다. 준비 중인 세션은 아직 시작 시각이 없고,
+        // 강사가 "언제 이 수업의 참가자가 됐는가"는 시작과 별개의 사실이다.
         participantRepository.save(SessionParticipant.join(
                 TsidGenerator.generate(),
                 saved.id(),
                 saved.instructorId(),
                 SessionParticipantRole.INSTRUCTOR,
-                saved.startedAt()));
+                clock.instant()));
         return saved;
     }
 }

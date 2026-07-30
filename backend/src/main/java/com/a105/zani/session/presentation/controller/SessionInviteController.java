@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,11 +27,15 @@ import com.a105.zani.session.application.get.GetSessionListUseCase;
 import com.a105.zani.session.application.join.JoinSessionCommand;
 import com.a105.zani.session.application.join.JoinSessionResult;
 import com.a105.zani.session.application.join.JoinSessionUseCase;
+import com.a105.zani.session.application.start.StartSessionCommand;
+import com.a105.zani.session.application.start.StartSessionResult;
+import com.a105.zani.session.application.start.StartSessionUseCase;
 import com.a105.zani.session.presentation.request.CreateSessionRequest;
 import com.a105.zani.session.presentation.request.JoinSessionRequest;
 import com.a105.zani.session.presentation.response.CreateSessionResponse;
 import com.a105.zani.session.presentation.response.JoinSessionResponse;
 import com.a105.zani.session.presentation.response.SessionSummaryResponse;
+import com.a105.zani.session.presentation.response.StartSessionResponse;
 
 @Tag(name = "수업", description = "강사의 수업 생성·목록 조회와 학생의 초대 코드 입장")
 @RestController
@@ -38,24 +43,29 @@ import com.a105.zani.session.presentation.response.SessionSummaryResponse;
 public class SessionInviteController {
 
     private final CreateSessionUseCase createSessionUseCase;
+    private final StartSessionUseCase startSessionUseCase;
     private final GetSessionListUseCase getSessionListUseCase;
     private final JoinSessionUseCase joinSessionUseCase;
 
     public SessionInviteController(
             CreateSessionUseCase createSessionUseCase,
+            StartSessionUseCase startSessionUseCase,
             GetSessionListUseCase getSessionListUseCase,
             JoinSessionUseCase joinSessionUseCase) {
         this.createSessionUseCase = createSessionUseCase;
+        this.startSessionUseCase = startSessionUseCase;
         this.getSessionListUseCase = getSessionListUseCase;
         this.joinSessionUseCase = joinSessionUseCase;
     }
 
     @Operation(summary = "수업 생성 (강사)", description = """
-                    강사가 수업을 개설합니다. 만들자마자 `LIVE` 상태가 되고, 학생에게 공유할 **8자리 초대 코드**가 함께 발급됩니다.
+                    강사가 수업을 개설합니다. 만들자마자 `PREPARING` 상태가 되고, 학생에게 공유할 **8자리 초대 코드**가 함께 발급됩니다.
 
+                    - **아직 학생이 들어올 수 없습니다.** 강사가 `POST /sessions/{sessionId}/start` 를 호출해야 코드가 유효해집니다.
+                      카메라·마이크를 맞추는 동안 학생이 빈 방에 들어오지 않게 하려는 것입니다.
                     - 한 강사는 **동시에 하나의 수업만** 열 수 있습니다. 이전 수업이 진행 중이면 409 가 납니다.
-                    - 수업은 시작 시각으로부터 **3시간** 뒤 자동 종료됩니다(응답의 `expiresAt`).
-                    - 강사는 생성과 동시에 참가자로 등록되므로 따로 입장할 필요가 없습니다.
+                    - 아직 시작하지 않았으므로 `expiresAt` 은 null 입니다. 3시간 자동 종료 시계는 시작 시점부터 돕니다.
+                    - 강사는 생성과 동시에 참가자로 등록되므로 따로 입장할 필요가 없고, 준비 중에도 미디어 토큰을 받을 수 있습니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "수업이 생성되었습니다."),
@@ -77,6 +87,33 @@ public class SessionInviteController {
                 new CreateSessionCommand(Long.parseLong(jwt.getSubject()), request.title()));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(CreateSessionResponse.from(result), CommonSuccessCode.CREATED));
+    }
+
+    @Operation(summary = "수업 시작 (강사)", description = """
+                    준비된 수업을 실제로 시작합니다. 이 시점부터 초대 코드가 유효해지고 3시간 자동 종료 시계가 돌기 시작합니다.
+
+                    - **멱등합니다.** 두 번 눌러도 시작 시각이 밀리지 않고 `started: false` 로 응답합니다.
+                    - 수업을 연 강사만 시작할 수 있습니다.
+                    """)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "시작 성공"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인이 필요합니다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "403",
+                description = "이 수업을 연 강사만 시작할 수 있습니다. (`SESSION_APP_006`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "그런 수업이 없습니다. (`SESSION_APP_005`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description = "이미 종료 절차에 들어간 수업입니다. (`SESSION_002`)")
+    })
+    @PostMapping("/{sessionId}/start")
+    public ApiResponse<StartSessionResponse> start(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable("sessionId") long sessionId) {
+        StartSessionResult result =
+                startSessionUseCase.start(new StartSessionCommand(sessionId, Long.parseLong(jwt.getSubject())));
+        return ApiResponse.success(StartSessionResponse.from(result));
     }
 
     @Operation(summary = "내 수업 목록", description = """

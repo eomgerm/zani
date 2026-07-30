@@ -121,9 +121,11 @@ class ResolveConnectedStudentsServiceTest {
                     "테스트 수업",
                     "INVITE01",
                     false,
-                    SESSION_STARTED_AT,
                     status,
-                    SessionAnalysisStatus.NOT_STARTED));
+                    SessionAnalysisStatus.NOT_STARTED,
+                    SESSION_STARTED_AT,
+                    null,
+                    null));
         }
 
         @Override
@@ -138,6 +140,11 @@ class ResolveConnectedStudentsServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }

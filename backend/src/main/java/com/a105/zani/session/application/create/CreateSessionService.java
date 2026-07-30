@@ -1,7 +1,5 @@
 package com.a105.zani.session.application.create;
 
-import java.time.Instant;
-
 import org.springframework.stereotype.Service;
 
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -51,10 +49,9 @@ public class CreateSessionService implements CreateSessionUseCase {
 
     private Session saveWithInviteCodeRetry(CreateSessionCommand command) {
         long id = TsidGenerator.generate();
-        Instant startedAt = Instant.now();
         for (int attempt = 0; attempt < MAX_INVITE_CODE_ATTEMPTS; attempt++) {
-            Session session = Session.start(
-                    id, command.instructorId(), command.title(), inviteCodeGenerator.generate(), startedAt);
+            Session session =
+                    Session.prepare(id, command.instructorId(), command.title(), inviteCodeGenerator.generate());
             try {
                 return newSessionSaver.save(session);
             } catch (DuplicateInviteCodeException collision) {

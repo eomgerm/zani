@@ -50,6 +50,11 @@ class IssueMediaTokenServiceTest {
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+            return Optional.empty();
+        }
     };
 
     private final SessionParticipantRepository participantRepository = new SessionParticipantRepository() {
@@ -96,7 +101,7 @@ class IssueMediaTokenServiceTest {
 
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
-                100L, 1L, "제목", "INVITE1", false, STARTED_AT, status, SessionAnalysisStatus.NOT_STARTED);
+                100L, 1L, "제목", "INVITE1", false, status, SessionAnalysisStatus.NOT_STARTED, STARTED_AT, null, null);
     }
 
     @Test

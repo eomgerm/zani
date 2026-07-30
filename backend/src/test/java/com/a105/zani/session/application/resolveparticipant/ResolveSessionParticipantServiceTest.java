@@ -90,7 +90,7 @@ class ResolveSessionParticipantServiceTest {
 
     private static Session session(SessionStatus status) {
         return Session.reconstitute(
-                SESSION_ID, 7L, "제목", "INVITE01", false, T0, status, SessionAnalysisStatus.NOT_STARTED);
+                SESSION_ID, 7L, "제목", "INVITE01", false, status, SessionAnalysisStatus.NOT_STARTED, T0, null, null);
     }
 
     private static final class FakeSessionRepository implements SessionRepository {
@@ -115,6 +115,11 @@ class ResolveSessionParticipantServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }

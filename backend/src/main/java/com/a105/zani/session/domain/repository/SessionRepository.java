@@ -16,4 +16,11 @@ public interface SessionRepository {
     Optional<Session> findById(Long id);
 
     Optional<Session> findByInviteCode(String inviteCode);
+
+    /**
+     * 초대 코드로 세션을 찾되 행을 잠근다. 호출자의 트랜잭션이 끝날 때까지 같은 세션을 대상으로 한 다른 잠금 요청이 대기한다.
+     *
+     * <p>정원처럼 "세보고 나서 추가하는" 검사는 잠금 없이는 동시 요청에서 새어 나간다.
+     */
+    Optional<Session> findByInviteCodeForUpdate(String inviteCode);
 }

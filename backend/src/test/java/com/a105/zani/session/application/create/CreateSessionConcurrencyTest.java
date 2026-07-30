@@ -1,5 +1,6 @@
 package com.a105.zani.session.application.create;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ class CreateSessionConcurrencyTest {
         SessionActivationLockRedisAdapter lockPort = new SessionActivationLockRedisAdapter(redisTemplate);
         SessionRepository sessionRepository = new InMemorySessionRepository();
         createSessionService = new CreateSessionService(
-                new NewSessionSaver(sessionRepository, new InMemoryParticipantRepository()),
+                new NewSessionSaver(sessionRepository, new InMemoryParticipantRepository(), Clock.systemUTC()),
                 lockPort,
                 new InviteCodeGenerator());
 
@@ -127,6 +128,11 @@ class CreateSessionConcurrencyTest {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))
                     .findFirst();
+        }
+
+        @Override
+        public java.util.Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
+            return findByInviteCode(inviteCode);
         }
     }
 

@@ -80,8 +80,10 @@ class SessionJoinConcurrencyTest {
     @Test
     void concurrentJoinsForTheSameStudentResultInExactlyOneParticipant() throws InterruptedException {
         String inviteCode = new InviteCodeGenerator().generate();
-        Session session = sessionRepository.save(
-                Session.start(TsidGenerator.generate(), INSTRUCTOR_ID, "동시 입장 테스트", inviteCode, Instant.now()));
+        // 입장은 LIVE 세션에만 열리므로 시작까지 시켜 둔다.
+        Session prepared = Session.prepare(TsidGenerator.generate(), INSTRUCTOR_ID, "동시 입장 테스트", inviteCode);
+        prepared.start(Instant.now());
+        Session session = sessionRepository.save(prepared);
         sessionId = session.id();
 
         ExecutorService executor = Executors.newFixedThreadPool(CONCURRENT_REQUESTS);

@@ -16,6 +16,7 @@ import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.session.application.end.EndSessionCommand;
 import com.a105.zani.session.application.end.EndSessionResult;
 import com.a105.zani.session.application.end.EndSessionUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
@@ -24,6 +25,7 @@ import com.a105.zani.session.application.port.SessionPresencePort;
 import com.a105.zani.session.domain.model.ConnectionState;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
+import com.a105.zani.session.domain.model.SessionEndReason;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;
@@ -51,13 +53,13 @@ class SessionPresenceServiceTest {
 
     private SessionPresenceService service;
 
-    /** 실제 EndSessionService와 같은 계약: LIVE면 종료·저장, 이미 종료면 멱등 no-op. */
+    /** 실제 EndSessionService와 같은 계약: 진행 중이면 종료 절차를 밟아 저장, 이미 종료면 멱등 no-op. */
     private final EndSessionUseCase endSessionUseCase = command -> {
         Session session = sessionRepository.session;
-        if (session.isEnded()) {
+        if (!session.beginEnding(clock.instant(), command.reason())) {
             return new EndSessionResult(command.sessionId(), session.status(), false);
         }
-        session.end();
+        session.awaitNote();
         sessionRepository.save(session);
         return new EndSessionResult(command.sessionId(), session.status(), true);
     };
@@ -89,9 +91,16 @@ class SessionPresenceServiceTest {
                 "제목",
                 "INVITE01",
                 false,
-                T0,
                 SessionStatus.LIVE,
-                SessionAnalysisStatus.NOT_STARTED);
+                SessionAnalysisStatus.NOT_STARTED,
+                T0,
+                null,
+                null);
+    }
+
+    /** 종료는 유스케이스가 하는 일이라, 테스트도 상태를 직접 찍지 않고 같은 경로를 태운다. */
+    private void endSession() {
+        endSessionUseCase.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
     }
 
     private PresenceResult heartbeat(long userId, ConnectionState state) {
@@ -105,7 +114,7 @@ class SessionPresenceServiceTest {
 
     @Test
     void throwsConflictWhenTheSessionHasAlreadyEnded() {
-        sessionRepository.session.end();
+        endSession();
         assertThrows(SessionAlreadyEndedException.class, () -> heartbeat(STUDENT_USER, ConnectionState.CONNECTED));
     }
 
@@ -148,7 +157,7 @@ class SessionPresenceServiceTest {
 
         assertEquals(ReconnectStatus.SESSION_ENDED, result.reconnectStatus());
         assertTrue(result.sessionEnded());
-        assertTrue(sessionRepository.session.isEnded());
+        assertTrue(sessionRepository.session.isClosed());
         assertEquals(1, sessionRepository.saveCount);
     }
 
@@ -171,7 +180,7 @@ class SessionPresenceServiceTest {
 
         assertEquals(ReconnectStatus.SESSION_ENDED, result.reconnectStatus());
         assertTrue(result.sessionEnded());
-        assertTrue(sessionRepository.session.isEnded());
+        assertTrue(sessionRepository.session.isClosed());
     }
 
     @Test
@@ -285,6 +294,11 @@ class SessionPresenceServiceTest {
 
         @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByInviteCodeForUpdate(String inviteCode) {
             return Optional.empty();
         }
     }
