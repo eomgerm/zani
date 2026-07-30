@@ -77,11 +77,19 @@ export function useAttentionEventReporter(
   return useCallback((report: DetectorReport): void => {
     const { sessionId: currentSessionId, send: sendEvent, accessToken: token } = latestRef.current;
     // 토큰이 아직 없으면 보내도 401 이다. 세션 복원이 끝나면 다음 창이 곧 온다.
-    if (token === null || leftRoomRef.current) return;
-    if (endedSessionIdRef.current === currentSessionId) return;
+    // 이 검사만 여기 있다 — `attempt` 는 토큰을 클로저로 잡아 다시 읽지 않는다.
+    if (token === null) return;
 
+    /**
+     * 보내도 되는지는 **매 시도 직전에** 판단한다. 진입부에서 한 번만 보면, 예약된 재시도가
+     * 예약 시점의 판단을 들고 그대로 깨어난다 — 그 1초 사이에 다른 관측이 409 를 받아 세션
+     * 종료가 드러나도 종료된 세션으로 한 번 더 보낸다. 창 보고 직후 학생이 카메라를 끄면 두
+     * 관측이 1초 안에 겹치므로 실제로 닿는 순서다.
+     *
+     * 그래서 판단을 이 한 곳에만 둔다. 진입부에 같은 검사를 복제하면 두 벌이 갈라진다.
+     */
     const attempt = (retriesLeft: number): void => {
-      if (leftRoomRef.current) return;
+      if (leftRoomRef.current || endedSessionIdRef.current === currentSessionId) return;
       const controller = new AbortController();
       inFlightRef.current.add(controller);
 

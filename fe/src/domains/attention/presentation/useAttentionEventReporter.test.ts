@@ -132,6 +132,32 @@ describe("useAttentionEventReporter", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  /*
+    예약된 재시도는 자기가 예약될 때의 판단만 갖고 있다. 그 1초 사이에 다른 관측이 409 를
+    받아 세션이 끝난 것이 드러나면, 타이머가 그대로 깨어나 종료된 세션으로 한 번 더 보낸다.
+    창 보고 직후 학생이 카메라를 끄면 두 관측이 1초 안에 겹치므로 실제로 닿는 순서다.
+  */
+  it("does not retry into a session that ended while the retry was pending", async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new AttentionEventSendError("redis down", 503))
+      .mockRejectedValueOnce(new AttentionEventSendError("session ended", 409))
+      .mockResolvedValue(ACCEPTED);
+    const { result } = renderHook(() => useAttentionEventReporter({ sessionId: "55", send }));
+
+    // 첫 관측이 5xx 로 실패해 재시도를 예약한다.
+    act(() => result.current(reportAt(10_000, "event-1")));
+    await flush();
+    // 재시도가 깨어나기 전에 두 번째 관측이 409 를 받아 세션 종료가 드러난다.
+    act(() => result.current(reportAt(20_000, "event-2")));
+    await flush();
+    expect(send).toHaveBeenCalledTimes(2);
+
+    await flush(ATTENTION_EVENT_RETRY_DELAY_MS * 2);
+
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
   // 래치는 그 수업에만 걸린다. 다른 수업에 들어가면 다시 보내야 한다.
   it("sends again after moving to another session", async () => {
     const send = vi.fn().mockRejectedValue(new AttentionEventSendError("session ended", 409));
