@@ -46,13 +46,35 @@ const sessionTopic = (sessionId: string) => `/topic/sessions/${sessionId}`;
 const chatDestination = (sessionId: string) => `/app/sessions/${sessionId}/chat`;
 
 /**
- * 핸드셰이크 URL. API 주소를 그대로 쓰되 스킴만 ws 로 바꾼다.
+ * 개발 서버에서 붙을 백엔드 오리진. `next.config.ts` 의 rewrite destination 과 같은 포트다.
  *
- * `NEXT_PUBLIC_API_BASE_URL` 이 비어 있으면 같은 출처로 본다 — 로컬에서 프록시를 쓰는 구성이다.
- * 이 값은 빌드 시점에 박히므로 런타임에 바꿀 수 없다.
+ * 여기에 값을 박는 이유: `NEXT_PUBLIC_*` 를 새로 만들면 Dockerfile·compose·Jenkins 세 곳에 함께
+ * 실어야 하고, 하나만 빠지면 로컬은 되고 배포만 조용히 죽는다(`NEXT_PUBLIC_GOOGLE_CLIENT_ID`
+ * 가 실제로 그렇게 빠져 배포 로그인이 깨진 적이 있다). 배포는 이미 연결돼 있는
+ * `NEXT_PUBLIC_API_BASE_URL` 을 그대로 쓴다.
  */
-export function sessionChannelUrl(apiBaseUrl: string | undefined, origin: string): string {
-  const base = (apiBaseUrl ?? "").replace(/\/$/, "") || origin;
+const DEV_BACKEND_ORIGIN = "http://localhost:8080";
+
+export interface SessionChannelUrlOptions {
+  readonly apiBaseUrl: string | undefined;
+  /** 브라우저가 보고 있는 출처. 배포에서 API 주소가 비어 있을 때의 기준이다. */
+  readonly origin: string;
+  readonly isDevelopment: boolean;
+}
+
+/**
+ * 핸드셰이크 URL. API 주소의 스킴만 ws 로 바꾼다.
+ *
+ * <b>개발 모드에서 API 주소가 비어 있으면 백엔드로 직접 붙는다.</b> 그 구성은 Next rewrite 로 `/api`
+ * 를 넘기는 방식인데, rewrite 는 WebSocket 업그레이드를 프록시하지 않아 같은 출처로 붙으면 `/ws` 를
+ * 받아 줄 대상이 없다. 이건 STOMP 냐 raw WebSocket 이냐와 무관한 전송 계층 문제다.
+ *
+ * 배포에서 같은 도메인을 쓰려면 Nginx 에 `/ws` location 이 필요하다(`Upgrade`·`Connection` 헤더와
+ * 긴 `proxy_read_timeout`). `/api` 블록은 일반 프록시라 업그레이드를 넘기지 않는다.
+ */
+export function sessionChannelUrl(options: SessionChannelUrlOptions): string {
+  const configured = (options.apiBaseUrl ?? "").replace(/\/$/, "");
+  const base = configured || (options.isDevelopment ? DEV_BACKEND_ORIGIN : options.origin);
   return `${base.replace(/^http/, "ws")}${HANDSHAKE_PATH}`;
 }
 
@@ -69,10 +91,11 @@ export const createSessionChannel: SessionChannelFactory = ({
   handlers,
 }) => {
   const client = new Client({
-    brokerURL: sessionChannelUrl(
-      process.env.NEXT_PUBLIC_API_BASE_URL,
-      typeof window === "undefined" ? "" : window.location.origin,
-    ),
+    brokerURL: sessionChannelUrl({
+      apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
+      origin: typeof window === "undefined" ? "" : window.location.origin,
+      isDevelopment: process.env.NODE_ENV === "development",
+    }),
     connectHeaders: { Authorization: `Bearer ${accessToken}` },
     reconnectDelay: RECONNECT_DELAY_MS,
     onConnect: () => {
