@@ -2,6 +2,7 @@ package com.a105.zani.audioclip.infrastructure.gms;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.SocketTimeoutException;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -14,7 +15,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
 import com.a105.zani.audioclip.application.port.AudioTranscriptionPort;
@@ -89,9 +92,15 @@ public class GmsAudioTranscriptionAdapter implements AudioTranscriptionPort {
                     text.length());
             return text;
         } catch (RuntimeException exception) {
-            // timeout, 401(자격증명), 402(크레딧 소진), 429(rate limit), 5xx 를 모두 같은 실패로 다룬다 — 재시도가 없어
-            // 호출자가 구분해서 할 수 있는 일이 없다.
-            log.warn("Transcription failed after {}ms: {}", elapsedMs(startedAt), exception.toString());
+            // 포트 계약은 모든 벤더·네트워크 실패를 같은 예외로 유지한다. 운영 로그에는 응답 본문이나 예외 메시지를 남기지 않고
+            // 상태 코드와 실패 종류만 구분해 원인을 진단한다.
+            FailureDetails failure = failureDetails(exception);
+            log.warn(
+                    "Transcription failed: bytes={} elapsedMs={} failureType={} statusCode={}",
+                    bytes.length,
+                    elapsedMs(startedAt),
+                    failure.type(),
+                    failure.statusCode());
             throw new AudioClipTranscriptionFailedException(exception);
         }
     }
@@ -136,6 +145,35 @@ public class GmsAudioTranscriptionAdapter implements AudioTranscriptionPort {
         return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
+    private FailureDetails failureDetails(RuntimeException exception) {
+        if (exception instanceof RestClientResponseException responseException) {
+            return new FailureDetails(
+                    "HTTP_ERROR",
+                    Integer.toString(responseException.getStatusCode().value()));
+        }
+        if (hasCause(exception, SocketTimeoutException.class)) {
+            return new FailureDetails("TIMEOUT", "-");
+        }
+        if (exception instanceof ResourceAccessException) {
+            return new FailureDetails("CONNECTION_ERROR", "-");
+        }
+        return new FailureDetails("CLIENT_ERROR", "-");
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            Throwable next = current.getCause();
+            current = next == current ? null : next;
+        }
+        return false;
+    }
+
     /** GMS(OpenAI 호환) 전사 응답. 필요한 필드만 받는다. */
     private record TranscriptionResponse(String text) {}
+
+    private record FailureDetails(String type, String statusCode) {}
 }
