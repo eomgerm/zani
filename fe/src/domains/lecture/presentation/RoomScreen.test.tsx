@@ -289,13 +289,31 @@ describe("RoomScreen controls", () => {
     expect(push).toHaveBeenCalledWith("/my-lectures");
   });
 
-  it("sends a leaving instructor to the post-class note screen", () => {
+  /**
+   * 강사의 나가기는 수업을 끝내는 조작이라 곧바로 나가지 않는다. 되돌릴 수 없으므로 확인을 한 번 받는다.
+   * 실제 종료 요청은 EndSessionButton.test 가 본다.
+   */
+  it("asks a leaving instructor to confirm instead of leaving right away", () => {
     asInstructor();
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
-    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
+    expect(screen.getByTestId("room-leave-confirm").textContent).toContain(
+      "수업을 종료할까요? 모든 참가자가 나가게 됩니다.",
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("lets the instructor back out of the confirmation", () => {
+    asInstructor();
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+    fireEvent.click(screen.getByTestId("end-session-cancel"));
+
+    expect(screen.queryByTestId("room-leave-confirm")).toBeNull();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("derives the instructor role from the token-provided participant role", () => {
@@ -369,29 +387,37 @@ describe("RoomScreen maximum duration warning", () => {
   });
 });
 
+/**
+ * 나가기와 수업 종료를 하나로 합쳤다. 두 버튼이 따로 있으면 강사가 어느 쪽이 수업을 끝내는지 헷갈린다.
+ * 그래서 별도의 "수업 종료" 버튼은 없고, 강사의 나가기가 그 역할을 겸한다.
+ */
 describe("RoomScreen end-session control", () => {
-  it("offers the end-class button to the instructor only", () => {
+  it("no longer shows a separate end-class button", () => {
     asInstructor();
-    render(<RoomScreen sessionId="123" />);
-
-    expect(screen.getByTestId("end-session-button")).toBeVisible();
-  });
-
-  it("hides the end-class button from students", () => {
-    asStudent();
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("end-session-button")).toBeNull();
   });
 
-  it("hides the end-class button until the role is confirmed", () => {
-    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 이때 종료 버튼이 보이면 학생에게도 잠시 노출된다.
+  it("does not ask students to confirm — leaving is just leaving", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+
+    expect(screen.queryByTestId("room-leave-confirm")).toBeNull();
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+  });
+
+  it("does not ask for confirmation until the role is confirmed", () => {
+    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 이때 확인을 붙이면 학생에게도 종료 문구가 보인다.
     roomParticipants.participants = [];
     roomParticipants.localParticipantId = null;
 
     render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
-    expect(screen.queryByTestId("end-session-button")).toBeNull();
+    expect(screen.queryByTestId("room-leave-confirm")).toBeNull();
   });
 });
 

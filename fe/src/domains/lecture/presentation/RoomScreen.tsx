@@ -20,7 +20,7 @@ import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
-import { EndSessionButton } from "./components/room/EndSessionButton";
+import { EndSessionConfirm } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
@@ -245,6 +245,25 @@ function RoomScreenContent({
     return () => clearTimeout(timer);
   }, [presence.sessionEnded, leaveRoom]);
 
+  /**
+   * 강사의 나가기에 붙는 확인 말풍선. 학생에게는 붙지 않아 나가기가 곧 퇴장이다.
+   *
+   * <p>강사의 나가기는 수업을 끝내는 조작이다. 나가기와 수업 종료 버튼이 따로 있으면 어느 쪽이 수업을 끝내는지 헷갈리므로 하나로 합쳤고, 되돌릴 수 없으니 확인을 한 번 받는다. 수업은 이 확인을
+   * 누른 순간 끝난다 — 이어지는 메모 화면은 후처리이고, 메모를 쓰지 않아도 수업은 이미 종료돼 있다.
+   *
+   * <p>{@link isInstructor} 는 참가자 목록이 도착하기 전(connected=false) 기본값이 true 라, 역할이 실제로 확정된 뒤에만 확인을 붙인다. 그전에는 학생과 같이 그냥 나간다.
+   */
+  const leaveConfirm =
+    connected && isInstructor
+      ? (dismiss: () => void) => (
+          <EndSessionConfirm
+            sessionId={sessionId}
+            redirectTo={`/my-lectures/${sessionId}/note`}
+            onCancel={dismiss}
+          />
+        )
+      : undefined;
+
   const answerPrompt = async (value: UnderstandingCheckResponse) => {
     const sent = await understandingCheck.respond(value);
     if (!sent) return; // 전송 실패 — 조용히 넘어간다(수업 진행 우선).
@@ -301,16 +320,6 @@ function RoomScreenContent({
         {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
         {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 역할이 확정된 강사에게만 알린다. */}
         {isConfirmedInstructor && <CoachingStatusNotice availability={coaching.availability} />}
-        {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
-        {!isInstructor && process.env.NODE_ENV !== "production" && (
-          <button
-            type="button"
-            onClick={() => understandingCheck.trigger(`dev-${Date.now()}`)}
-            className="rounded-[11px] border border-[#262b42] bg-[#151830] px-3 py-[9px] font-sans text-[12px] text-panel-muted"
-          >
-            확인 프롬프트 테스트
-          </button>
-        )}
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
@@ -332,14 +341,6 @@ function RoomScreenContent({
         >
           <ChatIcon />
         </PanelToggle>
-        {/*
-          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
-          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
-          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
-        */}
-        {connected && isInstructor && (
-          <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
-        )}
       </div>
 
       {/* 본문 */}
@@ -492,6 +493,7 @@ function RoomScreenContent({
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onReact={addReaction}
             onLeave={leaveRoom}
+            leaveConfirm={leaveConfirm}
           />
         </div>
 

@@ -46,6 +46,8 @@ export async function createBrowserFaceLandmarker(
       baseOptions: { modelAssetPath: paths.faceLandmarkerModel, delegate: "CPU" },
     });
   }
+  // 정리는 한 번만 한다. 이미 해제된 WASM 인스턴스에 close 를 다시 부르면 예외가 난다.
+  let closed = false;
   return {
     detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null {
       const result = landmarker.detectForVideo(frame, timestampMs);
@@ -59,8 +61,20 @@ export async function createBrowserFaceLandmarker(
         blendshapes: new Map(categories.map((category) => [category.categoryName, category.score])),
       };
     },
+    /**
+     * MediaPipe 인스턴스를 해제한다. 실패해도 삼킨다.
+     *
+     * <p>이 정리는 강의실을 떠날 때 일어난다 — 학생이 쫓겨나거나 수업이 끝나 화면을 벗어나는 순간이다. 그때 WASM 힙이나 GPU 컨텍스트가 먼저 정리돼 있으면 close 가 던지는데,
+     * 떠나는 중이라 복구할 것도 없고 사용자가 할 수 있는 일도 없다. 그대로 올려보내면 개발 오버레이가 뜨고 퇴장이 실패처럼 보인다.
+     */
     close(): void {
-      landmarker.close();
+      if (closed) return;
+      closed = true;
+      try {
+        landmarker.close();
+      } catch (error) {
+        console.debug("[attention] MediaPipe 정리 중 예외(무시)", error);
+      }
     },
   };
 }

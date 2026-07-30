@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 
 import {
   CameraIcon,
@@ -41,6 +43,14 @@ interface RoomControlBarProps {
   onToggleReactMenu: () => void;
   onReact: (emoji: string) => void;
   onLeave: () => void;
+  /**
+   * 나가기를 누르면 곧바로 나가지 않고 이 내용을 말풍선으로 띄운다. 강사에게만 넘긴다 — 강사의 나가기는 수업을 끝내는 조작이라 되돌릴 수 없다.
+   *
+   * <p>넘기지 않으면(학생) 나가기는 그대로 {@link onLeave} 를 부른다.
+   *
+   * @param dismiss 말풍선을 닫는다. 취소 버튼이 쓴다.
+   */
+  leaveConfirm?: (dismiss: () => void) => ReactNode;
 }
 
 /** 52px 원형 버튼. 기본은 room-control, 활성 상태에서만 강조색으로 바뀐다. */
@@ -143,7 +153,10 @@ export function RoomControlBar({
   onToggleReactMenu,
   onReact,
   onLeave,
+  leaveConfirm,
 }: RoomControlBarProps) {
+  const [leaveConfirming, setLeaveConfirming] = useState(false);
+
   return (
     <div className="flex shrink-0 items-center justify-center gap-3.5 pb-0.5 pt-2">
       <MediaControl
@@ -226,15 +239,27 @@ export function RoomControlBar({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onLeave}
-        title="나가기"
-        aria-label="나가기"
-        className="flex h-[52px] w-[68px] cursor-pointer items-center justify-center rounded-full border border-white/10 bg-danger text-white transition-[filter] hover:brightness-115"
-      >
-        <CloseIcon />
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          data-testid="room-leave-button"
+          onClick={() => (leaveConfirm === undefined ? onLeave() : setLeaveConfirming((open) => !open))}
+          title="나가기"
+          aria-label="나가기"
+          aria-expanded={leaveConfirm === undefined ? undefined : leaveConfirming}
+          className="flex h-[52px] w-[68px] cursor-pointer items-center justify-center rounded-full border border-white/10 bg-danger text-white transition-[filter] hover:brightness-115"
+        >
+          <CloseIcon />
+        </button>
+        {leaveConfirm !== undefined && leaveConfirming && (
+          <div
+            data-testid="room-leave-confirm"
+            className="absolute bottom-16 right-0 z-10 animate-[zPop_.15s]"
+          >
+            {leaveConfirm(() => setLeaveConfirming(false))}
+          </div>
+        )}
+      </div>
 
       {(microphoneBlocked || cameraBlocked) && (
         <span

@@ -95,6 +95,7 @@ describe("EndSessionButton", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  /** 실패하면 확인 말풍선을 닫지 않는다. 닫아버리면 왜 안 끝났는지 모른 채 처음부터 다시 눌러야 한다. */
   it("stays in the room and allows a retry when the request fails", async () => {
     const endSessionRequest = vi.fn().mockRejectedValue(new Error("network down"));
     render(<EndSessionButton sessionId="123" endSessionRequest={endSessionRequest} />);
@@ -103,7 +104,11 @@ describe("EndSessionButton", () => {
     fireEvent.click(screen.getByTestId("end-session-confirm"));
 
     expect(await screen.findByTestId("end-session-error")).toBeVisible();
-    expect(screen.getByTestId("end-session-button")).toBeVisible();
+    expect(screen.getByTestId("end-session-confirm")).toBeEnabled();
     expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("end-session-confirm"));
+
+    await waitFor(() => expect(endSessionRequest).toHaveBeenCalledTimes(2));
   });
 });
