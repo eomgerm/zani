@@ -241,6 +241,11 @@ class EndSessionServiceTest {
         }
 
         @Override
+        public Optional<Session> findByIdForUpdate(Long id) {
+            return Optional.ofNullable(session);
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }

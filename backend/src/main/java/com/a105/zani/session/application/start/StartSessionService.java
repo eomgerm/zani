@@ -35,7 +35,10 @@ public class StartSessionService implements StartSessionUseCase {
     @Override
     @Transactional
     public StartSessionResult start(StartSessionCommand command) {
-        Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
+        // 잠금을 걸고 읽는다. 잠금 없이 읽으면 동시에 들어온 종료와 각자 전이해, 늦게 커밋한 시작이 종료를
+        // 덮어써 끝난 수업이 되살아난다. 동시 시작 두 건이 모두 started=true 가 되는 것도 같은 이유다.
+        Session session =
+                sessionRepository.findByIdForUpdate(command.sessionId()).orElseThrow(SessionNotFoundException::new);
         if (!session.instructorId().equals(command.userId())) {
             log.warn("Non-instructor {} tried to start session {}", command.userId(), command.sessionId());
             throw new NotSessionInstructorException();

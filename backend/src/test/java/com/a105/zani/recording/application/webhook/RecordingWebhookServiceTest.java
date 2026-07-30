@@ -140,6 +140,21 @@ class RecordingWebhookServiceTest {
             }
 
             @Override
+            public Optional<Session> findByIdForUpdate(Long id) {
+                return Optional.of(Session.reconstitute(
+                        SESSION_ID,
+                        1L,
+                        "제목",
+                        "INVITE01",
+                        false,
+                        SessionStatus.LIVE,
+                        SessionAnalysisStatus.NOT_STARTED,
+                        SESSION_START,
+                        null,
+                        null));
+            }
+
+            @Override
             public Optional<Session> findByInviteCode(String inviteCode) {
                 return Optional.empty();
             }

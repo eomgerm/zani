@@ -22,6 +22,13 @@ public interface SessionRepository {
 
     Optional<Session> findById(Long id);
 
+    /**
+     * 세션을 찾되 행을 잠근다. 호출자의 트랜잭션이 끝날 때까지 같은 세션을 대상으로 한 다른 잠금 요청이 대기한다.
+     *
+     * <p>상태 전이 경로(시작·종료)가 쓴다. 잠금 없이 읽으면 두 요청이 같은 상태를 읽고 각자 전이해, 늦게 커밋한 쪽이 앞선 전이를 덮어쓴다 — 종료된 세션이 다시 LIVE 로 되살아날 수 있다.
+     */
+    Optional<Session> findByIdForUpdate(Long id);
+
     Optional<Session> findByInviteCode(String inviteCode);
 
     /**

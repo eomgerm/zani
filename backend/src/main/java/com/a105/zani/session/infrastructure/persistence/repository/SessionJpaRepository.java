@@ -27,6 +27,11 @@ public interface SessionJpaRepository extends JpaRepository<SessionJpaEntity, Lo
     @Query("SELECT s FROM SessionJpaEntity s WHERE s.inviteCode = :inviteCode")
     Optional<SessionJpaEntity> findByInviteCodeForUpdate(@Param("inviteCode") String inviteCode);
 
+    /** 상태 전이 경로가 쓰는 잠금 조회. 시작과 종료가 같은 세션을 두고 경쟁할 때 둘을 직렬화한다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM SessionJpaEntity s WHERE s.id = :id")
+    Optional<SessionJpaEntity> findByIdForUpdate(@Param("id") Long id);
+
     List<SessionJpaEntity> findByHostMemberId(Long hostMemberId);
 
     /** status는 엔티티에서 {@code @Enumerated(EnumType.STRING)} 이므로 문자열이 아니라 enum으로 넘겨야 한다. */

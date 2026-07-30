@@ -116,6 +116,11 @@ class ResolveSessionParticipantServiceTest {
         }
 
         @Override
+        public Optional<Session> findByIdForUpdate(Long id) {
+            return Optional.ofNullable(session);
+        }
+
+        @Override
         public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
             return List.of();
         }

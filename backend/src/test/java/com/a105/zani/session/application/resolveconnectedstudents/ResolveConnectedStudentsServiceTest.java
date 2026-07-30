@@ -129,6 +129,24 @@ class ResolveConnectedStudentsServiceTest {
         }
 
         @Override
+        public Optional<Session> findByIdForUpdate(Long id) {
+            if (missing) {
+                return Optional.empty();
+            }
+            return Optional.of(Session.reconstitute(
+                    SESSION_ID,
+                    1L,
+                    "테스트 수업",
+                    "INVITE01",
+                    false,
+                    status,
+                    SessionAnalysisStatus.NOT_STARTED,
+                    SESSION_STARTED_AT,
+                    null,
+                    null));
+        }
+
+        @Override
         public Session save(Session session) {
             return session;
         }

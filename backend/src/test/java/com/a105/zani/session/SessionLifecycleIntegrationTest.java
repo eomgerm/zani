@@ -116,6 +116,62 @@ class SessionLifecycleIntegrationTest {
         assertEquals(Session.CAPACITY, participantCountOf(sessionId));
     }
 
+    /** 확인은 읽기 전용이다. 참가자를 만들면 장치 점검에서 이탈한 학생이 정원을 물고 있어, 그런 학생이 29명이면 실제 입장자 없이 방이 찬다. */
+    @Test
+    void checkingJoinabilityDoesNotTakeASeat() throws Exception {
+        long sessionId = createSession().get("sessionId").asLong();
+        String inviteCode = start(sessionId).get("inviteCode").asText();
+        long before = participantCountOf(sessionId);
+
+        for (int i = 0; i < 5; i++) {
+            checkJoinable(inviteCode, studentId(i))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("LIVE"));
+        }
+
+        assertEquals(before, participantCountOf(sessionId));
+    }
+
+    /** 확인과 입장이 같은 규칙을 써야 한다. 확인은 통과했는데 입장이 거절되면 사용자는 같은 상황을 두 번 다르게 이해한다. */
+    @Test
+    void checkingReportsTheSameRefusalAsJoining() throws Exception {
+        String inviteCode = createSession().get("inviteCode").asText();
+
+        checkJoinable(inviteCode, studentId(0))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SESSION_APP_007"));
+    }
+
+    /** 정원이 찼으면 확인 단계에서 걸러야 한다 — 점검을 다 하고 입장에서 막히면 헛수고가 된다. */
+    @Test
+    void checkingRefusesWhenTheSessionIsFull() throws Exception {
+        JsonNode created = createSession();
+        long sessionId = created.get("sessionId").asLong();
+        String inviteCode = start(sessionId).get("inviteCode").asText();
+        for (int i = 0; i < Session.CAPACITY - 1; i++) {
+            join(inviteCode, studentId(i)).andExpect(status().isOk());
+        }
+
+        checkJoinable(inviteCode, studentId(Session.CAPACITY - 1))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("SESSION_APP_009"));
+    }
+
+    /** 이미 들어와 있는 학생은 정원이 찼어도 확인을 통과해야 한다. 새로고침으로 되돌아오는 경우다. */
+    @Test
+    void checkingLetsAnExistingParticipantBack() throws Exception {
+        long sessionId = createSession().get("sessionId").asLong();
+        String inviteCode = start(sessionId).get("inviteCode").asText();
+        join(inviteCode, studentId(0)).andExpect(status().isOk());
+        for (int i = 1; i < Session.CAPACITY - 1; i++) {
+            join(inviteCode, studentId(i)).andExpect(status().isOk());
+        }
+
+        checkJoinable(inviteCode, studentId(0))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.remainingSeats").value(0));
+    }
+
     /** 사용자가 코드를 어떤 형태로 옮겨 적었는지에 결과가 달라지면 안 된다. 브라우저를 거치지 않는 호출도 서버가 맞춰준다. */
     @Test
     void acceptsHyphenatedAndLowercaseInviteCodes() throws Exception {
@@ -205,6 +261,14 @@ class SessionLifecycleIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return dataOf(result);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions checkJoinable(String inviteCode, long studentId)
+            throws Exception {
+        return mockMvc.perform(post("/api/v1/sessions/joinable")
+                .header("Authorization", "Bearer " + tokenOf(studentId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"inviteCode\":\"" + inviteCode + "\"}"));
     }
 
     private org.springframework.test.web.servlet.ResultActions join(String inviteCode, long studentId)

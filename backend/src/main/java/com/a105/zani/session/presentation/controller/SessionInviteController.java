@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.a105.zani.common.response.ApiResponse;
 import com.a105.zani.common.response.CommonSuccessCode;
+import com.a105.zani.session.application.checkjoinable.CheckJoinableQuery;
+import com.a105.zani.session.application.checkjoinable.CheckJoinableResult;
+import com.a105.zani.session.application.checkjoinable.CheckJoinableUseCase;
 import com.a105.zani.session.application.create.CreateSessionCommand;
 import com.a105.zani.session.application.create.CreateSessionResult;
 import com.a105.zani.session.application.create.CreateSessionUseCase;
@@ -34,6 +37,7 @@ import com.a105.zani.session.presentation.request.CreateSessionRequest;
 import com.a105.zani.session.presentation.request.JoinSessionRequest;
 import com.a105.zani.session.presentation.response.CreateSessionResponse;
 import com.a105.zani.session.presentation.response.JoinSessionResponse;
+import com.a105.zani.session.presentation.response.JoinableSessionResponse;
 import com.a105.zani.session.presentation.response.SessionSummaryResponse;
 import com.a105.zani.session.presentation.response.StartSessionResponse;
 
@@ -46,16 +50,19 @@ public class SessionInviteController {
     private final StartSessionUseCase startSessionUseCase;
     private final GetSessionListUseCase getSessionListUseCase;
     private final JoinSessionUseCase joinSessionUseCase;
+    private final CheckJoinableUseCase checkJoinableUseCase;
 
     public SessionInviteController(
             CreateSessionUseCase createSessionUseCase,
             StartSessionUseCase startSessionUseCase,
             GetSessionListUseCase getSessionListUseCase,
-            JoinSessionUseCase joinSessionUseCase) {
+            JoinSessionUseCase joinSessionUseCase,
+            CheckJoinableUseCase checkJoinableUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.startSessionUseCase = startSessionUseCase;
         this.getSessionListUseCase = getSessionListUseCase;
         this.joinSessionUseCase = joinSessionUseCase;
+        this.checkJoinableUseCase = checkJoinableUseCase;
     }
 
     @Operation(summary = "수업 생성 (강사)", description = """
@@ -134,6 +141,38 @@ public class SessionInviteController {
                         .map(SessionSummaryResponse::from)
                         .toList();
         return ApiResponse.success(summaries);
+    }
+
+    @Operation(summary = "초대 코드 확인 (학생)", description = """
+                    초대 코드로 들어갈 수 있는지만 확인합니다. **참가자를 만들지 않습니다.**
+
+                    입장 전 점검 화면으로 넘어가기 전에 씁니다. 이 확인을 입장 API 로 대신하면 참가자 행이 먼저 생겨
+                    정원을 선점합니다 — 학생이 장치 점검에서 이탈해도 자리가 반환되지 않아, 그런 학생이 29명이면
+                    실제 입장자 없이 방이 찹니다.
+
+                    거절 사유와 오류 코드는 입장 API 와 같습니다. `remainingSeats` 는 확인한 순간의 값이라
+                    실제 입장까지 줄어들 수 있습니다.
+                    """)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "입장 가능"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "400",
+                description = "정규화 후에도 영문·숫자 8자가 아닙니다. (`SESSION_003`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인이 필요합니다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "그런 초대 코드의 수업이 없습니다. (`SESSION_APP_005`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "409",
+                description =
+                        "아직 시작하지 않았거나(`SESSION_APP_007`) 이미 끝났거나(`SESSION_APP_008`)" + " 정원이 찼습니다(`SESSION_APP_009`).")
+    })
+    @PostMapping("/joinable")
+    public ApiResponse<JoinableSessionResponse> checkJoinable(
+            @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody JoinSessionRequest request) {
+        CheckJoinableResult result = checkJoinableUseCase.check(
+                new CheckJoinableQuery(request.inviteCode(), Long.parseLong(jwt.getSubject())));
+        return ApiResponse.success(JoinableSessionResponse.from(result));
     }
 
     @Operation(summary = "초대 코드로 입장 (학생)", description = """

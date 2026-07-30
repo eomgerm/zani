@@ -41,12 +41,13 @@ public class RecordMediaAttendanceService implements RecordMediaAttendanceUseCas
         }
 
         SessionParticipant participant = found.get();
-        if (command.joined()) {
-            // 재전송된 입장 이벤트가 최초 입장 시각을 밀지 않는다(도메인이 한 번만 심는다).
-            participant.recordMediaJoin(command.occurredAt());
-        } else {
-            participant.recordMediaLeave(command.occurredAt());
+        // webhook 은 순서를 보장하지 않는다. 도메인이 최초 입장은 가장 이른 값, 마지막 이탈은 가장 늦은 값으로 수렴시키므로
+        // 재전송·역순 도착이 출석 구간을 좁히거나 뒤로 되돌리지 못한다. 바뀐 게 없으면 저장도 하지 않는다.
+        boolean changed = command.joined()
+                ? participant.recordMediaJoin(command.occurredAt())
+                : participant.recordMediaLeave(command.occurredAt());
+        if (changed) {
+            participantRepository.save(participant);
         }
-        participantRepository.save(participant);
     }
 }

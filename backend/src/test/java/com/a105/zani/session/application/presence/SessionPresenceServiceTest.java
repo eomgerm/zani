@@ -297,6 +297,11 @@ class SessionPresenceServiceTest {
         }
 
         @Override
+        public Optional<Session> findByIdForUpdate(Long id) {
+            return Optional.ofNullable(session);
+        }
+
+        @Override
         public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
             return java.util.List.of();
         }

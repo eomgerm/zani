@@ -119,6 +119,11 @@ class CreateSessionConcurrencyTest {
         }
 
         @Override
+        public java.util.Optional<Session> findByIdForUpdate(Long id) {
+            return java.util.Optional.ofNullable(store.get(id));
+        }
+
+        @Override
         public java.util.List<Session> findLiveStartedBefore(java.time.Instant startedBefore, int limit) {
             return java.util.List.of();
         }

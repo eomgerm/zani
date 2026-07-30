@@ -61,23 +61,35 @@ public class SessionParticipant {
     }
 
     /**
-     * 실제로 LiveKit 방에 들어왔음을 기록한다.
+     * 실제로 LiveKit 방에 들어왔음을 기록한다. 최초 입장 시각은 가장 이른 값으로 수렴한다.
      *
-     * <p>최초 입장 시각은 <b>한 번만</b> 심는다. 재접속마다 갱신하면 네트워크가 한 번 끊긴 학생의 출석이 그 시점부터 시작된 것으로 남는다.
+     * <p>"처음 받은 값을 고정"이 아니라 min 인 이유는 webhook 의 도착 순서가 보장되지 않기 때문이다. 재전송이나 지연으로 재접속 이벤트가 최초 입장보다 먼저 처리되면, 고정 방식에서는 출석이
+     * 실제보다 늦게 시작된 것으로 남는다. 늦게 도착한 더 이른 시각도 받아들여야 값이 사실에 수렴한다.
      *
-     * @return 이번 호출이 최초 입장으로 기록됐으면 true
+     * @return 이번 호출로 최초 입장 시각이 바뀌었으면 true
      */
     public boolean recordMediaJoin(Instant joinedAt) {
-        if (mediaFirstJoinedAt != null) {
+        if (mediaFirstJoinedAt != null && !joinedAt.isBefore(mediaFirstJoinedAt)) {
             return false;
         }
         this.mediaFirstJoinedAt = joinedAt;
         return true;
     }
 
-    /** LiveKit 방에서 나갔음을 기록한다. 재접속해도 이 값을 지우지 않고 다음 이탈에 덮어쓴다 — 마지막으로 나간 시각이 곧 출석의 끝이다. */
-    public void recordMediaLeave(Instant leftAt) {
+    /**
+     * LiveKit 방에서 나갔음을 기록한다. 마지막 이탈 시각은 가장 늦은 값으로 수렴한다.
+     *
+     * <p>재접속해도 이 값을 지우지 않는다 — 마지막으로 나간 시각이 곧 출석의 끝이다. 무조건 덮어쓰지 않고 max 를 쓰는 이유는 입장과 같다: 순서가 뒤바뀐 이벤트가 먼저 처리되면 종료 시각이 과거로
+     * 되돌아간다.
+     *
+     * @return 이번 호출로 마지막 이탈 시각이 바뀌었으면 true
+     */
+    public boolean recordMediaLeave(Instant leftAt) {
+        if (mediaLastLeftAt != null && !leftAt.isAfter(mediaLastLeftAt)) {
+            return false;
+        }
         this.mediaLastLeftAt = leftAt;
+        return true;
     }
 
     /** 미디어 서버에서 이 참가자를 가리키는 identity. */

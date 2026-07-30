@@ -6,10 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
-import com.a105.zani.session.application.exception.SessionEndedException;
-import com.a105.zani.session.application.exception.SessionFullException;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
-import com.a105.zani.session.application.exception.SessionNotStartedException;
 import com.a105.zani.session.domain.model.InviteCode;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -28,14 +25,17 @@ public class SessionJoinService implements JoinSessionUseCase {
 
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository sessionParticipantRepository;
+    private final SessionJoinPolicy joinPolicy;
     private final Clock clock;
 
     public SessionJoinService(
             SessionRepository sessionRepository,
             SessionParticipantRepository sessionParticipantRepository,
+            SessionJoinPolicy joinPolicy,
             Clock clock) {
         this.sessionRepository = sessionRepository;
         this.sessionParticipantRepository = sessionParticipantRepository;
+        this.joinPolicy = joinPolicy;
         this.clock = clock;
     }
 
@@ -46,21 +46,11 @@ public class SessionJoinService implements JoinSessionUseCase {
         String inviteCode = InviteCode.canonicalize(command.inviteCode());
         Session session =
                 sessionRepository.findByInviteCodeForUpdate(inviteCode).orElseThrow(SessionNotFoundException::new);
-        requireJoinable(session);
+        joinPolicy.requireJoinable(session);
 
         SessionParticipant participant = joinOrRecordAccess(session, command.studentId());
 
         return new JoinSessionResult(session.id(), session.inviteCode(), session.status(), participant.role());
-    }
-
-    /** 입장은 진행 중인 수업에만 열린다. 시작 전과 종료 후를 다른 코드로 구분해, 학생이 "기다려야 하는지 끝난 건지"를 알 수 있게 한다. */
-    private void requireJoinable(Session session) {
-        if (session.isClosed()) {
-            throw new SessionEndedException();
-        }
-        if (!session.isLive()) {
-            throw new SessionNotStartedException();
-        }
     }
 
     private SessionParticipant joinOrRecordAccess(Session session, long studentId) {
@@ -72,14 +62,10 @@ public class SessionJoinService implements JoinSessionUseCase {
                 })
                 .orElseGet(() -> {
                     // 이미 들어와 있는 참가자의 재입장은 자리를 새로 쓰지 않으므로, 새 참가자일 때만 정원을 센다.
-                    // 강사도 참가자 행을 갖고 있어 이 수에 포함된다 — 정원 30명은 강사를 포함한 값이다.
                     // 명단을 읽어 세는 건 정원이 30이라 부담이 없고, 포트에 카운트 전용 메서드를 늘리지 않는다.
-                    if (sessionParticipantRepository
-                                    .findBySessionId(session.id())
-                                    .size()
-                            >= Session.CAPACITY) {
-                        throw new SessionFullException();
-                    }
+                    joinPolicy.requireSeatAvailable(sessionParticipantRepository
+                            .findBySessionId(session.id())
+                            .size());
                     return sessionParticipantRepository.save(SessionParticipant.join(
                             TsidGenerator.generate(),
                             session.id(),

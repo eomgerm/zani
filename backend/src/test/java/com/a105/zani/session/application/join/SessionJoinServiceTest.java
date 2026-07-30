@@ -36,7 +36,8 @@ class SessionJoinServiceTest {
     private final InMemorySessionRepository sessionRepository = new InMemorySessionRepository();
     private final InMemorySessionParticipantRepository participantRepository =
             new InMemorySessionParticipantRepository();
-    private final SessionJoinService service = new SessionJoinService(sessionRepository, participantRepository, clock);
+    private final SessionJoinService service =
+            new SessionJoinService(sessionRepository, participantRepository, new SessionJoinPolicy(), clock);
 
     @Test
     void throwsWhenInviteCodeDoesNotMatchAnySession() {
@@ -152,6 +153,11 @@ class SessionJoinServiceTest {
 
         @Override
         public Optional<Session> findById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Session> findByIdForUpdate(Long id) {
             return Optional.empty();
         }
 

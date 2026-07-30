@@ -7,9 +7,9 @@ import { useAuth } from "@/domains/auth";
 import { inviteCodeFrom } from "@/domains/lecture/domain/inviteCode";
 import { joinFailureMessage } from "@/domains/lecture/domain/joinFailure";
 import {
+  checkJoinable as checkJoinableApi,
   joinFailureReasonOf,
-  joinSession as joinSessionApi,
-  type SessionJoiner,
+  type JoinableChecker,
 } from "@/domains/lecture/infrastructure/joinSessionApi";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
 import { EndSessionButton } from "./components/room/EndSessionButton";
@@ -24,12 +24,12 @@ const formatInviteCode = (code: string) =>
  */
 export function HomeScreen({
   requestSessionList,
-  joinSession = joinSessionApi,
+  checkJoinable = checkJoinableApi,
 }: {
   /** 테스트에서 API 경계를 대체하기 위한 주입점. */
   requestSessionList?: SessionListRequester;
-  /** 입장 어댑터. 테스트에서 대체한다. */
-  joinSession?: SessionJoiner;
+  /** 입장 가능 확인 어댑터. 테스트에서 대체한다. */
+  checkJoinable?: JoinableChecker;
 } = {}) {
   const { member, accessToken } = useAuth();
   const router = useRouter();
@@ -43,7 +43,8 @@ export function HomeScreen({
    * <p>상태 확인을 여기서 하는 게 중요하다. 서버 검증을 점검 화면의 입장 버튼까지 미루면, 학생이 카메라·마이크를 다 맞춘 뒤에야 "아직 시작하지 않은 수업"이라는 걸 알게 된다. 코드를 넣는
    * 자리에서 바로 알려주는 편이 되돌리기도 쉽다.
    *
-   * <p>입장은 멱등하므로 점검 화면에서 한 번 더 불러도 참가자가 늘지 않는다. 그쪽 호출은 점검 도중에 수업이 끝났는지 마지막으로 확인하는 역할을 겸한다.
+   * <p>확인은 <b>읽기 전용</b>이다. 참가자를 만드는 입장은 장치 점검을 통과한 뒤 한 번만 부른다. 여기서 입장까지 해 버리면 점검에서 이탈한 학생이 정원을 물고 있어, 그런 학생이 29명이면 실제
+   * 입장자 없이 방이 찬다.
    */
   const enterPrejoin = async () => {
     if (checking) {
@@ -62,7 +63,7 @@ export function HomeScreen({
     setChecking(true);
     setInviteError(null);
     try {
-      await joinSession(code, accessToken);
+      await checkJoinable(code, accessToken);
       router.push(`/prejoin/${code}`);
     } catch (caught) {
       setInviteError(joinFailureMessage(joinFailureReasonOf(caught), code));

@@ -43,7 +43,9 @@ public class EndSessionService implements EndSessionUseCase {
     @Override
     @Transactional
     public EndSessionResult end(EndSessionCommand command) {
-        Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
+        // 시작과 같은 잠금을 잡아 두 전이를 직렬화한다(상세는 StartSessionService 주석 참고).
+        Session session =
+                sessionRepository.findByIdForUpdate(command.sessionId()).orElseThrow(SessionNotFoundException::new);
 
         SessionStatus beforeEnding = session.status();
         // DATETIME(6) 이 마이크로초까지만 담는다. 나노초를 그대로 쓰면 저장 전후의 값이 달라진다.

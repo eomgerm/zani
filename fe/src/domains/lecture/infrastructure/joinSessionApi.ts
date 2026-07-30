@@ -122,6 +122,89 @@ export const joinSession: SessionJoiner = async (inviteCode, accessToken, signal
   return { ...data, sessionId: String(data.sessionId) };
 };
 
+export type JoinableSession = {
+  /** TSID 라 JS 안전 정수 범위를 넘는다. 문자열로만 다뤄야 값이 깨지지 않는다. */
+  sessionId: string;
+  inviteCode: string;
+  status: string;
+  /** 확인한 순간의 남은 자리. 실제 입장까지 줄어들 수 있다. */
+  remainingSeats: number;
+};
+
+export type JoinableChecker = (
+  inviteCode: string,
+  accessToken: string,
+  signal?: AbortSignal,
+) => Promise<JoinableSession>;
+
+const isJoinableSession = (value: unknown): value is JoinableSession => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const result = value as Record<string, unknown>;
+  return (
+    idOf(result.sessionId) !== null &&
+    typeof result.inviteCode === "string" &&
+    typeof result.status === "string" &&
+    typeof result.remainingSeats === "number"
+  );
+};
+
+/**
+ * 초대 코드로 들어갈 수 있는지만 확인한다(POST /api/v1/sessions/joinable). **참가자를 만들지 않는다.**
+ *
+ * <p>입장 전 점검으로 넘어가기 전에 쓴다. 이 확인을 입장 API 로 대신하면 참가자 행이 먼저 생겨 정원을 선점한다 — 학생이 장치 점검에서 이탈해도 자리가 돌아오지 않는다.
+ *
+ * <p>실패는 입장과 같은 오류 타입·코드로 올라오므로 문구 매핑을 공유한다.
+ */
+export const checkJoinable: JoinableChecker = async (inviteCode, accessToken, signal) => {
+  const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
+  const response = await fetch(`${apiBaseUrl}/api/v1/sessions/joinable`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    credentials: "include",
+    body: JSON.stringify({ inviteCode: canonicalInviteCode(inviteCode) }),
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new JoinSessionRequestError(
+      `Joinable check failed with status ${response.status}.`,
+      response.status,
+      await errorCodeOf(response),
+    );
+  }
+
+  let envelope: unknown;
+  try {
+    envelope = await response.json();
+  } catch {
+    throw new JoinSessionRequestError(
+      "Joinable check response was not valid JSON.",
+      response.status,
+    );
+  }
+
+  if (
+    typeof envelope !== "object" ||
+    envelope === null ||
+    (envelope as { isSuccess?: unknown }).isSuccess !== true ||
+    !isJoinableSession((envelope as { data?: unknown }).data)
+  ) {
+    throw new JoinSessionRequestError(
+      "Joinable check response had an invalid envelope.",
+      response.status,
+    );
+  }
+
+  const data = (envelope as { data: JoinableSession }).data;
+  return { ...data, sessionId: String(data.sessionId) };
+};
+
 /** 백엔드 {@code SessionApplicationErrorCode} 의 값. 여기를 고칠 때는 그쪽과 대조해야 한다. */
 const SESSION_NOT_STARTED_CODE = "SESSION_APP_007";
 const SESSION_ENDED_CODE = "SESSION_APP_008";

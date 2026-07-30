@@ -50,6 +50,42 @@ class RecordMediaAttendanceServiceTest {
         assertEquals(MEDIA_JOINED_AT, participants.byId(PARTICIPANT_ID).mediaFirstJoinedAt());
     }
 
+    /** webhook 도착 순서는 보장되지 않는다. 재접속 이벤트가 최초 입장보다 먼저 처리되면, 나중에 도착한 더 이른 시각을 받아들여야 출석이 실제 입장 시점부터로 남는다. */
+    @Test
+    void acceptsAnEarlierJoinThatArrivesLate() {
+        participants.add(participant());
+        // 재접속(늦은 시각)이 먼저 처리된 상황
+        service.record(joinedAt(MEDIA_JOINED_AT.plusSeconds(600)));
+
+        service.record(joinedAt(MEDIA_JOINED_AT));
+
+        assertEquals(MEDIA_JOINED_AT, participants.byId(PARTICIPANT_ID).mediaFirstJoinedAt());
+    }
+
+    /** 이탈도 같다. 순서가 뒤바뀐 이벤트가 최종 이탈 시각을 과거로 되돌리면 출석 구간이 실제보다 짧아진다. */
+    @Test
+    void ignoresALeaveThatIsOlderThanTheOneAlreadyRecorded() {
+        participants.add(participant());
+        Instant lastLeave = MEDIA_JOINED_AT.plusSeconds(1_800);
+        service.record(leftAt(lastLeave));
+
+        service.record(leftAt(MEDIA_JOINED_AT.plusSeconds(60)));
+
+        assertEquals(lastLeave, participants.byId(PARTICIPANT_ID).mediaLastLeftAt());
+    }
+
+    /** 바뀐 게 없으면 저장하지 않는다. 재전송이 잦은 경로라 무의미한 쓰기를 남기지 않는다. */
+    @Test
+    void doesNotSaveWhenNothingChanged() {
+        participants.add(participant());
+        service.record(joinedAt(MEDIA_JOINED_AT));
+        participants.saved.clear();
+
+        service.record(joinedAt(MEDIA_JOINED_AT));
+
+        assertTrue(participants.saved.isEmpty());
+    }
+
     @Test
     void recordsTheLeaveTime() {
         participants.add(participant());
@@ -101,6 +137,10 @@ class RecordMediaAttendanceServiceTest {
 
     private static RecordMediaAttendanceCommand joinedAt(Instant occurredAt) {
         return new RecordMediaAttendanceCommand(SESSION_ID, ParticipantIdentity.of(PARTICIPANT_ID), true, occurredAt);
+    }
+
+    private static RecordMediaAttendanceCommand leftAt(Instant occurredAt) {
+        return new RecordMediaAttendanceCommand(SESSION_ID, ParticipantIdentity.of(PARTICIPANT_ID), false, occurredAt);
     }
 
     private static SessionParticipant participant() {
