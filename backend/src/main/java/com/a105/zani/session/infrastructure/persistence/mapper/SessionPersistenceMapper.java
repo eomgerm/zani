@@ -19,6 +19,9 @@ public class SessionPersistenceMapper {
                 .status(session.status())
                 .analysisStatus(session.analysisStatus())
                 .startedAt(session.startedAt())
+                // 이 줄이 빠져 있어 종료 시각이 저장되지 않았다. save() 가 분리된 엔티티를 새로 빌드해 병합하므로,
+                // 여기서 옮기지 않으면 도메인이 찍은 값이 NULL 로 덮인다.
+                .endedAt(session.endedAt())
                 .build();
     }
 
@@ -30,6 +33,7 @@ public class SessionPersistenceMapper {
                 entity.getInviteCode(),
                 false,
                 entity.getStartedAt(),
+                entity.getEndedAt(),
                 entity.getStatus(),
                 entity.getAnalysisStatus());
     }

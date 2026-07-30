@@ -39,8 +39,7 @@ public class ResolveEndedSessionAccessService implements ResolveEndedSessionAcce
             throw new SessionNotEndedException();
         }
 
-        // 종료 시각은 도메인 모델이 들고 있지 않아 여기서 채울 값이 없다. 자리를 비워 두는 이유는
-        // ResolveEndedSessionAccessResult 의 endedAt 주석에 적었다.
-        return new ResolveEndedSessionAccessResult(participant.id(), participant.role(), session.startedAt(), null);
+        return new ResolveEndedSessionAccessResult(
+                participant.id(), participant.role(), session.startedAt(), session.endedAt());
     }
 }

@@ -127,6 +127,7 @@ class RecordingWebhookServiceTest {
                         "INVITE01",
                         false,
                         SESSION_START,
+                        null,
                         SessionStatus.LIVE,
                         SessionAnalysisStatus.NOT_STARTED));
             }

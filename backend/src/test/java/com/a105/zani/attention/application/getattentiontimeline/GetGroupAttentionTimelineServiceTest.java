@@ -62,9 +62,9 @@ class GetGroupAttentionTimelineServiceTest {
     }
 
     @Test
-    @DisplayName("durationSeconds 는 마지막 관측 시각을 5초 격자로 올린 값이다")
+    @DisplayName("종료 시각이 없는 과거 세션은 마지막 관측 시각을 5초 격자로 올린다")
     void duration_comes_from_the_last_observation() {
-        // 마지막 관측이 32초. sessions.ended_at 이 저장되지 않아 이것이 유일한 근거다.
+        // 마지막 관측이 32초. 과거 세션은 ended_at 이 null 이므로 이것이 유일한 근거다.
         queryPort.observations.add(new ObservationRecord(1L, 32_000L, DetectorOutcome.ENGAGED));
 
         assertThat(get().durationSeconds()).isEqualTo(35L);

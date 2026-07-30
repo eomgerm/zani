@@ -49,8 +49,8 @@ public class AttentionTimelineController {
                     **인원 하한** — 집계 대상이 5명 미만인 구간은 비율을 숨긴다(REPORT-I-005). 인원 수는 그대로
                     내려가므로 화면이 사유를 설명할 수 있다.
 
-                    **길이** — `durationSeconds` 는 수업 길이가 아니라 **관측이 있는 마지막 시각까지**다. 세션 종료
-                    시각이 저장되지 않아 관측에서 파생한다. 관측이 한 건도 없으면 0 이고 `points` 는 빈 배열이다.
+                    **길이** — `durationSeconds` 는 세션 종료 시각을 우선한다. 종료 시각을 저장하기 전에 끝난 과거
+                    세션은 마지막 관측 시각에서 파생한다. 관측이 한 건도 없으면 0 이고 `points` 는 빈 배열이다.
 
                     **종료된 수업만** 조회할 수 있다. 진행 중이면 409 다 — 실시간 경로를 써라.
 
@@ -88,7 +88,8 @@ public class AttentionTimelineController {
                     **상태** — `GOOD`·`CHECK_NEEDED`·`CAMERA_OFF`·`UNMEASURABLE` 또는 `null`. `CHECK_NEEDED` 는
                     헷갈려요·놓쳤어요·무응답을 묶은 값이며 화면은 셋을 구분하지 않는다.
 
-                    **길이** — `durationSeconds` 는 수업 길이가 아니라 본인 관측이 있는 마지막 시각까지다.
+                    **길이** — `durationSeconds` 는 세션 종료 시각을 우선한다. 종료 시각을 저장하기 전에 끝난 과거
+                    세션은 본인 마지막 관측 시각에서 파생한다.
 
                     평균 점수·타인 비교·모델 확률·검출기 단계를 내려보내지 않는다(REPORT-S-010). 참고용 파생 지표라는
                     것을 화면에 밝혀라(NFR-UX-006).""")

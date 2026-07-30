@@ -34,6 +34,7 @@ class ResolveEndedSessionAccessServiceTest {
     private static final long STUDENT_PARTICIPANT = 2L;
     private static final long STRANGER_USER = 9L;
     private static final Instant T0 = Instant.parse("2026-07-28T09:00:00Z");
+    private static final Instant ENDED_AT = Instant.parse("2026-07-28T10:30:00Z");
 
     private final FakeSessionRepository sessionRepository = new FakeSessionRepository();
     private final FakeParticipantRepository participantRepository = new FakeParticipantRepository();
@@ -49,6 +50,10 @@ class ResolveEndedSessionAccessServiceTest {
     }
 
     private static Session session(SessionStatus status) {
+        return session(status, status == SessionStatus.ENDED ? ENDED_AT : null);
+    }
+
+    private static Session session(SessionStatus status, Instant endedAt) {
         return Session.reconstitute(
                 SESSION_ID,
                 INSTRUCTOR_USER,
@@ -56,6 +61,7 @@ class ResolveEndedSessionAccessServiceTest {
                 "ABCD1234",
                 false,
                 T0,
+                endedAt,
                 status,
                 SessionAnalysisStatus.NOT_STARTED);
     }
@@ -72,9 +78,17 @@ class ResolveEndedSessionAccessServiceTest {
         assertThat(result.participantId()).isEqualTo(STUDENT_PARTICIPANT);
         assertThat(result.role()).isEqualTo(SessionParticipantRole.STUDENT);
         assertThat(result.startedAt()).isEqualTo(T0);
-        // sessions.ended_at 은 애플리케이션이 쓰지 않아 늘 비어 있다. 조회 쪽이 그 사실을 보고 판단할 수
-        // 있도록 감추지 않고 그대로 null 로 내보낸다.
-        assertThat(result.endedAt()).isNull();
+        assertThat(result.endedAt()).isEqualTo(ENDED_AT);
+    }
+
+    @Test
+    @DisplayName("종료 시각을 저장하기 전에 끝난 세션은 그대로 null 로 내보낸다")
+    void a_legacy_session_without_an_end_time_stays_null() {
+        // ended_at 을 저장하기 시작한 것은 이번 변경부터다. 그전에 끝난 세션의 종료 시각은 추정할 수 없어
+        // 백필하지 않았다. 감추지 않고 null 로 넘겨, 받는 쪽이 관측에서 길이를 파생하도록 판단을 넘긴다.
+        sessionRepository.session = session(SessionStatus.ENDED, null);
+
+        assertThat(service.resolve(query(SESSION_ID, STUDENT_USER)).endedAt()).isNull();
     }
 
     @Test

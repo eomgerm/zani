@@ -14,7 +14,7 @@ class StubEndedSessionAccess implements ResolveEndedSessionAccessUseCase {
     SessionParticipantRole role = SessionParticipantRole.INSTRUCTOR;
     Instant startedAt = Instant.parse("2026-07-28T09:00:00Z");
 
-    /** 현재 운영 데이터에서는 늘 비어 있다. 값이 생겼을 때 우선 쓰이는지를 보려고 열어 둔다. */
+    /** 과거 세션의 null fallback 과 기록된 종료 시각 우선 경로를 함께 검증한다. */
     Instant endedAt;
 
     @Override
