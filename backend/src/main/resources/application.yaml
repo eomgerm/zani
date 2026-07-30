@@ -85,8 +85,9 @@ coach:
     # 이 값에 못 미치는 슬롯은 팁을 만들지 않는다. 실제 응답 분포를 보고 조정한다.
     min-confidence: ${COACH_TIP_MIN_CONFIDENCE:0.5}
     # gpt-5.4-mini 는 max_tokens 를 거부하고 max_completion_tokens 를 요구한다(실측).
-    # 실측 소비는 24~27 토큰이고 reasoning 토큰은 쓰지 않았다. 관측 최대의 두 배로 둔다.
-    max-completion-tokens: ${COACH_TIP_MAX_COMPLETION_TOKENS:60}
+    # 실측 소비는 근거 구절(evidence)까지 받으면 50 토큰이다(없으면 25). reasoning 토큰은 쓰지
+    # 않았다. 60 으로 두면 여유가 10 토큰뿐이라 잘릴 위험이 있어 관측치의 두 배로 둔다.
+    max-completion-tokens: ${COACH_TIP_MAX_COMPLETION_TOKENS:100}
     # 프롬프트에 넣을 전사 마지막 N자 — window 한 번 분량의 상한이다.
     # 실측: 5분 강의 전사가 1,665자(5.5자/초)였다. 말이 빠른 강사(8~9자/초)면 300초에
     # 2,400~2,700자가 나오므로 3,000자면 온전히 들어간다. 더 낮추면 빠른 강사만 window 가

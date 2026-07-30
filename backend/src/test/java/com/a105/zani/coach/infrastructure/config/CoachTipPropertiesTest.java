@@ -15,8 +15,8 @@ class CoachTipPropertiesTest {
         CoachTipProperties properties = new CoachTipProperties(null, null, null);
 
         assertThat(properties.minConfidence()).isEqualTo(0.5);
-        // 실측 소비 24~27 토큰의 두 배. reasoning 토큰은 쓰이지 않았다.
-        assertThat(properties.maxCompletionTokens()).isEqualTo(60);
+        // 근거 구절까지 받으면 실측 소비가 50 토큰이다(없으면 25). 관측치의 두 배로 둔다.
+        assertThat(properties.maxCompletionTokens()).isEqualTo(100);
         // 말이 빠른 강사(8~9자/초)의 300초 전사 2,400~2,700자가 온전히 들어가는 상한.
         assertThat(properties.transcriptTailChars()).isEqualTo(3000);
     }
@@ -27,7 +27,7 @@ class CoachTipPropertiesTest {
         CoachTipProperties properties = new CoachTipProperties(0.7, 0, -1);
 
         assertThat(properties.minConfidence()).isEqualTo(0.7);
-        assertThat(properties.maxCompletionTokens()).isEqualTo(60);
+        assertThat(properties.maxCompletionTokens()).isEqualTo(100);
         assertThat(properties.transcriptTailChars()).isEqualTo(3000);
     }
 
