@@ -144,6 +144,9 @@ export function TimelineStatusBar({
               type="button"
               tabIndex={index === selectedIndex ? 0 : -1}
               aria-pressed={index === selectedIndex}
+              // 이름을 aria-label 로 준다. 눈에 보이지 않는 텍스트 노드를 막대마다 심으면
+              // 화면에 보이는 범례와 같은 문구가 DOM 에 두 벌 남는다.
+              aria-label={labelOf(segment)}
               onClick={() => onSelect(index)}
               style={{
                 flexGrow: totalSeconds > 0 ? span : 1,
@@ -153,9 +156,7 @@ export function TimelineStatusBar({
                   index === selectedIndex ? `inset 0 0 0 2.5px ${style.border}` : undefined,
               }}
               className="h-full min-w-[3px] cursor-pointer border-0 p-0 outline-offset-2"
-            >
-              <span className="sr-only">{labelOf(segment)}</span>
-            </button>
+            />
           );
         })}
       </div>
