@@ -30,7 +30,12 @@ export interface SessionChannel {
 
 export interface SessionChannelOptions {
   readonly sessionId: string;
-  readonly accessToken: string;
+  /**
+   * 연결할 때마다 호출해 **그 시점의** 액세스 토큰을 받는다. 값을 미리 받아두지 않는 이유가 중요하다 —
+   * 자동 재연결은 채널을 만든 지 한참 뒤에 일어날 수 있고, 그동안 토큰이 갱신된다. 생성 시점 값을
+   * 굳혀두면 갱신 이후의 재연결이 만료된 토큰을 보내 거절당하고 채팅이 죽은 채로 남는다.
+   */
+  readonly getAccessToken: () => string | null;
   readonly handlers: SessionChannelHandlers;
 }
 
@@ -87,7 +92,7 @@ export function sessionChannelUrl(options: SessionChannelUrlOptions): string {
  */
 export const createSessionChannel: SessionChannelFactory = ({
   sessionId,
-  accessToken,
+  getAccessToken,
   handlers,
 }) => {
   const client = new Client({
@@ -96,8 +101,12 @@ export const createSessionChannel: SessionChannelFactory = ({
       origin: typeof window === "undefined" ? "" : window.location.origin,
       isDevelopment: process.env.NODE_ENV === "development",
     }),
-    connectHeaders: { Authorization: `Bearer ${accessToken}` },
     reconnectDelay: RECONNECT_DELAY_MS,
+    // 첫 연결과 모든 자동 재연결 직전에 불린다. 여기서 헤더를 다시 채워야 갱신된 토큰이 실린다.
+    beforeConnect: () => {
+      const token = getAccessToken();
+      client.connectHeaders = token === null ? {} : { Authorization: `Bearer ${token}` };
+    },
     onConnect: () => {
       client.subscribe(sessionTopic(sessionId), (message) => {
         const event = parseSessionEvent(message.body);

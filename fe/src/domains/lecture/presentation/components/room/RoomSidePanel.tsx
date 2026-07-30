@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar, HandIcon, KickIcon } from "@/shared/ui";
 import type { ChatMessageView } from "@/domains/interaction";
 import type { Participant } from "../../fixtures";
@@ -22,6 +22,13 @@ const rowBtnCls =
 /** 서버 `chat_messages.content` 상한과 같은 값. 넘겨 보내도 거절되므로 입력에서 막는다. */
 const CHAT_MAX_LENGTH = 1000;
 
+/**
+ * 이 정도 아래에 있으면 "맨 아래를 보고 있다"고 본다.
+ *
+ * 0 으로 두면 스크롤이 1px 만 밀려도 따라가기를 멈추고, 크게 두면 이력을 읽는 중에 끌려 내려간다.
+ */
+const CHAT_BOTTOM_THRESHOLD_PX = 40;
+
 /** 참가자 아바타 배경(프로토타입 rowAvatar) */
 const avatarBg = (color: string) => `linear-gradient(145deg,${color},${color}b8)`;
 
@@ -42,6 +49,25 @@ export function RoomSidePanel({
   const handQueue = participants.filter((p) => p.hand);
   const [draft, setDraft] = useState("");
 
+  const chatListRef = useRef<HTMLDivElement>(null);
+  /** 맨 아래를 보고 있는지. 위로 올려 이력을 읽는 중이면 새 메시지가 와도 끌어내리지 않는다. */
+  const atBottomRef = useRef(true);
+
+  const rememberScrollPosition = () => {
+    const list = chatListRef.current;
+    if (list === null) return;
+    atBottomRef.current =
+      list.scrollHeight - list.scrollTop - list.clientHeight <= CHAT_BOTTOM_THRESHOLD_PX;
+  };
+
+  // 새 메시지가 오면 아래로 붙인다. 없으면 목록이 패널을 넘긴 뒤부터 새 메시지가 화면 밖에 쌓인다.
+  // 패널을 처음 열 때도 이 effect 가 돌아 마지막 대화가 보이는 위치에서 시작한다.
+  useEffect(() => {
+    const list = chatListRef.current;
+    if (list === null || !atBottomRef.current) return;
+    list.scrollTop = list.scrollHeight;
+  }, [messages, panel]);
+
   const submitChat = () => {
     if (!canSendChat || draft.trim().length === 0) return;
     onSendChat(draft);
@@ -52,7 +78,12 @@ export function RoomSidePanel({
     <div className="flex w-[340px] shrink-0 flex-col overflow-hidden rounded-[18px] border border-white/5 bg-panel text-panel-text">
       {panel === "chat" ? (
         <>
-          <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-3.5 pb-2 pt-3.5">
+          <div
+            ref={chatListRef}
+            onScroll={rememberScrollPosition}
+            data-testid="chat-message-list"
+            className="flex flex-1 flex-col gap-3 overflow-y-auto px-3.5 pb-2 pt-3.5"
+          >
             {messages.length === 0 ? (
               <div className="mt-[30px] text-center text-[13px] text-[#6b7096]">
                 아직 메시지가 없어요.

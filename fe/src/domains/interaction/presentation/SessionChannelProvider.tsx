@@ -60,10 +60,14 @@ export function SessionChannelProvider({
 
   // 토큰 값 자체를 연결 키에 넣지 않는다. 넣으면 주기적인 토큰 갱신마다 채널이 재연결된다.
   // RoomProvider 와 같은 이유·같은 방식이다.
+  //
+  // 대신 채널에는 **값이 아니라 읽는 함수**를 넘긴다. 자동 재연결은 채널을 만든 지 한참 뒤에
+  // 일어날 수 있어서, 그때 이 ref 가 들고 있는 최신 토큰이 실려야 한다.
   const accessTokenRef = useRef(accessToken);
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
+  const getAccessToken = useCallback(() => accessTokenRef.current, []);
 
   // 토큰을 확보한 적이 있는지를 나타내는 래치. 강의실 경로는 인증 가드 밖이라 방 안에서 새로고침하면
   // 세션 복원이 끝나기 전에 연결을 시도한다. false→true 로만 바뀌어야 한다 — 반대도 허용하면 토큰
@@ -82,13 +86,11 @@ export function SessionChannelProvider({
 
   useEffect(() => {
     if (!tokenAvailable) return;
-    const currentAccessToken = accessTokenRef.current;
-    if (currentAccessToken === null) return;
 
     let isCurrent = true;
     const channel = channelFactory({
       sessionId,
-      accessToken: currentAccessToken,
+      getAccessToken,
       handlers: {
         // 핸들러는 채널 수명 동안 고정이라 목록을 ref 로 읽는다. 구독이 늘고 줄어도 채널을 다시 만들지 않는다.
         onEvent: (event) => {
@@ -115,7 +117,7 @@ export function SessionChannelProvider({
       channelRef.current = null;
       channel.deactivate();
     };
-  }, [sessionId, channelFactory, tokenAvailable]);
+  }, [sessionId, channelFactory, tokenAvailable, getAccessToken]);
 
   useEffect(() => {
     if (connectedCount === 0) return;
