@@ -32,4 +32,7 @@ public interface SessionJpaRepository extends JpaRepository<SessionJpaEntity, Lo
     /** status는 엔티티에서 {@code @Enumerated(EnumType.STRING)} 이므로 문자열이 아니라 enum으로 넘겨야 한다. */
     List<SessionJpaEntity> findByStatusAndStartedAtLessThanEqualOrderByStartedAtAsc(
             SessionStatus status, Instant startedBefore, Pageable pageable);
+
+    List<SessionJpaEntity> findByStatusAndCreatedAtLessThanEqualOrderByCreatedAtAsc(
+            SessionStatus status, Instant createdBefore, Pageable pageable);
 }

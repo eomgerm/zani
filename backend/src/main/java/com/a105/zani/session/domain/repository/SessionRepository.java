@@ -13,6 +13,13 @@ public interface SessionRepository {
     /** 아직 LIVE인데 시작 시각이 기준보다 이전인 세션(= 최대 수업 시간을 넘긴 세션). 오래된 순으로 최대 limit건. */
     List<Session> findLiveStartedBefore(Instant startedBefore, int limit);
 
+    /**
+     * 아직 PREPARING인데 만들어진 지 기준보다 오래된 세션(= 시작하지 않고 방치된 세션). 오래된 순으로 최대 limit건.
+     *
+     * <p>시작 시각이 아니라 생성 시각으로 찾는다. 준비 중인 세션에는 시작 시각이 없어 최대 수업 시간 기준으로는 걸리지 않는다.
+     */
+    List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit);
+
     Optional<Session> findById(Long id);
 
     Optional<Session> findByInviteCode(String inviteCode);

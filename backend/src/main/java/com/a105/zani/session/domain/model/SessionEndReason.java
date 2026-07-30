@@ -11,5 +11,12 @@ public enum SessionEndReason {
     /** 최대 수업 시간(3시간)에 도달했다. */
     MAX_DURATION_REACHED,
     /** 강사가 유예 시간 안에 복귀하지 않았다. */
-    INSTRUCTOR_ABSENT
+    INSTRUCTOR_ABSENT,
+    /**
+     * 만들어 놓고 시작하지 않은 채 방치됐다.
+     *
+     * <p>준비 중인 세션은 시작 시각이 없어 최대 수업 시간 기준으로는 만료되지 않는다. 이 사유가 없으면 강사가 생성만 하고 창을 닫은 수업이 영원히 "아직 끝내지 않은 수업"으로 남아 홈 배너에 계속 떠
+     * 있는다.
+     */
+    ABANDONED_BEFORE_START
 }

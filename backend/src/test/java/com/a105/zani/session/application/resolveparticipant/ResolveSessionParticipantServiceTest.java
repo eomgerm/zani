@@ -121,6 +121,11 @@ class ResolveSessionParticipantServiceTest {
         }
 
         @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }

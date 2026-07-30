@@ -129,6 +129,11 @@ class CreateSessionServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findPreparingCreatedBefore(java.time.Instant createdBefore, int limit) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
         public java.util.Optional<Session> findById(Long id) {
             throw new UnsupportedOperationException("not needed for this test");
         }

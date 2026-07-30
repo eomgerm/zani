@@ -209,6 +209,11 @@ class EndSessionServiceTest {
         }
 
         @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            return List.of();
+        }
+
+        @Override
         public Optional<Session> findById(Long id) {
             return Optional.ofNullable(session);
         }

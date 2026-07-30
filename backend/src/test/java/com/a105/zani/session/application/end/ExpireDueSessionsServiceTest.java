@@ -28,6 +28,10 @@ class ExpireDueSessionsServiceTest {
     private final ExpireDueSessionsService service =
             new ExpireDueSessionsService(sessionRepository, endSessionUseCase, Clock.fixed(NOW, ZoneOffset.UTC));
 
+    private static Session preparingSession(long id) {
+        return Session.prepare(id, 1L, "제목", "INVITE" + id);
+    }
+
     private static Session liveSessionStartedAt(long id, Instant startedAt) {
         return Session.reconstitute(
                 id,
@@ -54,6 +58,26 @@ class ExpireDueSessionsServiceTest {
         assertEquals(List.of(1L, 2L), endSessionUseCase.endedSessionIds);
         assertTrue(
                 endSessionUseCase.reasons.stream().allMatch(reason -> reason == SessionEndReason.MAX_DURATION_REACHED));
+    }
+
+    /** 준비 중인 세션은 시작 시각이 없어 최대 수업 시간 기준으로는 영원히 걸리지 않는다. 그대로 두면 생성만 하고 창을 닫은 수업이 홈 배너에 계속 남는다. */
+    @Test
+    void endsPreparingSessionsThatWereNeverStarted() {
+        sessionRepository.abandoned = List.of(preparingSession(3L));
+
+        int ended = service.expireDueSessions();
+
+        assertEquals(1, ended);
+        assertEquals(List.of(3L), endSessionUseCase.endedSessionIds);
+        assertEquals(List.of(SessionEndReason.ABANDONED_BEFORE_START), endSessionUseCase.reasons);
+    }
+
+    /** 방치된 준비 세션은 생성 시각으로 찾는다. 시작 시각으로 찾으면 NULL 이라 아무 것도 걸리지 않는다. */
+    @Test
+    void queriesAbandonedSessionsByCreationTime() {
+        service.expireDueSessions();
+
+        assertEquals(NOW.minus(Session.ACTIVE_DURATION), sessionRepository.requestedCreatedCutoff);
     }
 
     @Test
@@ -106,7 +130,9 @@ class ExpireDueSessionsServiceTest {
     private static final class FakeSessionRepository implements SessionRepository {
 
         private List<Session> due = List.of();
+        private List<Session> abandoned = List.of();
         private Instant requestedCutoff;
+        private Instant requestedCreatedCutoff;
 
         @Override
         public Session save(Session session) {
@@ -117,6 +143,12 @@ class ExpireDueSessionsServiceTest {
         public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
             requestedCutoff = startedBefore;
             return due;
+        }
+
+        @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            requestedCreatedCutoff = createdBefore;
+            return abandoned;
         }
 
         @Override

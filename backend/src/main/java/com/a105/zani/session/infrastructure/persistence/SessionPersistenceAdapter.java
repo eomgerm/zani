@@ -49,6 +49,16 @@ public class SessionPersistenceAdapter implements SessionRepository {
     }
 
     @Override
+    public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+        return sessionJpaRepository
+                .findByStatusAndCreatedAtLessThanEqualOrderByCreatedAtAsc(
+                        SessionStatus.PREPARING, createdBefore, PageRequest.of(0, limit))
+                .stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public Optional<Session> findById(Long id) {
         return sessionJpaRepository.findById(id).map(mapper::toDomain);
     }

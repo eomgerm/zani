@@ -124,6 +124,11 @@ class CreateSessionConcurrencyTest {
         }
 
         @Override
+        public java.util.List<Session> findPreparingCreatedBefore(java.time.Instant createdBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public java.util.Optional<Session> findByInviteCode(String inviteCode) {
             return store.values().stream()
                     .filter(session -> session.inviteCode().equals(inviteCode))

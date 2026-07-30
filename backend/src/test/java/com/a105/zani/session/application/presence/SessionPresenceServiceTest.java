@@ -302,6 +302,11 @@ class SessionPresenceServiceTest {
         }
 
         @Override
+        public java.util.List<Session> findPreparingCreatedBefore(java.time.Instant createdBefore, int limit) {
+            return java.util.List.of();
+        }
+
+        @Override
         public Optional<Session> findByInviteCode(String inviteCode) {
             return Optional.empty();
         }

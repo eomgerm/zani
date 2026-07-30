@@ -124,5 +124,10 @@ class EndSessionByInstructorServiceTest {
         public List<Session> findLiveStartedBefore(Instant startedBefore, int limit) {
             return List.of();
         }
+
+        @Override
+        public List<Session> findPreparingCreatedBefore(Instant createdBefore, int limit) {
+            return List.of();
+        }
     }
 }
