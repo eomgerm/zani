@@ -82,6 +82,17 @@ attention:
     # 비워 두면 버전을 따지지 않는다(로컬·시연 편의). 추론 엔진 버전은 받지 않는다 — 티켓 61.
     supported-feature-schema-versions:
       - mediapipe_98_v1
+  timeline:
+    # 리포트 타임라인 계산 임계값. 적지 않은 값은 TimelinePolicy.defaults() 를 쓴다.
+    # FRD §18.3 흐트러짐 구간 임계값. 원격 조정이 가능해야 한다는 요구사항 때문에 설정으로 뺀다.
+    distraction-start-ratio: ${ATTENTION_TIMELINE_DISTRACTION_START_RATIO:0.30}
+    distraction-start-hold: ${ATTENTION_TIMELINE_DISTRACTION_START_HOLD:PT20S}
+    distraction-end-ratio: ${ATTENTION_TIMELINE_DISTRACTION_END_RATIO:0.20}
+    distraction-end-hold: ${ATTENTION_TIMELINE_DISTRACTION_END_HOLD:PT30S}
+    distraction-merge-gap: ${ATTENTION_TIMELINE_DISTRACTION_MERGE_GAP:PT15S}
+    # 확정 문서 §6.2 의 상태 키 TTL 과 같은 값이다. 사후 재생이 실시간과 같은 순간에 같은 판단을 하려면
+    # 두 값이 함께 움직여야 한다.
+    connection-gap: ${ATTENTION_TIMELINE_CONNECTION_GAP:PT30S}
 
 coaching-trigger:
   # 최근 5분 유의 학생 비율의 하한. 이 값 이상이면 트리거한다(확정 문서 §7).
