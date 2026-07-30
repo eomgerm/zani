@@ -294,13 +294,12 @@ function RoomScreenContent({
         참여도 판정은 학생 화면에서만 돌린다. 강사는 집계를 보는 쪽이라 판정 대상이 아니다.
         역할이 확인되기 전에는 isInstructor 가 true 라, 판정이 켜지지 않는 쪽이 기본값이다.
 
-        수업별 분석 동의는 아직 코드에 없다. 지금은 판정 결과가 기기 밖으로 나가지 않아
-        문제되지 않지만, 판정 이벤트 전송을 붙이는 사람은 전송에 조건을 거는 것으로 끝내지 말고
-        이 마운트 조건에 동의 여부를 반드시 함께 넣어야 한다. 그러지 않으면 동의하지 않은
-        학생의 기기에서도 판정이 계속 돌아간다.
+        10초 관측은 여기서부터 서버로 나간다. 프레임·랜드마크·확률은 기기 밖으로 나가지 않고
+        판정 결과 7종만 실린다(attention 도메인 전송 어댑터가 계약 밖 필드를 담지 않는다).
       */}
       {!isInstructor && (
         <AttentionCameraSource
+          sessionId={sessionId}
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
           onAvailabilityChange={setAnalysisAvailability}

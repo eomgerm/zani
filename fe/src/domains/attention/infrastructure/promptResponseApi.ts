@@ -3,10 +3,13 @@ export type PromptKind = "UNDERSTANDING_CHECK" | "POSTURE_GUIDE" | "CAMERA_CHECK
 
 /**
  * 이해 확인 프롬프트에 실을 수 있는 답(기준 문서 §6). 학생이 고르는 3종에 더해, 30초가 지나
- * 자동으로 닫힌 경우의 `NO_RESPONSE` 가 있다 — 보내지 않으면 서버가 "학생이 무시함"과
+ * 자동으로 닫힌 경우의 `NON_RESPONSE` 가 있다 — 보내지 않으면 서버가 "학생이 무시함"과
  * "브라우저가 죽음"을 구분할 수 없다.
+ *
+ * 표기는 `NON_RESPONSE` 로 enum·JSON·DB 를 통일했다(기준 문서 §6). 백엔드 `PromptAnswer` 는
+ * 이 값만 받고 별칭이 없어, 옛 표기로 보내면 400 으로 거절되고 응답 행이 아예 생기지 않는다.
  */
-export type PromptAnswer = "OK" | "CONFUSED" | "MISSED" | "NO_RESPONSE";
+export type PromptAnswer = "OK" | "CONFUSED" | "MISSED" | "NON_RESPONSE";
 
 /** 서버가 계약 밖 필드를 400 으로 거절하므로 이 네 값만 실어 보낸다. */
 export interface PromptResponsePayload {
@@ -22,6 +25,7 @@ export type PromptResponseSender = (
   sessionId: string,
   promptId: string,
   payload: PromptResponsePayload,
+  accessToken: string,
   signal?: AbortSignal,
 ) => Promise<void>;
 
@@ -32,10 +36,15 @@ export class PromptResponseSendError extends Error {
   }
 }
 
+/**
+ * 서버는 Bearer Access Token 으로 요청자가 이 세션의 학생인지 판단한다. 쿠키에는 refresh
+ * 토큰만 있고 그마저 `/auth/refresh` 전용이라, 헤더를 빼면 무조건 401 이 되어 응답이 기록되지 않는다.
+ */
 export const sendPromptResponse: PromptResponseSender = async (
   sessionId,
   promptId,
   payload,
+  accessToken,
   signal,
 ) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -43,7 +52,11 @@ export const sendPromptResponse: PromptResponseSender = async (
     `${apiBaseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/prompts/${encodeURIComponent(promptId)}/responses`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
       credentials: "include",
       body: JSON.stringify(payload),
       signal,
