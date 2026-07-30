@@ -147,6 +147,8 @@ class InstructorNoteApiTest {
                                 + " AND finalized_at IS NOT NULL",
                         Integer.class,
                         SESSION_ID));
+        // 확정을 두 번 눌러도 사후 처리 작업은 한 건이다(FRD §16 NOTE-004).
+        assertEquals(1, queuedJobCount());
     }
 
     @Test
@@ -157,6 +159,15 @@ class InstructorNoteApiTest {
 
         assertEquals(1, noteCount());
         assertNull(contentOf());
+        // 메모가 비어도 분석은 시작된다.
+        assertEquals(1, queuedJobCount());
+    }
+
+    private int queuedJobCount() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pipeline_jobs WHERE session_id = ? AND status = 'QUEUED'",
+                Integer.class,
+                SESSION_ID);
     }
 
     private ResultActions saveDraft(long memberId, String content) throws Exception {
@@ -229,6 +240,7 @@ class InstructorNoteApiTest {
     }
 
     private void cleanUpRows() {
+        jdbcTemplate.update("DELETE FROM pipeline_jobs WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update("DELETE FROM instructor_notes WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update("DELETE FROM session_participants WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
