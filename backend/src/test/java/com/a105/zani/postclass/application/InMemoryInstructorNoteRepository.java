@@ -2,6 +2,7 @@ package com.a105.zani.postclass.application;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,6 +54,18 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
     @Override
     public Optional<InstructorNote> findBySessionId(Long sessionId) {
         return notes.stream().filter(note -> note.sessionId().equals(sessionId)).findFirst();
+    }
+
+    @Override
+    public List<Long> findDueDraftSessionIds(Instant editedBefore, int limit) {
+        return notes.stream()
+                .filter(note -> !note.isFinalized())
+                .filter(note ->
+                        note.lastEditedAt() != null && !note.lastEditedAt().isAfter(editedBefore))
+                .sorted(Comparator.comparing(InstructorNote::lastEditedAt))
+                .limit(limit)
+                .map(InstructorNote::sessionId)
+                .toList();
     }
 
     @Override
