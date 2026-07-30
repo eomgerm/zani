@@ -45,7 +45,7 @@ CUDA build는 필요한 CUDA runtime을 wheel에 포함하므로 별도 CUDA Too
 
 아래 명령들은 PowerShell 기준입니다. bash에서는 줄 이어쓰기를 백틱(`` ` ``) 대신
 백슬래시(`\`)로 바꾸면 그대로 동작합니다. 원격 L40S 서버(JupyterHub)에서의 실행 절차는
-[docs/remote-l40s.md](docs/remote-l40s.md)를 참고하세요.
+[../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md)를 참고하세요.
 
 ## EngageNet 데이터 준비
 
@@ -119,6 +119,35 @@ Face Landmarker 모델 SHA-256과 크기, sampling/segment/feature schema, worke
 임계값이 기록됩니다. 완료되지 않았거나 제외 임계값을 넘은 manifest로는 학습을 시작하지
 않습니다.
 
+### 브라우저 프레임 게이트 정합 감사
+
+브라우저는 10초 동안 기대한 100프레임 중 유효 프레임이 70개 미만이면 추론하지
+않습니다. 기존 세그먼트 조건(20개 세그먼트마다 3프레임 이상)은 통과하지만 이 총량
+조건에서 제외되는 60~69프레임 클립은 raw cache에서 다음 명령으로 집계합니다.
+
+```powershell
+uv run python -m zani_ai engagement audit-frame-gate `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output artifacts/engagement/frame-gate-audit.json
+```
+
+출력 JSON은 전체 불일치 수, 분할별·등급별·분할×등급별 수와 해당 clip ID를 기록합니다.
+수정된 98D 특징과 `manifest.json`은 MediaPipe를 다시 실행하지 않고 raw cache에서
+재생성할 수 있습니다.
+
+```powershell
+uv run python -m zani_ai engagement build-features `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output datasets/processed/engagenet `
+  --schema mediapipe_98_v1 `
+  --sample-fps 10
+```
+
+기존 실험 산출물은 삭제하지 않습니다. 새 `manifest.json`의 SHA-256이 달라져 재현성
+identity 검증이 이전 결과의 재사용을 차단합니다.
+
 ### E0 5-seed 재현
 
 E0는 Test 분할을 평가하지 않고 Validation Macro-F1로만 조기 종료와 체크포인트를
@@ -183,6 +212,102 @@ epoch별 Validation Macro-F1·QWK 궤적이 `validation_history`로 함께 남�
 골랐다면 다른 epoch이 뽑혔을까"를 재학습 없이 사후 분석할 수 있습니다. 지표 도입
 전에 완료된 seed 레코드가 재개 경로로 돌아와도 집계는 깨지지 않고, 해당 지표만
 빠진 채 집계됩니다.
+
+`reproduce-e0h`는 손실이 맞추려는 **타깃**을 바꿉니다. E0~E0-F 전 구간에서 Test 오분류의
+79.2~80.4%가 인접 등급 한 칸 차이로 고정되어 있었고, Test에서 직접 고른 임계값으로
+로짓을 조정한 oracle 상한도 +0.4%p에 그쳐 결정 규칙이 아니라 타깃이 병목이라는 쪽을
+가리켰습니다. E0-H는 SORD(Diaz & Marathe, CVPR 2019)의 soft 타깃
+`target_j ∝ exp(-α (i - j)²)`(`α = 2.0`, i는 정답 등급)를 씁니다. 가운데 등급이면 정답에
+약 0.79와 양옆 한 칸에 각 0.11, 양끝 등급이면 0.88과 0.12가 남아 인접 등급 혼동을 타깃
+수준에서 겨냥합니다. 사람 평가자도
+정확 일치는 46.25%지만 ±1 허용은 88.75%이므로, 이웃에 확률을 남기는 타깃이 one-hot보다
+정답지에 가깝습니다.
+
+순서 정보를 쓴 기존 시도 E0-B(CORAL, macro-F1 0.5185)와 실패 지점이 다릅니다. CORAL은
+softmax head 자체를 누적 이진 로짓으로 교체하지만, SORD는 **head와 argmax 디코딩·지표를
+그대로 두고 타깃 분포만** 바꿉니다.
+
+E0-H는 티켓 210이 사전등록한 E0-G가 아니라 **E0을 기준**으로 놓습니다. 근거는 셋이며
+"E0-G가 실패했으니"가 아닙니다. ① 비용 비대칭 — E0-G는 조기 종료를 끄므로 200 epoch ×
+5 seed = 1000이지만, E0은 실측 `best_epoch` [1,3,1,2,9]에 patience 20을 더해 116입니다.
+싼 쪽을 먼저 시도하는 비용은 실패 시 +12%, 성공 시 88% 절약입니다. ② 비교 가족 — SORD는
+손실 타깃 변경이라 E0-C·E0-D(가중치)·E0-E(Focal)와 같은 축입니다. E0 위에 올리면 그
+4자 비교에 합류하지만 E0-G 위에서는 E0-G와만 비교됩니다. ③ E0-G는 세 지표 전부 E0과
+통계적으로 구분되지 않아(Welch t = +0.40 / −0.92 / −1.42, n=5+5) baseline 승격 근거가
+없습니다.
+
+E0-G가 반증한 것은 학습 일정의 **주효과**입니다. 평범한 CE 손실 아래에서 일정만 바꿨기
+때문에, "손실을 바꾸면 늘어난 epoch이 값을 한다"는 **상호작용**은 아직 검정되지
+않았습니다. E0 위의 E0-H가 실패하면 그때 E0-G 일정으로 승격하는 실험이 바로 그 검정이
+되므로, 이 순서는 질문을 버리는 것이 아니라 뒤로 미루는 것입니다. 따라서 일정은 E0의
+lr 1e-4 · patience 20 · 감쇠 없음을 그대로 상속하고, E0과의 차이는 타깃 인코딩 하나로
+귀속되며 비교도 E0 대비로 기록합니다.
+
+클래스 가중치는 쓰지 않습니다. `CrossEntropyLoss(weight=)`는 표본의 *하드* 라벨에
+가중하는데, 타깃이 여러 등급에 퍼지면 "클래스별 손실 질량"이라는 의미가 사라지기
+때문입니다. 조합을 조용히 재해석하지 않도록 `make_objective`가 거부하며, Focal과의
+조합과 CORAL head 위의 SORD도 같은 이유로 거부합니다.
+
+`target_encoding`과 `sord_alpha`도 재현성 identity에 포함되지만, `one_hot`을 벗어난
+프로토콜에서만 `configuration`에 기록됩니다. α가 크면 one-hot, 작으면 균등 분포로
+수렴하므로 α 값마다 별도 프로토콜입니다. 기존 프로토콜의 `configuration_sha256`은
+바뀌지 않고 완료된 seed도 그대로 재사용됩니다.
+
+### E0-I 라벨 신뢰도 커리큘럼
+
+E0-I는 E0의 5개 seed가 같은 클립에 내린 예측의 합의를 라벨 신뢰도 근사로 사용합니다.
+5개가 모두 같은 등급을 예측하면 `reliable`, 하나라도 갈리면 `ambiguous`입니다. 먼저 E0
+체크포인트와 feature manifest의 SHA-256을 검증한 뒤 Train/Validation만 다시 추론합니다.
+Test는 분석과 go/no-go 판정에서 제외됩니다.
+
+```bash
+uv run python -m zani_ai engagement analyze-label-reliability \
+  --features <features> \
+  --baseline-output <e0-output> \
+  --output <reliability-output> \
+  --device cuda
+```
+
+분석 디렉터리에는 다음 파일이 원자적으로 기록됩니다.
+
+- `reliability_manifest.json`: seed별 logits·예측, vote entropy, 라벨/분할 분포, 입력 SHA,
+  go/no-go 조건과 판정
+- `clips.csv`: 클립별 신뢰도와 seed별 예측
+- `report.md`: 불일치 규모, 인접 오류 관계, 지표 상한, VLM Accepted/Rejected와의 차이
+
+`go`는 다음 다섯 조건을 모두 만족해야 합니다: 네 라벨 모두 신뢰 Train 클립 보유,
+Train/Validation 모두 ambiguous 클립 보유, Validation ambiguous 오류율이 reliable의 1.5배
+이상, ambiguous 제외 시 ensemble macro-F1과 QWK가 각각 2.0%p 이상 상승. 하나라도 실패하면
+`no-go`이며 E0-I 학습 명령은 해당 manifest를 거부합니다.
+
+`go`일 때 E0-I는 신뢰 Train 클립만 one-hot CE로 10 epoch 선학습한 뒤 전체 Train을
+합류합니다. 두 번째 단계에서 reliable은 one-hot을 유지하고 ambiguous만 정답 확률 0.8,
+인접 등급 총확률 0.2를 사용합니다. 가운데 등급은 양옆에 0.1씩, 끝 등급은 유일한 이웃에
+0.2를 주므로 E0-H SORD처럼 끝 등급의 정답 질량이 더 커지지 않습니다. optimizer는 이어
+쓰지만 조기 종료와 최종 checkpoint 선택은 두 번째 단계에서 새로 시작합니다.
+
+```bash
+uv run python -m zani_ai engagement reproduce-e0i \
+  --features <features> \
+  --reliability <reliability-output>/reliability_manifest.json \
+  --output <e0i-output> \
+  --device cuda
+
+uv run python -m zani_ai engagement finalize-e0i \
+  --features <features> \
+  --output <e0i-output> \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline <e0-output> --variant <e0i-output>
+```
+
+baseline과 variant는 같은 기계에서 학습한 산출물이어야 합니다. 다르면
+`compare_protocols.py`가 경고를 찍고, 그 차이에는 프로토콜 효과와 런타임이 섞입니다.
+
+identity에는 `curriculum=label_reliability_v1`, warmup 10 epoch,
+`ambiguous_target_encoding=adjacent_smoothing`, `ambiguous_neighbor_mass=0.2`가 들어갑니다.
+`inputs.label_reliability`에는 manifest 경로·크기·SHA-256이 기록되며 병렬 seed record도 같은
+SHA를 검증합니다. E0-I 해시는 cpu `2b1c6bc1…`, cuda `0da85a5f…`입니다.
 
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서

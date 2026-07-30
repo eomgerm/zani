@@ -73,3 +73,17 @@ def test_load_contract_lists_all_missing_required_paths(tmp_path: Path) -> None:
     assert "final_labels.csv" in message
     assert "train.txt" in message
     assert "videos" in message
+
+
+def test_load_contract_can_skip_video_files_for_raw_cache_consumers(
+    tmp_path: Path,
+) -> None:
+    root = _make_root(tmp_path)
+    for video in (root / "videos").iterdir():
+        video.unlink()
+    (root / "videos").rmdir()
+
+    contract = load_dataset_contract(root, require_videos=False)
+
+    assert tuple(contract.splits) == ("train", "valid", "test")
+    assert contract.splits["train"][0].clip_id == "train_clip"

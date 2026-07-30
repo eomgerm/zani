@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import random
@@ -19,13 +20,14 @@ from sklearn.metrics import (
     f1_score,
 )
 from torch import Tensor, nn
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
 
 from zani_ai.engagement.contracts import (
     CLASS_WEIGHTING_SCHEMES,
     LABELS,
     LOSS_SCHEMES,
     SAMPLER_SCHEMES,
+    TARGET_ENCODINGS,
     SplitName,
 )
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
@@ -113,6 +115,10 @@ class TrainingConfig:
     focal_gamma: float = 2.0
     # "none" | "balanced"; see SAMPLER_SCHEMES. Applies to the training split only.
     sampler: str = "none"
+    # "one_hot" | "sord"; see TARGET_ENCODINGS. Softmax head only -- the CORAL
+    # head has no class-probability target to soften.
+    target_encoding: str = "one_hot"
+    sord_alpha: float = 2.0
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -122,6 +128,12 @@ class TrainingConfig:
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
+    # E0-I only. Defaults preserve every existing protocol and checkpoint hash.
+    curriculum: str = "none"
+    reliability_manifest: Path | None = None
+    reliable_warmup_epochs: int = 10
+    ambiguous_target_encoding: str = "adjacent_smoothing"
+    ambiguous_neighbor_mass: float = 0.2
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,9 +210,7 @@ def validate_manifest_completion(
         not isinstance(excluded_fraction, int | float)
         or isinstance(excluded_fraction, bool)
         or not math.isfinite(excluded_fraction)
-        or not math.isclose(
-            excluded_fraction, expected_fraction, rel_tol=0, abs_tol=1e-12
-        )
+        or not math.isclose(excluded_fraction, expected_fraction, rel_tol=0, abs_tol=1e-12)
     ):
         raise ValueError("feature manifest excluded_fraction does not match its clip lists")
 
@@ -421,6 +431,52 @@ class SoftmaxObjective:
         return out.softmax(dim=1)
 
 
+class AdjacentSmoothingObjective:
+    """One-hot targets for reliable clips and symmetric adjacent smoothing otherwise."""
+
+    def __init__(self, num_classes: int = 4, neighbor_mass: float = 0.2) -> None:
+        if num_classes < 2:
+            raise ValueError("adjacent smoothing requires at least two classes")
+        if not 0 < neighbor_mass < 1:
+            raise ValueError("ambiguous_neighbor_mass must be in (0, 1)")
+        self.num_classes = num_classes
+        self.neighbor_mass = neighbor_mass
+
+    def soft_targets(self, labels: Tensor, ambiguous: Tensor) -> Tensor:
+        targets = nn.functional.one_hot(labels, num_classes=self.num_classes).float()
+        ambiguous_indices = ambiguous.nonzero(as_tuple=False).flatten()
+        for index in ambiguous_indices.tolist():
+            label = int(labels[index])
+            targets[index].zero_()
+            targets[index, label] = 1.0 - self.neighbor_mass
+            neighbours = [
+                candidate
+                for candidate in (label - 1, label + 1)
+                if 0 <= candidate < self.num_classes
+            ]
+            neighbour_probability = self.neighbor_mass / len(neighbours)
+            targets[index, neighbours] = neighbour_probability
+        return targets
+
+    def loss(self, out: Tensor, labels: Tensor, ambiguous: Tensor) -> Tensor:
+        return nn.functional.cross_entropy(out, self.soft_targets(labels, ambiguous))
+
+
+class ReliabilityFeatureDataset(Dataset[tuple[Tensor, Tensor, Tensor]]):
+    def __init__(self, base: CachedFeatureDataset, ambiguous: tuple[bool, ...]) -> None:
+        if len(base) != len(ambiguous):
+            raise ValueError("reliability labels must match the training feature count")
+        self.base = base
+        self.ambiguous = ambiguous
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def __getitem__(self, index: int) -> tuple[Tensor, Tensor, Tensor]:
+        tokens, label = self.base[index]
+        return tokens, label, torch.tensor(self.ambiguous[index], dtype=torch.bool)
+
+
 class FocalObjective:
     """Focal loss (Lin et al., 2017) over the same 4-way softmax head as E0.
 
@@ -450,6 +506,53 @@ class FocalObjective:
             return focal.mean()
         weights = self.alpha[labels]
         return (weights * focal).sum() / weights.sum()
+
+    def predict(self, out: Tensor) -> Tensor:
+        return out.argmax(dim=1)
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        return out.softmax(dim=1)
+
+
+class SordObjective:
+    """SORD soft ordinal targets (Diaz & Marathe, CVPR 2019) on E0's softmax head.
+
+    ``target_j = softmax(-alpha * (i - j)^2)_j`` for true grade ``i``, which is
+    exactly the paper's ``exp(-phi(y_i, y_j))`` normalized over the grades with
+    ``phi`` the squared grade distance. Computing it as a softmax over the
+    negated penalties rather than an explicit ``exp`` and divide is the same
+    value without the overflow risk.
+
+    Unlike CORAL, which replaces the head with cumulative threshold logits and
+    failed here (E0-B, macro-F1 0.5185), nothing but the *target* moves: the
+    4-way head, the argmax decoding and every metric stay exactly as E0 has
+    them, so a difference is attributable to the target encoding alone.
+
+    ``alpha`` controls how much probability leaks to the neighbours -- large
+    values converge on one-hot, small ones on uniform -- so it is part of the
+    protocol identity rather than a tuning knob.
+
+    No class weighting: ``CrossEntropyLoss(weight=)`` scales each sample by the
+    weight of its *hard* label, which no longer means "per-class loss mass" once
+    the target is spread across grades. :func:`make_objective` rejects the
+    combination instead of silently reinterpreting it.
+    """
+
+    def __init__(self, num_classes: int = 4, alpha: float = 2.0) -> None:
+        if alpha <= 0:
+            raise ValueError(f"sord_alpha must be positive, got {alpha!r}")
+        self.num_classes = num_classes
+        self.alpha = alpha
+
+    def soft_targets(self, labels: Tensor) -> Tensor:
+        grades = torch.arange(self.num_classes, device=labels.device, dtype=torch.float32)
+        distance = labels.unsqueeze(1).to(grades.dtype) - grades.unsqueeze(0)  # [B,C]
+        return (-self.alpha * distance.square()).softmax(dim=1)
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        # `cross_entropy` accepts probability targets, giving the plain
+        # -sum(target * log_softmax(out)) mean over the batch.
+        return nn.functional.cross_entropy(out, self.soft_targets(labels))
 
     def predict(self, out: Tensor) -> Tensor:
         return out.argmax(dim=1)
@@ -489,14 +592,33 @@ def make_objective(
     *,
     loss: str = "cross_entropy",
     focal_gamma: float = 2.0,
+    target_encoding: str = "one_hot",
+    sord_alpha: float = 2.0,
 ) -> Objective:
+    if target_encoding not in TARGET_ENCODINGS:
+        raise ValueError(
+            f"target_encoding must be one of {TARGET_ENCODINGS}, got {target_encoding!r}"
+        )
     # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
     # attribute); any config without a `head` defaults to softmax.
     if getattr(config, "head", "softmax") == "coral":
+        if target_encoding != "one_hot":
+            # CORAL's targets are cumulative 1[y>j] indicators, so there is no
+            # class distribution left for SORD to soften. Ignoring the request
+            # would let a run record a target encoding it never trained with.
+            raise ValueError("target_encoding is not applicable to the CORAL head")
         # CORAL replaces the softmax head itself, so `loss` does not apply.
         return CoralObjective(config.num_classes)
     if loss not in LOSS_SCHEMES:
         raise ValueError(f"loss must be one of {LOSS_SCHEMES}, got {loss!r}")
+    if target_encoding == "sord":
+        if loss != "cross_entropy":
+            raise ValueError("sord targets require loss='cross_entropy'")
+        if class_weights is not None:
+            # See SordObjective: per-class weights are defined against a hard
+            # label, which a spread target no longer has.
+            raise ValueError("sord targets cannot be combined with class weighting")
+        return SordObjective(config.num_classes, alpha=sord_alpha)
     if loss == "focal":
         return FocalObjective(gamma=focal_gamma, alpha=class_weights)
     return SoftmaxObjective(weight=class_weights)
@@ -517,6 +639,105 @@ def _train_epoch(
         optimizer.step()
 
 
+def _train_curriculum_epoch(
+    model: nn.Module,
+    loader: DataLoader[tuple[Tensor, Tensor, Tensor]],
+    optimizer: torch.optim.Optimizer,
+    objective: AdjacentSmoothingObjective,
+    device: torch.device,
+) -> None:
+    model.train()
+    for tokens, labels, ambiguous in loader:
+        optimizer.zero_grad(set_to_none=True)
+        loss = objective.loss(model(tokens.to(device)), labels.to(device), ambiguous.to(device))
+        loss.backward()  # type: ignore[no-untyped-call]
+        optimizer.step()
+
+
+def _manifest_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_curriculum_ambiguity(
+    config: TrainingConfig,
+    manifest_path: Path,
+    datasets: FeatureDatasets,
+) -> tuple[bool, ...] | None:
+    if config.curriculum == "none":
+        if config.reliability_manifest is not None:
+            raise ValueError("reliability_manifest requires a curriculum")
+        return None
+    if config.curriculum != "label_reliability_v1":
+        raise ValueError(f"unknown curriculum: {config.curriculum!r}")
+    if config.reliability_manifest is None:
+        raise ValueError("label_reliability_v1 requires reliability_manifest")
+    if config.reliable_warmup_epochs <= 0:
+        raise ValueError("reliable_warmup_epochs must be positive")
+    if config.ambiguous_target_encoding != "adjacent_smoothing":
+        raise ValueError("label_reliability_v1 requires adjacent_smoothing targets")
+    if (
+        config.class_weighting != "none"
+        or config.loss != "cross_entropy"
+        or config.sampler != "none"
+        or config.target_encoding != "one_hot"
+        or config.lr_step is not None
+    ):
+        raise ValueError("label_reliability_v1 requires the unweighted E0 objective and schedule")
+    # Lazy import avoids a module cycle: reliability inference uses this module's
+    # checkpoint and feature-dataset readers.
+    from zani_ai.engagement.reliability import load_validated_reliability_manifest
+
+    validated = load_validated_reliability_manifest(
+        config.reliability_manifest,
+        feature_manifest_sha256=_manifest_sha256(manifest_path),
+        require_go=True,
+    )
+    records: dict[tuple[str, str], tuple[int, str]] = {}
+    for item in validated.records:
+        identity = (item.split, item.clip_id)
+        if identity in records:
+            raise ValueError(f"duplicate reliability clip: {item.split}/{item.clip_id}")
+        records[identity] = (item.label, item.reliability)
+
+    expected = {
+        (entry.split, entry.clip_id): entry.label_index
+        for dataset in (datasets.train, datasets.valid)
+        for entry in dataset.entries
+    }
+    if set(records) != set(expected):
+        raise ValueError(
+            "reliability manifest clip coverage differs from Train/Validation features"
+        )
+    for identity, expected_label in expected.items():
+        if records[identity][0] != expected_label:
+            raise ValueError(f"reliability label differs for {identity[0]}/{identity[1]}")
+
+    ambiguity = tuple(
+        records[(entry.split, entry.clip_id)][1] == "ambiguous" for entry in datasets.train.entries
+    )
+    reliable_labels = {
+        entry.label_index
+        for entry, ambiguous in zip(datasets.train.entries, ambiguity, strict=True)
+        if not ambiguous
+    }
+    if reliable_labels != set(range(len(LABELS))):
+        raise ValueError("reliable Train clips must cover all labels")
+    return ambiguity
+
+
+def _curriculum_loader(
+    dataset: Dataset[Any], config: TrainingConfig, *, shuffle: bool
+) -> DataLoader[Any]:
+    return DataLoader(
+        dataset,
+        batch_size=config.batch_size,
+        shuffle=shuffle,
+        num_workers=config.num_workers,
+        generator=torch.Generator().manual_seed(config.seed),
+        pin_memory=torch.cuda.is_available(),
+    )
+
+
 def ordinal_quality(expected: list[int], predicted: list[int]) -> tuple[float, float]:
     """(within-one accuracy, quadratic weighted kappa) -- ordinal-grade quality.
 
@@ -529,9 +750,7 @@ def ordinal_quality(expected: list[int], predicted: list[int]) -> tuple[float, f
     differences = np.abs(np.asarray(expected) - np.asarray(predicted))
     within_one = float(np.mean(differences <= 1))
     kappa = float(
-        cohen_kappa_score(
-            expected, predicted, labels=list(range(len(LABELS))), weights="quadratic"
-        )
+        cohen_kappa_score(expected, predicted, labels=list(range(len(LABELS))), weights="quadratic")
     )
     # A degenerate input (both sides a single class) leaves the chance-correction
     # denominator at zero, which sklearn reports as NaN.
@@ -688,6 +907,7 @@ def train_model(
         array_key=config.array_key,
         array_shape=config.array_shape,
     )
+    curriculum_ambiguity = _load_curriculum_ambiguity(config, manifest_path, datasets)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(config.device)
     statistics: FeatureStatistics | None
@@ -718,6 +938,8 @@ def train_model(
         class_weights=weights if model_head == "softmax" else None,
         loss=config.loss,
         focal_gamma=config.focal_gamma,
+        target_encoding=config.target_encoding,
+        sord_alpha=config.sord_alpha,
     )
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
     scheduler = (
@@ -725,8 +947,6 @@ def train_model(
         if config.lr_step
         else None
     )
-    train_loader = _loader(datasets.train, config, shuffle=True)
-    valid_loader = _loader(datasets.valid, config, shuffle=False)
     checkpoint_path = config.output_dir / "best.pt"
     best_score = -1.0
     best_epoch = -1
@@ -736,38 +956,103 @@ def train_model(
     # have picked another epoch?" can be answered after the fact, without
     # retraining and without making the selection metric itself ambiguous.
     validation_history: list[dict[str, object]] = []
-    for epoch in range(config.max_epochs):
-        _train_epoch(model, train_loader, optimizer, objective, device)
-        validation = evaluate_model(model, valid_loader, device)
-        validation_history.append(
-            {
-                "epoch": epoch,
-                "macro_f1": validation.macro_f1,
-                "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-            }
-        )
-        if progress is not None:
-            progress(epoch, validation)
-        if scheduler is not None:
-            scheduler.step()
-        if validation.macro_f1 > best_score:
-            best_score = validation.macro_f1
-            best_epoch = epoch
-            best_validation = validation
-            stale_epochs = 0
-            _save_checkpoint(
-                checkpoint_path,
-                model,
-                config,
-                statistics,
-                epoch,
-                validation,
-                schema=manifest_schema_name,
+    if curriculum_ambiguity is None:
+        train_loader = _loader(datasets.train, config, shuffle=True)
+        valid_loader = _loader(datasets.valid, config, shuffle=False)
+        for epoch in range(config.max_epochs):
+            _train_epoch(model, train_loader, optimizer, objective, device)
+            validation = evaluate_model(model, valid_loader, device)
+            validation_history.append(
+                {
+                    "epoch": epoch,
+                    "macro_f1": validation.macro_f1,
+                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+                }
             )
-        else:
-            stale_epochs += 1
-            if stale_epochs >= config.patience:
-                break
+            if progress is not None:
+                progress(epoch, validation)
+            if scheduler is not None:
+                scheduler.step()
+            if validation.macro_f1 > best_score:
+                best_score = validation.macro_f1
+                best_epoch = epoch
+                best_validation = validation
+                stale_epochs = 0
+                _save_checkpoint(
+                    checkpoint_path,
+                    model,
+                    config,
+                    statistics,
+                    epoch,
+                    validation,
+                    schema=manifest_schema_name,
+                )
+            else:
+                stale_epochs += 1
+                if stale_epochs >= config.patience:
+                    break
+    else:
+        valid_loader = _loader(datasets.valid, config, shuffle=False)
+        reliable_indices = [
+            index for index, ambiguous in enumerate(curriculum_ambiguity) if not ambiguous
+        ]
+        warmup_loader = _curriculum_loader(
+            Subset(datasets.train, reliable_indices), config, shuffle=True
+        )
+        mixed_loader = _curriculum_loader(
+            ReliabilityFeatureDataset(datasets.train, curriculum_ambiguity),
+            config,
+            shuffle=True,
+        )
+        curriculum_objective = AdjacentSmoothingObjective(
+            num_classes=len(LABELS), neighbor_mass=config.ambiguous_neighbor_mass
+        )
+        for epoch in range(config.reliable_warmup_epochs):
+            _train_epoch(model, warmup_loader, optimizer, objective, device)
+            validation = evaluate_model(model, valid_loader, device)
+            validation_history.append(
+                {
+                    "epoch": epoch,
+                    "curriculum_stage": "reliable_warmup",
+                    "macro_f1": validation.macro_f1,
+                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+                }
+            )
+            if progress is not None:
+                progress(epoch, validation)
+
+        for stage_epoch in range(config.max_epochs):
+            epoch = config.reliable_warmup_epochs + stage_epoch
+            _train_curriculum_epoch(model, mixed_loader, optimizer, curriculum_objective, device)
+            validation = evaluate_model(model, valid_loader, device)
+            validation_history.append(
+                {
+                    "epoch": epoch,
+                    "curriculum_stage": "mixed",
+                    "macro_f1": validation.macro_f1,
+                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+                }
+            )
+            if progress is not None:
+                progress(epoch, validation)
+            if validation.macro_f1 > best_score:
+                best_score = validation.macro_f1
+                best_epoch = epoch
+                best_validation = validation
+                stale_epochs = 0
+                _save_checkpoint(
+                    checkpoint_path,
+                    model,
+                    config,
+                    statistics,
+                    epoch,
+                    validation,
+                    schema=manifest_schema_name,
+                )
+            else:
+                stale_epochs += 1
+                if stale_epochs >= config.patience:
+                    break
     if best_validation is None:
         raise RuntimeError("training completed without a validation checkpoint")
     test_metrics: EvaluationMetrics | None = None
@@ -782,6 +1067,8 @@ def train_model(
     training_payload = dict(asdict(config))
     training_payload["features_root"] = str(config.features_root)
     training_payload["output_dir"] = str(config.output_dir)
+    if config.reliability_manifest is not None:
+        training_payload["reliability_manifest"] = str(config.reliability_manifest)
     training_payload["model"] = model.config.to_dict()  # type: ignore[attr-defined]
     if training_payload.get("build_model") is not None:
         # `build_model` is a callable and not JSON-serializable; record a
@@ -808,21 +1095,22 @@ def train_model(
     else:
         payload["test"] = test_metrics.to_dict()
     metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return TrainingResult(
-        checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics
-    )
+    return TrainingResult(checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics)
 
 
 __all__ = [
     "CLASS_WEIGHTING_SCHEMES",
     "LOSS_SCHEMES",
     "SAMPLER_SCHEMES",
+    "TARGET_ENCODINGS",
+    "AdjacentSmoothingObjective",
     "CoralObjective",
     "EvaluationMetrics",
     "FeatureStatistics",
     "FocalObjective",
     "Objective",
     "SoftmaxObjective",
+    "SordObjective",
     "TrainingConfig",
     "TrainingResult",
     "compute_feature_statistics",

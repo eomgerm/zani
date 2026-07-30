@@ -54,9 +54,7 @@ class EngagementTransformer(nn.Module):
         if feature_std.shape != (self.config.input_dim,):
             raise ValueError(f"feature_std must have shape ({self.config.input_dim},)")
         self.register_buffer("feature_mean", feature_mean.float().reshape(1, 1, -1))
-        self.register_buffer(
-            "feature_std", feature_std.float().clamp_min(1e-6).reshape(1, 1, -1)
-        )
+        self.register_buffer("feature_std", feature_std.float().clamp_min(1e-6).reshape(1, 1, -1))
         self.input_projection = nn.Linear(self.config.input_dim, self.config.d_model)
         self.position_embedding = nn.Parameter(
             torch.zeros(1, self.config.segment_count, self.config.d_model)

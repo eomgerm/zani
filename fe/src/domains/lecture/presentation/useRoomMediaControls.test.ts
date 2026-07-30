@@ -8,6 +8,7 @@ class FakeLocalParticipant {
   isMicrophoneEnabled = true;
   isCameraEnabled = true;
   microphoneFailure: Error | null = null;
+  cameraFailure: Error | null = null;
   permissions: { canPublish: boolean; canPublishSources?: number[] } | undefined;
 
   setMicrophoneEnabled(enabled: boolean) {
@@ -19,6 +20,9 @@ class FakeLocalParticipant {
   }
 
   setCameraEnabled(enabled: boolean) {
+    if (this.cameraFailure) {
+      return Promise.reject(this.cameraFailure);
+    }
     this.isCameraEnabled = enabled;
     return Promise.resolve();
   }
@@ -180,6 +184,80 @@ describe("useRoomMediaControls", () => {
     expect(result.current.microphoneEnabled).toBe(true);
   });
 
+  it("reports a denied camera apart from a device that merely failed", async () => {
+    const room = connectedRoom();
+    // 브라우저 권한 거부는 NotAllowedError 로 온다(LiveKit MediaDeviceFailure 분류 기준).
+    const denied = new Error("denied");
+    denied.name = "NotAllowedError";
+    room.localParticipant!.cameraFailure = denied;
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.toggleCamera());
+
+    expect(result.current.cameraPermissionDenied).toBe(true);
+    expect(result.current.mediaError).toContain("권한");
+  });
+
+  it("does not call a camera that is in use denied", async () => {
+    const room = connectedRoom();
+    // 장치 점유 실패는 NotReadableError 로 온다. 권한 거부와 구분돼야 한다.
+    const busy = new Error("device busy");
+    busy.name = "NotReadableError";
+    room.localParticipant!.cameraFailure = busy;
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.toggleCamera());
+
+    expect(result.current.mediaError).not.toBeNull();
+    expect(result.current.cameraPermissionDenied).toBe(false);
+  });
+
+  it("stops reporting a denied camera once it can be published again", async () => {
+    const room = connectedRoom();
+    const denied = new Error("denied");
+    denied.name = "NotAllowedError";
+    room.localParticipant!.cameraFailure = denied;
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+    await act(async () => result.current.toggleCamera());
+
+    room.localParticipant!.cameraFailure = null;
+    await act(async () => result.current.toggleCamera());
+
+    expect(result.current.cameraPermissionDenied).toBe(false);
+    expect(result.current.mediaError).toBeNull();
+  });
+
+  it("keeps a denied camera denied after switching to another camera", async () => {
+    const room = connectedRoom();
+    const denied = new Error("denied");
+    denied.name = "NotAllowedError";
+    room.localParticipant!.cameraFailure = denied;
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+    await act(async () => result.current.toggleCamera());
+
+    // 장치 전환은 publish 를 시도하지 않으므로 권한이 허용됐다는 증거가 아니다.
+    await act(async () => result.current.selectCamera("cam-2"));
+
+    expect(result.current.cameraPermissionDenied).toBe(true);
+  });
+
+  it("does not report a denied camera when only the microphone was denied", async () => {
+    const room = connectedRoom();
+    const denied = new Error("denied");
+    denied.name = "NotAllowedError";
+    room.localParticipant!.microphoneFailure = denied;
+    const { result } = renderHook(() => useRoomMediaControls());
+    act(() => vi.advanceTimersByTime(0));
+
+    await act(async () => result.current.toggleMicrophone());
+
+    expect(result.current.cameraPermissionDenied).toBe(false);
+  });
+
   it("clears the error after the next successful toggle", async () => {
     const room = connectedRoom();
     room.localParticipant!.microphoneFailure = new Error("device busy");
@@ -332,6 +410,44 @@ describe("useRoomMediaControls", () => {
       { kind: "audioinput", deviceId: "mic-9" },
       { kind: "videoinput", deviceId: "cam-9" },
     ]);
+  });
+
+  /** 장치 점검을 통과하고 들어왔는데 둘 다 꺼져 있으면 고장으로 읽힌다. */
+  it("입장 전 점검을 거쳐 들어오면 카메라·마이크를 켠 상태로 시작한다", async () => {
+    stubMediaDevices([]);
+    sessionStorage.setItem(
+      "zani:prejoin:ABC123",
+      JSON.stringify({ cameraDeviceId: null, microphoneDeviceId: null, testedAt: "2026-07-26T12:00:00.000Z" }),
+    );
+    const room = connectedRoom();
+    room.localParticipant!.isCameraEnabled = false;
+    room.localParticipant!.isMicrophoneEnabled = false;
+
+    renderHook(() => useRoomMediaControls("ABC123"));
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(room.localParticipant!.isCameraEnabled).toBe(true);
+    expect(room.localParticipant!.isMicrophoneEnabled).toBe(true);
+  });
+
+  /** 서버가 publish 를 허락하지 않은 소스를 켜려 들면 LiveKit 이 거절한다. 켜려는 시도 자체를 하지 않는다. */
+  it("서버가 막은 소스는 켜지 않는다", async () => {
+    stubMediaDevices([]);
+    sessionStorage.setItem(
+      "zani:prejoin:ABC123",
+      JSON.stringify({ cameraDeviceId: null, microphoneDeviceId: null, testedAt: "2026-07-26T12:00:00.000Z" }),
+    );
+    const room = connectedRoom();
+    room.localParticipant!.isCameraEnabled = false;
+    room.localParticipant!.isMicrophoneEnabled = false;
+    // 마이크만 허용한다.
+    room.localParticipant!.permissions = { canPublish: true, canPublishSources: [2] };
+
+    renderHook(() => useRoomMediaControls("ABC123"));
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(room.localParticipant!.isMicrophoneEnabled).toBe(true);
+    expect(room.localParticipant!.isCameraEnabled).toBe(false);
   });
 
   it("starts with the default devices when no pre-join result is stored", async () => {

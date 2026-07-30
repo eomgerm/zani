@@ -75,7 +75,7 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     private ReconnectStatus applyPresence(
             long sessionId, long participantId, SessionParticipantRole role, boolean connected) {
         if (connected) {
-            presencePort.recordHeartbeat(sessionId, participantId, PRESENCE_TTL);
+            presencePort.recordHeartbeat(sessionId, participantId, clock.instant(), PRESENCE_TTL);
             if (role == SessionParticipantRole.INSTRUCTOR
                     && presencePort.instructorGraceDeadline(sessionId).isPresent()) {
                 presencePort.clearInstructorGrace(sessionId);

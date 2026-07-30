@@ -7,11 +7,11 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;
 
 public record CreateSessionResponse(
-        Long sessionId, String inviteCode, SessionStatus status, SessionParticipantRole role, Instant expiresAt) {
+        String sessionId, String inviteCode, SessionStatus status, SessionParticipantRole role, Instant expiresAt) {
 
     public static CreateSessionResponse from(CreateSessionResult result) {
         return new CreateSessionResponse(
-                result.sessionId(),
+                String.valueOf(result.sessionId()),
                 result.inviteCode(),
                 result.status(),
                 SessionParticipantRole.INSTRUCTOR,

@@ -141,7 +141,7 @@ class PromptResponseCollectionIntegrationTest {
 
     @Test
     void recordsSilenceAsANonResponseThatTimedOut() throws Exception {
-        respond("UNDERSTANDING_CHECK", "NO_RESPONSE").andExpect(status().isOk());
+        respond("UNDERSTANDING_CHECK", "NON_RESPONSE").andExpect(status().isOk());
 
         Map<String, Object> row = onlyPromptRow();
         assertEquals("TIMEOUT", row.get("status"));
@@ -153,7 +153,7 @@ class PromptResponseCollectionIntegrationTest {
     void keepsTheFirstAnswerWhenTheStudentAnswersTheSamePromptTwice() throws Exception {
         respond("UNDERSTANDING_CHECK", "CONFUSED").andExpect(status().isOk());
 
-        respond("UNDERSTANDING_CHECK", "UNDERSTOOD")
+        respond("UNDERSTANDING_CHECK", "OK")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accepted").value(false))
                 .andExpect(jsonPath("$.data.duplicate").value(true));
@@ -162,17 +162,22 @@ class PromptResponseCollectionIntegrationTest {
     }
 
     @Test
-    void dropsAStudentWhoCannotTurnTheCameraOnFromTheGroupDenominator() throws Exception {
-        respond("CAMERA_CHECK", "CAMERA_UNAVAILABLE").andExpect(status().isOk());
+    void refusesTheRetiredCameraAnswerAndLeavesTheDenominatorAlone() throws Exception {
+        respond("UNDERSTANDING_CHECK", "CAMERA_UNAVAILABLE")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMM_400"));
 
-        assertEquals("1", redisTemplate.opsForValue().get(EXCLUDED_KEY));
+        // 학생 답으로 분모에서 빼면 빠지는 쪽이 늘 유리해져 모두가 그 답을 고른다(§5.2). 이제 그 값 자체가 계약에 없다.
+        assertNull(redisTemplate.opsForValue().get(EXCLUDED_KEY));
+        assertTrue(promptRows().isEmpty());
     }
 
     @Test
-    void refusesAnAnswerThatDoesNotBelongToThePromptKind() throws Exception {
+    void refusesARetiredPromptKindThatTheBrowserNoLongerReports() throws Exception {
+        // 자세 안내·카메라 안내는 브라우저 안에서 끝난다(티켓 81).
         respond("POSTURE_GUIDE", "CONFUSED")
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("PROMPT_RESPONSE_002"));
+                .andExpect(jsonPath("$.code").value("COMM_400"));
 
         assertTrue(promptRows().isEmpty());
     }

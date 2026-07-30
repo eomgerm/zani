@@ -100,6 +100,19 @@ class ExperimentSpec:
     loss: str = "cross_entropy"
     focal_gamma: float = 2.0
     sampler: str = "none"
+    # Target encoding for the softmax head; see training.TARGET_ENCODINGS.
+    # ``sord_alpha`` decides how much probability reaches the neighbouring
+    # grades, so it defines the protocol as much as the encoding name does and
+    # both enter the identity together.
+    target_encoding: str = "one_hot"
+    sord_alpha: float = 2.0
+    # E0-I two-stage curriculum. Defaults preserve all earlier identities.
+    curriculum: str = "none"
+    reliable_warmup_epochs: int = 10
+    ambiguous_target_encoding: str = "adjacent_smoothing"
+    ambiguous_neighbor_mass: float = 0.2
+    needs_reliability_manifest: bool = False
+    reliability_manifest: Path | None = None
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -125,9 +138,7 @@ E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="cor
 # is what the evidence points at. E0-D softens E0-C in case full inversion
 # overcorrects: with these counts `balanced` spans ~7.7x and
 # `sqrt_balanced` ~2.8x between the largest and smallest weight.
-E0C_SPEC = ExperimentSpec(
-    "E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced"
-)
+E0C_SPEC = ExperimentSpec("E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced")
 E0D_SPEC = ExperimentSpec(
     "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
 )
@@ -152,9 +163,7 @@ E0E_SPEC = ExperimentSpec(
     loss="focal",
     focal_gamma=2.0,
 )
-E0F_SPEC = ExperimentSpec(
-    "E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced"
-)
+E0F_SPEC = ExperimentSpec("E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced")
 
 # E0-G is the baseline reset after E0-C..E0-F all died of the same cause: with
 # patience 20 their best_epoch landed at 0-4, so no loss or sampler change had
@@ -173,6 +182,64 @@ E0G_SPEC = ExperimentSpec(
     learning_rate=1e-5,
     patience=200,
     lr_step=100,
+)
+
+
+# E0-H attacks the adjacent-grade confusion that survived every correction so
+# far: Test errors stayed 79.2-80.4% one grade away across E0..E0-F, and an
+# oracle logit adjustment measured on Test itself bought at most +0.4%p, so the
+# decision rule is not what is wrong -- the target the loss is fitted to is.
+#
+# SORD (Diaz & Marathe, CVPR 2019) replaces the one-hot target with
+# `target_j ∝ exp(-alpha (i - j)^2)`, leaving probability on the neighbouring
+# grades. Where E0-B also used the grade order and failed (macro-F1 0.5185), it
+# swapped the softmax head for cumulative threshold logits; SORD keeps the head
+# and the argmax decoding untouched, so its failure mode is a different one.
+# Label subjectivity points the same way: annotators agree exactly 46.25% of the
+# time but within one grade 88.75%, which a neighbour-weighted target describes
+# better than a one-hot one.
+#
+# It is built on E0, not on E0-G, which ticket 210 had pre-registered as the
+# base. Three things moved that decision, and none of them is "E0-G failed":
+#
+# * Cost asymmetry. E0-G disables early stopping, so it runs 200 epochs x 5
+#   seeds = 1000; E0 stops at best_epoch + 20, which its measured best_epochs
+#   [1, 3, 1, 2, 9] put at 116. Trying the cheap base first costs +12% if it
+#   fails and saves 88% if it does not.
+# * Comparison family. SORD changes the loss target, the same axis as E0-C/E0-D
+#   (weights) and E0-E (focal). On E0 it joins that four-way comparison; on
+#   E0-G it would only be comparable to E0-G.
+# * E0-G is not established as the better baseline: all three metrics came back
+#   statistically indistinguishable from E0 (Welch t = +0.40 / -0.92 / -1.42,
+#   n = 5 + 5), so promoting it would rest on nothing measured.
+#
+# What E0-G ruled out is the schedule's *main effect* -- it changed the schedule
+# under a plain CE loss. "A changed loss needs more epochs to pay off" is an
+# interaction and remains untested; if E0-H fails here, re-running it on E0-G's
+# schedule is exactly that test, so this ordering defers the question instead of
+# discarding it.
+#
+# So the schedule stays at E0's lr 1e-4 / patience 20 / no decay, the target
+# encoding is the single variable, and the comparison is against E0 directly.
+# Class weighting stays off -- see SordObjective, whose spread target has no
+# hard label for a per-class weight to act on.
+E0H_SPEC = ExperimentSpec(
+    "E0-H",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    target_encoding="sord",
+    sord_alpha=2.0,
+)
+
+E0I_SPEC = ExperimentSpec(
+    "E0-I",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    curriculum="label_reliability_v1",
+    reliable_warmup_epochs=10,
+    ambiguous_target_encoding="adjacent_smoothing",
+    ambiguous_neighbor_mass=0.2,
+    needs_reliability_manifest=True,
 )
 
 
@@ -296,6 +363,8 @@ SPECS: dict[str, ExperimentSpec] = {
         E0E_SPEC,
         E0F_SPEC,
         E0G_SPEC,
+        E0H_SPEC,
+        E0I_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -312,9 +381,9 @@ def _sha256(path: Path) -> str:
 
 
 def _canonical_hash(payload: dict[str, object]) -> str:
-    encoded = json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -359,9 +428,7 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
             if not isinstance(label_index, int) or isinstance(label_index, bool):
                 raise ValueError(f"invalid label_index in included entry at index {index}")
             if label_index not in range(4):
-                raise ValueError(
-                    f"label_index out of range in included entry at index {index}"
-                )
+                raise ValueError(f"label_index out of range in included entry at index {index}")
         feature_path_value = item.get("feature_path")
         if not isinstance(feature_path_value, str) or not feature_path_value:
             raise ValueError(f"invalid feature_path in included entry at index {index}")
@@ -376,9 +443,7 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
             raise FileNotFoundError(f"cached feature not found: {feature_path}")
         fingerprint = item.get("source_fingerprint")
         if not isinstance(fingerprint, str) or not fingerprint:
-            raise ValueError(
-                f"invalid source_fingerprint in included entry at index {index}"
-            )
+            raise ValueError(f"invalid source_fingerprint in included entry at index {index}")
         splits.add(split)
     for index, item in enumerate(excluded):
         if not isinstance(item, dict):
@@ -408,11 +473,12 @@ def _class_weighting_value(spec: ExperimentSpec) -> object:
 def _apply_loss_and_sampling(
     configuration: dict[str, object], spec: ExperimentSpec
 ) -> dict[str, object]:
-    """Record the loss shape and sampler, but only when they leave the default.
+    """Record the loss shape, target encoding and sampler, but only when they
+    leave the default.
 
     Emitting these keys unconditionally would rewrite the hash of every protocol
     that predates them and discard its completed seeds, so a plain
-    cross-entropy, unsampled spec must produce the dict it always has.
+    cross-entropy, one-hot, unsampled spec must produce the dict it always has.
     """
     if getattr(spec.model_config, "head", "softmax") == "coral":
         # CORAL replaces the head, so its loss is fixed regardless of spec.loss.
@@ -422,6 +488,14 @@ def _apply_loss_and_sampling(
         configuration["focal_gamma"] = spec.focal_gamma
     if spec.sampler != "none":
         configuration["sampler"] = spec.sampler
+    if spec.target_encoding != "one_hot":
+        configuration["target_encoding"] = spec.target_encoding
+        configuration["sord_alpha"] = spec.sord_alpha
+    if spec.curriculum != "none":
+        configuration["curriculum"] = spec.curriculum
+        configuration["reliable_warmup_epochs"] = spec.reliable_warmup_epochs
+        configuration["ambiguous_target_encoding"] = spec.ambiguous_target_encoding
+        configuration["ambiguous_neighbor_mass"] = spec.ambiguous_neighbor_mass
     return configuration
 
 
@@ -561,6 +635,47 @@ def _graph_record(graph_path: Path | None) -> dict[str, object] | None:
     }
 
 
+def _reliability_record(
+    reliability_path: Path | None, *, feature_manifest_sha256: str
+) -> dict[str, object] | None:
+    if reliability_path is None:
+        return None
+    path = reliability_path.resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"reliability manifest not found: {path}")
+    from zani_ai.engagement.reliability import load_validated_reliability_manifest
+
+    validated = load_validated_reliability_manifest(
+        path,
+        feature_manifest_sha256=feature_manifest_sha256,
+        require_go=True,
+    )
+    size_bytes = path.stat().st_size
+    if _sha256(path) != validated.sha256:
+        raise RuntimeError(f"reliability manifest changed during validation: {path}")
+    return {
+        "path": str(path),
+        "sha256": validated.sha256,
+        "size_bytes": size_bytes,
+    }
+
+
+def _assert_file_record_unchanged(record: dict[str, object], name: str, boundary: str) -> None:
+    path_value = record.get("path")
+    expected_hash = record.get("sha256")
+    expected_size = record.get("size_bytes")
+    if (
+        not isinstance(path_value, str)
+        or not isinstance(expected_hash, str)
+        or not isinstance(expected_size, int)
+        or isinstance(expected_size, bool)
+    ):
+        raise RuntimeError(f"{name} integrity record is invalid")
+    path = Path(path_value)
+    if not path.is_file() or path.stat().st_size != expected_size or _sha256(path) != expected_hash:
+        raise RuntimeError(f"{name} changed {boundary}")
+
+
 def _validate_inputs_identity(
     summary: dict[str, object], inputs: dict[str, object], spec: ExperimentSpec
 ) -> None:
@@ -695,9 +810,7 @@ def _seed_paths(output_dir: Path, seed: int) -> dict[str, Path]:
     }
 
 
-def _artifact_records(
-    output_dir: Path, paths: dict[str, Path]
-) -> dict[str, dict[str, object]]:
+def _artifact_records(output_dir: Path, paths: dict[str, Path]) -> dict[str, dict[str, object]]:
     records: dict[str, dict[str, object]] = {}
     for name, path in paths.items():
         if not path.is_file():
@@ -742,6 +855,7 @@ def _seed_is_complete(
     output_dir: Path,
     manifest_sha256: str,
     configuration: dict[str, object],
+    inputs: dict[str, object],
     spec: ExperimentSpec,
 ) -> tuple[bool, str]:
     if record is None:
@@ -753,6 +867,18 @@ def _seed_is_complete(
         return False, "feature manifest fingerprint does not match"
     if record.get("configuration_sha256") != _canonical_hash(configuration):
         return False, "configuration fingerprint does not match"
+    if spec.needs_reliability_manifest:
+        recorded_inputs = record.get("inputs")
+        recorded_reliability = (
+            recorded_inputs.get("label_reliability") if isinstance(recorded_inputs, dict) else None
+        )
+        current_reliability = inputs.get("label_reliability")
+        if (
+            not isinstance(recorded_reliability, dict)
+            or not isinstance(current_reliability, dict)
+            or recorded_reliability.get("sha256") != current_reliability.get("sha256")
+        ):
+            return False, "label_reliability input fingerprint does not match"
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, dict):
         return False, "artifact integrity records are missing"
@@ -855,9 +981,7 @@ def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
     summary["seeds"] = records
     summary["aggregate"] = _aggregate(records)
     summary["status"] = (
-        "complete"
-        if [item["seed"] for item in records] == list(spec.seeds)
-        else "in_progress"
+        "complete" if [item["seed"] for item in records] == list(spec.seeds) else "in_progress"
     )
 
 
@@ -924,6 +1048,7 @@ def prepare_run(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> RunContext:
     """Validate the inputs and pin the identity every seed of this run shares.
@@ -942,10 +1067,21 @@ def prepare_run(
         spec = replace(
             spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
         )
+    if spec.needs_reliability_manifest:
+        selected_reliability = reliability_path or spec.reliability_manifest
+        if selected_reliability is None:
+            raise ValueError(f"{spec.protocol} requires a reliability manifest")
+        spec = replace(spec, reliability_manifest=selected_reliability.resolve())
     inputs: dict[str, object] = {}
     graph_record = _graph_record(spec.graph_path)
     if graph_record is not None:
         inputs["landmark_graph"] = graph_record
+    reliability_record = _reliability_record(
+        spec.reliability_manifest,
+        feature_manifest_sha256=manifest_sha256,
+    )
+    if reliability_record is not None:
+        inputs["label_reliability"] = reliability_record
     configuration = _build_configuration(spec, device)
     environment = _environment(device, spec)
     _enable_strict_determinism(device)
@@ -984,10 +1120,22 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     manifest_path = context.manifest_path
     manifest_sha256 = context.manifest_sha256
     configuration = context.configuration
+    reliability_input = context.inputs.get("label_reliability")
+
+    def assert_reliability_unchanged(boundary: str) -> None:
+        if isinstance(reliability_input, dict):
+            _assert_file_record_unchanged(
+                cast(dict[str, object], reliability_input),
+                "label_reliability",
+                boundary,
+            )
 
     def report_progress(epoch: int, metrics: EvaluationMetrics) -> None:
+        total_epochs = spec.max_epochs + (
+            spec.reliable_warmup_epochs if spec.curriculum != "none" else 0
+        )
         print(
-            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{spec.max_epochs} "
+            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{total_epochs} "
             f"validation_accuracy={metrics.accuracy:.6f} "
             f"validation_macro_f1={metrics.macro_f1:.6f}",
             flush=True,
@@ -1006,6 +1154,8 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         loss=spec.loss,
         focal_gamma=spec.focal_gamma,
         sampler=spec.sampler,
+        target_encoding=spec.target_encoding,
+        sord_alpha=spec.sord_alpha,
         num_workers=0,
         deterministic=True,
         model=spec.model_config,
@@ -1014,14 +1164,17 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         lr_step=spec.lr_step,
         array_key=spec.array_key,
         array_shape=spec.array_shape,
+        curriculum=spec.curriculum,
+        reliability_manifest=spec.reliability_manifest,
+        reliable_warmup_epochs=spec.reliable_warmup_epochs,
+        ambiguous_target_encoding=spec.ambiguous_target_encoding,
+        ambiguous_neighbor_mass=spec.ambiguous_neighbor_mass,
     )
-    _assert_manifest_unchanged(
-        manifest_path, manifest_sha256, f"before seed {seed} training", spec
-    )
+    _assert_manifest_unchanged(manifest_path, manifest_sha256, f"before seed {seed} training", spec)
+    assert_reliability_unchanged(f"before seed {seed} training")
     result = train_model(training_config, evaluate_test=False, progress=report_progress)
-    _assert_manifest_unchanged(
-        manifest_path, manifest_sha256, f"after seed {seed} training", spec
-    )
+    _assert_manifest_unchanged(manifest_path, manifest_sha256, f"after seed {seed} training", spec)
+    assert_reliability_unchanged(f"after seed {seed} training")
     metrics_payload = _load_summary(result.metrics_path, spec)
     metrics_payload["experiment"] = {
         "protocol": spec.protocol,
@@ -1029,6 +1182,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         "feature_manifest_sha256": manifest_sha256,
         "configuration": configuration,
         "configuration_sha256": _canonical_hash(configuration),
+        "inputs": context.inputs,
     }
     metrics_payload["test_evaluation"] = {
         "status": "deferred",
@@ -1059,11 +1213,13 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     _assert_manifest_unchanged(
         manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
     )
+    assert_reliability_unchanged(f"before recording seed {seed} completion")
     return {
         "seed": seed,
         "status": "complete",
         "feature_manifest_sha256": manifest_sha256,
         "configuration_sha256": _canonical_hash(configuration),
+        "inputs": context.inputs,
         # Per-seed snapshot: with drift allowed, the summary's top-level
         # environment describes only the most recent run, so this is the
         # only record of which machine and card produced this checkpoint.
@@ -1088,9 +1244,7 @@ def run_seed(context: RunContext, seed: int) -> bool:
     """
     spec = context.spec
     if seed not in spec.seeds:
-        raise ValueError(
-            f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}"
-        )
+        raise ValueError(f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}")
     seed_dir = context.output_dir / f"seed-{seed}"
     lock = DirectoryLock(
         seed_dir / ".seed.lock",
@@ -1107,6 +1261,7 @@ def run_seed(context: RunContext, seed: int) -> bool:
             output_dir=context.output_dir,
             manifest_sha256=context.manifest_sha256,
             configuration=context.configuration,
+            inputs=context.inputs,
             spec=spec,
         )
         if complete:
@@ -1169,6 +1324,7 @@ def collect_summary(
             output_dir=context.output_dir,
             manifest_sha256=context.manifest_sha256,
             configuration=context.configuration,
+            inputs=context.inputs,
             spec=spec,
         )
         if complete and record is not None:
@@ -1190,6 +1346,7 @@ def reproduce_experiment(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
     seeds: Sequence[int] | None = None,
     collect: bool = True,
@@ -1206,6 +1363,7 @@ def reproduce_experiment(
         output_dir,
         device=device,
         graph_path=graph_path,
+        reliability_path=reliability_path,
         allow_environment_drift=allow_environment_drift,
     )
     for seed in context.spec.seeds if seeds is None else seeds:
@@ -1231,6 +1389,7 @@ def collect_only(
     *,
     device: str,
     graph_path: Path | None = None,
+    reliability_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> E0ExperimentResult:
     """Rebuild ``summary.json`` without training, after parallel seeds finish."""
@@ -1240,9 +1399,11 @@ def collect_only(
         output_dir,
         device=device,
         graph_path=graph_path,
+        reliability_path=reliability_path,
         allow_environment_drift=allow_environment_drift,
     )
     return collect_summary(context, allow_environment_drift=allow_environment_drift)
+
 
 def reproduce_e0(
     features_root: Path,
@@ -1265,6 +1426,7 @@ __all__ = [
     "E0B_SPEC",
     "E0C_SPEC",
     "E0D_SPEC",
+    "E0I_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",

@@ -36,6 +36,7 @@ import com.a105.zani.session.domain.repository.SessionParticipantRepository;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,6 +68,7 @@ class RecordingWebhookServiceTest {
                 null,
                 null,
                 null,
+                null,
                 List.of());
     }
 
@@ -77,7 +79,7 @@ class RecordingWebhookServiceTest {
             Boolean complete,
             List<EgressFileResult> files) {
         return new RecordingWebhookEvent(
-                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", files);
+                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files);
     }
 
     @BeforeEach
@@ -192,8 +194,25 @@ class RecordingWebhookServiceTest {
                 fileRepository,
                 sessionRepository,
                 participantRepository,
+                audioStreamRegistry,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
+
+    /** 코칭용 스트림 Egress 표시. 테스트가 직접 등록해 webhook 분기를 검증한다. */
+    private final java.util.Set<String> audioStreamEgressIds = new java.util.HashSet<>();
+
+    private final com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort audioStreamRegistry =
+            new com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort() {
+                @Override
+                public void remember(String egressId, long sessionId) {
+                    audioStreamEgressIds.add(egressId);
+                }
+
+                @Override
+                public boolean isAudioStream(String egressId) {
+                    return audioStreamEgressIds.contains(egressId);
+                }
+            };
 
     private void addParticipant(long id, SessionParticipantRole role) {
         participantsById.put(
@@ -329,6 +348,89 @@ class RecordingWebhookServiceTest {
         assertTrue(seenEvents.contains("EV_6"));
         // 처리 실패 → PROCESSED로 남지 않아 재전송에서 재처리된다.
         assertEquals(0, processedEvents.size());
+    }
+
+    @Test
+    void 코칭용_스트림_egress_이벤트는_녹화_처리_없이_종결한다() {
+        // 스트림 Egress 는 파일을 만들지 않아 recordings 행이 없다. 위 테스트처럼 재전송을 유도하면
+        // 행이 영원히 생기지 않아 LiveKit 이 무한 재전송한다.
+        audioStreamEgressIds.add("EG_ws");
+        nextEvent = egressEvent("EV_ws_1", RecordingWebhookEventType.EGRESS_STARTED, "EG_ws", null, List.of());
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_1"), "재전송되지 않도록 PROCESSED로 종결해야 한다");
+    }
+
+    @Test
+    void 표시가_없어도_페이로드의_출력_종류로_스트림_egress를_가려낸다() {
+        // Redis 가 죽어 remember 가 조용히 실패하면 표시가 영영 남지 않는다. 표시가 유일한 근거였을 때는
+        // 그 Egress 의 모든 후속 이벤트가 5xx 로 떨어져 LiveKit 이 무한 재전송했다.
+        audioStreamEgressIds.clear();
+        nextEvent = audioStreamEgressEvent("EV_ws_payload", "EG_ws_payload");
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_payload"), "표시 없이 페이로드만으로 종결해야 한다");
+    }
+
+    @Test
+    void 페이로드가_파일_출력이라고_알려주면_표시가_있어도_녹화로_처리한다() {
+        // 1차 근거가 2차 근거를 덮어야 한다. 반대로 동작하면 낡은 표시 하나가 정상 녹화를 통째로 건너뛴다.
+        audioStreamEgressIds.add("EG_file");
+        nextEvent = new RecordingWebhookEvent(
+                "EV_file_wins",
+                RecordingWebhookEventType.EGRESS_STARTED,
+                SESSION_ID,
+                null,
+                null,
+                null,
+                "EG_file",
+                null,
+                "TR_src",
+                false,
+                List.of());
+
+        // 녹화 경로로 들어갔다면 recordings 행이 없으므로 재전송을 유도하는 예외가 나야 한다.
+        // 표시를 우선했다면 조용히 PROCESSED 로 끝나 버려 정상 녹화가 통째로 누락된다.
+        assertThrows(RecordingNotReadyException.class, () -> service.process("{}", "ok"));
+        assertFalse(processedEvents.contains("EV_file_wins"), "파일 Egress 는 녹화 경로로 가야 한다");
+    }
+
+    /** 페이로드가 WebSocket 출력이라고 알려주는 egress 이벤트. */
+    private RecordingWebhookEvent audioStreamEgressEvent(String eventId, String egressId) {
+        return new RecordingWebhookEvent(
+                eventId,
+                RecordingWebhookEventType.EGRESS_STARTED,
+                SESSION_ID,
+                null,
+                null,
+                null,
+                egressId,
+                null,
+                "TR_src",
+                true,
+                List.of());
+    }
+
+    @Test
+    void 코칭용_스트림_egress_종료_이벤트도_파일을_만들지_않는다() {
+        audioStreamEgressIds.add("EG_ws");
+        nextEvent = egressEvent(
+                "EV_ws_2",
+                RecordingWebhookEventType.EGRESS_ENDED,
+                "EG_ws",
+                Boolean.TRUE,
+                List.of(new EgressFileResult(
+                        "/srv/zani/recordings/100/raw/instructor/x.ogg",
+                        SESSION_START.toEpochMilli(),
+                        SESSION_START.plusSeconds(10).toEpochMilli(),
+                        1_000L)));
+
+        service.process("{}", "ok");
+
+        assertTrue(processedEvents.contains("EV_ws_2"));
+        assertTrue(savedFiles.isEmpty(), "스트림 Egress 는 녹화 파일을 남기지 않는다");
     }
 
     @Test

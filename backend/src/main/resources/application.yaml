@@ -3,6 +3,13 @@ spring:
     name: ZANI-BE
   profiles:
     default: local
+  task:
+    scheduling:
+      # 기본값 1이면 @Scheduled 작업들이 스레드 하나를 공유한다. 녹화 outbox 릴레이는 한 번에 최대 20건을
+      # 처리하고 건마다 LiveKit 호출이 최대 60초 매달릴 수 있어, 100ms 주기인 강사 오디오 무음 패딩이
+      # 그동안 굶는다. 현재 스케줄 작업은 3개(무음 패딩·outbox 릴레이·세션 만료)라 여유 1개를 더 둔다.
+      pool:
+        size: 4
   jpa:
     open-in-view: false
     properties:
@@ -59,6 +66,30 @@ gms:
   mock-enabled: ${GMS_MOCK_ENABLED:true}
   read-timeout: ${GMS_READ_TIMEOUT:10s}
   connect-timeout: ${GMS_CONNECT_TIMEOUT:2s}
+  stt-model: ${GMS_STT_MODEL:whisper-1}
+  # 전사 전용 timeout. 재시도는 없다.
+  # 실측: 300초 클립이 GMS 부하에 따라 14~31초. 기준 문서 §9의 10초는 300초 클립에서 거의 항상
+  # 실패해 20초로 올렸다. 다만 실측 최대치(31초)까지 기다리지는 않는다 — 느린 응답을 끊는 쪽이
+  # 낫다고 봤다. 팁을 보내지 않으면 쿨타임이 시작되지 않아(§10 "알림 1회 후 10분") 다음 트리거가
+  # 부하가 덜한 시점에 다시 시도할 수 있고, 300초 전 발화에 40초 지연을 더한 팁은 강사에게
+  # 효용이 떨어진다. 운영 데이터가 쌓이면 팀에서 재조정한다.
+  transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
+  transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
+
+attention:
+  detector:
+    # 서버가 해석할 수 있는 특징 추출 계약. 배포 계약은 확정 문서 §3.1 의 mediapipe_98_v1 이다.
+    # 비워 두면 버전을 따지지 않는다(로컬·시연 편의). 추론 엔진 버전은 받지 않는다 — 티켓 61.
+    supported-feature-schema-versions:
+      - mediapipe_98_v1
+
+coaching-trigger:
+  # 최근 5분 유의 학생 비율의 하한. 이 값 이상이면 트리거한다(확정 문서 §7).
+  threshold: ${COACHING_TRIGGER_THRESHOLD:0.30}
+  # 트리거를 연 시각부터 다음 트리거를 막는 기간. 팁 유형과 무관한 단일 글로벌 쿨타임이다.
+  cooldown: ${COACHING_TRIGGER_COOLDOWN:PT10M}
+  # 확보된 강사 오디오가 이보다 짧으면 트리거하지 않는다. 이 경우에만 쿨타임을 시작하지 않는다.
+  minimum-audio: ${COACHING_TRIGGER_MINIMUM_AUDIO:PT1M}
 
 livekit:
   url: ${LIVEKIT_URL:}
@@ -66,6 +97,19 @@ livekit:
   api-secret: ${LIVEKIT_API_SECRET:}
   environment: ${LIVEKIT_ENVIRONMENT:local}
   token-ttl: ${LIVEKIT_TOKEN_TTL:PT10M}
+
+audio-clip:
+  # 강사 마이크 링버퍼가 유지하는 최근 구간. 서버 메모리에만 두고 저장하지 않는다.
+  window: ${AUDIO_CLIP_WINDOW:PT5M}
+  # 이보다 짧게 확보됐으면 전사를 시도하지 않는다(수업 시작 직후 등).
+  min-transcribable: ${AUDIO_CLIP_MIN_TRANSCRIBABLE:PT1M}
+  # Egress WebSocket 출력의 샘플레이트(s16le 모노). LiveKit은 들어오는 트랙을 따르며 보통 48kHz다.
+  sample-rate: ${AUDIO_CLIP_SAMPLE_RATE:48000}
+  # 버퍼를 동시에 들 수 있는 세션 수. 상한이 없으면 OOM으로 진행 중인 모든 강의가 끊긴다.
+  max-sessions: ${AUDIO_CLIP_MAX_SESSIONS:8}
+  # Egress가 오디오를 밀어 넣을 주소. Egress가 host 네트워크라 기본값(루프백)으로 도달한다.
+  # 접속 자격은 서버가 기동 시 만들어 덧붙이므로 설정할 값이 없다.
+  stream-url-template: ${AUDIO_CLIP_STREAM_URL_TEMPLATE:ws://127.0.0.1:18080/internal/audio/{sessionId}}
 
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).

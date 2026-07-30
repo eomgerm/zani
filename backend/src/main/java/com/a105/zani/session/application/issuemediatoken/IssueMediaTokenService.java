@@ -62,13 +62,14 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
         IssuedMediaToken issued =
                 liveKitTokenPort.issue(new MediaTokenRequest(identity, displayName, participant.role(), session.id()));
 
-        // 강의실은 진입 시 이 응답만 받으므로, 자동 종료 예정 시각도 함께 알려 종료 임박 안내를 띄울 수 있게 한다.
+        // 강의실은 진입 시 이 응답만 받으므로, 자동 종료 예정 시각과 강의명도 함께 내린다.
         return new IssueMediaTokenResult(
                 issued.liveKitUrl(),
                 issued.accessToken(),
                 issued.roomName(),
                 identity,
                 issued.expiresAt(),
-                session.expiresAt());
+                session.expiresAt(),
+                session.title());
     }
 }

@@ -35,6 +35,7 @@ export class PresenceReportError extends Error {
 export type PresenceReporter = (
   sessionId: string,
   heartbeat: PresenceHeartbeat,
+  accessToken: string,
   signal?: AbortSignal,
 ) => Promise<PresenceSnapshot>;
 
@@ -59,15 +60,28 @@ const isPresenceSnapshot = (value: unknown): value is PresenceSnapshot => {
 
 /**
  * presence heartbeat를 서버에 보고한다(POST /api/v1/sessions/{sessionId}/presence).
- * 인증 쿠키를 함께 보내고, 실패는 상태 코드를 담은 오류로 올려 호출부가 중단·재시도를 판단하게 한다.
+ *
+ * <p>서버는 Bearer Access Token 으로 사용자를 판별한다. 쿠키에는 refresh 토큰만 있고 그마저 {@code /auth/refresh} 경로 전용이라, 헤더를 빼면 무조건 401 이
+ * 되어 강사 이탈 감지가 동작하지 않는다.
+ *
+ * <p>실패는 상태 코드를 담은 오류로 올려 호출부가 중단·재시도를 판단하게 한다.
  */
-export const reportPresence: PresenceReporter = async (sessionId, heartbeat, signal) => {
+export const reportPresence: PresenceReporter = async (
+  sessionId,
+  heartbeat,
+  accessToken,
+  signal,
+) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");
   const response = await fetch(
     `${apiBaseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/presence`,
     {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
       credentials: "include",
       body: JSON.stringify(heartbeat),
       signal,

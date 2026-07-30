@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ParticipantGrid } from "./ParticipantGrid";
+import { ParticipantGrid, TILE_FIT, columnsFor } from "./ParticipantGrid";
 
 const participant = (id: number) => ({
   id: `participant-${id}`,
@@ -17,7 +17,54 @@ const many = (count: number) => Array.from({ length: count }, (_, index) => part
 
 afterEach(cleanup);
 
+/**
+ * 열 수는 인원에 따라 달라진다. Meet·Webex 처럼 적은 인원에서 타일이 커야 얼굴이 보인다.
+ *
+ * <p>혼자일 때 1열이어야 한다는 게 핵심이다. 고정 4열이면 혼자 있을 때 타일이 좌상단에 작게 남는다.
+ */
+describe("columnsFor", () => {
+  it.each([
+    [1, 1],
+    [2, 2],
+    [4, 2],
+    [5, 3],
+    [9, 3],
+    [10, 4],
+    [12, 4],
+  ])("인원 %i명이면 %i열", (count, expected) => {
+    expect(columnsFor(count, false)).toBe(expected);
+  });
+
+  /** 사이드 패널이 열리면 폭이 좁아, 4열은 타일이 너무 납작해진다. */
+  it("좁은 폭에서는 3열까지만 쓴다", () => {
+    expect(columnsFor(12, true)).toBe(3);
+    expect(columnsFor(2, true)).toBe(2);
+  });
+});
+
 describe("ParticipantGrid", () => {
+  /**
+   * 타일은 4:3 을 유지하되 칸을 넘지 않아야 한다.
+   *
+   * <p>`aspect-ratio` 만 주면 폭을 꽉 채운 뒤 높이가 넘쳐 잘린다. 그래서 칸 높이에서 폭 상한을 거꾸로 계산한다. jsdom 은 `cqh` 를 계산하지 않으므로 값이 붙었는지까지만 확인한다.
+   */
+  it("타일에 4:3 비율과 칸 높이 기준 폭 상한을 준다", () => {
+    render(<ParticipantGrid participants={many(1)} />);
+
+    // 비율은 DOM 에 남으므로 타일에 실제로 붙었다는 증거가 된다.
+    expect(screen.getByRole("group", { name: /참가자 0,/ })).toHaveStyle({ aspectRatio: "4 / 3" });
+    // 폭 상한은 jsdom 이 `cqh` 를 못 읽어 style 에서 지워지므로, 내려보내는 값으로 확인한다.
+    expect(TILE_FIT.width).toBe("min(100%, calc(100cqh * 4 / 3))");
+  });
+
+  /** 칸이 `cqh` 의 기준이 되어야 폭 상한이 계산된다. 이게 빠지면 상한이 무시돼 타일이 잘린다. */
+  it("타일을 감싼 칸이 크기 컨테이너다", () => {
+    render(<ParticipantGrid participants={many(1)} />);
+
+    const cell = screen.getByRole("group", { name: /참가자 0,/ }).parentElement;
+    expect(cell?.className).toContain("[container-type:size]");
+  });
+
   it("exposes the total participant count regardless of how many fit on a page", () => {
     render(<ParticipantGrid participants={many(18)} />);
 
@@ -39,14 +86,14 @@ describe("ParticipantGrid", () => {
     expect(screen.getByRole("group", { name: /참가자 12,/ })).toBeVisible();
   });
 
-  it("refills a short last page from the start so the grid stays full", () => {
+  it("shows only the remaining participants on a short last page", () => {
     render(<ParticipantGrid participants={many(18)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
 
-    // 남은 6명(12~17) 뒤는 앞에서부터 다시 채워 12칸을 유지한다.
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
-    expect(screen.getAllByRole("group", { name: /참가자 0,/ })).toHaveLength(1);
+    // 한 사람당 타일 하나다. 남는 칸을 앞 참가자로 채우면 인원을 오해하게 된다.
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(6);
+    expect(screen.queryByRole("group", { name: /참가자 0,/ })).not.toBeInTheDocument();
   });
 
   it("hides the pager when everyone fits on one page", () => {
@@ -79,9 +126,8 @@ describe("ParticipantGrid", () => {
       />,
     );
 
-    // 2명이 12칸을 순환 채우므로 같은 학생 타일이 여러 번 나온다.
-    expect(screen.getAllByRole("button", { name: "참가자 1 음소거" })).toHaveLength(6);
-    expect(screen.getAllByRole("button", { name: "참가자 1 퇴장" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: "참가자 1 음소거" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "참가자 1 퇴장" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "참가자 0 음소거" })).not.toBeInTheDocument();
   });
 });

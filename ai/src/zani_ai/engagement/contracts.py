@@ -28,6 +28,14 @@ LOSS_SCHEMES = ("cross_entropy", "focal")
 #: batch composition rather than in the loss.
 SAMPLER_SCHEMES = ("none", "balanced")
 
+#: Target encodings for the softmax head. ``one_hot`` is the usual hard target;
+#: ``sord`` (Diaz & Marathe, CVPR 2019) spreads probability over the neighbouring
+#: grades by squared grade distance, which leaves the head and the argmax
+#: decoding untouched and changes only what the loss is asked to match. Kept
+#: beside the other scheme tuples so the CLI can list them without importing
+#: torch.
+TARGET_ENCODINGS = ("one_hot", "sord")
+
 _LABEL_LOOKUP = {label.casefold(): label for label in LABELS}
 _LABEL_LOOKUP["barely-engaged"] = "Barely-Engaged"
 _SPLIT_FILES: dict[SplitName, str] = {
@@ -119,6 +127,8 @@ def _validate_split_ids(
     labels: dict[str, _LabelRow],
     videos_dir: Path,
     video_extension: str,
+    *,
+    require_videos: bool,
 ) -> list[str]:
     problems: list[str] = []
     clip_splits: dict[str, list[SplitName]] = {}
@@ -133,7 +143,7 @@ def _validate_split_ids(
                 problems.append(f"clip {clip_id} has no label")
             elif label.subject_id:
                 subject_splits.setdefault(label.subject_id, set()).add(split)
-            if not (videos_dir / f"{clip_id}{video_extension}").is_file():
+            if require_videos and not (videos_dir / f"{clip_id}{video_extension}").is_file():
                 problems.append(f"missing video: videos/{clip_id}{video_extension}")
     for clip_id, splits in clip_splits.items():
         if len(splits) > 1 and len(set(splits)) == 1:
@@ -154,11 +164,14 @@ def load_dataset_contract(
     label_column: str = "label",
     subject_column: str | None = "subject_id",
     video_extension: str = ".mp4",
+    require_videos: bool = True,
 ) -> DatasetContract:
     """Validate and load an official-style EngageNet dataset directory."""
     root = root.resolve()
     extension = video_extension if video_extension.startswith(".") else f".{video_extension}"
-    required = ("final_labels.csv", "train.txt", "valid.txt", "test.txt", "videos")
+    required = ["final_labels.csv", "train.txt", "valid.txt", "test.txt"]
+    if require_videos:
+        required.append("videos")
     missing = [name for name in required if not (root / name).exists()]
     if missing:
         raise DatasetContractError([f"missing required path: {name}" for name in missing])
@@ -167,7 +180,15 @@ def load_dataset_contract(
         root / "final_labels.csv", id_column, label_column, subject_column
     )
     split_ids = {split: _read_split(root / filename) for split, filename in _SPLIT_FILES.items()}
-    problems.extend(_validate_split_ids(split_ids, labels, root / "videos", extension))
+    problems.extend(
+        _validate_split_ids(
+            split_ids,
+            labels,
+            root / "videos",
+            extension,
+            require_videos=require_videos,
+        )
+    )
     if problems:
         raise DatasetContractError(problems)
 

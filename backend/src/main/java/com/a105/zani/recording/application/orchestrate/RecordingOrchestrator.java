@@ -13,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.OrphanedTrackEgressException;
+import com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort;
+import com.a105.zani.recording.application.port.AudioStreamEgressRequest;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.RecordingOutboxPort;
@@ -26,6 +28,7 @@ import com.a105.zani.recording.domain.model.Recording;
 import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.domain.model.RecordingTrackPolicy;
 import com.a105.zani.recording.domain.model.TrackRecordingDecision;
+import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
@@ -48,7 +51,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     private static final Duration RETRY_BASE_DELAY = Duration.ofSeconds(30);
     /**
      * IN_PROGRESS로 방치된 행을 되살리는 lease 시간. 외부 호출이 아직 진행 중인데 lease가 만료되면 다른 인스턴스가 같은 트랙에 Egress를 중복 시작할 수 있으므로, LiveKit 호출
-     * 상한(LiveKitTrackEgressAdapter.CALL_TIMEOUT = 20초)보다 반드시 크게 잡는다.
+     * 상한({@code LiveKitTrackEgressAdapter.CALL_TIMEOUT} = 60초)보다 반드시 크게 잡는다. 그쪽 상한을 올릴 때는 이 값도 함께 봐야 한다.
      */
     private static final Duration CLAIM_LEASE = Duration.ofMinutes(2);
     /** LiveKit Track SID 형식. 경로 구성에 쓰이므로 형식 밖 값은 거부한다. */
@@ -57,6 +60,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     private final RecordingOutboxPort outboxStore;
     private final TrackEgressPort trackEgressPort;
     private final RecordingRepository recordingRepository;
+    private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
     private final Clock clock;
 
     @Override
@@ -83,11 +87,22 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                 || !TRACK_SID_PATTERN.matcher(command.trackSid()).matches()) {
             throw new InvalidRecordingTrackException();
         }
+        TrackEgressPayload payload = new TrackEgressPayload(command.trackSid(), alias.value(), command.source());
         boolean enqueued = outboxStore.enqueue(new NewRecordingOutboxMessage(
                 trackDedupKey(command.sessionId(), command.trackSid()),
                 RecordingOutboxType.START_TRACK_EGRESS,
                 command.sessionId(),
-                new TrackEgressPayload(command.trackSid(), alias.value(), command.source())));
+                payload));
+
+        // 강사 마이크만 코칭 버퍼로도 흘려보낸다. 파일 출력과 WebSocket 출력은 한 Egress 가 동시에 낼 수 없어
+        // 별도 실행을 하나 더 띄운다. dedupKey 가 달라 두 작업이 공존하며, 각자 한 번씩만 시작된다.
+        if (command.role() == SessionParticipantRole.INSTRUCTOR && command.source() == TrackSource.MICROPHONE) {
+            outboxStore.enqueue(new NewRecordingOutboxMessage(
+                    audioStreamDedupKey(command.sessionId(), command.trackSid()),
+                    RecordingOutboxType.START_AUDIO_STREAM_EGRESS,
+                    command.sessionId(),
+                    payload));
+        }
         return new RequestTrackEgressResult(decision, enqueued);
     }
 
@@ -159,7 +174,41 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     private void handle(PendingRecordingOutboxMessage message, int attempt) {
         switch (message.type()) {
             case START_TRACK_EGRESS -> startTrackEgress(message, attempt);
+            case START_AUDIO_STREAM_EGRESS -> startAudioStreamEgress(message, attempt);
         }
+    }
+
+    /**
+     * 강사 오디오 실시간 전달용 Egress 를 시작한다.
+     *
+     * <p>파일 Egress 와 달리 recordings 행을 만들지 않는다. 이 스트림은 녹화물이 아니라 메모리 버퍼로 흘러가 전사 후 사라지므로 남길 산출물이 없다. 그래서 고아 Egress 보정 로직이
+     * 없고, 시작 자체가 끝까지 실패하면 재시도 후 포기한다 — 코칭이 빠질 뿐 수업과 녹화에는 영향이 없다.
+     *
+     * <p><b>중복 방지</b>: 산출물이 없어도 재실행 시 기존 실행을 채택해야 한다. 같은 트랙에 스트림 Egress 가 두 개 붙으면 두 PCM 이 한 링버퍼에 뒤섞여 전사 내용이 깨지고, 누적
+     * 바이트가 경과 시간을 앞질러 무음 패딩이 영구히 멈춘다(벽시계 정렬이 복구되지 않는다). 예외도 로그도 남지 않아 조용히 틀린다.
+     */
+    private void startAudioStreamEgress(PendingRecordingOutboxMessage message, int attempt) {
+        TrackEgressPayload payload = message.payload();
+        AudioStreamEgressRequest request = new AudioStreamEgressRequest(message.sessionId(), payload.trackSid());
+
+        // 재실행(완료 표시 유실·크래시 후 lease 회수·재시도)일 수 있으므로, 첫 시도가 아니면 아직 살아 있는 스트림
+        // Egress 를 먼저 찾아 채택한다. 종료된 실행은 채택하지 않는다(흐름이 끊긴 상태라 새로 시작해야 한다).
+        String egressId = attempt > FIRST_ATTEMPT
+                ? trackEgressPort
+                        .findLiveAudioStreamEgressId(request)
+                        .orElseGet(
+                                () -> trackEgressPort.startAudioStream(request).egressId())
+                : trackEgressPort.startAudioStream(request).egressId();
+
+        // recordings 행이 없는 Egress 라, webhook 이 "녹화 미준비"로 오해하지 않도록 종류를 표시해 둔다.
+        // 채택한 경우에도 다시 표시한다 — 표시가 TTL 로 사라졌거나 애초에 저장에 실패했을 수 있고, 저장은 멱등하다.
+        audioStreamEgressRegistry.remember(egressId, message.sessionId());
+        log.info(
+                "Instructor audio stream egress {} started: session={}, trackSid={}, attempt={}",
+                egressId,
+                message.sessionId(),
+                payload.trackSid(),
+                attempt);
     }
 
     private void startTrackEgress(PendingRecordingOutboxMessage message, int attempt) {
@@ -207,5 +256,10 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
 
     private static String trackDedupKey(Long sessionId, String trackSid) {
         return "track:" + sessionId + ":" + trackSid;
+    }
+
+    /** 파일 Egress 와 다른 키라 같은 트랙에 두 작업이 공존한다. */
+    private static String audioStreamDedupKey(Long sessionId, String trackSid) {
+        return "audio-stream:" + sessionId + ":" + trackSid;
     }
 }

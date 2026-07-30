@@ -22,8 +22,8 @@ class AttentionEventControllerTest {
     private static final long NON_MEMBER_ID = -910L;
     private static final long MISSING_SESSION_ID = 9_000_910L;
     private static final String BODY = """
-            {"type":"CONFUSED","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-            "durationSec":10,"signalQuality":0.92,"clientEventId":"web-test-1"}""";
+            {"outcome":"BARELY_ENGAGED","windowStartedAt":"2026-07-28T09:00:00Z","observedAt":"2026-07-28T09:00:10Z",
+            "signalQuality":0.92,"featureSchemaVersion":"mediapipe_98_v1","clientEventId":"web-test-1"}""";
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -60,9 +60,7 @@ class AttentionEventControllerTest {
     @Test
     void rejectsARequestCarryingRawSignalsThatTheContractForbids() throws Exception {
         String withLandmarks = """
-                {"type":"CONFUSED","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-                "durationSec":10,"signalQuality":0.92,"clientEventId":"web-test-2",\
-                "landmarks":[[0.1,0.2,0.3]]}""";
+                {"outcome":"BARELY_ENGAGED","windowStartedAt":"2026-07-28T09:00:00Z","observedAt":"2026-07-28T09:00:10Z","signalQuality":0.92,"featureSchemaVersion":"mediapipe_98_v1","clientEventId":"web-test-2","landmarks":[[0.1,0.2,0.3]]}""";
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", MISSING_SESSION_ID)
                         .header("Authorization", "Bearer " + accessToken())
@@ -74,8 +72,7 @@ class AttentionEventControllerTest {
     @Test
     void rejectsAnUnknownAttentionState() throws Exception {
         String unknownState = """
-                {"type":"NEEDS_CHECK","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-                "durationSec":10,"signalQuality":0.92,"clientEventId":"web-test-3"}""";
+                {"outcome":"NEEDS_CHECK","windowStartedAt":"2026-07-28T09:00:00Z","observedAt":"2026-07-28T09:00:10Z","signalQuality":0.92,"featureSchemaVersion":"mediapipe_98_v1","clientEventId":"web-test-3"}""";
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", MISSING_SESSION_ID)
                         .header("Authorization", "Bearer " + accessToken())
@@ -87,8 +84,7 @@ class AttentionEventControllerTest {
     @Test
     void rejectsASignalQualityOutsideTheZeroToOneRange() throws Exception {
         String outOfRange = """
-                {"type":"GOOD","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-                "durationSec":10,"signalQuality":1.5,"clientEventId":"web-test-4"}""";
+                {"outcome":"BARELY_ENGAGED","windowStartedAt":"2026-07-28T09:00:00Z","observedAt":"2026-07-28T09:00:10Z","signalQuality":1.5,"featureSchemaVersion":"mediapipe_98_v1","clientEventId":"web-test-4"}""";
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", MISSING_SESSION_ID)
                         .header("Authorization", "Bearer " + accessToken())
@@ -100,8 +96,7 @@ class AttentionEventControllerTest {
     @Test
     void rejectsAMissingClientEventIdBecauseIdempotencyDependsOnIt() throws Exception {
         String withoutEventId = """
-                {"type":"GOOD","startedAt":"2026-07-28T09:00:00Z","endedAt":"2026-07-28T09:00:10Z",\
-                "durationSec":10,"signalQuality":0.92}""";
+                {"outcome":"BARELY_ENGAGED","windowStartedAt":"2026-07-28T09:00:00Z","observedAt":"2026-07-28T09:00:10Z","signalQuality":0.92,"featureSchemaVersion":"mediapipe_98_v1"}""";
 
         mockMvc.perform(post("/api/v1/sessions/{sessionId}/attention-events", MISSING_SESSION_ID)
                         .header("Authorization", "Bearer " + accessToken())

@@ -4,6 +4,7 @@ set -Eeuo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 compose_file="${script_dir}/compose.yaml"
+runtime_env="${RUNTIME_ENV:-/etc/zani/application/runtime.env}"
 
 for command_name in docker curl; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
@@ -31,6 +32,7 @@ compose_run() {
     sudo env \
       "FRONTEND_IMAGE=${FRONTEND_IMAGE}" \
       "NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}" \
+      "GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}" \
       docker compose "$@"
   else
     docker compose "$@"
@@ -61,6 +63,18 @@ fi
 
 export FRONTEND_IMAGE="${FRONTEND_IMAGE:-zani/frontend:${release_sha}}"
 export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-}"
+
+if [[ -z "${GOOGLE_OAUTH_CLIENT_ID:-}" && -r "${runtime_env}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${runtime_env}"
+  set +a
+fi
+if [[ -z "${GOOGLE_OAUTH_CLIENT_ID:-}" ]]; then
+  echo "GOOGLE_OAUTH_CLIENT_ID must be exported or defined in ${runtime_env}." >&2
+  exit 1
+fi
+export GOOGLE_OAUTH_CLIENT_ID
 
 previous_image="$(docker_run inspect --format '{{.Config.Image}}' zani-frontend 2>/dev/null || true)"
 

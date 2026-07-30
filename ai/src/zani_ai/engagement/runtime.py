@@ -1,4 +1,4 @@
-"""Execution-environment resolution shared by the experiment and report paths.
+"""Execution-environment resolution shared by experiment and finalization paths.
 
 Two things vary with *where* a run happens rather than *what* is being run: the
 physical device it lands on, and where the landmark graph file lives. A laptop
@@ -74,9 +74,7 @@ def resolve_landmark_graph(features_root: Path, explicit: Path | None = None) ->
     if from_environment:
         stated = Path(from_environment)
         if not stated.is_file():
-            raise FileNotFoundError(
-                f"{GRAPH_PATH_ENV} does not point at a file: {stated}"
-            )
+            raise FileNotFoundError(f"{GRAPH_PATH_ENV} does not point at a file: {stated}")
         return stated
 
     candidates = (
@@ -88,8 +86,7 @@ def resolve_landmark_graph(features_root: Path, explicit: Path | None = None) ->
             return candidate
     tried = "\n  ".join(str(candidate) for candidate in candidates)
     raise FileNotFoundError(
-        f"landmark graph not found; pass --graph or set {GRAPH_PATH_ENV}.\n"
-        f"Tried:\n  {tried}"
+        f"landmark graph not found; pass --graph or set {GRAPH_PATH_ENV}.\nTried:\n  {tried}"
     )
 
 

@@ -1,14 +1,16 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import type { AttentionPrediction } from "../domain/attentionPrediction";
-import type { FrameLandmarkerValues } from "../infrastructure/frameContracts";
 import type {
+  AttentionFeatureDetector,
+  AttentionFrame,
+  AttentionFrameSourceHandlers,
   AttentionInferenceClient,
   AttentionInferenceFailure,
-} from "../infrastructure/attentionInferenceClient";
-import { BLENDSHAPE_NAMES } from "../infrastructure/frameFeatures";
-import { useAttentionDetection, type FrameScheduler } from "./useAttentionDetection";
+} from "../application/attentionDetectionPorts";
+import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
+import type { DetectorOutput, DetectorReport } from "../domain/detectionOutcome";
+import { useAttentionDetection } from "./useAttentionDetection";
 
 /**
  * 판정 흐름 자체는 `application/attentionDetectionSession.test.ts` 가 검증한다.
@@ -16,55 +18,29 @@ import { useAttentionDetection, type FrameScheduler } from "./useAttentionDetect
  * 세션 간 결과 격리, 상위 통지.
  */
 
-/** 얼굴이 정면을 보는 유효한 MediaPipe 출력 1장. */
-function detectedFace(): FrameLandmarkerValues {
-  const landmarks = Array.from({ length: 478 }, () => ({ x: 0, y: 0, z: 0 }));
-  const set = (index: number, x: number, y: number) => {
-    landmarks[index] = { x, y, z: 0 };
-  };
-  set(33, 0.1, 0.5); set(133, 0.3, 0.5); set(159, 0.2, 0.4); set(145, 0.2, 0.6);
-  set(263, 0.9, 0.5); set(362, 0.7, 0.5); set(386, 0.8, 0.4); set(374, 0.8, 0.6);
-  for (let index = 468; index < 473; index += 1) set(index, 0.2, 0.55);
-  for (let index = 473; index < 478; index += 1) set(index, 0.8, 0.45);
-  set(1, 0.4, 0.6);
-  return {
-    landmarks,
-    transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-    blendshapes: new Map(BLENDSHAPE_NAMES.map((name, index) => [name, index / 100])),
-  };
+function detectedFeatures(): Float32Array {
+  return new Float32Array(49).fill(1);
 }
 
-function manualScheduler() {
-  const callbacks = new Map<number, (timestampMs: number) => void>();
-  let nextHandle = 1;
-  const scheduler: FrameScheduler = {
-    request(callback) {
-      const handle = nextHandle;
-      nextHandle += 1;
-      callbacks.set(handle, callback);
-      return handle;
-    },
-    cancel(handle) {
-      callbacks.delete(handle);
-    },
-  };
+function manualFrameSource() {
+  let options: AttentionFrameSourceHandlers | null = null;
+  const stop = vi.fn<() => void>(() => {
+    options = null;
+  });
   return {
-    scheduler,
+    createFrameSource(next: AttentionFrameSourceHandlers) {
+      options = next;
+      return { stop };
+    },
+    stop,
     get pending() {
-      return callbacks.size;
+      return options === null ? 0 : 1;
     },
-    tick(timestampMs: number) {
-      const due = [...callbacks.values()];
-      callbacks.clear();
-      due.forEach((callback) => callback(timestampMs));
+    emit(timestampMs: number) {
+      const frame: AttentionFrame = { close: vi.fn<() => void>() };
+      options?.onFrame(frame, timestampMs);
     },
   };
-}
-
-function readyVideoRef() {
-  const video = document.createElement("video");
-  Object.defineProperty(video, "readyState", { value: 2, configurable: true });
-  return { current: video };
 }
 
 const PREDICTION: AttentionPrediction = {
@@ -73,22 +49,26 @@ const PREDICTION: AttentionPrediction = {
 };
 
 describe("useAttentionDetection", () => {
-  let frames: ReturnType<typeof manualScheduler>;
-  let close: ReturnType<typeof vi.fn>;
-  let terminate: ReturnType<typeof vi.fn>;
-  let createLandmarker: ReturnType<typeof vi.fn>;
-  let onPrediction: ReturnType<typeof vi.fn>;
-  let onStatusChange: ReturnType<typeof vi.fn>;
+  let frames: ReturnType<typeof manualFrameSource>;
+  let close: Mock<() => void>;
+  let terminate: Mock<AttentionInferenceClient["terminate"]>;
+  let createFeatureDetector: Mock<() => Promise<AttentionFeatureDetector>>;
+  let onPrediction: Mock<(prediction: AttentionPrediction) => void>;
+  let onStatusChange: Mock<(status: AttentionStatus) => void>;
+  let onDetection: Mock<(output: DetectorOutput) => void>;
+  let onReport: ReturnType<typeof vi.fn<(report: DetectorReport) => void>>;
   let emitPrediction: (prediction: AttentionPrediction) => void;
   let renderCount: number;
 
   beforeEach(() => {
-    frames = manualScheduler();
+    frames = manualFrameSource();
     close = vi.fn();
     terminate = vi.fn();
-    createLandmarker = vi.fn(async () => ({ detect: () => detectedFace(), close }));
+    createFeatureDetector = vi.fn(async () => ({ detect: detectedFeatures, close }));
     onPrediction = vi.fn();
     onStatusChange = vi.fn();
+    onDetection = vi.fn();
+    onReport = vi.fn();
     renderCount = 0;
   });
 
@@ -100,18 +80,25 @@ describe("useAttentionDetection", () => {
     return { submit: vi.fn(), terminate };
   }
 
-  function render(camera: "on" | "off" | "denied" = "on") {
-    const videoRef = readyVideoRef();
+  function render(
+    camera: "on" | "off" | "denied" = "on",
+    track: MediaStreamTrack | null = {
+      readyState: "live",
+      muted: false,
+    } as MediaStreamTrack,
+  ) {
     return renderHook(
       (props: { camera: "on" | "off" | "denied" }) => {
         renderCount += 1;
         return useAttentionDetection({
-          videoRef,
           camera: props.camera,
+          track,
           onPrediction,
           onStatusChange,
-          scheduler: frames.scheduler,
-          createLandmarker,
+          onDetection,
+          onReport,
+          createFrameSource: frames.createFrameSource,
+          createFeatureDetector,
           createInferenceClient,
         });
       },
@@ -121,7 +108,7 @@ describe("useAttentionDetection", () => {
 
   async function advance(untilMs: number, fromMs = 0) {
     for (let timestamp = fromMs; timestamp <= untilMs; timestamp += 100) {
-      await act(async () => frames.tick(timestamp));
+      await act(async () => frames.emit(timestamp));
     }
   }
 
@@ -130,8 +117,75 @@ describe("useAttentionDetection", () => {
     await act(async () => {});
 
     expect(result.current.status).toBe("idle");
-    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(createFeatureDetector).not.toHaveBeenCalled();
     expect(frames.pending).toBe(0);
+  });
+
+  it("reports CAMERA_OFF immediately and every ten seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const view = render("off");
+    await act(async () => {});
+
+    expect(onReport).toHaveBeenNthCalledWith(1, {
+      outcome: "CAMERA_OFF",
+      observedAtMs: 0,
+    });
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onReport).toHaveBeenNthCalledWith(2, {
+      outcome: "CAMERA_OFF",
+      observedAtMs: 10_000,
+    });
+
+    view.unmount();
+    vi.useRealTimers();
+  });
+
+  it("notifies the local coaching pipeline when the camera turns off", async () => {
+    render("off");
+    await act(async () => {});
+
+    expect(onDetection).toHaveBeenCalledWith({ outcome: "CAMERA_OFF" });
+  });
+
+  it("treats a missing local camera track as CAMERA_OFF", async () => {
+    const { result } = render("on", null);
+    await act(async () => {});
+
+    expect(result.current.status).toBe("idle");
+    expect(createFeatureDetector).not.toHaveBeenCalled();
+    expect(onReport).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "CAMERA_OFF" }),
+    );
+  });
+
+  it("reports detector startup failure immediately and every ten seconds", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    createFeatureDetector.mockRejectedValue(new Error("wasm 404"));
+
+    const view = render("on");
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(onReport).toHaveBeenNthCalledWith(1, {
+      outcome: "DETECTOR_UNAVAILABLE",
+      observedAtMs: 0,
+    });
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(onReport).toHaveBeenNthCalledWith(2, {
+      outcome: "DETECTOR_UNAVAILABLE",
+      observedAtMs: 10_000,
+    });
+
+    view.unmount();
+    warn.mockRestore();
+    vi.useRealTimers();
   });
 
   it("reports a denied camera permission without starting a session", async () => {
@@ -139,7 +193,7 @@ describe("useAttentionDetection", () => {
     await act(async () => {});
 
     expect(result.current.status).toBe("permissionDenied");
-    expect(createLandmarker).not.toHaveBeenCalled();
+    expect(createFeatureDetector).not.toHaveBeenCalled();
   });
 
   it("exposes the status the session reports", async () => {
@@ -171,6 +225,19 @@ describe("useAttentionDetection", () => {
     expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
     expect(onStatusChange).toHaveBeenCalledWith("collecting");
     expect(onStatusChange).toHaveBeenCalledWith("measuring");
+  });
+
+  it("notifies the local coaching pipeline with probabilities", async () => {
+    render();
+    await act(async () => {});
+    await advance(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onDetection).toHaveBeenCalledWith({
+      outcome: "Engaged",
+      probabilities: [0.1, 0.1, 0.7, 0.1],
+    });
   });
 
   it("does not re-render once per sample while the status is unchanged", async () => {

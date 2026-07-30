@@ -53,13 +53,21 @@ class CreateSessionContractTest {
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
         insertInstructorIfAbsent();
+        // 앞선 실행이 정리를 못 마치고 죽었으면 3시간짜리 잠금이 남아 이 테스트가 409 를 받는다.
+        activationLockPort.release(INSTRUCTOR_ID);
     }
 
     @AfterEach
     void tearDown() {
-        sessionJpaRepository.findAll().stream()
-                .filter(session -> session.getHostMemberId().equals(INSTRUCTOR_ID))
-                .forEach(sessionJpaRepository::delete);
+        // 자식 행을 먼저 지운다. 세션 생성이 강사 참가자 행을 함께 만들므로, 세션부터 지우면 FK 위반으로 정리가 끊기고
+        // 그 뒤의 잠금 해제가 실행되지 않아 다음 실행이 "이미 진행 중인 수업" 으로 막힌다.
+        jdbcTemplate.update(
+                "DELETE FROM session_participants WHERE session_id IN (SELECT id FROM sessions WHERE host_member_id = ?)",
+                INSTRUCTOR_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_status_changes WHERE session_id IN (SELECT id FROM sessions WHERE host_member_id = ?)",
+                INSTRUCTOR_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE host_member_id = ?", INSTRUCTOR_ID);
         activationLockPort.release(INSTRUCTOR_ID);
         jdbcTemplate.update("DELETE FROM members WHERE id = ?", INSTRUCTOR_ID);
     }

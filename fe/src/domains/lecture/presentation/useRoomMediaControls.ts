@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RoomEvent } from "livekit-client";
+import { MediaDeviceFailure, RoomEvent } from "livekit-client";
 import type { Room } from "livekit-client";
 
 import { readPrejoinResult } from "@/features/media/prejoinResult";
@@ -29,13 +29,23 @@ const TRACK_SOURCE_CAMERA = 1;
 const TRACK_SOURCE_MICROPHONE = 2;
 
 const TOGGLE_FAILURE_MESSAGE = "장치를 사용할 수 없습니다. 연결과 권한을 확인해 주세요.";
+const PERMISSION_DENIED_MESSAGE = "브라우저가 장치 사용을 막았습니다. 권한을 허용해 주세요.";
 const SWITCH_FAILURE_MESSAGE = "선택한 장치로 바꾸지 못했습니다. 다른 장치를 선택해 주세요.";
 
 /** 마이크·카메라 중 어느 장치의 결과인지. 오류 안내를 장치별로 구분하는 데 쓴다. */
 type MediaKind = "microphone" | "camera";
 
 /** 실패한 장치와 안내 문구. 같은 장치가 성공할 때만 지운다. */
-type MediaFailure = { kind: MediaKind; message: string };
+type MediaFailure = {
+  kind: MediaKind;
+  message: string;
+  /** 브라우저가 권한을 거부해 실패한 경우. 참여도 판정은 이 상태를 따로 다뤄야 한다. */
+  denied: boolean;
+};
+
+/** 장치 실패가 권한 거부인지 판정한다. LiveKit이 getUserMedia 오류를 이 helper 로 분류해 준다. */
+const isPermissionDenied = (error: unknown): boolean =>
+  MediaDeviceFailure.getFailure(error) === MediaDeviceFailure.PermissionDenied;
 
 const kindOfDevice = (kind: MediaDeviceKind): MediaKind =>
   kind === CAMERA_KIND ? "camera" : "microphone";
@@ -53,6 +63,8 @@ export type RoomMediaControls = {
   cameraBlocked: boolean;
   /** 장치 조작 실패 안내. 실패한 장치가 다시 성공할 때만 사라진다(다른 장치 조작에는 영향받지 않는다). */
   mediaError: string | null;
+  /** 브라우저가 카메라 권한을 거부한 상태. 학생이 스스로 카메라를 끈 것과 구분해야 할 때 쓴다. */
+  cameraPermissionDenied: boolean;
   /** 선택 가능한 마이크 목록. */
   microphones: readonly SelectOption[];
   /** 선택 가능한 카메라 목록. */
@@ -144,9 +156,9 @@ function snapshot(room: Room | null): MediaSnapshot {
  * 화면 상태는 localParticipant를 그대로 스냅샷하므로, 서버·다른 기기에서 트랙이 바뀌어도 같은 값을 보여준다.
  * 재연결 중에는 조작을 막고, 언마운트/room 교체 시 리스너와 진행 중인 요청 결과를 모두 버린다.
  *
- * @param prejoinInviteCode 입장 전 점검에서 고른 장치를 이어 쓰기 위한 초대 코드. 저장값이 없으면 기본 장치로 진행한다.
+ * @param prejoinSessionId 입장 전 점검 결과를 찾을 세션 ID. 저장값이 없으면 기본 장치로 진행한다(강사는 점검을 거치지 않는다).
  */
-export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaControls {
+export function useRoomMediaControls(prejoinSessionId?: string): RoomMediaControls {
   const { room, connectionState } = useRoomConnection();
   const [state, setState] = useState<MediaSnapshot>(disconnectedSnapshot);
   const [devices, setDevices] = useState<DeviceOptions>(noDeviceOptions);
@@ -157,6 +169,14 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
   // 성공한 장치의 안내만 지운다. 마이크 실패 안내가 카메라 조작 성공으로 사라지면 안 된다.
   const clearFailure = useCallback(
     (kind: MediaKind) => setFailure((current) => (current?.kind === kind ? null : current)),
+    [],
+  );
+
+  // 장치 전환 성공은 publish 를 시도하지 않으므로 권한이 허용됐다는 증거가 아니다.
+  // 권한 거부는 그대로 두고, 고쳐졌을 수 있는 실패만 지운다.
+  const clearRecoverableFailure = useCallback(
+    (kind: MediaKind) =>
+      setFailure((current) => (current?.kind === kind && !current.denied ? null : current)),
     [],
   );
   // 진행 중인 요청이 끝난 뒤에도 같은 room인지 확인해, 이미 끊긴 room의 상태를 되살리지 않는다.
@@ -208,10 +228,16 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
             clearFailure(kind);
             setState(snapshot(room));
           },
-          () => {
-            if (currentRoom.current === room) {
-              setFailure({ kind, message: TOGGLE_FAILURE_MESSAGE });
+          (error: unknown) => {
+            if (currentRoom.current !== room) {
+              return;
             }
+            const denied = isPermissionDenied(error);
+            setFailure({
+              kind,
+              message: denied ? PERMISSION_DENIED_MESSAGE : TOGGLE_FAILURE_MESSAGE,
+              denied,
+            });
           },
         )
         .finally(() => inFlight.current.delete(kind));
@@ -240,20 +266,26 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
             return;
           }
           if (switched === false) {
-            setFailure({ kind: mediaKind, message: SWITCH_FAILURE_MESSAGE });
+            setFailure({ kind: mediaKind, message: SWITCH_FAILURE_MESSAGE, denied: false });
             return;
           }
-          clearFailure(mediaKind);
+          clearRecoverableFailure(mediaKind);
           setState(snapshot(room));
         },
-        () => {
-          if (currentRoom.current === room) {
-            setFailure({ kind: mediaKind, message: SWITCH_FAILURE_MESSAGE });
+        (error: unknown) => {
+          if (currentRoom.current !== room) {
+            return;
           }
+          const denied = isPermissionDenied(error);
+          setFailure({
+            kind: mediaKind,
+            message: denied ? PERMISSION_DENIED_MESSAGE : SWITCH_FAILURE_MESSAGE,
+            denied,
+          });
         },
       );
     },
-    [room, clearFailure],
+    [room, clearRecoverableFailure],
   );
 
   const selectMicrophone = useCallback(
@@ -295,26 +327,42 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
     };
   }, [room]);
 
-  // 입장 전 점검에서 고른 장치를 강의실에서도 이어 쓴다. room 연결마다 한 번만 적용한다.
+  /**
+   * 입장 전 점검에서 고른 장치를 강의실에서도 이어 쓰고, 카메라·마이크를 켠 상태로 시작한다. room 연결마다 한 번만 적용한다.
+   *
+   * <p>켜 주는 이유: 방금 장치 점검을 통과하고 들어왔는데 둘 다 꺼져 있으면 고장으로 읽힌다. 점검을 통과했다는 건 권한이 있고 장치가 동작한다는 뜻이라, 켜는 게 기대에 맞다.
+   *
+   * <p>장치를 먼저 고르고 나서 켠다. 순서를 뒤집으면 기본 장치로 publish 한 뒤 곧바로 다시 publish 하게 된다.
+   *
+   * <p>실패는 삼킨다. 여기서 못 켜도 사용자가 직접 켤 수 있고, 권한 거부는 토글 경로가 이미 안내한다.
+   */
   useEffect(() => {
-    if (!room || !prejoinInviteCode) {
+    if (!room || !prejoinSessionId) {
       return;
     }
-    const prejoin = readPrejoinResult(prejoinInviteCode);
+    const prejoin = readPrejoinResult(prejoinSessionId);
     if (!prejoin) {
       return;
     }
-    // 전환 요청이 setState를 부르므로 effect 본문 밖(지연)에서 실행한다.
-    const applyPrejoinDevices = setTimeout(() => {
+    // 전환·publish 요청이 setState를 부르므로 effect 본문 밖(지연)에서 실행한다.
+    const applyPrejoin = setTimeout(() => {
       if (prejoin.microphoneDeviceId) {
         switchDevice(MICROPHONE_KIND, prejoin.microphoneDeviceId);
       }
       if (prejoin.cameraDeviceId) {
         switchDevice(CAMERA_KIND, prejoin.cameraDeviceId);
       }
+      const local = room.localParticipant;
+      const permissions: PublishPermissions | undefined = local?.permissions;
+      if (local && !sourceBlocked(permissions, TRACK_SOURCE_MICROPHONE)) {
+        void Promise.resolve(local.setMicrophoneEnabled(true)).catch(() => {});
+      }
+      if (local && !sourceBlocked(permissions, TRACK_SOURCE_CAMERA)) {
+        void Promise.resolve(local.setCameraEnabled(true)).catch(() => {});
+      }
     }, 0);
-    return () => clearTimeout(applyPrejoinDevices);
-  }, [room, prejoinInviteCode, switchDevice]);
+    return () => clearTimeout(applyPrejoin);
+  }, [room, prejoinSessionId, switchDevice]);
 
   return {
     microphoneEnabled: state.microphoneEnabled,
@@ -324,6 +372,7 @@ export function useRoomMediaControls(prejoinInviteCode?: string): RoomMediaContr
     microphoneBlocked: state.microphoneBlocked,
     cameraBlocked: state.cameraBlocked,
     mediaError: failure?.message ?? null,
+    cameraPermissionDenied: failure?.kind === "camera" && failure.denied,
     ...devices,
     activeMicrophoneId: state.activeMicrophoneId ?? requestedMicrophoneId,
     activeCameraId: state.activeCameraId ?? requestedCameraId,

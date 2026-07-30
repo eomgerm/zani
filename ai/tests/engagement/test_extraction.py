@@ -55,9 +55,7 @@ def _contract(tmp_path: Path) -> DatasetContract:
 def test_extract_contract_writes_tokens_and_manifest(tmp_path: Path) -> None:
     output = tmp_path / "out"
 
-    manifest = extract_contract(
-        _contract(tmp_path), _AlwaysFace(), output, frame_source=_frames
-    )
+    manifest = extract_contract(_contract(tmp_path), _AlwaysFace(), output, frame_source=_frames)
 
     assert manifest.schema == "mediapipe_98_v1"
     assert len(manifest.included) == 1
@@ -74,7 +72,9 @@ def test_extract_contract_fails_above_exclusion_threshold(tmp_path: Path) -> Non
         extract_contract(_contract(tmp_path), _NeverFace(), output, frame_source=_frames)
 
     assert len(error.value.manifest.excluded) == 1
-    assert "segment 0" in error.value.manifest.excluded[0].reason
+    assert error.value.manifest.excluded[0].reason == (
+        "InsufficientTotalFaceCoverageError: window has 0 valid frames; 70 required"
+    )
     assert (output / "manifest.json").is_file()
 
 
@@ -86,3 +86,34 @@ def test_extract_contract_reuses_matching_cache(tmp_path: Path) -> None:
     second = extract_contract(contract, _NeverFace(), output, frame_source=_frames)
 
     assert second.included[0].feature_path == first.included[0].feature_path
+
+
+def test_extracted_cache_records_runtime_frame_gate(tmp_path: Path) -> None:
+    output = tmp_path / "out"
+
+    manifest = extract_contract(_contract(tmp_path), _AlwaysFace(), output, frame_source=_frames)
+
+    with np.load(manifest.included[0].feature_path) as cached:
+        assert cached["expected_frame_count"].item() == 100
+        assert cached["minimum_valid_frame_ratio"].item() == 0.7
+
+
+def test_extract_contract_does_not_reuse_cache_without_frame_gate_contract(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "out"
+    contract = _contract(tmp_path)
+    first = extract_contract(contract, _AlwaysFace(), output, frame_source=_frames)
+    feature_path = first.included[0].feature_path
+    with np.load(feature_path) as cached:
+        legacy_payload = {
+            key: np.asarray(cached[key])
+            for key in cached.files
+            if key not in {"expected_frame_count", "minimum_valid_frame_ratio"}
+        }
+    np.savez_compressed(feature_path, **legacy_payload)
+
+    with pytest.raises(ExtractionThresholdError) as error:
+        extract_contract(contract, _NeverFace(), output, frame_source=_frames)
+
+    assert error.value.manifest.excluded[0].reason.startswith("InsufficientTotalFaceCoverageError")

@@ -41,8 +41,9 @@ class RecordingOrchestratorTest {
     private final InMemoryOutboxStore outbox = new InMemoryOutboxStore();
     private final FakeTrackEgressPort egressPort = new FakeTrackEgressPort();
     private final InMemoryRecordingRepository recordings = new InMemoryRecordingRepository();
-    private final RecordingOrchestrator orchestrator =
-            new RecordingOrchestrator(outbox, egressPort, recordings, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final InMemoryAudioStreamEgressRegistry audioStreamRegistry = new InMemoryAudioStreamEgressRegistry();
+    private final RecordingOrchestrator orchestrator = new RecordingOrchestrator(
+            outbox, egressPort, recordings, audioStreamRegistry, Clock.fixed(NOW, ZoneOffset.UTC));
 
     private RequestTrackEgressCommand command(
             SessionParticipantRole role, TrackSource source, boolean approved, String trackSid) {
@@ -124,7 +125,8 @@ class RecordingOrchestratorTest {
 
         int processed = orchestrator.relayPendingOutbox();
 
-        assertEquals(1, processed);
+        // 강사 마이크는 파일 Egress 와 코칭 스트림 Egress 두 작업을 만든다.
+        assertEquals(2, processed);
         assertEquals(1, egressPort.requests.size());
         assertEquals("TR_m", egressPort.requests.get(0).trackSid());
         Recording saved = recordings.saved.get(0);
@@ -133,6 +135,30 @@ class RecordingOrchestratorTest {
         assertEquals(1, saved.attemptNumber());
         assertEquals(NOW, saved.startedAt());
         assertEquals("COMPLETED", outbox.statusOf("track:100:TR_m"));
+    }
+
+    @Test
+    void 강사_마이크는_코칭용_오디오_스트림_Egress도_시작한다() {
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_m"));
+
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.audioStreamRequests.size());
+        assertEquals("TR_m", egressPort.audioStreamRequests.get(0).trackSid());
+        assertEquals("COMPLETED", outbox.statusOf("audio-stream:100:TR_m"));
+        // 녹화 행은 파일 Egress 한 건만 남는다. 스트림은 메모리 버퍼로 흘러가 남길 산출물이 없다.
+        assertEquals(1, recordings.saved.size());
+    }
+
+    @Test
+    void 강사_카메라와_학생_마이크는_오디오_스트림_Egress를_만들지_않는다() {
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_c"));
+        orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.MICROPHONE, false, "TR_s"));
+
+        orchestrator.relayPendingOutbox();
+
+        // 코칭은 강사 발화만 대상으로 한다.
+        assertEquals(0, egressPort.audioStreamRequests.size());
     }
 
     @Test
@@ -176,6 +202,55 @@ class RecordingOrchestratorTest {
         assertEquals(1, egressPort.requests.size());
         assertEquals(1, recordings.saved.size());
         assertEquals("COMPLETED", outbox.statusOf("track:100:TR_mc"));
+    }
+
+    @Test
+    void 완료_표시가_실패해도_재실행_시_스트림_Egress를_다시_시작하지_않는다() {
+        // 같은 트랙에 스트림 Egress 가 두 개 붙으면 두 PCM 이 한 링버퍼에 뒤섞이고, 누적 바이트가 경과 시간을
+        // 앞질러 무음 패딩이 영구히 멈춘다. 예외도 로그도 없이 조용히 틀리는 종류라 재실행 경로를 못 박는다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_ws"));
+        orchestrator.relayPendingOutbox();
+        assertEquals(1, egressPort.audioStreamRequests.size());
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(1, egressPort.audioStreamRequests.size(), "살아 있는 스트림 Egress 를 채택해야 한다");
+        assertEquals("COMPLETED", outbox.statusOf("audio-stream:100:TR_ws"));
+    }
+
+    @Test
+    void 채택한_스트림_Egress도_웹훅_필터에_다시_표시한다() {
+        // 표시가 TTL 로 사라졌거나 첫 저장이 실패했을 수 있다. 표시가 없으면 웹훅이 "녹화 미준비" 503 을 돌려
+        // LiveKit 이 무한 재전송한다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_re"));
+        orchestrator.relayPendingOutbox();
+        audioStreamRegistry.egressIds.clear();
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertTrue(audioStreamRegistry.isAudioStream("EG_WS_1"), "채택한 Egress 도 표시돼야 한다");
+    }
+
+    @Test
+    void 스트림_Egress가_종료됐으면_재실행이_새로_시작한다() {
+        // 종료된 실행을 채택하면 흐름이 끊긴 상태로 굳어 그 세션은 코칭 오디오를 영구히 받지 못한다.
+        // 중복 유입이 해로운 구간은 실행이 살아 있을 때뿐이므로, 죽었으면 새로 시작해야 한다.
+        outbox.failMarkCompleted = true;
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_dead"));
+        orchestrator.relayPendingOutbox();
+        egressPort.audioStreamEnded("TR_dead");
+
+        outbox.failMarkCompleted = false;
+        outbox.requeueAll();
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(2, egressPort.audioStreamRequests.size(), "죽은 스트림은 채택하지 않는다");
     }
 
     @Test
@@ -345,11 +420,44 @@ class RecordingOrchestratorTest {
         }
     }
 
+    private static final class InMemoryAudioStreamEgressRegistry
+            implements com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort {
+
+        private final java.util.Set<String> egressIds = new java.util.HashSet<>();
+
+        @Override
+        public void remember(String egressId, long sessionId) {
+            egressIds.add(egressId);
+        }
+
+        @Override
+        public boolean isAudioStream(String egressId) {
+            return egressIds.contains(egressId);
+        }
+    }
+
     private static final class FakeTrackEgressPort implements TrackEgressPort {
 
         private final List<TrackEgressRequest> requests = new ArrayList<>();
+        private final List<com.a105.zani.recording.application.port.AudioStreamEgressRequest> audioStreamRequests =
+                new ArrayList<>();
         private final Map<String, String> egressByTrackSid = new HashMap<>();
+        /** 아직 살아 있는 스트림 Egress. 종료된 실행은 담지 않는다(실제 어댑터가 상태로 걸러낸다). */
+        private final Map<String, String> liveAudioStreamByTrackSid = new HashMap<>();
+
         private RuntimeException failWith;
+
+        @Override
+        public IssuedTrackEgress startAudioStream(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            if (failWith != null) {
+                throw failWith;
+            }
+            audioStreamRequests.add(request);
+            String egressId = "EG_WS_" + audioStreamRequests.size();
+            liveAudioStreamByTrackSid.put(request.trackSid(), egressId);
+            return new IssuedTrackEgress(egressId);
+        }
 
         @Override
         public IssuedTrackEgress start(TrackEgressRequest request) {
@@ -366,6 +474,17 @@ class RecordingOrchestratorTest {
         public java.util.Optional<String> findExistingEgressId(TrackEgressRequest request) {
             // 실제 어댑터처럼 종료된 실행도 포함해 되돌린다(한 번 시작하면 계속 조회된다).
             return java.util.Optional.ofNullable(egressByTrackSid.get(request.trackSid()));
+        }
+
+        @Override
+        public java.util.Optional<String> findLiveAudioStreamEgressId(
+                com.a105.zani.recording.application.port.AudioStreamEgressRequest request) {
+            return java.util.Optional.ofNullable(liveAudioStreamByTrackSid.get(request.trackSid()));
+        }
+
+        /** 스트림 Egress 가 종료된 상황. 재실행이 채택하지 않고 새로 시작해야 한다. */
+        private void audioStreamEnded(String trackSid) {
+            liveAudioStreamByTrackSid.remove(trackSid);
         }
     }
 
