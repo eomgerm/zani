@@ -52,6 +52,12 @@ SEGMENT_COUNT = 20
 MINIMUM_VALID_FRAMES = 3
 DEFAULT_WORKERS = 2
 DEFAULT_PROGRESS_EVERY = 25
+#: How many clips one Face Landmarker instance sees. VIDEO-mode tracking state
+#: crosses `detect` calls, so anything wider than one clip makes a clip's features
+#: depend on the clips before it. Recorded in both the fingerprint and the manifest
+#: provenance: the fingerprint stops a per-clip run from reusing a wider run's
+#: cache, and the provenance lets a reader date a cache without rederiving hashes.
+LANDMARKER_SCOPE = "per_clip"
 
 GAZE_PROXY_DEFINITION = (
     "right_iris_xy=mean(landmarks[468:473,:2])",
@@ -175,6 +181,7 @@ class ExtractionProvenance:
     minimum_valid_frames: int
     expected_frame_count: int
     minimum_valid_frame_ratio: float
+    landmarker_scope: str
     raw_feature_dimension: int
     token_feature_dimension: int
     feature_schema: str
@@ -774,11 +781,7 @@ def _build_provenance(
             "output_face_blendshapes": True,
             "output_facial_transformation_matrixes": True,
         },
-        # Part of the fingerprint because it changes the pixels the landmarker sees:
-        # a per-worker landmarker carries VIDEO-mode tracking state between clips,
-        # so caches written under that scope are not reproducible and must not be
-        # reused by a per-clip run.
-        "landmarker_scope": "per_clip",
+        "landmarker_scope": LANDMARKER_SCOPE,
         "gaze_proxy_definition": list(GAZE_PROXY_DEFINITION),
         "head_pose_definition": list(HEAD_POSE_DEFINITION),
         "blendshape_names": list(BLENDSHAPE_NAMES),
@@ -798,6 +801,7 @@ def _build_provenance(
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
         expected_frame_count=EXPECTED_FRAME_COUNT,
         minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        landmarker_scope=LANDMARKER_SCOPE,
         raw_feature_dimension=RAW_FEATURE_COUNT,
         token_feature_dimension=TOKEN_FEATURE_COUNT,
         feature_schema=SCHEMA_NAME,

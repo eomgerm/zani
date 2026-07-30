@@ -52,6 +52,7 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    LANDMARKER_SCOPE,
     MINIMUM_VALID_FRAMES,
     SAMPLE_FPS,
     SEGMENT_COUNT,
@@ -146,6 +147,7 @@ class RawProvenance:
     minimum_valid_frames: int
     expected_frame_count: int
     minimum_valid_frame_ratio: float
+    landmarker_scope: str
     raw_landmark_count: int
     blendshape_count: int
     blendshape_names: tuple[str, ...]
@@ -510,10 +512,7 @@ def _build_raw_provenance(
         "blendshape_count": RAW_BLENDSHAPE_COUNT,
         "blendshape_names": list(BLENDSHAPE_NAMES_132),
         "stored": list(RAW_STORED_KEYS),
-        # See the matching note in `extraction.py`: caches written with a
-        # per-worker landmarker depend on clip ordering, so the scope belongs in
-        # the fingerprint to stop a per-clip run from reusing them.
-        "landmarker_scope": "per_clip",
+        "landmarker_scope": LANDMARKER_SCOPE,
         "landmarker_options": {
             "running_mode": "VIDEO",
             "num_faces": 1,
@@ -535,6 +534,7 @@ def _build_raw_provenance(
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
         expected_frame_count=expected_frame_count,
         minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        landmarker_scope=LANDMARKER_SCOPE,
         raw_landmark_count=RAW_LANDMARK_COUNT,
         blendshape_count=RAW_BLENDSHAPE_COUNT,
         blendshape_names=BLENDSHAPE_NAMES_132,
