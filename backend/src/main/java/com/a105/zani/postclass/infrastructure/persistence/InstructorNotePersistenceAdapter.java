@@ -1,12 +1,14 @@
 package com.a105.zani.postclass.infrastructure.persistence;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -27,6 +29,11 @@ public class InstructorNotePersistenceAdapter implements InstructorNoteRepositor
     @Override
     public Optional<InstructorNote> findBySessionId(Long sessionId) {
         return instructorNoteJpaRepository.findBySessionId(sessionId).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<Long> findDueDraftSessionIds(Instant editedBefore, int limit) {
+        return instructorNoteJpaRepository.findDueDraftSessionIds(editedBefore, Pageable.ofSize(limit));
     }
 
     @Override

@@ -1,9 +1,11 @@
 package com.a105.zani.postclass.infrastructure.persistence.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -15,6 +17,13 @@ import com.a105.zani.postclass.infrastructure.persistence.entity.InstructorNoteJ
 public interface InstructorNoteJpaRepository extends JpaRepository<InstructorNoteJpaEntity, Long> {
 
     Optional<InstructorNoteJpaEntity> findBySessionId(Long sessionId);
+
+    @Query("""
+            select note.sessionId from InstructorNoteJpaEntity note
+             where note.status = 'DRAFT' and note.lastEditedAt <= :editedBefore
+             order by note.lastEditedAt asc
+            """)
+    List<Long> findDueDraftSessionIds(@Param("editedBefore") Instant editedBefore, Pageable pageable);
 
     /**
      * DRAFT 인 메모의 본문과 마지막 입력 시각만 바꾼다. 바뀐 행 수가 0 이면 그 사이에 확정된 것이다.

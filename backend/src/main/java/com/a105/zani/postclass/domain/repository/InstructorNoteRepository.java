@@ -1,6 +1,7 @@
 package com.a105.zani.postclass.domain.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import com.a105.zani.postclass.domain.model.InstructorNote;
@@ -8,6 +9,13 @@ import com.a105.zani.postclass.domain.model.InstructorNote;
 public interface InstructorNoteRepository {
 
     Optional<InstructorNote> findBySessionId(Long sessionId);
+
+    /**
+     * 마지막 입력이 기준 시각보다 이전인 초안이 달린 세션 ID. 오래 방치된 것부터 최대 limit 건.
+     *
+     * <p>메모 전체가 아니라 세션 ID만 읽는 이유: 자동 확정에 필요한 것은 대상 식별뿐인데, 메모마다 본문까지 실어 오면 한 번의 스윕이 쓰지도 않는 5000자를 건수만큼 끌어온다.
+     */
+    List<Long> findDueDraftSessionIds(Instant editedBefore, int limit);
 
     /**
      * 메모를 저장한다. 아직 없으면 만들고, 있으면 본문과 마지막 입력 시각만 덮어쓴다.
