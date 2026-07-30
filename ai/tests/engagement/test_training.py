@@ -137,15 +137,17 @@ def _write_reliability_manifest(features: Path, path: Path, *, decision: str = "
     assert assessment.decision == decision
     path.write_text(
         json.dumps(
-            _json_safe({
-                "schema_version": "label_reliability_v1",
-                "decision": assessment.decision,
-                "inputs": {"feature_manifest": {"sha256": feature_hash}},
-                "criteria": asdict(criteria),
-                "assessment": asdict(assessment),
-                "summary": asdict(summarize_reliability(records)),
-                "clips": [asdict(record) for record in records],
-            })
+            _json_safe(
+                {
+                    "schema_version": "label_reliability_v1",
+                    "decision": assessment.decision,
+                    "inputs": {"feature_manifest": {"sha256": feature_hash}},
+                    "criteria": asdict(criteria),
+                    "assessment": asdict(assessment),
+                    "summary": asdict(summarize_reliability(records)),
+                    "clips": [asdict(record) for record in records],
+                }
+            )
         ),
         encoding="utf-8",
     )
@@ -348,9 +350,7 @@ def test_sqrt_balanced_softens_the_correction(tmp_path: Path) -> None:
 
     assert list(np.argsort(softened)) == list(np.argsort(balanced))
     assert 1.0 < softened.max() / softened.min() < balanced.max() / balanced.min()
-    assert softened.max() / softened.min() == pytest.approx(
-        (4422 / 570) ** 0.5, rel=1e-6
-    )
+    assert softened.max() / softened.min() == pytest.approx((4422 / 570) ** 0.5, rel=1e-6)
 
 
 @pytest.mark.parametrize("scheme", ["balanced", "sqrt_balanced"])
@@ -547,9 +547,7 @@ def _sord_targets_by_hand(label: int, alpha: float, num_classes: int = 4) -> lis
 def test_sord_targets_match_the_paper_formula(label: int) -> None:
     targets = SordObjective(alpha=2.0).soft_targets(torch.tensor([label]))
 
-    np.testing.assert_allclose(
-        targets.numpy()[0], _sord_targets_by_hand(label, 2.0), rtol=1e-6
-    )
+    np.testing.assert_allclose(targets.numpy()[0], _sord_targets_by_hand(label, 2.0), rtol=1e-6)
     assert float(targets.sum()) == pytest.approx(1.0)
 
 

@@ -130,6 +130,20 @@ uv run python -m zani_ai engagement audit-frame-gate \
   --output artifacts/engagement/frame-gate-audit.json
 ```
 
+After the audit, regenerate the 98D features and `manifest.json` from the raw
+cache. Existing experiment artifacts remain in place, while the new manifest
+SHA-256 prevents results built from the previous frame gate from being reused.
+
+```bash
+cd ~/zani/ai
+uv run python -m zani_ai engagement build-features \
+  --data-root datasets/raw/engagenet \
+  --raw-root datasets/processed/engagenet/raw_frames_v1 \
+  --output datasets/processed/engagenet \
+  --schema mediapipe_98_v1 \
+  --sample-fps 10
+```
+
 ## 5. Running training
 
 The idle culler stops the singleuser server after 24 hours, and its child
@@ -161,8 +175,8 @@ Watching GPU utilization alongside it tells you where the bottleneck is.
 nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv -l 5 -i 2
 ```
 
-Test evaluation and the HTML report run exactly once, after all five seeds have
-finished.
+Test evaluation runs exactly once after all five seeds have finished and writes
+the aggregate metrics to `test_results.json`.
 
 ```bash
 cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 uv run python -m zani_ai engagement finalize-<protocol> --features datasets/processed/engagenet/e1 --output artifacts/engagement/<protocol> --device cuda

@@ -63,10 +63,7 @@ def test_any_seed_disagreement_marks_a_clip_ambiguous() -> None:
 
 
 def test_signal_is_go_when_disagreement_concentrates_validation_errors() -> None:
-    train = [
-        _record(f"train-{label}", "train", label, (label,) * 5)
-        for label in range(4)
-    ]
+    train = [_record(f"train-{label}", "train", label, (label,) * 5) for label in range(4)]
     train.append(_record("train-ambiguous", "train", 1, (0, 1, 1, 2, 1)))
 
     valid: list[ClipReliability] = []
@@ -97,10 +94,7 @@ def test_signal_is_go_when_disagreement_concentrates_validation_errors() -> None
 
 
 def test_signal_is_no_go_when_a_train_label_has_no_reliable_clip() -> None:
-    records = [
-        _record(f"train-{label}", "train", label, (label,) * 5)
-        for label in range(3)
-    ]
+    records = [_record(f"train-{label}", "train", label, (label,) * 5) for label in range(3)]
     records.extend(
         [
             _record("train-ambiguous", "train", 3, (2, 3, 3, 2, 3)),
@@ -348,9 +342,7 @@ def test_analysis_rejects_duplicate_checkpoint_paths(tmp_path: Path) -> None:
     features, baseline = _write_analysis_fixture(tmp_path)
     summary_path = baseline / "summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    summary["seeds"][1]["artifacts"]["checkpoint"] = summary["seeds"][0]["artifacts"][
-        "checkpoint"
-    ]
+    summary["seeds"][1]["artifacts"]["checkpoint"] = summary["seeds"][0]["artifacts"]["checkpoint"]
     summary_path.write_text(json.dumps(summary), encoding="utf-8")
 
     with pytest.raises(ValueError, match="seed 43 is not complete"):

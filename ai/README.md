@@ -119,6 +119,35 @@ Face Landmarker 모델 SHA-256과 크기, sampling/segment/feature schema, worke
 임계값이 기록됩니다. 완료되지 않았거나 제외 임계값을 넘은 manifest로는 학습을 시작하지
 않습니다.
 
+### 브라우저 프레임 게이트 정합 감사
+
+브라우저는 10초 동안 기대한 100프레임 중 유효 프레임이 70개 미만이면 추론하지
+않습니다. 기존 세그먼트 조건(20개 세그먼트마다 3프레임 이상)은 통과하지만 이 총량
+조건에서 제외되는 60~69프레임 클립은 raw cache에서 다음 명령으로 집계합니다.
+
+```powershell
+uv run python -m zani_ai engagement audit-frame-gate `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output artifacts/engagement/frame-gate-audit.json
+```
+
+출력 JSON은 전체 불일치 수, 분할별·등급별·분할×등급별 수와 해당 clip ID를 기록합니다.
+수정된 98D 특징과 `manifest.json`은 MediaPipe를 다시 실행하지 않고 raw cache에서
+재생성할 수 있습니다.
+
+```powershell
+uv run python -m zani_ai engagement build-features `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output datasets/processed/engagenet `
+  --schema mediapipe_98_v1 `
+  --sample-fps 10
+```
+
+기존 실험 산출물은 삭제하지 않습니다. 새 `manifest.json`의 SHA-256이 달라져 재현성
+identity 검증이 이전 결과의 재사용을 차단합니다.
+
 ### E0 5-seed 재현
 
 E0는 Test 분할을 평가하지 않고 Validation Macro-F1로만 조기 종료와 체크포인트를

@@ -13,14 +13,13 @@ import sys
 import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from zani_ai.engagement.contracts import LABELS, load_dataset_contract
-
 
 SPLITS = {
     "Train": ("train", "train_engagement_labels.xlsx"),
@@ -63,7 +62,9 @@ def _read_xlsx(path: Path) -> tuple[list[dict[str, object]], set[str]]:
     try:
         from openpyxl import load_workbook
     except ImportError as error:  # pragma: no cover - environment-dependent
-        raise RuntimeError("XLSX labels require openpyxl; install the 'eda' extra first.") from error
+        raise RuntimeError(
+            "XLSX labels require openpyxl; install the 'eda' extra first."
+        ) from error
     workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         worksheet = workbook.active
@@ -137,7 +138,9 @@ def validate_output_root(source_root: Path, output_root: Path) -> None:
             or inside(output_root, labels_path)
             or same_filesystem_entry(output_root, labels_path)
         ):
-            raise ValueError(f"output root must not overlap protected source label file: {labels_path}")
+            raise ValueError(
+                f"output root must not overlap protected source label file: {labels_path}"
+            )
 
 
 def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
@@ -160,7 +163,7 @@ def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
         label_metadata[label_file] = {
             "path": str(labels_path.resolve()),
             "bytes": stat.st_size,
-            "modified_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
         }
         counts: Counter[str] = Counter()
         for number, row in enumerate(rows, start=2):
@@ -170,14 +173,20 @@ def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
             if match is None:
                 raise ValueError(f"{labels_path.name} row {number} has malformed chunk: {chunk!r}")
             if Path(chunk).name != chunk:
-                raise ValueError(f"{labels_path.name} row {number} has unsafe chunk path: {chunk!r}")
+                raise ValueError(
+                    f"{labels_path.name} row {number} has unsafe chunk path: {chunk!r}"
+                )
             clip_id = Path(chunk).stem
             if not clip_id or clip_id in seen_clip_ids:
-                raise ValueError(f"clip IDs must be globally unique; duplicate or empty: {clip_id!r}")
+                raise ValueError(
+                    f"clip IDs must be globally unique; duplicate or empty: {clip_id!r}"
+                )
             seen_clip_ids.add(clip_id)
             label = LABEL_LOOKUP.get(raw_label.casefold())
             if raw_label != SNP_LABEL and label is None:
-                raise ValueError(f"{labels_path.name} row {number} has unknown label: {raw_label!r}")
+                raise ValueError(
+                    f"{labels_path.name} row {number} has unknown label: {raw_label!r}"
+                )
             counts[raw_label if raw_label == SNP_LABEL else label] += 1
             source_video = (split_dir / chunk).resolve()
             if not inside(split_dir.resolve(), source_video):
@@ -187,14 +196,20 @@ def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
             subject_id = match.group("subject")
             subject_splits[subject_id].add(contract_split)
             if raw_label == SNP_LABEL:
-                excluded.append({"clip_id": clip_id, "split": contract_split, "subject_id": subject_id})
+                excluded.append(
+                    {"clip_id": clip_id, "split": contract_split, "subject_id": subject_id}
+                )
                 continue
             clips.append(
                 Clip(split_name, contract_split, chunk, clip_id, label, subject_id, source_video)
             )
-        raw_counts[contract_split] = Counter({label: counts[label] for label in (*LABELS, SNP_LABEL)})
+        raw_counts[contract_split] = Counter(
+            {label: counts[label] for label in (*LABELS, SNP_LABEL)}
+        )
 
-    overlap = {subject: sorted(names) for subject, names in subject_splits.items() if len(names) > 1}
+    overlap = {
+        subject: sorted(names) for subject, names in subject_splits.items() if len(names) > 1
+    }
     if overlap:
         raise ValueError(f"subjects appear in multiple splits: {overlap}")
     return clips, {
@@ -211,7 +226,9 @@ def collect_clips(source_root: Path) -> tuple[list[Clip], dict[str, Any]]:
 
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="", dir=path.parent, delete=False) as file:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", newline="", dir=path.parent, delete=False
+    ) as file:
         temporary = Path(file.name)
         file.write(content)
     try:
@@ -228,8 +245,14 @@ def write_metadata(output_root: Path, clips: list[Clip], manifest: dict[str, Any
     atomic_write(output_root / "final_labels.csv", labels_file.getvalue())
     for split in ("train", "valid", "test"):
         clip_ids = [clip.clip_id for clip in clips if clip.contract_split == split]
-        atomic_write(output_root / f"{split}.txt" if split != "valid" else output_root / "valid.txt", "\n".join(clip_ids) + "\n")
-    atomic_write(output_root / "preparation_manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+        atomic_write(
+            output_root / f"{split}.txt" if split != "valid" else output_root / "valid.txt",
+            "\n".join(clip_ids) + "\n",
+        )
+    atomic_write(
+        output_root / "preparation_manifest.json",
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+    )
 
 
 def verify_existing_hard_link(source: Path, destination: Path) -> None:
@@ -246,7 +269,8 @@ def verify_existing_hard_link(source: Path, destination: Path) -> None:
             or not os.path.samefile(source, destination)
         ):
             raise FileExistsError(
-                f"existing destination is not the same hard-linked source (size/fingerprint mismatch): {destination}"
+                "existing destination is not the same hard-linked source "
+                f"(size/fingerprint mismatch): {destination}"
             )
 
 
@@ -259,7 +283,8 @@ def ensure_hard_link(source: Path, destination: Path) -> None:
         os.link(source, destination)
     except OSError as error:
         raise RuntimeError(
-            f"could not create required NTFS hard link {destination} -> {source}; copying and symlinks are disabled"
+            f"could not create required NTFS hard link {destination} -> {source}; "
+            "copying and symlinks are disabled"
         ) from error
 
 
@@ -283,15 +308,22 @@ def main() -> int:
         included_counts[split] = {label: counts[label] for label in LABELS}
     manifest: dict[str, Any] = {
         "format": "engagenet_contract_v1",
-        "prepared_at": datetime.now(timezone.utc).isoformat(),
-        "source": {"root": str(source_root), "splits": {key: str(source_root / key) for key in SPLITS}},
+        "prepared_at": datetime.now(UTC).isoformat(),
+        "source": {
+            "root": str(source_root),
+            "splits": {key: str(source_root / key) for key in SPLITS},
+        },
         "source_file_metadata": collected["label_file_metadata"],
         "source_file_sha256": collected["label_file_sha256"],
         "raw_counts_by_split_and_label": collected["raw_counts_by_split_and_label"],
         "included_counts_by_split_and_label": included_counts,
         "excluded_snp_clips": collected["excluded_snp_clips"],
         "subject_counts_by_split": collected["subject_counts_by_split"],
-        "link_strategy": {"type": "ntfs_hard_link", "copy_fallback": False, "symlink_fallback": False},
+        "link_strategy": {
+            "type": "ntfs_hard_link",
+            "copy_fallback": False,
+            "symlink_fallback": False,
+        },
     }
     link_targets: list[tuple[Clip, Path]] = []
     for clip in clips:

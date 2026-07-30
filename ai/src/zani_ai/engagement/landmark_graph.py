@@ -55,25 +55,54 @@ GRAPH_VERSION = "landmark_78_v1"
 # forehead points) and going from one ear, through the chin, to the other ear
 # -- analogous to Dlib points 0..16.
 FACE_JAW_17 = (
-    454, 323, 361, 397, 365, 379, 400, 377,  # right ear -> chin (right side)
+    454,
+    323,
+    361,
+    397,
+    365,
+    379,
+    400,
+    377,  # right ear -> chin (right side)
     152,  # chin (Dlib point 8)
-    148, 176, 150, 136, 58, 132, 234, 127,  # chin -> left ear (left side)
+    148,
+    176,
+    150,
+    136,
+    58,
+    132,
+    234,
+    127,  # chin -> left ear (left side)
 )
 
 # Eyebrows (10 points = 5 + 5), sampled outer-to-inner from the canonical
 # ``FACEMESH_RIGHT_EYEBROW`` / ``FACEMESH_LEFT_EYEBROW`` groups -- analogous
 # to Dlib points 17..26.
 FACE_EYEBROWS_10 = (
-    70, 63, 105, 66, 107,  # eyebrow, outer -> inner
-    336, 296, 334, 293, 300,  # other eyebrow, inner -> outer
+    70,
+    63,
+    105,
+    66,
+    107,  # eyebrow, outer -> inner
+    336,
+    296,
+    334,
+    293,
+    300,  # other eyebrow, inner -> outer
 )
 
 # Nose (9 points): bridge (glabella -> just above tip, 4 points) followed by
 # tip and alae/nostril-wing points (5 points, left-to-right) -- analogous to
 # Dlib points 27..35.
 FACE_NOSE_9 = (
-    168, 197, 195, 5,  # bridge, top (between eyebrows) -> bottom (near tip)
-    129, 98, 4, 327, 358,  # left ala, left-of-tip, tip, right-of-tip, right ala
+    168,
+    197,
+    195,
+    5,  # bridge, top (between eyebrows) -> bottom (near tip)
+    129,
+    98,
+    4,
+    327,
+    358,  # left ala, left-of-tip, tip, right-of-tip, right ala
 )
 
 # Eyes (12 points = 6 + 6), each a 6-point hexagon (outer corner, 2 upper-lid
@@ -81,15 +110,43 @@ FACE_NOSE_9 = (
 # ``FACEMESH_LEFT_EYE`` / ``FACEMESH_RIGHT_EYE`` groups -- analogous to Dlib
 # points 36..47.
 FACE_EYES_12 = (
-    33, 160, 158, 133, 153, 144,  # eye 1: outer, upper x2, inner, lower x2
-    263, 387, 385, 362, 380, 374,  # eye 2: outer, upper x2, inner, lower x2
+    33,
+    160,
+    158,
+    133,
+    153,
+    144,  # eye 1: outer, upper x2, inner, lower x2
+    263,
+    387,
+    385,
+    362,
+    380,
+    374,  # eye 2: outer, upper x2, inner, lower x2
 )
 
 # Mouth (20 points = 12 outer + 8 inner), subsampled from the canonical
 # ``FACEMESH_LIPS`` outer and inner rings -- analogous to Dlib points 48..67.
 FACE_MOUTH_20 = (
-    61, 40, 37, 0, 269, 409, 291, 321, 314, 17, 181, 146,  # outer ring (12)
-    78, 80, 13, 415, 308, 318, 14, 178,  # inner ring (8)
+    61,
+    40,
+    37,
+    0,
+    269,
+    409,
+    291,
+    321,
+    314,
+    17,
+    181,
+    146,  # outer ring (12)
+    78,
+    80,
+    13,
+    415,
+    308,
+    318,
+    14,
+    178,  # inner ring (8)
 )
 
 FACE_68: tuple[int, ...] = (
@@ -172,9 +229,7 @@ def build_spatial_partitions(mean_xy: NDArray[np.floating]) -> NDArray[np.float3
         degree_inv_sqrt = np.power(np.maximum(degree, 1e-6), -0.5)
         return (degree_inv_sqrt[:, None] * matrix) * degree_inv_sqrt[None, :]
 
-    partitions = np.stack(
-        [_normalize(root), _normalize(centripetal), _normalize(centrifugal)]
-    )
+    partitions = np.stack([_normalize(root), _normalize(centripetal), _normalize(centrifugal)])
     return partitions.astype(np.float32)
 
 

@@ -266,8 +266,7 @@ def main() -> int:
 
     header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p")
     rows = [
-        _row(label, baseline.metrics[key], variant.metrics[key])
-        for key, label in METRICS.items()
+        _row(label, baseline.metrics[key], variant.metrics[key]) for key, label in METRICS.items()
     ]
     rows.append(_row("인접 오류 비중", baseline.adjacent_shares, variant.adjacent_shares))
     print(_table(header, rows))

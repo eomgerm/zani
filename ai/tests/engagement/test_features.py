@@ -32,9 +32,7 @@ def test_extract_frame_features_has_stable_49_value_order() -> None:
     features = extract_frame_features(_known_landmarks(), np.eye(4), blendshapes)
 
     assert features.shape == (49,)
-    np.testing.assert_allclose(
-        features[:8], [0.5, 0.75, 0.5, 0.25, 0.5, 0.5, 0, 0.5], atol=1e-6
-    )
+    np.testing.assert_allclose(features[:8], [0.5, 0.75, 0.5, 0.25, 0.5, 0.5, 0, 0.5], atol=1e-6)
     np.testing.assert_allclose(features[8:14], [0, 0, 0, 0.4, 0.6, 1.25], atol=1e-6)
     np.testing.assert_allclose(features[14:], np.arange(35) / 100, atol=1e-6)
 

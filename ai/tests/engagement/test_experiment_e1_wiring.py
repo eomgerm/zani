@@ -95,9 +95,7 @@ def test_graph_beside_the_features_is_found_and_fingerprinted(
 ) -> None:
     graph = _write_graph(features / GRAPH_FILENAME)
 
-    result = reproduce_experiment(
-        TINY_E1, features, tmp_path / "run", device="cpu"
-    )
+    result = reproduce_experiment(TINY_E1, features, tmp_path / "run", device="cpu")
 
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
     assert result.completed_seeds == (42,)
