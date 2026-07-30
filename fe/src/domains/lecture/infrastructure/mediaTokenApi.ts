@@ -13,6 +13,12 @@ export type MediaToken = {
    * <p>필수 검증에 넣지 않는다. 제목을 못 받았다고 강의실 입장을 막을 이유가 없고, 서버가 아직 안 내려주는 구성에서도 연결은 되어야 한다.
    */
   sessionTitle: string | null;
+  /**
+   * 세션의 현재 상태. 강사 화면은 `PREPARING` 을 보면 연결이 끝난 뒤 시작을 호출한다.
+   *
+   * <p>서버가 내려주지 않는 구성도 있어 null 을 허용한다. 그때는 시작을 호출하지 않는다 — 이미 시작된 세션에 다시 부르는 것보다 안 부르는 쪽이 안전하다.
+   */
+  sessionStatus: string | null;
 };
 
 export type MediaTokenRequester = (
@@ -90,5 +96,5 @@ export const requestMediaToken: MediaTokenRequester = async (sessionId, accessTo
 
   const data = (envelope as { data: MediaToken }).data;
   // 서버가 제목을 아직 안 내려주는 구성에서도 형태를 고정해 호출자가 분기하지 않게 한다.
-  return { ...data, sessionTitle: data.sessionTitle ?? null };
+  return { ...data, sessionTitle: data.sessionTitle ?? null, sessionStatus: data.sessionStatus ?? null };
 };

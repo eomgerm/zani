@@ -71,6 +71,7 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
                 identity,
                 issued.expiresAt(),
                 session.expiresAt(),
-                session.title());
+                session.title(),
+                session.status());
     }
 }

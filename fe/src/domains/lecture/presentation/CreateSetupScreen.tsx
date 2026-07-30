@@ -11,10 +11,6 @@ import {
   type CreatedSession,
   type SessionCreator,
 } from "@/domains/lecture/infrastructure/createSessionApi";
-import {
-  startSession as startSessionApi,
-  type SessionStarter,
-} from "@/domains/lecture/infrastructure/startSessionApi";
 
 /** 초대 코드를 눈으로 읽기 쉽게 네 글자씩 끊는다. 서버에 보낼 때는 원본을 쓴다. */
 const formatInviteCode = (code: string) =>
@@ -51,11 +47,9 @@ const messageFor = (error: unknown): string => {
  */
 export function CreateSetupScreen({
   createSession = createSessionApi,
-  startSession = startSessionApi,
 }: {
   /** 테스트에서 API 경계를 대체하기 위한 주입점. */
   createSession?: SessionCreator;
-  startSession?: SessionStarter;
 } = {}) {
   const router = useRouter();
   const { accessToken } = useAuth();
@@ -65,10 +59,6 @@ export function CreateSetupScreen({
   const [creating, setCreating] = useState(false);
   const [entering, setEntering] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // 준비 단계를 두는 서버에서는 생성 직후가 PREPARING 이고, 시작을 호출해야 초대 코드가 유효해진다.
-  // 생성 즉시 LIVE 로 만드는 구성도 있어, 상태를 보고 필요할 때만 시작을 호출한다.
-  const needsStart = created?.status === "PREPARING";
 
   const inviteLink = created === null ? null : inviteLinkOf(created.inviteCode);
 
@@ -95,28 +85,18 @@ export function CreateSetupScreen({
     }
   };
 
-  /** 필요하면 수업을 시작시킨 뒤 강의실로 들어간다. 시작이 실패하면 이동하지 않는다 — 학생이 못 들어오는 방에 강사만 있게 된다. */
-  const enterRoom = async () => {
+  /**
+   * 강의실로 들어간다. 수업을 시작시키는 건 여기가 아니라 강의실이다.
+   *
+   * <p>여기서 시작하면 강사가 아직 LiveKit 에 연결되지 않은 상태에서 초대 코드가 열린다. 연결이 실패하면 학생만 강사 없는 방에 들어오게 된다. 그래서 시작은 강의실이 실제로 연결된 뒤에
+   * 호출한다 — 연결이 실패하면 세션은 PREPARING 에 머물러 초대 코드가 열리지 않는다.
+   */
+  const enterRoom = () => {
     if (created === null || entering) {
       return;
     }
-    if (!needsStart) {
-      router.push(`/room/${created.sessionId}`);
-      return;
-    }
-    if (accessToken === null) {
-      setError("로그인이 필요해요. 다시 로그인해 주세요.");
-      return;
-    }
     setEntering(true);
-    setError(null);
-    try {
-      await startSession(created.sessionId, accessToken);
-      router.push(`/room/${created.sessionId}`);
-    } catch {
-      setError("수업을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
-      setEntering(false);
-    }
+    router.push(`/room/${created.sessionId}`);
   };
 
   return (
@@ -172,8 +152,8 @@ export function CreateSetupScreen({
                   </button>
                 </div>
                 <div className="mt-[7px] text-xs text-ink-ghost">
-                  {needsStart
-                    ? "수업을 시작하면 이 링크로 참가자가 들어올 수 있어요. 시작 전에는 입장이 막힙니다. "
+                  {created.status === "PREPARING"
+                    ? "강의실에 들어가면 수업이 시작되고, 그때부터 이 링크로 참가자가 들어올 수 있어요. "
                     : "참가자에게 이 링크를 공유하면 강의실에 참여할 수 있어요. "}
                   코드로 직접 입력하려면{" "}
                   <b className="text-ink-muted">{formatInviteCode(created.inviteCode)}</b> 를 알려주세요.
@@ -212,7 +192,7 @@ export function CreateSetupScreen({
               disabled={entering}
               className="z-btn z-btn-primary z-btn-lg flex-[2] disabled:opacity-50"
             >
-              {entering ? "시작하고 있어요…" : needsStart ? "수업 시작하고 입장" : "강의실 입장"}
+              {entering ? "들어가고 있어요…" : created.status === "PREPARING" ? "수업 시작하고 입장" : "강의실 입장"}
             </button>
           )}
         </div>

@@ -65,19 +65,14 @@ describe("CreateSetupScreen", () => {
     expect(screen.getByText("A7KM-2PQR")).toBeInTheDocument();
   });
 
-  /** 준비 상태 서버에서는 시작을 호출해야 초대 코드가 유효해진다. 안 부르면 학생이 못 들어오는 방이 된다. */
-  it("준비 상태로 만들어졌으면 시작을 호출한 뒤 강의실에 들어간다", async () => {
-    const startSession = vi.fn().mockResolvedValue({
-      sessionId: "777",
-      status: "LIVE",
-      inviteCode: "A7KM2PQR",
-      expiresAt: null,
-      started: true,
-    });
+  /**
+   * 수업을 시작시키는 건 이 화면이 아니라 강의실이다(useStartOnConnected). 여기서 시작하면 강사가 아직 LiveKit 에
+   * 연결되지 않은 상태로 초대 코드가 열려, 연결이 실패했을 때 학생만 강사 없는 방에 들어온다.
+   */
+  it("준비 상태여도 여기서는 시작시키지 않고 강의실로 보낸다", async () => {
     render(
       <CreateSetupScreen
         createSession={vi.fn().mockResolvedValue(created("777"))}
-        startSession={startSession}
       />,
     );
 
@@ -90,17 +85,14 @@ describe("CreateSetupScreen", () => {
       fireEvent.click(await screen.findByRole("button", { name: "수업 시작하고 입장" }));
     });
 
-    expect(startSession).toHaveBeenCalledWith("777", "access-token");
     expect(pushMock).toHaveBeenCalledWith("/room/777");
   });
 
-  /** 생성 즉시 LIVE 인 서버 구성에서는 시작 API 를 부르지 않는다. */
-  it("이미 진행 중으로 만들어졌으면 시작을 부르지 않고 바로 들어간다", async () => {
-    const startSession = vi.fn();
+  /** 생성 즉시 LIVE 인 서버 구성에서는 버튼 문구가 달라진다. 시작은 어느 구성에서도 이 화면이 하지 않는다. */
+  it("이미 진행 중으로 만들어졌으면 강의실 입장으로 보인다", async () => {
     render(
       <CreateSetupScreen
         createSession={vi.fn().mockResolvedValue({ ...created("777"), status: "LIVE" })}
-        startSession={startSession}
       />,
     );
 
@@ -111,28 +103,7 @@ describe("CreateSetupScreen", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "강의실 입장" }));
 
-    expect(startSession).not.toHaveBeenCalled();
     expect(pushMock).toHaveBeenCalledWith("/room/777");
-  });
-
-  it("시작이 실패하면 강의실로 이동하지 않는다", async () => {
-    render(
-      <CreateSetupScreen
-        createSession={vi.fn().mockResolvedValue(created("777"))}
-        startSession={vi.fn().mockRejectedValue(new Error("boom"))}
-      />,
-    );
-
-    typeTitle("테스트 수업");
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "방 만들고 시작하기" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("button", { name: "수업 시작하고 입장" }));
-    });
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("수업을 시작하지 못했어요");
-    expect(pushMock).not.toHaveBeenCalled();
   });
 
   /** 이미 수업이 열려 있는 강사는 새로 만들 수 없다. 왜 막혔는지 알려줘야 스스로 해결할 수 있다. */

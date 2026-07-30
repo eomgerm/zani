@@ -70,6 +70,8 @@ public class SessionInviteController {
 
                     - **아직 학생이 들어올 수 없습니다.** 강사가 `POST /sessions/{sessionId}/start` 를 호출해야 코드가 유효해집니다.
                       카메라·마이크를 맞추는 동안 학생이 빈 방에 들어오지 않게 하려는 것입니다.
+                    - 시작은 **강사가 실제로 미디어 서버에 연결된 뒤** 호출하는 흐름입니다. 연결 전에 시작하면 연결이 실패했을 때
+                      초대 코드만 열려 학생이 강사 없는 방에 들어옵니다.
                     - 한 강사는 **동시에 하나의 수업만** 열 수 있습니다. 이전 수업이 진행 중이면 409 가 납니다.
                     - 아직 시작하지 않았으므로 `expiresAt` 은 null 입니다. 3시간 자동 종료 시계는 시작 시점부터 돕니다.
                     - 강사는 생성과 동시에 참가자로 등록되므로 따로 입장할 필요가 없고, 준비 중에도 미디어 토큰을 받을 수 있습니다.
@@ -99,8 +101,12 @@ public class SessionInviteController {
     @Operation(summary = "수업 시작 (강사)", description = """
                     준비된 수업을 실제로 시작합니다. 이 시점부터 초대 코드가 유효해지고 3시간 자동 종료 시계가 돌기 시작합니다.
 
+                    - **강사가 미디어 서버에 연결된 뒤 호출해 주세요.** 연결 전에 시작하면 연결이 실패했을 때 초대 코드만
+                      열려 학생이 강사 없는 방에 들어옵니다. 미디어 토큰 응답의 `sessionStatus` 가 `PREPARING` 이면
+                      연결 성공 후 이 API 를 부르는 것이 현재 흐름입니다.
                     - **멱등합니다.** 두 번 눌러도 시작 시각이 밀리지 않고 `started: false` 로 응답합니다.
                     - 수업을 연 강사만 시작할 수 있습니다.
+                    - 동시 요청은 세션 행 잠금으로 직렬화되어 한 건만 `started: true` 가 됩니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "시작 성공"),

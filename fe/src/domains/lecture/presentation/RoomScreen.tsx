@@ -28,6 +28,7 @@ import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
 import { useCoachingStatus } from "./useCoachingStatus";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
+import { useStartOnConnected } from "./useStartOnConnected";
 
 /**
  * SC-09 실시간 강의실 (어두운 테마). LiveKit room connection is attached here;
@@ -123,7 +124,7 @@ function RoomScreenContent({
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
+  const { sessionExpiresAt, sessionTitle, sessionStatus, connectionState } = useRoomConnection();
   const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
@@ -153,6 +154,14 @@ function RoomScreenContent({
   // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
   // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
   const isConfirmedInstructor = connected && isInstructor;
+  // 준비 중인 수업은 강사가 실제로 연결된 뒤에 시작한다. 생성 화면에서 시작하면 아직 연결되지 않은 상태로
+  // 초대 코드가 열려, 연결이 실패했을 때 학생만 강사 없는 방에 들어온다.
+  useStartOnConnected({
+    sessionId,
+    sessionStatus,
+    connected: connectionState === "connected",
+    isInstructor: isConfirmedInstructor,
+  });
   const coaching = useCoachingStatus({ sessionId, enabled: isConfirmedInstructor });
   const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
   const postureGuide = usePostureGuidePrompt();

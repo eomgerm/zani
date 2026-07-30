@@ -5,6 +5,7 @@ import java.time.Instant;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.a105.zani.session.application.issuemediatoken.IssueMediaTokenResult;
+import com.a105.zani.session.domain.model.SessionStatus;
 
 @Schema(description = "LiveKit 미디어 토큰 발급 응답")
 public record MediaTokenResponse(
@@ -31,7 +32,10 @@ public record MediaTokenResponse(
         Instant sessionExpiresAt,
 
         @Schema(description = "강사가 입력한 강의명", example = "React 상태관리 심화")
-        String sessionTitle) {
+        String sessionTitle,
+
+        @Schema(description = "세션의 현재 상태. 강사 화면은 PREPARING 을 보면 연결이 끝난 뒤 시작을 호출한다.", example = "LIVE")
+        SessionStatus sessionStatus) {
 
     public static MediaTokenResponse from(IssueMediaTokenResult result) {
         return new MediaTokenResponse(
@@ -41,6 +45,7 @@ public record MediaTokenResponse(
                 result.participantIdentity(),
                 result.expiresAt(),
                 result.sessionExpiresAt(),
-                result.sessionTitle());
+                result.sessionTitle(),
+                result.sessionStatus());
     }
 }
