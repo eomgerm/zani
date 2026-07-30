@@ -170,7 +170,7 @@ Authorization: Bearer {ZANI_ACCESS_TOKEN}
 
 ## 8. 권한
 
-### 강사 토큰
+두 역할이 같은 grant를 받는다. 화면 공유에 역할 제한을 두지 않기로 확정했다(2026-07-30).
 
 ```text
 roomJoin=true
@@ -180,23 +180,12 @@ canPublishSources=[CAMERA, MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO]
 canPublishData=false
 ```
 
-### 학생 기본 토큰
-
-```text
-roomJoin=true
-canSubscribe=true
-canPublish=true
-canPublishSources=[CAMERA, MICROPHONE]
-canPublishData=false
-```
-
-- 학생 화면 공유는 강사 승인 중에만 `UpdateParticipant`로 임시 허용한다.
-- 학생 기본 토큰에는 화면 공유 권한을 넣지 않는다.
-- 승인 시 `SCREEN_SHARE`와 `SCREEN_SHARE_AUDIO`를 함께 허용한다.
-- 공유 종료·승인 취소·연결 종료 시 권한을 회수한다.
-- 한 번에 하나의 화면만 활성화한다.
-- 강사는 학생 화면 공유를 언제든 중지할 수 있다.
-- 향후 DataPacket 또는 학생 공유 정책을 변경하려면 프론트 UI와 백엔드 grant를 함께 변경한다.
+- `canPublishSources`는 문서에서 protobuf enum 이름(대문자)으로 적지만, JWT 클레임은 `TrackSource`의 **소문자** 표기를 문자열로 받는다. 서버가 그 문자열과 정확히 비교하므로 대문자로 실으면 publish가 조용히 전부 막힌다.
+- `SCREEN_SHARE`와 `SCREEN_SHARE_AUDIO`는 항상 함께 부여한다.
+- 학생 화면 공유에 강사 승인을 요구하지 않는다. 요청·승인·거절·회수 플로우는 두지 않는다.
+- **한 번에 하나의 화면만 활성화한다. 이 제약은 토큰이 아니라 서버의 활성 공유 상태로 강제한다.** 토큰 단계에서 역할이나 권한을 갈라놓으면 학생이 공유를 시작할 수 없어 구현이 불가능하다.
+- 발급된 JWT는 폐기할 수 없다. 진행 중인 공유를 멈추려면 연결된 참가자를 `UpdateParticipant`로 낮추거나 `RoomService`로 트랙을 mute·제거해야 한다. 토큰 TTL(10분) 안에는 재연결로 권한이 되살아나므로 `participant_joined` 시점에도 제약을 다시 적용해야 한다.
+- 향후 DataPacket 또는 공유 정책을 변경하려면 프론트 UI와 백엔드 grant를 함께 변경한다.
 
 ## 9. 장치, 연결, 종료
 
@@ -255,7 +244,7 @@ Spring Boot WebSocket은 업무 이벤트를 처리한다.
 ```text
 SESSION_ENDING
 INSTRUCTOR_DISCONNECTED / INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_REQUESTED / GRANTED / REVOKED
+SCREEN_SHARE_STARTED / SCREEN_SHARE_STOPPED
 CHAT_MESSAGE
 HAND_RAISED / HAND_LOWERED
 REACTION
@@ -290,7 +279,7 @@ RoomComposite Egress를 기본 녹화기로 사용하지 않는다. 허용된 Tr
 | 강사 마이크 | 포함 | 포함 |
 | 강사 화면·화면 오디오 | 포함 | 포함 |
 | 학생 마이크 | 익명 개별 저장 | 전체 음성으로 혼합 |
-| 승인 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
+| 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
 | 학생 카메라 | 절대 저장하지 않음 | 제외 |
 
 ```text

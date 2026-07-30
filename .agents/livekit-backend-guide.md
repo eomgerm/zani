@@ -56,8 +56,7 @@ startsession
 joinsession
 issuemediatoken
 endsession
-requestscreenshare
-approvescreenshare
+enforcesinglescreenshare
 handlelivekitwebhook
 getrecordingstatus
 ```
@@ -92,7 +91,7 @@ PREPARING
 - 한 강사는 `PREPARING` 또는 `LIVE` 세션을 동시에 하나만 가질 수 있다.
 - `PREPARING`은 강사만 미디어 토큰을 받을 수 있다.
 - 학생은 `LIVE` 세션에서만 join·토큰 발급이 가능하다.
-- `ENDING`부터 신규 입장·토큰 발급·화면 공유 승인을 차단한다.
+- `ENDING`부터 신규 입장·토큰 발급·화면 공유 시작을 차단한다.
 - `start`, `end`는 멱등해야 한다.
 - 최대 수업 시간은 실제 `startedAt`부터 3시간이다.
 
@@ -125,8 +124,9 @@ recording_alias
 first_joined_at nullable   # LiveKit 첫 연결 성공
 last_joined_at nullable
 last_left_at nullable
-screen_share_approved_until nullable 또는 승인 상태
 ```
+
+승인 플로우를 두지 않으므로 참가자 행에 공유 승인 컬럼을 두지 않는다. 활성 공유는 세션 단위 서버 상태로 관리한다.
 
 - `(session_id, user_id)`는 unique다.
 - `recording_alias`는 세션 안에서 unique다.
@@ -276,7 +276,7 @@ POST /api/v1/sessions/{sessionId}/end
 
 ## 8. 토큰 grant
 
-강사:
+두 역할 공통(2026-07-30 확정 — 화면 공유에 역할 제한을 두지 않는다):
 
 ```text
 roomJoin=true
@@ -286,15 +286,7 @@ canPublishSources=[CAMERA, MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO]
 canPublishData=false
 ```
 
-학생 기본:
-
-```text
-roomJoin=true
-canSubscribe=true
-canPublish=true
-canPublishSources=[CAMERA, MICROPHONE]
-canPublishData=false
-```
+JWT 클레임에는 `TrackSource`의 소문자 표기(`camera`, `screen_share`, …)를 실어야 한다. 위 대문자 표기는 protobuf enum 이름이며, 그대로 실으면 publish가 조용히 전부 막힌다. 자세한 기준은 [`livekit-integration-context.md`](./livekit-integration-context.md) §8이 소유한다.
 
 부여하지 않는 권한:
 
@@ -308,30 +300,27 @@ canUpdateOwnMetadata
 
 API key와 secret은 서버 환경 변수에서만 읽고 응답·로그·DB에 저장하지 않는다.
 
-## 9. 학생 화면 공유
+## 9. 화면 공유
 
-학생 기본 토큰에는 공유 source가 없다.
+역할 제한이 없다. 두 역할 모두 기본 토큰으로 공유를 시작할 수 있고, 승인 플로우는 두지 않는다. 제약은 **한 세션에 활성 공유 하나**이며 서버의 활성 공유 상태로 강제한다.
 
 ```mermaid
 sequenceDiagram
-    participant S as 학생 FE
+    participant P as 참가자 FE
     participant BE as Spring Boot
-    participant I as 강사 FE
     participant LK as LiveKit
 
-    S->>BE: 화면 공유 요청
-    BE->>I: SCREEN_SHARE_REQUESTED
-    I->>BE: 승인
-    BE->>BE: 단일 활성 공유 lock 획득
-    BE->>LK: UpdateParticipant로 source 임시 허용
-    BE-->>S: SCREEN_SHARE_GRANTED
-    S->>LK: 화면·화면 오디오 publish
+    P->>LK: 화면·화면 오디오 publish
+    LK->>BE: track_published Webhook
+    BE->>BE: 활성 공유 단일성 검사
+    BE->>LK: 충돌 시 RoomService로 대상 트랙 mute·제거
+    BE-->>P: 공유 상태 브로드캐스트(STOMP)
 ```
 
-- 승인 종료·연결 종료·강사 취소 시 권한을 회수한다.
-- 강사가 중지하면 active screen track을 mute/stop하고 grant를 회수한다.
-- `track_published` Webhook에서 승인 상태와 단일 공유를 다시 검증한다.
-- 자체 구축 LiveKit의 기존 토큰 폐기 한계를 피하려고 학생 토큰 자체에는 화면 공유 source를 넣지 않는다.
+- 단일성 판정은 서버가 소유한다. 클라이언트 상태를 근거로 삼지 않는다.
+- 발급된 JWT는 폐기할 수 없다. 진행 중인 공유를 멈추려면 `UpdateParticipant`로 연결된 참가자의 source를 낮추거나 `RoomService`로 트랙을 mute·제거한다.
+- 토큰 TTL(10분) 안에는 재연결로 권한이 되살아난다. 따라서 `participant_joined` 시점에도 제약을 다시 적용해야 한다.
+- `track_published` Webhook에서 단일 공유를 다시 검증한다.
 
 ## 10. 애플리케이션 WebSocket
 
@@ -342,7 +331,7 @@ Spring WebSocket이 담당할 이벤트:
 ```text
 SESSION_ENDING
 INSTRUCTOR_DISCONNECTED / INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_REQUESTED / GRANTED / REVOKED
+SCREEN_SHARE_STARTED / SCREEN_SHARE_STOPPED
 CHAT_MESSAGE
 HAND_RAISED / HAND_LOWERED
 REACTION
@@ -382,7 +371,7 @@ Authorization: Bearer {LIVEKIT_SIGNED_JWT}
 | `participant_joined` | identity 검증, `firstJoinedAt`, 사후 접근 자격 |
 | `participant_left` | 퇴장 시각, 강사 5분 타이머 |
 | `participant_connection_aborted` | 입장 실패, 접근 자격 미부여 |
-| `track_published` | source·role·승인·녹화 정책 검사 |
+| `track_published` | source·role·단일 활성 공유·녹화 정책 검사 |
 | `track_unpublished` | Track 종료 구간과 Egress 마감 |
 | `egress_started/updated/ended` | 녹화 작업 상태·파일·실패 갱신 |
 
@@ -412,9 +401,13 @@ Webhook은 완전한 전달 보장이 없으므로 RoomService 상태와 DB를 �
 | 강사 SCREEN_SHARE | 저장 |
 | 강사 SCREEN_SHARE_AUDIO | 저장 |
 | 학생 MICROPHONE | recordingAlias별 저장 |
-| 승인 학생 SCREEN_SHARE | 저장 |
-| 승인 학생 SCREEN_SHARE_AUDIO | 저장 |
+| 학생 SCREEN_SHARE | 저장 |
+| 학생 SCREEN_SHARE_AUDIO | 저장 |
 | 학생 CAMERA | **Egress 요청 생성 금지** |
+
+> ⚠️ **구현 격차(2026-07-30).** 승인 개념이 폐지되어 활성 공유는 소유자와 무관하게 저장 대상이다. 그런데 `RecordingTrackPolicy.decide`는 아직 `studentScreenShareApproved` 플래그로 판단하고, `RecordingWebhookService`가 그 값을 `false`로 고정해 넘긴다. 결과적으로 **학생 공유는 publish 되지만 저장되지 않고 로그도 남지 않는다.** 이 표를 만족시키려면 플래그를 제거하는 후속 작업이 필요하다.
+>
+> `.agents/frd.md` §15.1·§10.2 와 `LIVE-002` 는 아직 "승인 학생"·"강사 승인 기반 공유"로 서술한다. 상호작용 범위 확정(티켓 14·63·65) 구현 시 함께 개정해야 한다.
 
 Track Egress는 원본 codec으로 저장한다. 예를 들어 VP8은 WebM, H.264는 MP4, Opus는 Ogg가 될 수 있으므로 확장자를 고정 가정하지 않고 Egress 결과를 manifest에 기록한다.
 
@@ -501,7 +494,7 @@ Vendor 예외는 infrastructure adapter에서 application-owned ErrorCode로 변
 - Webhook은 raw body 검증 전 업무 처리하지 않는다.
 - 프론트엔드가 보낸 role, identity, displayName, grant를 무시한다.
 - Room 이름과 participant identity를 DB에서 재구성한다.
-- 종료 세션·미등록 identity·승인되지 않은 Track은 즉시 차단한다.
+- 종료 세션·미등록 identity의 Track은 즉시 차단한다.
 - 녹화 파일 다운로드마다 로그인·참가 관계·자료 권한을 검사한다.
 
 ## 18. 테스트 범위
@@ -510,10 +503,10 @@ Vendor 예외는 infrastructure adapter에서 application-owned ErrorCode로 변
 
 - `PREPARING → LIVE → ENDING → NOTE_PENDING` 상태 전이
 - 한 강사 하나의 활성 세션
-- 강사·학생 토큰 grant 차이
+- 역할과 무관하게 동일한 토큰 grant
 - 종료 상태 토큰 발급 차단
 - 30명 정원과 동시 입장
-- 학생 화면 공유 승인·회수
+- 화면 공유 단일 활성 강제와 중지
 - 3시간 종료와 강사 5분 미복귀
 
 ### Presentation
@@ -535,7 +528,7 @@ Vendor 예외는 infrastructure adapter에서 application-owned ErrorCode로 변
 
 - 강사 생성부터 Egress 시작까지
 - 학생 장치 통과·join·LiveKit 첫 입장 기록
-- 화면 공유 승인과 단일 활성 공유
+- 화면 공유 단일 활성 강제
 - 재연결과 5분 자동 종료
 - 종료 후 익명 오디오·manifest·최종 MP4
 
@@ -549,7 +542,7 @@ Vendor 예외는 infrastructure adapter에서 application-owned ErrorCode로 변
 6. `/start`, Egress 조정, 초대 활성화
 7. 학생 join과 Webhook 첫 입장 확정
 8. Spring WebSocket 업무 이벤트
-9. 학생 화면 공유 승인·단일 공유
+9. 화면 공유 단일 활성 강제
 10. `/end`, 3시간·5분 스케줄링
 11. Track Egress manifest와 로컬 파일 제공
 12. FFmpeg·Whisper 후처리 연결
@@ -561,7 +554,7 @@ Vendor 예외는 infrastructure adapter에서 application-owned ErrorCode로 변
 - [ ] 강사와 학생 모두 SessionParticipant를 가진다.
 - [ ] `firstJoinedAt`은 실제 LiveKit 첫 연결에서 확정한다.
 - [ ] 모든 토큰 값은 서버가 결정하고 TTL은 10분이다.
-- [ ] 학생 기본 토큰에 화면 공유와 Data grant가 없다.
+- [ ] 모든 역할 토큰에 Data grant가 없고 publish source가 카메라·마이크·화면 공유로 제한된다.
 - [ ] Webhook이 서명·중복·역순을 안전하게 처리한다.
 - [ ] 30명 초과가 API와 LiveKit 양쪽에서 차단된다.
 - [ ] 학생 CAMERA에 Egress를 시작하지 않는다.
