@@ -31,6 +31,7 @@ import com.a105.zani.attention.infrastructure.persistence.entity.GroupAlertJpaEn
 import com.a105.zani.attention.infrastructure.persistence.entity.GroupAlertResponseCountJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
 import com.a105.zani.postclass.infrastructure.persistence.entity.InstructorNoteJpaEntity;
+import com.a105.zani.postclass.infrastructure.persistence.entity.PipelineJobJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizAnswerJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizOptionJpaEntity;
@@ -68,6 +69,7 @@ class JpaEntityMappingTest {
             Map.entry(SessionParticipantJpaEntity.class, "session_participants"),
             Map.entry(SessionStatusChangeJpaEntity.class, "session_status_changes"),
             Map.entry(InstructorNoteJpaEntity.class, "instructor_notes"),
+            Map.entry(PipelineJobJpaEntity.class, "pipeline_jobs"),
             Map.entry(ChatMessageJpaEntity.class, "chat_messages"),
             Map.entry(InteractionEventJpaEntity.class, "interaction_events"),
             Map.entry(AttentionEventJpaEntity.class, "attention_events"),
@@ -244,7 +246,7 @@ class JpaEntityMappingTest {
 
     @Test
     void mapsEveryDdlTableToAnExplicitJpaEntity() {
-        assertEquals(29, ENTITY_TABLES.size());
+        assertEquals(30, ENTITY_TABLES.size());
 
         ENTITY_TABLES.forEach((entityClass, expectedTable) -> {
             assertNotNull(entityClass.getAnnotation(Entity.class), entityClass.getSimpleName());
