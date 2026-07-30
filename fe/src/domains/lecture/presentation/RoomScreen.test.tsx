@@ -92,6 +92,19 @@ vi.mock("./useCoachingStatus", () => ({
   },
 }));
 
+// 실제 LiveKit publish·서버 슬롯 대신 테스트가 제어하는 값을 쓴다(훅 자체는 useScreenShare.test 가 검증).
+const screenShare = vi.hoisted(() => ({
+  sharing: false,
+  active: false,
+  blocked: false,
+  activeIdentity: null as string | null,
+  attachScreen: vi.fn(),
+  toggle: vi.fn(),
+}));
+vi.mock("./useScreenShare", () => ({
+  useScreenShare: () => screenShare,
+}));
+
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
@@ -144,6 +157,11 @@ afterEach(() => {
   coaching.onResult = null;
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
+  screenShare.sharing = false;
+  screenShare.active = false;
+  screenShare.blocked = false;
+  screenShare.activeIdentity = null;
+  screenShare.toggle.mockClear();
   vi.useRealTimers();
 });
 
@@ -256,17 +274,37 @@ describe("RoomScreen view toggle", () => {
 });
 
 describe("RoomScreen controls", () => {
-  it("toggles screen share into an overlay with a stop action", () => {
+  it("toggles screen share through the control button", () => {
     asStudent();
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "화면 공유" }));
 
-    expect(screen.getByText("내 화면을 공유하고 있어요")).toBeVisible();
+    expect(screenShare.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the shared screen with a stop action while sharing", () => {
+    asStudent();
+    screenShare.active = true;
+    screenShare.sharing = true;
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByTestId("screen-share-video")).toBeVisible();
+    // 구글미트식 우측 상단 강의방 미니 레이아웃이 공유 화면 위에 함께 뜬다.
+    expect(screen.getByTestId("screen-share-roster")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "화면 공유 중지" }));
 
-    expect(screen.queryByText("내 화면을 공유하고 있어요")).not.toBeInTheDocument();
+    expect(screenShare.toggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks starting a share while another participant is sharing", () => {
+    asStudent();
+    screenShare.active = true;
+    screenShare.blocked = true;
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("button", { name: "다른 참가자가 공유 중입니다" })).toBeDisabled();
   });
 
   it("sends a leaving student back to their lecture list", () => {
