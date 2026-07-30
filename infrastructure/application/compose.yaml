@@ -94,6 +94,9 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?FRONTEND_ORIGIN is required}
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:?GOOGLE_OAUTH_CLIENT_ID is required}
       AUTH_COOKIE_SAME_SITE: None
+      GMS_MOCK_ENABLED: "${GMS_MOCK_ENABLED:-false}"
+      COACHING_TRIGGER_COOLDOWN: "${COACHING_TRIGGER_COOLDOWN:-PT10M}"
+      COACHING_TRIGGER_THRESHOLD: "${COACHING_TRIGGER_THRESHOLD:-0.30}"
       # 브라우저가 접속할 LiveKit 주소. 이 값이 media-token 응답으로 그대로 내려간다.
       # 7880은 UFW로 막혀 있고 nginx가 443에서 프록시하므로 공개 URL을 쓴다.
       LIVEKIT_URL: wss://i15a105.p.ssafy.io
@@ -108,6 +111,7 @@ services:
       - jwt_secret
       - livekit_api_key
       - livekit_api_secret
+      - gms_api_key
     ports:
       - 127.0.0.1:18080:8080
     networks:
@@ -161,3 +165,5 @@ secrets:
     file: /etc/zani/application/secrets/livekit_api_key
   livekit_api_secret:
     file: /etc/zani/application/secrets/livekit_api_secret
+  gms_api_key:
+    file: /etc/zani/application/secrets/gms_api_key
