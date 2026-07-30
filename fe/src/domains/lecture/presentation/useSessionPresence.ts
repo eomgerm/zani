@@ -14,8 +14,13 @@ import { useRoomReconnect, type ReconnectStatus } from "./useRoomReconnect";
 
 /**
  * heartbeat 주기(ms). 서버 presence 키 TTL(30초)보다 넉넉히 짧게 잡아, 한 번 실패해도 접속으로 유지된다.
+ *
+ * <p>10초에서 3초로 줄였다. 학생이 수업 종료를 아는 경로가 이 heartbeat 뿐이라, 주기가 곧 "강사가 끝냈는데 학생이 아직 방에 있는" 시간이었다. 10초는 눈에 띄게 느렸다.
+ *
+ * <p>Redis 읽기·쓰기만 하는 경로이고 한 수업에 최대 30명이라 3초로도 초당 10건 수준이다. 근본적으로는 서버가 밀어주는 편이 맞다(미디어 서버에서 참가자를 내보내면 즉시 끊긴다) — 그건
+ * 진행 중인 녹화 egress 처리와 함께 봐야 해서 이 티켓에서 다루지 않는다.
  */
-const HEARTBEAT_INTERVAL_MS = 10_000;
+const HEARTBEAT_INTERVAL_MS = 3_000;
 
 /** 멤버십이 없다는 응답. 더 보내봐야 결과가 같아 즉시 중단한다. */
 const NOT_A_MEMBER_STATUS = 403;
