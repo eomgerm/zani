@@ -245,20 +245,17 @@ def extract_frame_features(
 
 
 __all__ = [
-    # New public API
-    "FeatureSchema",
-    "SCHEMA_98",
-    "SCHEMA_132",
-    "SCHEMAS",
-    "get_schema",
+    "BLENDSHAPE_NAMES",
     "BLENDSHAPE_NAMES_98",
     "BLENDSHAPE_NAMES_132",
-    # Back-compatibility aliases
-    "SCHEMA_NAME",
-    "BLENDSHAPE_NAMES",
     "RAW_FEATURE_COUNT",
+    "SCHEMAS",
+    "SCHEMA_98",
+    "SCHEMA_132",
+    "SCHEMA_NAME",
     "TOKEN_FEATURE_COUNT",
-    # Functions and exceptions
+    "FeatureSchema",
     "InvalidFrameFeaturesError",
     "extract_frame_features",
+    "get_schema",
 ]

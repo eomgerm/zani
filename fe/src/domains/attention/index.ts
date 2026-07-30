@@ -13,6 +13,29 @@ export type {
   AttentionPrediction,
   AttentionStatus,
 } from "./domain/attentionPrediction";
+export {
+  INITIAL_ATTENTION_COACHING_STATE,
+  reduceAttentionCoaching,
+} from "./domain/attentionCoachingDecision";
+export type {
+  AttentionCoachingDecision,
+  AttentionCoachingInput,
+  AttentionCoachingState,
+} from "./domain/attentionCoachingDecision";
+export type { DetectionOutcome, DetectorOutput, DetectorReport } from "./domain/detectionOutcome";
+export {
+  ATTENTION_EVENT_RETRY_DELAY_MS,
+  useAttentionEventReporter,
+} from "./presentation/useAttentionEventReporter";
+export type {
+  AttentionEventReporter,
+  UseAttentionEventReporterOptions,
+} from "./presentation/useAttentionEventReporter";
+export { AttentionEventSendError } from "./infrastructure/attentionEventApi";
+export type {
+  AttentionEventAck,
+  AttentionEventSender,
+} from "./infrastructure/attentionEventApi";
 export { CoachingPromptPanel } from "./presentation/CoachingPromptPanel";
 export type {
   CoachingPromptOption,

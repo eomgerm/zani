@@ -1,6 +1,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const ACCESS_TOKEN = vi.hoisted(() => "test-access-token");
+
+// 전송에는 Bearer 토큰이 필요하다. 인증 컨텍스트가 없는 단위 테스트에서는 대체한다.
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => ({ accessToken: ACCESS_TOKEN }),
+}));
+
 import {
   UNDERSTANDING_CHECK_COOLDOWN_MS,
   UNDERSTANDING_CHECK_SECONDS,
@@ -50,15 +57,21 @@ describe("useUnderstandingCheckPrompt", () => {
 
     expect(sent).toBe(true);
     expect(result.current.prompt).toBeNull();
-    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", {
-      kind: "UNDERSTANDING_CHECK",
-      answer: "CONFUSED",
-      shownAt: NOW.toISOString(),
-      respondedAt: new Date(NOW.getTime() + 8_000).toISOString(),
-    });
+    expect(sendResponse).toHaveBeenCalledWith(
+      "s1",
+      "prompt-1",
+      {
+        kind: "UNDERSTANDING_CHECK",
+        answer: "CONFUSED",
+        shownAt: NOW.toISOString(),
+        respondedAt: new Date(NOW.getTime() + 8_000).toISOString(),
+      },
+      ACCESS_TOKEN,
+    );
   });
 
   // 무전송을 신호로 쓰면 서버가 학생의 무응답과 브라우저 중단을 구분할 수 없다.
+  // 값은 서버 계약값인 NON_RESPONSE 여야 한다 — 옛 표기는 400 으로 거절된다.
   it("sends NON_RESPONSE when the prompt closes without an answer", () => {
     const sendResponse = vi.fn().mockResolvedValue(undefined);
     const onTimedOut = vi.fn();
@@ -71,12 +84,17 @@ describe("useUnderstandingCheckPrompt", () => {
 
     expect(result.current.prompt).toBeNull();
     expect(onTimedOut).toHaveBeenCalledTimes(1);
-    expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", {
-      kind: "UNDERSTANDING_CHECK",
-      answer: "NON_RESPONSE",
-      shownAt: NOW.toISOString(),
-      respondedAt: new Date(NOW.getTime() + DURATION_MS).toISOString(),
-    });
+    expect(sendResponse).toHaveBeenCalledWith(
+      "s1",
+      "prompt-1",
+      {
+        kind: "UNDERSTANDING_CHECK",
+        answer: "NON_RESPONSE",
+        shownAt: NOW.toISOString(),
+        respondedAt: new Date(NOW.getTime() + DURATION_MS).toISOString(),
+      },
+      ACCESS_TOKEN,
+    );
   });
 
   it("does not throw when the automatic NON_RESPONSE fails to send", () => {
@@ -110,6 +128,7 @@ describe("useUnderstandingCheckPrompt", () => {
       "s1",
       "prompt-1",
       expect.objectContaining({ answer: "OK" }),
+      ACCESS_TOKEN,
     );
   });
 

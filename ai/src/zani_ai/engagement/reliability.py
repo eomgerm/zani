@@ -76,9 +76,7 @@ class ClipReliability:
         probabilities = np.exp(shifted)
         probabilities /= probabilities.sum(axis=1, keepdims=True)
         predictions = tuple(int(value) for value in logits.argmax(axis=1))
-        counts: NDArray[np.float64] = np.bincount(predictions, minlength=4).astype(
-            np.float64
-        )
+        counts: NDArray[np.float64] = np.bincount(predictions, minlength=4).astype(np.float64)
         vote_probabilities = counts[counts > 0] / len(predictions)
         vote_entropy = -float(np.sum(vote_probabilities * np.log(vote_probabilities)))
         mean_probabilities = probabilities.mean(axis=0)
@@ -180,9 +178,7 @@ def _group_summary(records: Sequence[ClipReliability]) -> GroupSummary:
 
 def _error_summary(records: Sequence[ClipReliability]) -> PredictionErrorSummary:
     errors = [item for item in records if item.ensemble_prediction != item.label]
-    adjacent_error_count = sum(
-        abs(item.ensemble_prediction - item.label) == 1 for item in errors
-    )
+    adjacent_error_count = sum(abs(item.ensemble_prediction - item.label) == 1 for item in errors)
     return PredictionErrorSummary(
         clip_count=len(records),
         error_count=len(errors),
@@ -196,12 +192,8 @@ def summarize_reliability(records: Sequence[ClipReliability]) -> ReliabilitySumm
     splits = sorted({item.split for item in records})
     labels = sorted({item.label for item in records})
     by_reliability: dict[ReliabilityLabel, PredictionErrorSummary] = {
-        "reliable": _error_summary(
-            [item for item in records if item.reliability == "reliable"]
-        ),
-        "ambiguous": _error_summary(
-            [item for item in records if item.reliability == "ambiguous"]
-        ),
+        "reliable": _error_summary([item for item in records if item.reliability == "reliable"]),
+        "ambiguous": _error_summary([item for item in records if item.reliability == "ambiguous"]),
     }
     return ReliabilitySummary(
         by_split={
@@ -611,8 +603,7 @@ def _report_content(
     ]
     for split, item in summary.by_split.items():
         lines.append(
-            f"| {split} | {item.total_count} | {item.ambiguous_count} | "
-            f"{item.ambiguous_rate:.2%} |"
+            f"| {split} | {item.total_count} | {item.ambiguous_count} | {item.ambiguous_rate:.2%} |"
         )
     lines.extend(
         [
@@ -668,9 +659,7 @@ def _report_content(
     )
     for name, criterion in assessment.criteria.items():
         passed = "yes" if criterion.passed else "no"
-        lines.append(
-            f"| {name} | {criterion.required} | {criterion.actual} | {passed} |"
-        )
+        lines.append(f"| {name} | {criterion.required} | {criterion.actual} | {passed} |")
     lines.extend(
         [
             "",

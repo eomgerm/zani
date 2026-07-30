@@ -9,7 +9,7 @@ import type {
   AttentionInferenceFailure,
 } from "../application/attentionDetectionPorts";
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
-import type { DetectorReport } from "../domain/detectionOutcome";
+import type { DetectorOutput, DetectorReport } from "../domain/detectionOutcome";
 import { useAttentionDetection } from "./useAttentionDetection";
 
 /**
@@ -40,12 +40,41 @@ function manualFrameSource() {
       const frame: AttentionFrame = { close: vi.fn<() => void>() };
       options?.onFrame(frame, timestampMs);
     },
+    /** 창을 모으는 도중 카메라 프레임 공급이 끊긴 상황. */
+    fail(message: string) {
+      options?.onFailure(message);
+    },
   };
+}
+
+/** jsdom 의 `document.hidden` 은 getter 라 spy 로 덮는다. */
+function hideTab() {
+  return vi.spyOn(document, "hidden", "get").mockReturnValue(true);
 }
 
 const PREDICTION: AttentionPrediction = {
   label: "Engaged",
   probabilities: [0.1, 0.1, 0.7, 0.1],
+};
+
+/** 서버로 나갈 수 있는 필드 전부. `windowStartedAtMs` 는 창 보고에만 실리는 선택 필드다. */
+const REPORT_CONTRACT_KEYS = [
+  "outcome",
+  "observedAtMs",
+  "windowStartedAtMs",
+  "clientEventId",
+];
+
+/**
+ * 창 보고에 항상 붙는 필드들. `vi.setSystemTime(0)` 을 쓰는 케이스 기준이라
+ * `observedAtMs` 는 0 이고, `windowStartedAtMs` 는 컨트롤러가 계산하는
+ * `observedAtMs - ATTENTION_DETECTION_CONFIG.windowMs` = `0 - 10_000` 이다.
+ * 멱등키는 보고마다 새로 뽑히므로 값이 아니라 존재만 고정한다.
+ */
+const WINDOW_REPORT = {
+  observedAtMs: 0,
+  windowStartedAtMs: -10_000,
+  clientEventId: expect.any(String),
 };
 
 describe("useAttentionDetection", () => {
@@ -55,6 +84,7 @@ describe("useAttentionDetection", () => {
   let createFeatureDetector: Mock<() => Promise<AttentionFeatureDetector>>;
   let onPrediction: Mock<(prediction: AttentionPrediction) => void>;
   let onStatusChange: Mock<(status: AttentionStatus) => void>;
+  let onDetection: Mock<(output: DetectorOutput) => void>;
   let onReport: ReturnType<typeof vi.fn<(report: DetectorReport) => void>>;
   let emitPrediction: (prediction: AttentionPrediction) => void;
   let renderCount: number;
@@ -66,6 +96,7 @@ describe("useAttentionDetection", () => {
     createFeatureDetector = vi.fn(async () => ({ detect: detectedFeatures, close }));
     onPrediction = vi.fn();
     onStatusChange = vi.fn();
+    onDetection = vi.fn();
     onReport = vi.fn();
     renderCount = 0;
   });
@@ -93,6 +124,7 @@ describe("useAttentionDetection", () => {
           track,
           onPrediction,
           onStatusChange,
+          onDetection,
           onReport,
           createFrameSource: frames.createFrameSource,
           createFeatureDetector,
@@ -124,19 +156,29 @@ describe("useAttentionDetection", () => {
     const view = render("off");
     await act(async () => {});
 
+    // 카메라 OFF 는 10초 창을 관측한 것이 아니라 창 시작 시각이 없다.
     expect(onReport).toHaveBeenNthCalledWith(1, {
       outcome: "CAMERA_OFF",
       observedAtMs: 0,
+      clientEventId: expect.any(String),
     });
 
     act(() => vi.advanceTimersByTime(10_000));
     expect(onReport).toHaveBeenNthCalledWith(2, {
       outcome: "CAMERA_OFF",
       observedAtMs: 10_000,
+      clientEventId: expect.any(String),
     });
 
     view.unmount();
     vi.useRealTimers();
+  });
+
+  it("notifies the local coaching pipeline when the camera turns off", async () => {
+    render("off");
+    await act(async () => {});
+
+    expect(onDetection).toHaveBeenCalledWith({ outcome: "CAMERA_OFF" });
   });
 
   it("treats a missing local camera track as CAMERA_OFF", async () => {
@@ -165,12 +207,14 @@ describe("useAttentionDetection", () => {
     expect(onReport).toHaveBeenNthCalledWith(1, {
       outcome: "DETECTOR_UNAVAILABLE",
       observedAtMs: 0,
+      clientEventId: expect.any(String),
     });
 
     act(() => vi.advanceTimersByTime(10_000));
     expect(onReport).toHaveBeenNthCalledWith(2, {
       outcome: "DETECTOR_UNAVAILABLE",
       observedAtMs: 10_000,
+      clientEventId: expect.any(String),
     });
 
     view.unmount();
@@ -215,6 +259,57 @@ describe("useAttentionDetection", () => {
     expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
     expect(onStatusChange).toHaveBeenCalledWith("collecting");
     expect(onStatusChange).toHaveBeenCalledWith("measuring");
+  });
+
+  // 서버는 이 관측이 어느 10초 구간을 잰 것인지 알아야 수업 후 리포트의 근거로 쓸 수 있다.
+  it("reports a judged window with the window it observed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const view = render();
+    await act(async () => {});
+    await advance(10_000);
+    vi.setSystemTime(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onReport).toHaveBeenLastCalledWith({
+      outcome: "ENGAGED",
+      observedAtMs: 10_000,
+      windowStartedAtMs: 0,
+      clientEventId: expect.any(String),
+    });
+
+    view.unmount();
+    vi.useRealTimers();
+  });
+
+  // 확률은 로컬 판정용이다. 서버 보고에 새어 들어가면 계약 밖 필드로 400 을 받는다.
+  it("never carries probabilities into a server report", async () => {
+    const view = render();
+    await act(async () => {});
+    await advance(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onReport).toHaveBeenCalled();
+    onReport.mock.calls.forEach(([report]) => {
+      expect(report).not.toHaveProperty("probabilities");
+    });
+
+    view.unmount();
+  });
+
+  it("notifies the local coaching pipeline with probabilities", async () => {
+    render();
+    await act(async () => {});
+    await advance(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onDetection).toHaveBeenCalledWith({
+      outcome: "Engaged",
+      probabilities: [0.1, 0.1, 0.7, 0.1],
+    });
   });
 
   it("does not re-render once per sample while the status is unchanged", async () => {
@@ -265,5 +360,171 @@ describe("useAttentionDetection", () => {
 
     expect(close).toHaveBeenCalledTimes(1);
     expect(terminate).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * 서버로 나가는 보고 경계(티켓 83). 순수 매핑은 `domain/detectionOutcome.test.ts` 가,
+   * 반복 스케줄은 `application/detectionReportController.test.ts` 가 이미 고정한다.
+   * 여기서는 배선을 통과한 뒤에도 그 계약이 유지되는지만 본다.
+   */
+  describe("서버 보고 경계", () => {
+    it("reports the server outcome for a four-class window instead of the local label", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const view = render();
+      await act(async () => {});
+      await advance(10_000);
+
+      await act(async () => emitPrediction(PREDICTION));
+
+      // 로컬 라벨("Engaged")이 그대로 나가면 서버 enum 과 어긋난다.
+      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", ...WINDOW_REPORT });
+      expect(onReport).not.toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "Engaged" }),
+      );
+
+      view.unmount();
+      vi.useRealTimers();
+    });
+
+    it("never lets probabilities reach the report boundary", async () => {
+      const view = render();
+      await act(async () => {});
+      await advance(10_000);
+
+      await act(async () => emitPrediction(PREDICTION));
+
+      // 확률은 로컬 프롬프트 판정 전용이다. 원본 영상을 보관하지 않으므로 서버에 쓸 곳도 없다.
+      expect(onDetection).toHaveBeenCalledWith(
+        expect.objectContaining({ probabilities: PREDICTION.probabilities }),
+      );
+      for (const [report] of onReport.mock.calls) {
+        expect(
+          Object.keys(report).filter((key) => !REPORT_CONTRACT_KEYS.includes(key)),
+        ).toEqual([]);
+      }
+
+      view.unmount();
+    });
+
+    it("reports UNMEASURABLE when the window collected too few usable frames", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      createFeatureDetector.mockResolvedValue({ detect: () => null, close });
+
+      const view = render();
+      await act(async () => {});
+      await advance(10_000);
+
+      expect(onReport).toHaveBeenCalledWith({ outcome: "UNMEASURABLE", ...WINDOW_REPORT });
+
+      view.unmount();
+      vi.useRealTimers();
+    });
+
+    it("keeps the judgement loop running while the tab is hidden but sends no report", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const hidden = hideTab();
+
+      const view = render();
+      await act(async () => {});
+      await advance(10_000);
+      await act(async () => emitPrediction(PREDICTION));
+
+      // 루프는 계속 돈다 — 프레임 소스가 살아 있고 로컬 판정도 그대로 나온다.
+      expect(frames.pending).toBe(1);
+      expect(onDetection).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "Engaged" }),
+      );
+      // 보이지 않는 탭의 관측은 서버로 보내지 않는다.
+      expect(onReport).not.toHaveBeenCalled();
+
+      // 다시 보이면 그 다음 창부터 보고가 살아난다.
+      hidden.mockReturnValue(false);
+      await advance(20_000, 10_100);
+      await act(async () => emitPrediction(PREDICTION));
+
+      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", ...WINDOW_REPORT });
+
+      view.unmount();
+      hidden.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it("reports CAMERA_OFF rather than UNMEASURABLE while a reconnect leaves the track ended", async () => {
+      // 재연결 구간의 연결 측정 불가(useRoomReconnect 의 UNMEASURABLE)와 얼굴을 못 잡은
+      // 검출기 UNMEASURABLE 은 다른 축이다. 트랙이 끊긴 것은 카메라가 영상을 못 주는 것이다.
+      const ended = { readyState: "ended", muted: false } as MediaStreamTrack;
+
+      const view = render("on", ended);
+      await act(async () => {});
+
+      expect(onReport).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "CAMERA_OFF" }),
+      );
+      expect(onReport).not.toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "UNMEASURABLE" }),
+      );
+      expect(createFeatureDetector).not.toHaveBeenCalled();
+
+      view.unmount();
+    });
+
+    it("reports CAMERA_OFF rather than UNMEASURABLE while another app holds the camera", async () => {
+      const muted = { readyState: "live", muted: true } as MediaStreamTrack;
+
+      const view = render("on", muted);
+      await act(async () => {});
+
+      expect(onReport).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "CAMERA_OFF" }),
+      );
+      expect(onReport).not.toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: "UNMEASURABLE" }),
+      );
+
+      view.unmount();
+    });
+
+    it("discards the in-progress window when the camera frame supply dies mid-window", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const view = render();
+      await act(async () => {});
+      // 창의 절반만 모은 상태에서 프레임 공급이 끊긴다.
+      await advance(5_000);
+      await act(async () => frames.fail("camera lost"));
+
+      // 모아둔 절반은 버린다. 창이 끝나는 시각을 지나도 창 보고는 나오지 않는다.
+      await advance(15_000, 5_100);
+
+      expect(frames.pending).toBe(0);
+      expect(onReport.mock.calls.length).toBeGreaterThan(0);
+      for (const [report] of onReport.mock.calls) {
+        expect(report.outcome).toBe("DETECTOR_UNAVAILABLE");
+      }
+
+      view.unmount();
+      warn.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it("stops reporting after unmount", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const view = render("off");
+      await act(async () => {});
+      expect(onReport).toHaveBeenCalledTimes(1);
+
+      view.unmount();
+      act(() => vi.advanceTimersByTime(60_000));
+
+      // 반복 보고 타이머가 언마운트 뒤에도 살아 있으면 떠난 학생의 관측이 계속 쌓인다.
+      expect(onReport).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
   });
 });

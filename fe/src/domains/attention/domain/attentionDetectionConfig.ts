@@ -7,4 +7,6 @@ export const ATTENTION_DETECTION_CONFIG = {
   minimumValidFrameRatio: 0.7,
   minimumValidFramesPerSegment: 3,
   reportIntervalMs: 10_000,
+  lowEngagementProbabilityThreshold: 0.35,
+  consecutiveDetectionCount: 3,
 } as const;

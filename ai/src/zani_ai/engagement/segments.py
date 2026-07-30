@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -8,9 +9,16 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.features import RAW_FEATURE_COUNT, TOKEN_FEATURE_COUNT
 
+EXPECTED_FRAME_COUNT = 100
+MINIMUM_VALID_FRAME_RATIO = 0.7
+
 
 class InsufficientFaceCoverageError(ValueError):
     """Raised when a temporal segment lacks enough detected face frames."""
+
+
+class InsufficientTotalFaceCoverageError(InsufficientFaceCoverageError):
+    """Raised when a window has fewer valid frames than the runtime gate."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,12 +33,20 @@ def aggregate_segments(
     window_seconds: float = 10.0,
     segment_count: int = 20,
     minimum_valid_frames: int = 3,
+    expected_frame_count: int = EXPECTED_FRAME_COUNT,
+    minimum_valid_frame_ratio: float = MINIMUM_VALID_FRAME_RATIO,
     raw_feature_count: int = RAW_FEATURE_COUNT,
     token_feature_count: int = TOKEN_FEATURE_COUNT,
 ) -> NDArray[np.float32]:
     """Aggregate raw frame features into per-segment mean and population std tokens."""
-    if window_seconds <= 0 or segment_count <= 0 or minimum_valid_frames <= 0:
-        raise ValueError("window, segment count, and minimum frames must be positive")
+    if (
+        window_seconds <= 0
+        or segment_count <= 0
+        or minimum_valid_frames <= 0
+        or expected_frame_count <= 0
+        or not 0 < minimum_valid_frame_ratio <= 1
+    ):
+        raise ValueError("window, segment and expected counts, and coverage must be positive")
     segment_seconds = window_seconds / segment_count
     buckets: list[list[NDArray[np.float32]]] = [[] for _ in range(segment_count)]
     for frame in frames:
@@ -40,6 +56,13 @@ def aggregate_segments(
             raise ValueError(f"frame features must have shape ({raw_feature_count},) and be finite")
         index = min(int(frame.timestamp_seconds / segment_seconds), segment_count - 1)
         buckets[index].append(frame.values)
+
+    valid_frame_count = sum(map(len, buckets))
+    minimum_valid_frame_count = math.ceil(expected_frame_count * minimum_valid_frame_ratio)
+    if valid_frame_count < minimum_valid_frame_count:
+        raise InsufficientTotalFaceCoverageError(
+            f"window has {valid_frame_count} valid frames; {minimum_valid_frame_count} required"
+        )
 
     for index, bucket in enumerate(buckets):
         if len(bucket) < minimum_valid_frames:
@@ -59,7 +82,10 @@ def aggregate_segments(
 
 
 __all__ = [
+    "EXPECTED_FRAME_COUNT",
+    "MINIMUM_VALID_FRAME_RATIO",
     "InsufficientFaceCoverageError",
+    "InsufficientTotalFaceCoverageError",
     "TimedFeatures",
     "aggregate_segments",
 ]

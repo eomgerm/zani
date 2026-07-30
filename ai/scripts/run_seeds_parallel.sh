@@ -12,6 +12,7 @@
 #   CUDA_VISIBLE_DEVICES  card to expose (default 2 -- the allocated L40S)
 #   LOG_DIR               where per-seed logs go (default ~/logs)
 #   MAX_PARALLEL          seeds to run at once (default: all of them)
+#   RESULTS_WORKTREE      publish metrics here when the run ends (default: skip)
 #
 # Detach it so a JupyterHub idle cull cannot take the run down with the server:
 #   setsid nohup scripts/run_seeds_parallel.sh ... > ~/e1a.log 2>&1 < /dev/null &
@@ -80,5 +81,17 @@ uv run python -m zani_ai engagement "reproduce-${protocol}" \
     --output "$output" \
     --device cuda \
     --collect-only
+
+# The periodic publisher shares the singleuser server's cgroup, so an idle cull
+# can take it down before the last seed lands. Publishing once here makes the
+# final metrics independent of whether that loop is still alive.
+if [ -n "${RESULTS_WORKTREE:-}" ]; then
+    echo "--- publishing metrics ---"
+    uv run python -m zani_ai engagement publish-results \
+        --artifacts "$(dirname "$output")" \
+        --worktree "$RESULTS_WORKTREE" \
+        --interval 0 \
+        || echo "publish failed; the periodic publisher will retry" >&2
+fi
 
 exit "$failed"

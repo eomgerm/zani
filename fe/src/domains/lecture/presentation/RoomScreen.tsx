@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
   CoachingPromptPanel,
+  INITIAL_ATTENTION_COACHING_STATE,
+  reduceAttentionCoaching,
   useCameraGuidePrompt,
   usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
   type AnalysisAvailability,
   type CameraGuideCause,
+  type DetectorOutput,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
 import { publicMessages } from "./fixtures";
@@ -25,7 +28,9 @@ import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
 import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
+import { CoachTipCard } from "./components/room/CoachTipCard";
 import { useCoachingStatus } from "./useCoachingStatus";
+import { useCoachTipCard } from "./useCoachTipCard";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 import { useStartOnConnected } from "./useStartOnConnected";
@@ -162,9 +167,23 @@ function RoomScreenContent({
     connected: connectionState === "connected",
     isInstructor: isConfirmedInstructor,
   });
-  const coaching = useCoachingStatus({ sessionId, enabled: isConfirmedInstructor });
-  const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
-  const postureGuide = usePostureGuidePrompt();
+  // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
+  // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
+  const coachTip = useCoachTipCard();
+  const coaching = useCoachingStatus({
+    sessionId,
+    enabled: isConfirmedInstructor,
+    onResult: coachTip.accept,
+  });
+  const attentionCoachingStateRef = useRef(INITIAL_ATTENTION_COACHING_STATE);
+  const resetAttentionCoaching = useCallback(() => {
+    attentionCoachingStateRef.current = INITIAL_ATTENTION_COACHING_STATE;
+  }, []);
+  const understandingCheck = useUnderstandingCheckPrompt({
+    sessionId,
+    onClosed: resetAttentionCoaching,
+  });
+  const postureGuide = usePostureGuidePrompt({ onClosed: resetAttentionCoaching });
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
   const cameraGuide = useCameraGuidePrompt({
     sessionId,
@@ -172,8 +191,33 @@ function RoomScreenContent({
     // 학생 프롬프트라 강사 화면에서는 돌리지 않는다. 역할이 확인되기 전에는 isInstructor 가
     // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
     enabled: !isInstructor,
+    onClosed: resetAttentionCoaching,
   });
-  const [alertOpen, setAlertOpen] = useState(false);
+  const promptVisible =
+    understandingCheck.prompt !== null ||
+    postureGuide.prompt !== null ||
+    cameraGuide.prompt !== null;
+  const promptVisibleRef = useRef(promptVisible);
+  useLayoutEffect(() => {
+    promptVisibleRef.current = promptVisible;
+  }, [promptVisible]);
+  const triggerUnderstandingCheck = understandingCheck.trigger;
+  const triggerPostureGuide = postureGuide.trigger;
+  const handleAttentionDetection = useCallback(
+    (output: DetectorOutput) => {
+      const decision = reduceAttentionCoaching(attentionCoachingStateRef.current, {
+        output,
+        promptVisible: promptVisibleRef.current,
+      });
+      attentionCoachingStateRef.current = decision.state;
+      if (decision.prompt === "UNDERSTANDING_CHECK") {
+        triggerUnderstandingCheck(`understanding-${Date.now()}`);
+      } else if (decision.prompt === "POSTURE_GUIDE") {
+        triggerPostureGuide(`posture-${Date.now()}`);
+      }
+    },
+    [triggerPostureGuide, triggerUnderstandingCheck],
+  );
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -286,16 +330,16 @@ function RoomScreenContent({
         참여도 판정은 학생 화면에서만 돌린다. 강사는 집계를 보는 쪽이라 판정 대상이 아니다.
         역할이 확인되기 전에는 isInstructor 가 true 라, 판정이 켜지지 않는 쪽이 기본값이다.
 
-        수업별 분석 동의는 아직 코드에 없다. 지금은 판정 결과가 기기 밖으로 나가지 않아
-        문제되지 않지만, 판정 이벤트 전송을 붙이는 사람은 전송에 조건을 거는 것으로 끝내지 말고
-        이 마운트 조건에 동의 여부를 반드시 함께 넣어야 한다. 그러지 않으면 동의하지 않은
-        학생의 기기에서도 판정이 계속 돌아간다.
+        10초 관측은 여기서부터 서버로 나간다. 프레임·랜드마크·확률은 기기 밖으로 나가지 않고
+        판정 결과 7종만 실린다(attention 도메인 전송 어댑터가 계약 밖 필드를 담지 않는다).
       */}
       {!isInstructor && (
         <AttentionCameraSource
+          sessionId={sessionId}
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
           onAvailabilityChange={setAnalysisAvailability}
+          onDetection={handleAttentionDetection}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -442,31 +486,13 @@ function RoomScreenContent({
               어긋나고 문구도 겹쳐 제거했다(76: 중복 구현하지 않는다).
             */}
 
-            {/* 집단 알림 (강사) */}
-            {isInstructor && alertOpen && (
-              <div className="absolute right-2.5 top-2 z-[5] w-[290px] animate-[zPop_.2s] rounded-[18px] bg-surface p-[18px] text-ink shadow-[0_16px_44px_#0006]">
-                <div className="mb-2.5 flex items-center justify-between">
-                  <span className="z-pill bg-warn-soft px-3 py-[5px] text-[13px] text-warn">
-                    ⚠ 개념 확인 필요
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setAlertOpen(false)}
-                    aria-label="알림 닫기"
-                    className="cursor-pointer border-0 bg-transparent text-base text-ink-quiet"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex flex-col gap-2.5">
-                  <p className="m-0 text-[13.5px] font-bold leading-[1.5] text-ink">
-                    학생 <b className="text-warn">30%</b>에게서 신호가 나타났어요.
-                  </p>
-                  <p className="m-0 text-[13.5px] leading-[1.5] text-ink-label">
-                    잠시 속도를 늦추거나 짚어주면 좋아요.
-                  </p>
-                </div>
-              </div>
+            {/*
+              수업 팁 (강사). 문구는 서버가 §8 템플릿으로 완성해 내려주므로 그대로 표시한다.
+              여기 있던 프로토타입 카드는 "학생 30%에게서 신호가 나타났어요" 라는 고정 문구라
+              실제 집계와 무관했다(86).
+            */}
+            {isConfirmedInstructor && coachTip.tip !== null && (
+              <CoachTipCard tip={coachTip.tip} onDismiss={coachTip.dismiss} />
             )}
 
             {/* 플로팅 반응 */}

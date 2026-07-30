@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAuth } from "@/domains/auth";
 import {
   sendPromptResponse,
   type PromptAnswer,
@@ -56,6 +57,8 @@ export function useUnderstandingCheckPrompt(
   options: UseUnderstandingCheckPromptOptions,
 ): UseUnderstandingCheckPromptResult {
   const { sessionId, sendResponse = sendPromptResponse, onTimedOut, onClosed } = options;
+  // 서버는 Bearer 토큰으로 요청자가 이 세션의 학생인지 본다. 쿠키는 refresh 전용이라 헤더가 없으면 401 이다.
+  const { accessToken } = useAuth();
 
   const [promptId, setPromptId] = useState<string | null>(null);
   const answeredRef = useRef(false);
@@ -80,21 +83,26 @@ export function useUnderstandingCheckPrompt(
   const send = useCallback(
     async (targetPromptId: string, answer: PromptAnswer): Promise<boolean> => {
       const shownAt = shownAtRef.current;
-      if (shownAt === null) return false;
+      if (shownAt === null || accessToken === null) return false;
       try {
-        await sendResponse(sessionId, targetPromptId, {
-          kind: "UNDERSTANDING_CHECK",
-          answer,
-          shownAt,
-          respondedAt: new Date().toISOString(),
-        });
+        await sendResponse(
+          sessionId,
+          targetPromptId,
+          {
+            kind: "UNDERSTANDING_CHECK",
+            answer,
+            shownAt,
+            respondedAt: new Date().toISOString(),
+          },
+          accessToken,
+        );
         return true;
       } catch {
         // 전송 실패는 수업 화면을 막지 않는다 — 호출자가 조용히 넘어갈 수 있도록 false 만 반환한다.
         return false;
       }
     },
-    [sendResponse, sessionId],
+    [accessToken, sendResponse, sessionId],
   );
 
   const handleElapsed = useCallback(() => {

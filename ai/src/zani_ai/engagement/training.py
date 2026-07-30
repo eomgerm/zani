@@ -210,9 +210,7 @@ def validate_manifest_completion(
         not isinstance(excluded_fraction, int | float)
         or isinstance(excluded_fraction, bool)
         or not math.isfinite(excluded_fraction)
-        or not math.isclose(
-            excluded_fraction, expected_fraction, rel_tol=0, abs_tol=1e-12
-        )
+        or not math.isclose(excluded_fraction, expected_fraction, rel_tol=0, abs_tol=1e-12)
     ):
         raise ValueError("feature manifest excluded_fraction does not match its clip lists")
 
@@ -651,9 +649,7 @@ def _train_curriculum_epoch(
     model.train()
     for tokens, labels, ambiguous in loader:
         optimizer.zero_grad(set_to_none=True)
-        loss = objective.loss(
-            model(tokens.to(device)), labels.to(device), ambiguous.to(device)
-        )
+        loss = objective.loss(model(tokens.to(device)), labels.to(device), ambiguous.to(device))
         loss.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
 
@@ -717,8 +713,7 @@ def _load_curriculum_ambiguity(
             raise ValueError(f"reliability label differs for {identity[0]}/{identity[1]}")
 
     ambiguity = tuple(
-        records[(entry.split, entry.clip_id)][1] == "ambiguous"
-        for entry in datasets.train.entries
+        records[(entry.split, entry.clip_id)][1] == "ambiguous" for entry in datasets.train.entries
     )
     reliable_labels = {
         entry.label_index
@@ -755,9 +750,7 @@ def ordinal_quality(expected: list[int], predicted: list[int]) -> tuple[float, f
     differences = np.abs(np.asarray(expected) - np.asarray(predicted))
     within_one = float(np.mean(differences <= 1))
     kappa = float(
-        cohen_kappa_score(
-            expected, predicted, labels=list(range(len(LABELS))), weights="quadratic"
-        )
+        cohen_kappa_score(expected, predicted, labels=list(range(len(LABELS))), weights="quadratic")
     )
     # A degenerate input (both sides a single class) leaves the chance-correction
     # denominator at zero, which sklearn reports as NaN.
@@ -1030,9 +1023,7 @@ def train_model(
 
         for stage_epoch in range(config.max_epochs):
             epoch = config.reliable_warmup_epochs + stage_epoch
-            _train_curriculum_epoch(
-                model, mixed_loader, optimizer, curriculum_objective, device
-            )
+            _train_curriculum_epoch(model, mixed_loader, optimizer, curriculum_objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
                 {
@@ -1104,9 +1095,7 @@ def train_model(
     else:
         payload["test"] = test_metrics.to_dict()
     metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return TrainingResult(
-        checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics
-    )
+    return TrainingResult(checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics)
 
 
 __all__ = [

@@ -13,7 +13,6 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from importlib import metadata
-from multiprocessing.util import Finalize
 from pathlib import Path
 from types import ModuleType
 from typing import BinaryIO, Protocol, cast
@@ -38,6 +37,8 @@ from zani_ai.engagement.features import (
     extract_frame_features,
 )
 from zani_ai.engagement.segments import (
+    EXPECTED_FRAME_COUNT,
+    MINIMUM_VALID_FRAME_RATIO,
     InsufficientFaceCoverageError,
     TimedFeatures,
     aggregate_segments,
@@ -51,6 +52,12 @@ SEGMENT_COUNT = 20
 MINIMUM_VALID_FRAMES = 3
 DEFAULT_WORKERS = 2
 DEFAULT_PROGRESS_EVERY = 25
+#: How many clips one Face Landmarker instance sees. VIDEO-mode tracking state
+#: crosses `detect` calls, so anything wider than one clip makes a clip's features
+#: depend on the clips before it. Recorded in both the fingerprint and the manifest
+#: provenance: the fingerprint stops a per-clip run from reusing a wider run's
+#: cache, and the provenance lets a reader date a cache without rederiving hashes.
+LANDMARKER_SCOPE = "per_clip"
 
 GAZE_PROXY_DEFINITION = (
     "right_iris_xy=mean(landmarks[468:473,:2])",
@@ -60,8 +67,7 @@ GAZE_PROXY_DEFINITION = (
     "axis_position=dot(point-start,end-start)/max(dot(end-start,end-start),1e-6)",
     "mean_xy=(right_xy+left_xy)/2",
     "difference_xy=right_xy-left_xy",
-    "order=(right_x,right_y,left_x,left_y,mean_x,mean_y,right_minus_left_x,"
-    "right_minus_left_y)",
+    "order=(right_x,right_y,left_x,left_y,mean_x,mean_y,right_minus_left_x,right_minus_left_y)",
 )
 HEAD_POSE_DEFINITION = (
     "yaw_pitch_roll=XYZ_Euler_radians(facial_transformation_matrix[:3,:3])",
@@ -89,9 +95,7 @@ class FrameResult:
 
 
 class FrameLandmarker(Protocol):
-    def detect(
-        self, rgb_frame: NDArray[np.uint8], timestamp_ms: int
-    ) -> FrameResult | None: ...
+    def detect(self, rgb_frame: NDArray[np.uint8], timestamp_ms: int) -> FrameResult | None: ...
 
 
 class MediaPipeFaceLandmarker:
@@ -122,13 +126,9 @@ class MediaPipeFaceLandmarker:
         self._last_detection_timestamp_ms = translated
         return translated
 
-    def detect(
-        self, rgb_frame: NDArray[np.uint8], timestamp_ms: int
-    ) -> FrameResult | None:
+    def detect(self, rgb_frame: NDArray[np.uint8], timestamp_ms: int) -> FrameResult | None:
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        result = self._landmarker.detect_for_video(
-            image, self._translate_timestamp(timestamp_ms)
-        )
+        result = self._landmarker.detect_for_video(image, self._translate_timestamp(timestamp_ms))
         if not result.face_landmarks:
             return None
         landmarks = np.asarray(
@@ -179,6 +179,9 @@ class ExtractionProvenance:
     window_seconds: float
     segment_count: int
     minimum_valid_frames: int
+    expected_frame_count: int
+    minimum_valid_frame_ratio: float
+    landmarker_scope: str
     raw_feature_dimension: int
     token_feature_dimension: int
     feature_schema: str
@@ -195,6 +198,22 @@ class ExtractionProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class DerivedFeatureProvenance:
+    raw_schema: str
+    raw_manifest_sha256: str
+    representation_name: str
+    expected_frame_count: int
+    minimum_valid_frame_ratio: float
+    window_seconds: float
+    segment_count: int
+    minimum_valid_frames: int
+    representation_source_sha256: str
+    representation_dependencies_sha256: str
+    segment_aggregation_source_sha256: str
+    representation_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractionManifest:
     schema: str
     included: tuple[IncludedClip, ...]
@@ -202,12 +221,27 @@ class ExtractionManifest:
     status: str = "complete"
     total_count: int | None = None
     cached_count: int = 0
-    provenance: ExtractionProvenance | None = None
+    provenance: ExtractionProvenance | DerivedFeatureProvenance | None = None
     scanned_count: int | None = None
+
+    @property
+    def pipeline(self) -> str:
+        """Which writer produced this manifest.
+
+        `extract` and `build-features` share `<output_root>`, so the manifest has to
+        say which one wrote it; `provenance` cannot answer that because the sequential
+        `extract_contract` records none.
+        """
+        return (
+            "build-features"
+            if isinstance(self.provenance, DerivedFeatureProvenance)
+            else "extract"
+        )
 
     def to_json_dict(self, root: Path) -> dict[str, object]:
         payload: dict[str, object] = {
             "schema": self.schema,
+            "pipeline": self.pipeline,
             "status": self.status,
             "complete": self.status == "complete",
             "processed_count": len(self.included) + len(self.excluded),
@@ -223,9 +257,7 @@ class ExtractionManifest:
                 else len(self.included) + len(self.excluded)
             ),
             "excluded_fraction": (
-                len(self.excluded) / self.total_count
-                if self.total_count
-                else 0.0
+                len(self.excluded) / self.total_count if self.total_count else 0.0
             ),
             "included": [
                 {
@@ -429,6 +461,13 @@ def _cached_clip(
                 return None
             if int(cache["label_index"].item()) != record.label_index:
                 return None
+            if (
+                "expected_frame_count" not in cache.files
+                or int(cache["expected_frame_count"].item()) != EXPECTED_FRAME_COUNT
+                or "minimum_valid_frame_ratio" not in cache.files
+                or float(cache["minimum_valid_frame_ratio"].item()) != MINIMUM_VALID_FRAME_RATIO
+            ):
+                return None
             tokens = np.asarray(cache["tokens"])
             if tokens.shape != (SEGMENT_COUNT, TOKEN_FEATURE_COUNT):
                 return None
@@ -441,9 +480,7 @@ def _cached_clip(
                 return None
     except (OSError, ValueError, KeyError):
         return None
-    return IncludedClip(
-        record.clip_id, record.split, record.label_index, feature_path, fingerprint
-    )
+    return IncludedClip(record.clip_id, record.split, record.label_index, feature_path, fingerprint)
 
 
 def _save_tokens(
@@ -466,6 +503,8 @@ def _save_tokens(
                     label_index=np.int64(record.label_index),
                     schema=np.asarray(SCHEMA_NAME),
                     source_fingerprint=np.asarray(fingerprint),
+                    expected_frame_count=np.int64(EXPECTED_FRAME_COUNT),
+                    minimum_valid_frame_ratio=np.float64(MINIMUM_VALID_FRAME_RATIO),
                 )
             else:
                 np.savez_compressed(
@@ -475,18 +514,55 @@ def _save_tokens(
                     schema=np.asarray(SCHEMA_NAME),
                     source_fingerprint=np.asarray(fingerprint),
                     extraction_fingerprint=np.asarray(extraction_fingerprint),
+                    expected_frame_count=np.int64(EXPECTED_FRAME_COUNT),
+                    minimum_valid_frame_ratio=np.float64(MINIMUM_VALID_FRAME_RATIO),
                 )
         temporary.replace(feature_path)
     finally:
         temporary.unlink(missing_ok=True)
-    return IncludedClip(
-        record.clip_id, record.split, record.label_index, feature_path, fingerprint
+    return IncludedClip(record.clip_id, record.split, record.label_index, feature_path, fingerprint)
+
+
+def _reject_foreign_manifest(path: Path, manifest: ExtractionManifest) -> None:
+    """Refuse to replace a manifest the other feature pipeline wrote here.
+
+    `extract` and `build-features` both place features at
+    `<output_root>/<schema>/<split>` and the manifest at `<output_root>/manifest.json`,
+    so aiming them at one root makes the second run replace the first run's cache and
+    manifest without a word. Recovering costs a full MediaPipe re-extraction, because
+    `_cached_clip` rejects the surviving files on `source_fingerprint`.
+    """
+    if not path.is_file():
+        return
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(existing, dict):
+        return
+    existing_pipeline = existing.get("pipeline")
+    if not isinstance(existing_pipeline, str):
+        # Manifests written before `pipeline` was recorded: `representation_name`
+        # belongs to `DerivedFeatureProvenance` alone, so it separates the two shapes.
+        provenance = existing.get("provenance")
+        existing_pipeline = (
+            "build-features"
+            if isinstance(provenance, dict) and "representation_name" in provenance
+            else "extract"
+        )
+    if existing_pipeline == manifest.pipeline:
+        return
+    raise FileExistsError(
+        f"{path} was written by `{existing_pipeline}`, and `{manifest.pipeline}` would "
+        f"overwrite it together with the {manifest.schema} cache beside it. "
+        "Point --output at a different root."
     )
 
 
 def _write_manifest(output_root: Path, manifest: ExtractionManifest) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
     path = output_root / "manifest.json"
+    _reject_foreign_manifest(path, manifest)
     temporary = _unique_temporary_path(path)
     try:
         temporary.write_text(
@@ -506,15 +582,39 @@ def _expected_exclusion(record: ClipRecord, error: Exception) -> ExcludedClip:
     return ExcludedClip(record.clip_id, record.split, f"{type(error).__name__}: {error}")
 
 
+def _extract_one_clip(
+    video_path: Path,
+    landmarker_factory: Callable[[], FrameLandmarker],
+    frame_source: FrameSource,
+) -> NDArray[np.float32]:
+    """Extract one clip through a landmarker that has seen no other clip."""
+    landmarker = landmarker_factory()
+    try:
+        return extract_clip(video_path, landmarker, frame_source=frame_source)
+    finally:
+        # `FrameLandmarker` is a detect-only Protocol, so test doubles need no
+        # teardown; the MediaPipe adapter holds a native graph that does.
+        close = getattr(landmarker, "close", None)
+        if callable(close):
+            close()
+
+
 def extract_contract(
     contract: DatasetContract,
-    landmarker: FrameLandmarker,
+    landmarker_factory: Callable[[], FrameLandmarker],
     output_root: Path,
     *,
     max_excluded_fraction: float = 0.05,
     frame_source: FrameSource = iter_sampled_frames,
 ) -> ExtractionManifest:
-    """Extract every listed clip, persist successes, and report all failures."""
+    """Extract every listed clip, persist successes, and report all failures.
+
+    Takes a factory rather than a landmarker because VIDEO-mode tracking state
+    carries from one `detect` call to the next: a single landmarker shared by every
+    clip makes each clip's features depend on the clips extracted before it, and so
+    on the iteration order. One landmarker per clip keeps the output a function of
+    the clip alone.
+    """
     included: list[IncludedClip] = []
     excluded: list[ExcludedClip] = []
     records = tuple(record for split in contract.splits.values() for record in split)
@@ -526,7 +626,7 @@ def extract_contract(
             included.append(cached)
             continue
         try:
-            tokens = extract_clip(record.video_path, landmarker, frame_source=frame_source)
+            tokens = _extract_one_clip(record.video_path, landmarker_factory, frame_source)
         except (
             InvalidFrameFeaturesError,
             InsufficientFaceCoverageError,
@@ -560,31 +660,38 @@ class _WorkerTask:
     extraction_fingerprint: str
 
 
-_worker_landmarker: MediaPipeFaceLandmarker | None = None
+# The Face Landmarker runs in VIDEO mode, which carries tracking state from one
+# `detect` call into the next. A landmarker shared across clips therefore lets one
+# clip's closing frames seed the next clip's detections, so a clip's features
+# depend on which clips its worker happened to process first -- and on the worker
+# count, which decides that grouping. Workers keep the validated model path and
+# build one landmarker per clip instead, making a clip's features a function of
+# that clip alone.
+_worker_model_path: Path | None = None
 
 
 def _initialize_worker(
     model_asset_path: str, expected_sha256: str, expected_size_bytes: int
 ) -> None:
-    global _worker_landmarker
+    global _worker_model_path
     model_path = Path(model_asset_path)
     if (
         model_path.stat().st_size != expected_size_bytes
         or _file_sha256(model_path) != expected_sha256
     ):
         raise RuntimeError("Face Landmarker model changed after provenance was recorded")
-    _worker_landmarker = MediaPipeFaceLandmarker(model_path)
-    Finalize(None, _worker_landmarker.close, exitpriority=10)
+    _worker_model_path = model_path
 
 
 def _extract_worker(task: _WorkerTask) -> IncludedClip | ExcludedClip:
-    if _worker_landmarker is None:
+    if _worker_model_path is None:
         raise RuntimeError("Face Landmarker worker was not initialized")
     record = task.record
     if _source_fingerprint(record.video_path) != task.source_fingerprint:
         raise OSError("source video changed before extraction started")
     try:
-        tokens = extract_clip(record.video_path, _worker_landmarker)
+        with MediaPipeFaceLandmarker(_worker_model_path) as landmarker:
+            tokens = extract_clip(record.video_path, landmarker)
     except (
         InvalidFrameFeaturesError,
         InsufficientFaceCoverageError,
@@ -621,9 +728,7 @@ def _package_version(distribution: str, module: object) -> str:
         return version
 
 
-def _source_sha256(
-    value: ModuleType | type[object] | Callable[..., object], name: str
-) -> str:
+def _source_sha256(value: ModuleType | type[object] | Callable[..., object], name: str) -> str:
     try:
         source = inspect.getsource(value)
     except (OSError, TypeError) as error:
@@ -648,12 +753,8 @@ def _build_provenance(
             MediaPipeFaceLandmarker, "Face Landmarker adapter"
         ),
         "timestamp_sampler": _source_sha256(iter_sampled_frames, "timestamp sampler"),
-        "clip_extraction_pipeline": _source_sha256(
-            extract_clip, "clip extraction pipeline"
-        ),
-        "frame_features_module": _source_sha256(
-            feature_algorithms, "frame feature module"
-        ),
+        "clip_extraction_pipeline": _source_sha256(extract_clip, "clip extraction pipeline"),
+        "frame_features_module": _source_sha256(feature_algorithms, "frame feature module"),
         "segment_aggregation_module": _source_sha256(
             segment_algorithms, "segment aggregation module"
         ),
@@ -667,6 +768,8 @@ def _build_provenance(
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
         "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "expected_frame_count": EXPECTED_FRAME_COUNT,
+        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
         "raw_feature_dimension": RAW_FEATURE_COUNT,
         "token_feature_dimension": TOKEN_FEATURE_COUNT,
         "feature_schema": SCHEMA_NAME,
@@ -678,15 +781,14 @@ def _build_provenance(
             "output_face_blendshapes": True,
             "output_facial_transformation_matrixes": True,
         },
+        "landmarker_scope": LANDMARKER_SCOPE,
         "gaze_proxy_definition": list(GAZE_PROXY_DEFINITION),
         "head_pose_definition": list(HEAD_POSE_DEFINITION),
         "blendshape_names": list(BLENDSHAPE_NAMES),
         "aggregation": ["mean", "population_standard_deviation"],
         "algorithm_source_sha256": algorithm_source_sha256,
     }
-    encoded = json.dumps(
-        fingerprint_payload, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return ExtractionProvenance(
         created_at_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         mediapipe_version=mediapipe_version,
@@ -697,6 +799,9 @@ def _build_provenance(
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        expected_frame_count=EXPECTED_FRAME_COUNT,
+        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        landmarker_scope=LANDMARKER_SCOPE,
         raw_feature_dimension=RAW_FEATURE_COUNT,
         token_feature_dimension=TOKEN_FEATURE_COUNT,
         feature_schema=SCHEMA_NAME,
@@ -732,9 +837,7 @@ def _validate_unique_records(records: tuple[ClipRecord, ...]) -> None:
     for record in records:
         identity = (record.split, record.clip_id)
         if identity in seen:
-            raise ValueError(
-                f"duplicate extraction clip identity: {record.split}/{record.clip_id}"
-            )
+            raise ValueError(f"duplicate extraction clip identity: {record.split}/{record.clip_id}")
         seen.add(identity)
 
 
@@ -818,9 +921,7 @@ def extract_contract_parallel(
         _write_manifest(output_root, manifest)
         elapsed = time.monotonic() - started
         extraction_elapsed = (
-            time.monotonic() - extraction_started
-            if extraction_started is not None
-            else 0.0
+            time.monotonic() - extraction_started if extraction_started is not None else 0.0
         )
         rate = fresh_processed / extraction_elapsed if extraction_elapsed > 0 else 0.0
         if phase == "cache_scan":
@@ -907,9 +1008,7 @@ def extract_contract_parallel(
             try:
                 report(phase, force=True)
             except BaseException as report_error:
-                _warn_best_effort(
-                    f"Emergency extraction manifest update failed: {report_error}"
-                )
+                _warn_best_effort(f"Emergency extraction manifest update failed: {report_error}")
             raise
         finally:
             if executor is not None:
@@ -933,11 +1032,7 @@ def extract_contract_parallel(
                         raise
 
         fraction = len(excluded) / total if total else 0.0
-        status = (
-            "complete"
-            if fraction <= max_excluded_fraction
-            else "exclusion_threshold_exceeded"
-        )
+        status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
         manifest = report("complete", status, force=True)
         if fraction > max_excluded_fraction:
             raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)
@@ -953,6 +1048,7 @@ def extract_contract_parallel(
 
 __all__ = [
     "ActiveExtractionError",
+    "DerivedFeatureProvenance",
     "ExcludedClip",
     "ExtractionManifest",
     "ExtractionProvenance",

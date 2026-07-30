@@ -1,3 +1,5 @@
+# ruff: noqa: E501, RUF001
+
 from __future__ import annotations
 
 import argparse
@@ -8,7 +10,6 @@ import platform
 import re
 import subprocess
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from importlib import metadata
@@ -23,7 +24,6 @@ import plotly.graph_objects as go
 import plotly.io as pio
 import torch
 from plotly.offline import get_plotlyjs
-
 
 SPLITS = ("Train", "Validation", "Test")
 LABEL_FILES = {
@@ -141,9 +141,13 @@ def _normalize_boolean(series: pd.Series) -> pd.Series:
     if pd.api.types.is_bool_dtype(series):
         return series.fillna(False).astype(bool)
     normalized = series.astype("string").str.strip().str.casefold()
-    return normalized.map(
-        {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
-    ).fillna(False).astype(bool)
+    return (
+        normalized.map(
+            {"true": True, "false": False, "1": True, "0": False, "yes": True, "no": False}
+        )
+        .fillna(False)
+        .astype(bool)
+    )
 
 
 def normalize_record_types(records: pd.DataFrame) -> pd.DataFrame:
@@ -287,7 +291,7 @@ def probe_feature(path: Path) -> dict[str, object]:
             "feature_dtype": str(value.dtype),
             "feature_finite": finite,
         }
-    except Exception as error:  # noqa: BLE001 - an EDA scan must keep inspecting other files
+    except Exception as error:
         return {
             "feature_missing": False,
             "feature_loaded": False,
@@ -323,9 +327,7 @@ def collect_records(root: Path) -> pd.DataFrame:
         for chunk in chunks:
             processed += 1
             video_path = video_paths.get(chunk, root / split / chunk)
-            feature_path = feature_paths.get(
-                chunk, root / f"MARLIN_{split}" / f"{chunk}.pt"
-            )
+            feature_path = feature_paths.get(chunk, root / f"MARLIN_{split}" / f"{chunk}.pt")
             row: dict[str, object] = {
                 "split": split,
                 "chunk": chunk,
@@ -355,9 +357,7 @@ def collect_records(root: Path) -> pd.DataFrame:
 
     records["video_open_failed"] = ~records["video_missing"] & ~records["video_opened"]
     records["feature_load_failed"] = ~records["feature_missing"] & ~records["feature_loaded"]
-    records["unexpected_feature_dim"] = (
-        records["feature_loaded"] & records["feature_dim"].ne(1024)
-    )
+    records["unexpected_feature_dim"] = records["feature_loaded"] & records["feature_dim"].ne(1024)
     records["nonfinite_feature"] = records["feature_loaded"] & ~records["feature_finite"]
     records["duration_review"] = records["video_opened"] & (
         records["duration_s"].lt(8) | records["duration_s"].gt(12)
@@ -467,10 +467,7 @@ def make_figures(records: pd.DataFrame) -> list[tuple[str, go.Figure]]:
         .reset_index()
     )
     top_resolutions = (
-        resolution_counts.groupby("resolution", observed=False)["count"]
-        .sum()
-        .nlargest(12)
-        .index
+        resolution_counts.groupby("resolution", observed=False)["count"].sum().nlargest(12).index
     )
     resolution_counts = resolution_counts[resolution_counts["resolution"].isin(top_resolutions)]
     resolution_fig = px.bar(
@@ -492,12 +489,7 @@ def make_figures(records: pd.DataFrame) -> list[tuple[str, go.Figure]]:
         .rename("count")
         .reset_index()
     )
-    top_fps = (
-        fps_counts.groupby("fps_rounded", observed=False)["count"]
-        .sum()
-        .nlargest(15)
-        .index
-    )
+    top_fps = fps_counts.groupby("fps_rounded", observed=False)["count"].sum().nlargest(15).index
     fps_counts = fps_counts[fps_counts["fps_rounded"].isin(top_fps)].copy()
     fps_counts["fps_label"] = fps_counts["fps_rounded"].map(lambda value: f"{value:g}")
     fps_fig = px.bar(
@@ -743,10 +735,7 @@ def _comparison_row(
     explanation: str,
     informational: bool = False,
 ) -> dict[str, object]:
-    if informational:
-        status = "확인"
-    else:
-        status = "통과" if expected == observed else "차단"
+    status = "확인" if informational else "통과" if expected == observed else "차단"
     return {
         "항목": item,
         "기준": f"{expected:,}" if isinstance(expected, int) else expected,
@@ -818,10 +807,7 @@ def build_protocol_table(records: pd.DataFrame) -> pd.DataFrame:
 def build_training_distribution(records: pd.DataFrame) -> pd.DataFrame:
     training = records[records["label"].isin(LABEL_ORDER)].copy()
     counts = (
-        training.groupby(["split", "label"], observed=False)
-        .size()
-        .rename("클립")
-        .reset_index()
+        training.groupby(["split", "label"], observed=False).size().rename("클립").reset_index()
     )
     split_totals = training.groupby("split").size()
     counts["Split 내 비율"] = counts.apply(
@@ -849,9 +835,12 @@ def _normalize_clip_id(value: object) -> str:
 
 def _display_split(value: object) -> str:
     normalized = str(value).strip().casefold()
-    return {"train": "Train", "valid": "Validation", "validation": "Validation", "test": "Test"}.get(
-        normalized, str(value)
-    )
+    return {
+        "train": "Train",
+        "valid": "Validation",
+        "validation": "Validation",
+        "test": "Test",
+    }.get(normalized, str(value))
 
 
 def _exclusion_category(reason: object) -> str:
@@ -865,9 +854,7 @@ def _exclusion_category(reason: object) -> str:
     return text[:100] or "사유 미기록"
 
 
-def inspect_extraction_manifest(
-    path: Path | None, records: pd.DataFrame
-) -> ManifestAssessment:
+def inspect_extraction_manifest(path: Path | None, records: pd.DataFrame) -> ManifestAssessment:
     if path is None:
         table = pd.DataFrame(
             [
@@ -899,7 +886,9 @@ def inspect_extraction_manifest(
             [("추출 manifest", "유효한 JSON", str(resolved), "검증 실패")],
             columns=["항목", "기준", "관측", "상태"],
         )
-        return ManifestAssessment("검증 실패", "MediaPipe manifest를 해석하지 못했습니다.", table, str(error))
+        return ManifestAssessment(
+            "검증 실패", "MediaPipe manifest를 해석하지 못했습니다.", table, str(error)
+        )
 
     schema = str(payload.get("schema", ""))
     rows: list[dict[str, object]] = [
@@ -959,7 +948,9 @@ def inspect_extraction_manifest(
         manifest_rows, columns=["clip_id", "split", "result", "reason", "feature_path"]
     )
     for split in (*SPLITS, "전체"):
-        group = manifest_frame if split == "전체" else manifest_frame[manifest_frame["split"] == split]
+        group = (
+            manifest_frame if split == "전체" else manifest_frame[manifest_frame["split"] == split]
+        )
         included_count = int(group["result"].eq("포함").sum()) if not group.empty else 0
         excluded_count = int(group["result"].eq("제외").sum()) if not group.empty else 0
         total = included_count + excluded_count
@@ -967,8 +958,12 @@ def inspect_extraction_manifest(
             {
                 "항목": f"{split} 추출" if split != "전체" else "전체 추출",
                 "기준": "제외율 ≤ 5%" if split == "전체" else "포함/제외 기록",
-                "관측": f"포함 {included_count:,} · 제외 {excluded_count:,} ({excluded_count / total:.1%})" if total else "0개",
-                "상태": "통과" if total and (split != "전체" or excluded_count / total <= 0.05) else "확인",
+                "관측": f"포함 {included_count:,} · 제외 {excluded_count:,} ({excluded_count / total:.1%})"
+                if total
+                else "0개",
+                "상태": "통과"
+                if total and (split != "전체" or excluded_count / total <= 0.05)
+                else "확인",
             }
         )
 
@@ -980,11 +975,21 @@ def inspect_extraction_manifest(
         )
         for reason, count in excluded_frame["reason"].value_counts().items():
             rows.append(
-                {"항목": f"제외 사유: {reason}", "기준": "검토", "관측": f"{count:,}개", "상태": "확인"}
+                {
+                    "항목": f"제외 사유: {reason}",
+                    "기준": "검토",
+                    "관측": f"{count:,}개",
+                    "상태": "확인",
+                }
             )
         for label, count in excluded_frame["label"].fillna("라벨 미매칭").value_counts().items():
             rows.append(
-                {"항목": f"제외 영향: {label}", "기준": "검토", "관측": f"{count:,}개", "상태": "확인"}
+                {
+                    "항목": f"제외 영향: {label}",
+                    "기준": "검토",
+                    "관측": f"{count:,}개",
+                    "상태": "확인",
+                }
             )
 
     table = pd.DataFrame(rows)
@@ -1078,7 +1083,9 @@ def collect_provenance(
         add("Face Landmarker 모델", "미지정", "미검증")
 
     metadata_files = [data_root / filename for filename in LABEL_FILES.values()]
-    metadata_files.extend(data_root / name for name in ("final_labels.csv", "train.txt", "valid.txt", "test.txt"))
+    metadata_files.extend(
+        data_root / name for name in ("final_labels.csv", "train.txt", "valid.txt", "test.txt")
+    )
     for path in metadata_files:
         if path.is_file():
             add(f"메타데이터 SHA-256 · {path.name}", sha256_file(path))

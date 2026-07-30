@@ -138,9 +138,7 @@ E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="cor
 # is what the evidence points at. E0-D softens E0-C in case full inversion
 # overcorrects: with these counts `balanced` spans ~7.7x and
 # `sqrt_balanced` ~2.8x between the largest and smallest weight.
-E0C_SPEC = ExperimentSpec(
-    "E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced"
-)
+E0C_SPEC = ExperimentSpec("E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced")
 E0D_SPEC = ExperimentSpec(
     "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
 )
@@ -165,9 +163,7 @@ E0E_SPEC = ExperimentSpec(
     loss="focal",
     focal_gamma=2.0,
 )
-E0F_SPEC = ExperimentSpec(
-    "E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced"
-)
+E0F_SPEC = ExperimentSpec("E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced")
 
 # E0-G is the baseline reset after E0-C..E0-F all died of the same cause: with
 # patience 20 their best_epoch landed at 0-4, so no loss or sampler change had
@@ -385,9 +381,9 @@ def _sha256(path: Path) -> str:
 
 
 def _canonical_hash(payload: dict[str, object]) -> str:
-    encoded = json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -432,9 +428,7 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
             if not isinstance(label_index, int) or isinstance(label_index, bool):
                 raise ValueError(f"invalid label_index in included entry at index {index}")
             if label_index not in range(4):
-                raise ValueError(
-                    f"label_index out of range in included entry at index {index}"
-                )
+                raise ValueError(f"label_index out of range in included entry at index {index}")
         feature_path_value = item.get("feature_path")
         if not isinstance(feature_path_value, str) or not feature_path_value:
             raise ValueError(f"invalid feature_path in included entry at index {index}")
@@ -449,9 +443,7 @@ def _validate_manifest(features_root: Path, spec: ExperimentSpec) -> tuple[Path,
             raise FileNotFoundError(f"cached feature not found: {feature_path}")
         fingerprint = item.get("source_fingerprint")
         if not isinstance(fingerprint, str) or not fingerprint:
-            raise ValueError(
-                f"invalid source_fingerprint in included entry at index {index}"
-            )
+            raise ValueError(f"invalid source_fingerprint in included entry at index {index}")
         splits.add(split)
     for index, item in enumerate(excluded):
         if not isinstance(item, dict):
@@ -668,9 +660,7 @@ def _reliability_record(
     }
 
 
-def _assert_file_record_unchanged(
-    record: dict[str, object], name: str, boundary: str
-) -> None:
+def _assert_file_record_unchanged(record: dict[str, object], name: str, boundary: str) -> None:
     path_value = record.get("path")
     expected_hash = record.get("sha256")
     expected_size = record.get("size_bytes")
@@ -682,11 +672,7 @@ def _assert_file_record_unchanged(
     ):
         raise RuntimeError(f"{name} integrity record is invalid")
     path = Path(path_value)
-    if (
-        not path.is_file()
-        or path.stat().st_size != expected_size
-        or _sha256(path) != expected_hash
-    ):
+    if not path.is_file() or path.stat().st_size != expected_size or _sha256(path) != expected_hash:
         raise RuntimeError(f"{name} changed {boundary}")
 
 
@@ -824,9 +810,7 @@ def _seed_paths(output_dir: Path, seed: int) -> dict[str, Path]:
     }
 
 
-def _artifact_records(
-    output_dir: Path, paths: dict[str, Path]
-) -> dict[str, dict[str, object]]:
+def _artifact_records(output_dir: Path, paths: dict[str, Path]) -> dict[str, dict[str, object]]:
     records: dict[str, dict[str, object]] = {}
     for name, path in paths.items():
         if not path.is_file():
@@ -886,9 +870,7 @@ def _seed_is_complete(
     if spec.needs_reliability_manifest:
         recorded_inputs = record.get("inputs")
         recorded_reliability = (
-            recorded_inputs.get("label_reliability")
-            if isinstance(recorded_inputs, dict)
-            else None
+            recorded_inputs.get("label_reliability") if isinstance(recorded_inputs, dict) else None
         )
         current_reliability = inputs.get("label_reliability")
         if (
@@ -999,9 +981,7 @@ def _update_summary(summary: dict[str, object], spec: ExperimentSpec) -> None:
     summary["seeds"] = records
     summary["aggregate"] = _aggregate(records)
     summary["status"] = (
-        "complete"
-        if [item["seed"] for item in records] == list(spec.seeds)
-        else "in_progress"
+        "complete" if [item["seed"] for item in records] == list(spec.seeds) else "in_progress"
     )
 
 
@@ -1190,14 +1170,10 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         ambiguous_target_encoding=spec.ambiguous_target_encoding,
         ambiguous_neighbor_mass=spec.ambiguous_neighbor_mass,
     )
-    _assert_manifest_unchanged(
-        manifest_path, manifest_sha256, f"before seed {seed} training", spec
-    )
+    _assert_manifest_unchanged(manifest_path, manifest_sha256, f"before seed {seed} training", spec)
     assert_reliability_unchanged(f"before seed {seed} training")
     result = train_model(training_config, evaluate_test=False, progress=report_progress)
-    _assert_manifest_unchanged(
-        manifest_path, manifest_sha256, f"after seed {seed} training", spec
-    )
+    _assert_manifest_unchanged(manifest_path, manifest_sha256, f"after seed {seed} training", spec)
     assert_reliability_unchanged(f"after seed {seed} training")
     metrics_payload = _load_summary(result.metrics_path, spec)
     metrics_payload["experiment"] = {
@@ -1268,9 +1244,7 @@ def run_seed(context: RunContext, seed: int) -> bool:
     """
     spec = context.spec
     if seed not in spec.seeds:
-        raise ValueError(
-            f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}"
-        )
+        raise ValueError(f"{spec.protocol} has no seed {seed}; expected one of {list(spec.seeds)}")
     seed_dir = context.output_dir / f"seed-{seed}"
     lock = DirectoryLock(
         seed_dir / ".seed.lock",
@@ -1429,6 +1403,7 @@ def collect_only(
         allow_environment_drift=allow_environment_drift,
     )
     return collect_summary(context, allow_environment_drift=allow_environment_drift)
+
 
 def reproduce_e0(
     features_root: Path,

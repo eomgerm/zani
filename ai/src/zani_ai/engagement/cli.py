@@ -11,6 +11,15 @@ from zani_ai.engagement.contracts import (
     DatasetContractError,
     load_dataset_contract,
 )
+from zani_ai.engagement.locking import DirectoryLock, LockUnavailableError
+from zani_ai.engagement.publish import (
+    DEFAULT_RESULTS_BRANCH,
+    LOCK_FILENAME,
+    default_source_label,
+    publish_once,
+    require_results_branch,
+    run_forever,
+)
 from zani_ai.engagement.runtime import parse_device
 
 type Command = Callable[[argparse.Namespace], int]
@@ -42,6 +51,36 @@ def _sample_fps(value: str) -> float:
     if not 0 < rate <= 120:
         raise argparse.ArgumentTypeError(f"sample-fps must be in (0, 120], got {rate}")
     return rate
+
+
+def _source(value: str) -> str:
+    """argparse type for ``--source``: exactly one path segment.
+
+    The label is the top-level directory of the snapshot inside the branch. A
+    separator would nest it where nobody looks for it, ``.`` would stage every
+    other box's directory, and ``..`` writes outside the worktree before failing
+    on the ``git add`` pathspec.
+    """
+    if not value:
+        raise argparse.ArgumentTypeError("source must not be empty")
+    if "/" in value or "\\" in value:
+        raise argparse.ArgumentTypeError(
+            f"source must be one path segment without separators, got {value!r}"
+        )
+    if value in {".", ".."}:
+        raise argparse.ArgumentTypeError(f"source must name a directory, got {value!r}")
+    return value
+
+
+def _interval(value: str) -> float:
+    """argparse type for ``--interval``: seconds, or 0 to publish once and exit."""
+    try:
+        seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"interval must be a number, got {value!r}") from error
+    if seconds < 0:
+        raise argparse.ArgumentTypeError(f"interval must not be negative, got {seconds}")
+    return seconds
 
 
 def _add_experiment_options(parser: argparse.ArgumentParser) -> None:
@@ -91,13 +130,14 @@ def _add_data_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--video-extension", default=".mp4")
 
 
-def _load_contract(args: argparse.Namespace) -> DatasetContract:
+def _load_contract(args: argparse.Namespace, *, require_videos: bool = True) -> DatasetContract:
     return load_dataset_contract(
         args.data_root,
         id_column=args.id_column,
         label_column=args.label_column,
         subject_column=args.subject_column or None,
         video_extension=args.video_extension,
+        require_videos=require_videos,
     )
 
 
@@ -158,7 +198,7 @@ def _build_features(args: argparse.Namespace) -> int:
         TokenRepresentation,
     )
 
-    contract = _load_contract(args)
+    contract = _load_contract(args, require_videos=False)
     representation: representations.Representation
     if args.schema.startswith("landmark_78"):
         representation = LandmarkSequenceRepresentation.for_sample_fps(args.sample_fps)
@@ -173,6 +213,18 @@ def _build_features(args: argparse.Namespace) -> int:
         args.raw_root, args.output, representation, contract
     )
     print(f"Feature manifest built | schema={args.schema} | {manifest_path}")
+    return 0
+
+
+def _audit_frame_gate(args: argparse.Namespace) -> int:
+    from zani_ai.engagement.frame_gate_audit import (
+        audit_frame_gate_gap,
+        write_frame_gate_audit,
+    )
+
+    report = audit_frame_gate_gap(_load_contract(args, require_videos=False), args.raw_root)
+    write_frame_gate_audit(report, args.output)
+    print(f"Frame gate audit | mismatched={report['mismatch_clip_count']} | {args.output}")
     return 0
 
 
@@ -263,16 +315,13 @@ def _finalize(protocol: str) -> Command:
         from zani_ai.engagement.experiment import SPECS
         from zani_ai.engagement.report import finalize_experiment
 
-        report_path = finalize_experiment(
+        results_path = finalize_experiment(
             SPECS[protocol],
             args.features,
             args.output,
             device=_resolve_device(args),
-            face_landmarker_model=args.face_landmarker_model,
-            preparation_manifest=args.preparation_manifest,
-            threshold_manifest=args.threshold_manifest,
         )
-        print(f"{protocol} Test evaluation and report complete | {report_path}", flush=True)
+        print(f"{protocol} Test evaluation complete | {results_path}", flush=True)
         return 0
 
     return handler
@@ -304,6 +353,57 @@ def _train(args: argparse.Namespace) -> int:
         f"test_macro_f1={result.test.macro_f1:.4f} | {result.checkpoint_path}"
     )
     return 0
+
+
+def _publish_results(args: argparse.Namespace) -> int:
+    """Publish metrics once, or every ``--interval`` seconds until killed."""
+    source_label = args.source or default_source_label()
+    # Checked before anything is locked or written: collect_metrics returns an
+    # empty list for a root that is not there, so a typo'd --artifacts would
+    # otherwise buy a loop that logs nothing and publishes nothing forever.
+    if not args.artifacts.is_dir():
+        raise ValueError(f"--artifacts is not an existing directory: {args.artifacts}")
+    # Both checks belong outside the loop: a wrong branch or a second publisher
+    # is a mistake to report now, not something to retry every interval.
+    require_results_branch(args.worktree, args.branch)
+    lock = DirectoryLock(
+        args.worktree / LOCK_FILENAME,
+        busy_message=(
+            f"another publisher already holds {args.worktree / LOCK_FILENAME}; "
+            "stop it before starting a second one"
+        ),
+    )
+    if args.interval == 0:
+        try:
+            with lock:
+                written = publish_once(
+                    artifacts_root=args.artifacts,
+                    worktree=args.worktree,
+                    source_label=source_label,
+                    branch=args.branch,
+                )
+        except LockUnavailableError:
+            # The documented setup runs the periodic publisher too, and it holds
+            # the lock for its whole life. This snapshot is on disk and that loop
+            # will send it, so a single shot has nothing to report as a failure;
+            # saying otherwise teaches the operator to ignore the message.
+            print(
+                f"a periodic publisher holds {lock.path}; "
+                "it will publish this snapshot within one interval"
+            )
+            return 0
+        print(f"published {written} file(s)")
+        return 0
+    # A second loop in one worktree is a real misconfiguration: two processes
+    # would race on the same index.lock. That one stays fatal.
+    with lock:
+        run_forever(
+            artifacts_root=args.artifacts,
+            worktree=args.worktree,
+            source_label=source_label,
+            branch=args.branch,
+            interval=args.interval,
+        )
 
 
 def _export(args: argparse.Namespace) -> int:
@@ -374,6 +474,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_data_options(build_features)
     build_features.set_defaults(handler=_build_features)
 
+    audit_frame_gate = commands.add_parser(
+        "audit-frame-gate",
+        help="count raw clips accepted offline but rejected by the browser frame gate",
+    )
+    _add_data_options(audit_frame_gate)
+    audit_frame_gate.add_argument("--raw-root", type=Path, required=True)
+    audit_frame_gate.add_argument("--output", type=Path, required=True)
+    audit_frame_gate.set_defaults(handler=_audit_frame_gate)
+
     train = commands.add_parser("train", help="train and evaluate the Transformer")
     train.add_argument("--features", type=Path, required=True)
     train.add_argument("--output", type=Path, required=True)
@@ -443,16 +552,30 @@ def build_parser() -> argparse.ArgumentParser:
 
         finalize = commands.add_parser(
             f"finalize-{command}",
-            help=(
-                f"evaluate frozen {description} checkpoints once "
-                "and write the HTML report"
-            ),
+            help=(f"evaluate frozen {description} checkpoints once and write JSON results"),
         )
         _add_experiment_options(finalize)
-        finalize.add_argument("--face-landmarker-model", type=Path)
-        finalize.add_argument("--preparation-manifest", type=Path)
-        finalize.add_argument("--threshold-manifest", type=Path)
         finalize.set_defaults(handler=_finalize(protocol))
+
+    publish = commands.add_parser(
+        "publish-results",
+        help="copy training metrics into the results-branch worktree and push them",
+    )
+    publish.add_argument("--artifacts", type=Path, required=True)
+    publish.add_argument("--worktree", type=Path, required=True)
+    publish.add_argument(
+        "--source",
+        type=_source,
+        help="one path segment inside the branch; defaults to the short hostname",
+    )
+    publish.add_argument("--branch", default=DEFAULT_RESULTS_BRANCH)
+    publish.add_argument(
+        "--interval",
+        type=_interval,
+        default=300.0,
+        help="seconds between snapshots; 0 publishes once and exits",
+    )
+    publish.set_defaults(handler=_publish_results)
 
     export = commands.add_parser("export", help="export a trained checkpoint to ONNX")
     export.add_argument("--checkpoint", type=Path, required=True)

@@ -164,7 +164,9 @@ class EngagementSTGCN(nn.Module):
             self.config.num_nodes,
         )
         if tuple(partitions.shape) != expected_shape:
-            raise ValueError(f"partitions must have shape {expected_shape}, got {tuple(partitions.shape)}")
+            raise ValueError(
+                f"partitions must have shape {expected_shape}, got {tuple(partitions.shape)}"
+            )
         self.register_buffer("partitions", partitions.float())
 
         self.input_bn = nn.BatchNorm2d(self.config.in_channels)
@@ -186,7 +188,11 @@ class EngagementSTGCN(nn.Module):
         self.classifier = nn.Linear(self.config.channels[-1], self.config.num_classes)
 
     def forward(self, x: Tensor) -> Tensor:
-        if x.dim() != 4 or x.shape[1] != self.config.in_channels or x.shape[3] != self.config.num_nodes:
+        if (
+            x.dim() != 4
+            or x.shape[1] != self.config.in_channels
+            or x.shape[3] != self.config.num_nodes
+        ):
             raise ValueError(
                 f"expected input shape [B, {self.config.in_channels}, T, {self.config.num_nodes}], "
                 f"got {tuple(x.shape)}"
@@ -198,4 +204,4 @@ class EngagementSTGCN(nn.Module):
         return cast(Tensor, self.classifier(pooled))
 
 
-__all__ = ["EngagementSTGCN", "STGCNConfig", "STGCNBlock", "SpatialGraphConv"]
+__all__ = ["EngagementSTGCN", "STGCNBlock", "STGCNConfig", "SpatialGraphConv"]

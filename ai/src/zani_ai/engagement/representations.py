@@ -26,19 +26,24 @@ wrapper dataclass.
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
 
 import numpy as np
 from numpy.typing import NDArray
 
+from zani_ai.engagement import features as feature_algorithms
 from zani_ai.engagement.contracts import DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    MINIMUM_VALID_FRAMES,
     SAMPLE_FPS,
-    WINDOW_SECONDS,
     SEGMENT_COUNT,
+    WINDOW_SECONDS,
+    DerivedFeatureProvenance,
     ExcludedClip,
     ExtractionManifest,
     IncludedClip,
@@ -53,6 +58,8 @@ from zani_ai.engagement.features import (
 from zani_ai.engagement.landmark_graph import LANDMARK_78_INDICES
 from zani_ai.engagement.raw_cache import RAW_SCHEMA_NAME, RawClip
 from zani_ai.engagement.segments import (
+    EXPECTED_FRAME_COUNT,
+    MINIMUM_VALID_FRAME_RATIO,
     TimedFeatures,
     aggregate_segments,
 )
@@ -190,9 +197,7 @@ class LandmarkSequenceRepresentation:
             # Scale by the rate rather than dividing by a rounded step size:
             # at 30 FPS a 33ms step accumulates error until the last frames
             # fall outside the grid entirely (step 299 would land on 302).
-            step = round(
-                float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0
-            )
+            step = round(float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0)
             if 0 <= step < step_count and step not in frame_index_by_step:
                 frame_index_by_step[step] = frame_index
 
@@ -219,6 +224,44 @@ class LandmarkSequenceRepresentation:
         return np.ascontiguousarray(sequence.transpose(2, 0, 1), dtype=np.float32)
 
 
+def _representation_dependencies_sha256(representation: Representation) -> str:
+    """Hash values and source code that can change derived feature contents."""
+    payload: dict[str, object] = {
+        "array_key": representation.array_key,
+        "name": representation.name,
+        "output_shape": representation.output_shape,
+    }
+    if isinstance(representation, TokenRepresentation):
+        payload.update(
+            {
+                "kind": "token",
+                "feature_algorithms_source_sha256": sha256(
+                    inspect.getsource(feature_algorithms).encode("utf-8")
+                ).hexdigest(),
+                "raw_blendshape_names": BLENDSHAPE_NAMES_132,
+                "schema": {
+                    "name": representation.schema.name,
+                    "blendshape_names": representation.schema.blendshape_names,
+                    "gaze_dim": representation.schema.gaze_dim,
+                    "head_dim": representation.schema.head_dim,
+                },
+            }
+        )
+    elif isinstance(representation, LandmarkSequenceRepresentation):
+        payload.update(
+            {
+                "kind": "landmark_sequence",
+                "landmark_indices": LANDMARK_78_INDICES,
+                "sample_fps": representation.sample_fps,
+            }
+        )
+    else:
+        payload["kind"] = type(representation).__qualname__
+    return sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def load_raw_clip(feature_path: Path) -> RawClip:
     """Load one raw MediaPipe cache npz (Task 3's format) into a `RawClip`."""
     with np.load(feature_path, allow_pickle=False) as cache:
@@ -240,6 +283,7 @@ def _save_representation_tokens(
     schema_name: str,
     source_fingerprint: str,
     array_key: str,
+    provenance: DerivedFeatureProvenance,
 ) -> Path:
     """Save one clip's representation tensor in the training-consumed npz shape.
 
@@ -263,6 +307,10 @@ def _save_representation_tokens(
                 label_index=np.int64(label_index),
                 schema=np.asarray(schema_name),
                 source_fingerprint=np.asarray(source_fingerprint),
+                expected_frame_count=np.int64(provenance.expected_frame_count),
+                minimum_valid_frame_ratio=np.float64(provenance.minimum_valid_frame_ratio),
+                representation_fingerprint=np.asarray(provenance.representation_fingerprint),
+                raw_manifest_sha256=np.asarray(provenance.raw_manifest_sha256),
                 **{array_key: tokens},
             )
         temporary.replace(feature_path)
@@ -294,7 +342,8 @@ def build_feature_manifest(
     raw_manifest_path = raw_root / "manifest.json"
     if not raw_manifest_path.is_file():
         raise FileNotFoundError(f"raw manifest not found: {raw_manifest_path}")
-    raw_payload = json.loads(raw_manifest_path.read_text(encoding="utf-8"))
+    raw_manifest_bytes = raw_manifest_path.read_bytes()
+    raw_payload = json.loads(raw_manifest_bytes.decode("utf-8"))
     if not isinstance(raw_payload, dict):
         raise ValueError("raw manifest must be a JSON object")
     if raw_payload.get("schema") != RAW_SCHEMA_NAME:
@@ -308,6 +357,48 @@ def build_feature_manifest(
     raw_excluded = raw_payload.get("excluded")
     if not isinstance(raw_included, list) or not isinstance(raw_excluded, list):
         raise ValueError("raw manifest must contain included and excluded lists")
+
+    representation_source_sha256 = sha256(
+        inspect.getsource(type(representation)).encode("utf-8")
+    ).hexdigest()
+    representation_dependencies_sha256 = _representation_dependencies_sha256(representation)
+    segment_aggregation_source_sha256 = sha256(
+        inspect.getsource(aggregate_segments).encode("utf-8")
+    ).hexdigest()
+    provenance_payload: dict[str, object] = {
+        "raw_schema": RAW_SCHEMA_NAME,
+        "raw_manifest_sha256": sha256(raw_manifest_bytes).hexdigest(),
+        "representation_name": representation.name,
+        "expected_frame_count": EXPECTED_FRAME_COUNT,
+        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
+        "window_seconds": WINDOW_SECONDS,
+        "segment_count": SEGMENT_COUNT,
+        "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "representation_source_sha256": representation_source_sha256,
+        "representation_dependencies_sha256": representation_dependencies_sha256,
+        "segment_aggregation_source_sha256": segment_aggregation_source_sha256,
+    }
+    representation_fingerprint = sha256(
+        json.dumps(
+            provenance_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    provenance = DerivedFeatureProvenance(
+        raw_schema=RAW_SCHEMA_NAME,
+        raw_manifest_sha256=sha256(raw_manifest_bytes).hexdigest(),
+        representation_name=representation.name,
+        expected_frame_count=EXPECTED_FRAME_COUNT,
+        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        window_seconds=WINDOW_SECONDS,
+        segment_count=SEGMENT_COUNT,
+        minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        representation_source_sha256=representation_source_sha256,
+        representation_dependencies_sha256=representation_dependencies_sha256,
+        segment_aggregation_source_sha256=segment_aggregation_source_sha256,
+        representation_fingerprint=representation_fingerprint,
+    )
 
     label_index_by_clip: dict[tuple[str, str], int] = {
         (record.split, record.clip_id): record.label_index
@@ -331,9 +422,7 @@ def build_feature_manifest(
         source_fingerprint = str(item["source_fingerprint"])
         key = (split, clip_id)
         if key not in label_index_by_clip:
-            excluded.append(
-                ExcludedClip(clip_id, split, "clip not present in dataset contract")
-            )
+            excluded.append(ExcludedClip(clip_id, split, "clip not present in dataset contract"))
             continue
         label_index = label_index_by_clip[key]
         raw_feature_path = raw_root / str(item["feature_path"])
@@ -347,8 +436,7 @@ def build_feature_manifest(
                 )
             if not np.isfinite(tokens).all():
                 raise ValueError(
-                    f"representation {representation.name} produced non-finite "
-                    "token values"
+                    f"representation {representation.name} produced non-finite token values"
                 )
         except (ValueError, OSError, KeyError) as error:
             excluded.append(ExcludedClip(clip_id, split, f"{type(error).__name__}: {error}"))
@@ -362,10 +450,9 @@ def build_feature_manifest(
             representation.name,
             source_fingerprint,
             representation.array_key,
+            provenance,
         )
-        included.append(
-            IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint)
-        )
+        included.append(IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint))
 
     total = len(raw_included) + len(raw_excluded)
     manifest = ExtractionManifest(
@@ -375,6 +462,7 @@ def build_feature_manifest(
         status="complete",
         total_count=total,
         cached_count=0,
+        provenance=provenance,
     )
     _write_manifest(output_root, manifest)
     return output_root / "manifest.json"
@@ -382,11 +470,11 @@ def build_feature_manifest(
 
 __all__ = [
     "LANDMARK_SEQUENCE_NAME",
-    "landmark_sequence_name",
     "LANDMARK_SEQUENCE_SHAPE",
     "LandmarkSequenceRepresentation",
     "Representation",
     "TokenRepresentation",
     "build_feature_manifest",
+    "landmark_sequence_name",
     "load_raw_clip",
 ]

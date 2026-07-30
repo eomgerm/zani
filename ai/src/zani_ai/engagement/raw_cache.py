@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 import multiprocessing
 import sys
 import time
@@ -37,11 +38,10 @@ from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import asdict, dataclass
-from functools import partial
 from datetime import UTC, datetime
+from functools import partial
 from hashlib import sha256
 from importlib import metadata
-from multiprocessing.util import Finalize
 from pathlib import Path
 from typing import Any
 
@@ -52,19 +52,20 @@ from numpy.typing import NDArray
 
 from zani_ai.engagement.contracts import ClipRecord, DatasetContract, SplitName
 from zani_ai.engagement.extraction import (
+    LANDMARKER_SCOPE,
+    MINIMUM_VALID_FRAMES,
+    SAMPLE_FPS,
+    SEGMENT_COUNT,
+    WINDOW_SECONDS,
     ActiveExtractionError,
     ExcludedClip,
     ExtractionThresholdError,
     FrameLandmarker,
     MediaPipeFaceLandmarker,
-    MINIMUM_VALID_FRAMES,
-    SAMPLE_FPS,
-    SEGMENT_COUNT,
     VideoDecodeError,
     VideoFrame,
-    WINDOW_SECONDS,
-    _ExtractionOutputLock,
     _expected_exclusion,
+    _ExtractionOutputLock,
     _file_sha256,
     _format_duration,
     _source_fingerprint,
@@ -74,6 +75,7 @@ from zani_ai.engagement.extraction import (
     iter_sampled_frames,
 )
 from zani_ai.engagement.features import BLENDSHAPE_NAMES_132, InvalidFrameFeaturesError
+from zani_ai.engagement.segments import EXPECTED_FRAME_COUNT, MINIMUM_VALID_FRAME_RATIO
 
 type RawFrameSource = Callable[[Path], Iterator[VideoFrame]]
 
@@ -111,6 +113,10 @@ class InsufficientRawCoverageError(ValueError):
     """Raised when a clip's raw valid-frame coverage fails the canonical rule."""
 
 
+class InsufficientRawTotalCoverageError(InsufficientRawCoverageError):
+    """Raised when raw valid frames fall below the runtime total-coverage gate."""
+
+
 @dataclass(frozen=True, slots=True)
 class RawClip:
     landmarks: NDArray[np.float32]
@@ -139,6 +145,9 @@ class RawProvenance:
     window_seconds: float
     segment_count: int
     minimum_valid_frames: int
+    expected_frame_count: int
+    minimum_valid_frame_ratio: float
+    landmarker_scope: str
     raw_landmark_count: int
     blendshape_count: int
     blendshape_names: tuple[str, ...]
@@ -201,6 +210,8 @@ def is_clip_included(
     window_seconds: float = WINDOW_SECONDS,
     segment_count: int = SEGMENT_COUNT,
     minimum_valid_frames: int = MINIMUM_VALID_FRAMES,
+    expected_frame_count: int = EXPECTED_FRAME_COUNT,
+    minimum_valid_frame_ratio: float = MINIMUM_VALID_FRAME_RATIO,
 ) -> bool:
     """Apply the canonical E0 segment-coverage rule to raw validity/timestamps.
 
@@ -212,8 +223,14 @@ def is_clip_included(
     included-clip set is identical across every feature representation built
     from this raw cache.
     """
-    if window_seconds <= 0 or segment_count <= 0 or minimum_valid_frames <= 0:
-        raise ValueError("window, segment count, and minimum frames must be positive")
+    if (
+        window_seconds <= 0
+        or segment_count <= 0
+        or minimum_valid_frames <= 0
+        or expected_frame_count <= 0
+        or not 0 < minimum_valid_frame_ratio <= 1
+    ):
+        raise ValueError("window, segment and expected counts, and coverage must be positive")
     segment_seconds = window_seconds / segment_count
     counts = [0] * segment_count
     for valid, timestamp_ms in zip(valid_mask, timestamps_ms, strict=True):
@@ -224,7 +241,11 @@ def is_clip_included(
             continue
         index = min(int(timestamp_seconds / segment_seconds), segment_count - 1)
         counts[index] += 1
-    return all(count >= minimum_valid_frames for count in counts)
+    valid_frame_count = sum(counts)
+    minimum_valid_frame_count = math.ceil(expected_frame_count * minimum_valid_frame_ratio)
+    return valid_frame_count >= minimum_valid_frame_count and all(
+        count >= minimum_valid_frames for count in counts
+    )
 
 
 def collect_raw_clip(
@@ -286,10 +307,25 @@ def _process_raw_clip(
     landmarker: FrameLandmarker,
     *,
     frame_source: RawFrameSource = iter_sampled_frames,
+    sample_fps: float = SAMPLE_FPS,
 ) -> RawClip:
     """Collect raw frames and enforce canonical inclusion, raising on failure."""
     clip = collect_raw_clip(video_path, landmarker, frame_source=frame_source)
-    if not is_clip_included(clip.valid_mask, clip.timestamps_ms):
+    valid_frame_count = sum(
+        bool(valid) and 0 <= float(timestamp_ms) < WINDOW_SECONDS * 1000
+        for valid, timestamp_ms in zip(clip.valid_mask, clip.timestamps_ms, strict=True)
+    )
+    expected_frame_count = round(WINDOW_SECONDS * sample_fps)
+    minimum_valid_frame_count = math.ceil(expected_frame_count * MINIMUM_VALID_FRAME_RATIO)
+    if valid_frame_count < minimum_valid_frame_count:
+        raise InsufficientRawTotalCoverageError(
+            f"window has {valid_frame_count} valid frames; {minimum_valid_frame_count} required"
+        )
+    if not is_clip_included(
+        clip.valid_mask,
+        clip.timestamps_ms,
+        expected_frame_count=expected_frame_count,
+    ):
         segment_seconds = WINDOW_SECONDS / SEGMENT_COUNT
         raise InsufficientRawCoverageError(
             f"raw coverage failed canonical rule: each of {SEGMENT_COUNT} "
@@ -390,7 +426,7 @@ def _replace_with_retry(temporary: Path, path: Path) -> None:
     transient failure likely, so we retry with a short bounded backoff before giving up.
     """
     delays = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
-    for attempt, delay in enumerate(delays):
+    for delay in delays:
         try:
             temporary.replace(path)
             return
@@ -459,6 +495,7 @@ def _build_raw_provenance(
         ),
         "inclusion_rule": _source_sha256(is_clip_included, "canonical inclusion rule"),
     }
+    expected_frame_count = round(WINDOW_SECONDS * sample_fps)
     fingerprint_payload = {
         "schema": raw_schema_name(sample_fps),
         "mediapipe_version": mediapipe_version,
@@ -469,10 +506,13 @@ def _build_raw_provenance(
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
         "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "expected_frame_count": expected_frame_count,
+        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
         "raw_landmark_count": RAW_LANDMARK_COUNT,
         "blendshape_count": RAW_BLENDSHAPE_COUNT,
         "blendshape_names": list(BLENDSHAPE_NAMES_132),
         "stored": list(RAW_STORED_KEYS),
+        "landmarker_scope": LANDMARKER_SCOPE,
         "landmarker_options": {
             "running_mode": "VIDEO",
             "num_faces": 1,
@@ -481,9 +521,7 @@ def _build_raw_provenance(
         },
         "algorithm_source_sha256": algorithm_source_sha256,
     }
-    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return RawProvenance(
         created_at_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         mediapipe_version=mediapipe_version,
@@ -494,6 +532,9 @@ def _build_raw_provenance(
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
         minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        expected_frame_count=expected_frame_count,
+        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        landmarker_scope=LANDMARKER_SCOPE,
         raw_landmark_count=RAW_LANDMARK_COUNT,
         blendshape_count=RAW_BLENDSHAPE_COUNT,
         blendshape_names=BLENDSHAPE_NAMES_132,
@@ -517,36 +558,40 @@ class _RawWorkerTask:
     schema: str = RAW_SCHEMA_NAME
 
 
-_raw_worker_landmarker: FrameLandmarker | None = None
+# One landmarker per clip, not per worker: see the note above `_worker_model_path`
+# in `extraction.py`. VIDEO-mode tracking state leaking between clips makes the
+# cached valid mask -- and therefore the canonical included-clip set -- depend on
+# clip ordering and worker count.
+_raw_worker_model_path: Path | None = None
 
 
 def _initialize_raw_worker(
     model_asset_path: str, expected_sha256: str, expected_size_bytes: int
 ) -> None:
-    global _raw_worker_landmarker
+    global _raw_worker_model_path
     model_path = Path(model_asset_path)
     if (
         model_path.stat().st_size != expected_size_bytes
         or _file_sha256(model_path) != expected_sha256
     ):
         raise RuntimeError("Face Landmarker model changed after provenance was recorded")
-    landmarker = MediaPipeFaceLandmarker(model_path)
-    _raw_worker_landmarker = landmarker
-    Finalize(None, landmarker.close, exitpriority=10)
+    _raw_worker_model_path = model_path
 
 
 def _extract_raw_worker(task: _RawWorkerTask) -> RawIncludedClip | ExcludedClip:
-    if _raw_worker_landmarker is None:
+    if _raw_worker_model_path is None:
         raise RuntimeError("Face Landmarker worker was not initialized")
     record = task.record
     if _source_fingerprint(record.video_path) != task.source_fingerprint:
         raise OSError("source video changed before extraction started")
     try:
-        clip = _process_raw_clip(
-            record.video_path,
-            _raw_worker_landmarker,
-            frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
-        )
+        with MediaPipeFaceLandmarker(_raw_worker_model_path) as landmarker:
+            clip = _process_raw_clip(
+                record.video_path,
+                landmarker,
+                frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
+                sample_fps=task.sample_fps,
+            )
     except (
         InvalidFrameFeaturesError,
         InsufficientRawCoverageError,
@@ -779,9 +824,7 @@ def extract_raw_contract_parallel(
                         raise
 
         fraction = len(excluded) / total if total else 0.0
-        status = (
-            "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
-        )
+        status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
         manifest = report("complete", status, force=True)
         if fraction > max_excluded_fraction:
             raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)
@@ -800,17 +843,18 @@ __all__ = [
     "RAW_BLENDSHAPE_COUNT",
     "RAW_LANDMARK_COUNT",
     "RAW_SCHEMA_NAME",
-    "raw_schema_name",
     "RAW_STORED_KEYS",
+    "ActiveExtractionError",
+    "ExtractionThresholdError",
     "InsufficientRawCoverageError",
+    "InsufficientRawTotalCoverageError",
     "RawClip",
     "RawIncludedClip",
     "RawManifest",
     "RawProvenance",
-    "ActiveExtractionError",
-    "ExtractionThresholdError",
     "VideoDecodeError",
     "collect_raw_clip",
     "extract_raw_contract_parallel",
     "is_clip_included",
+    "raw_schema_name",
 ]

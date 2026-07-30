@@ -51,9 +51,7 @@ def _run_one(features_root: Path, output: Path, seed: int) -> None:
     )
 
 
-def test_a_single_seed_worker_leaves_the_summary_alone(
-    features: Path, tmp_path: Path
-) -> None:
+def test_a_single_seed_worker_leaves_the_summary_alone(features: Path, tmp_path: Path) -> None:
     _write_graph(features / GRAPH_FILENAME)
     output = tmp_path / "run"
 
@@ -64,9 +62,7 @@ def test_a_single_seed_worker_leaves_the_summary_alone(
     assert not (output / "summary.json").exists()
 
 
-def test_collect_only_rebuilds_the_summary_from_records(
-    features: Path, tmp_path: Path
-) -> None:
+def test_collect_only_rebuilds_the_summary_from_records(features: Path, tmp_path: Path) -> None:
     _write_graph(features / GRAPH_FILENAME)
     output = tmp_path / "run"
     _run_one(features, output, 42)
@@ -113,9 +109,7 @@ def test_parallel_seeds_match_a_sequential_run(features: Path, tmp_path: Path) -
     assert validations(sequential.summary_path) == validations(parallel.summary_path)
 
 
-def test_a_second_process_cannot_enter_a_running_seed(
-    features: Path, tmp_path: Path
-) -> None:
+def test_a_second_process_cannot_enter_a_running_seed(features: Path, tmp_path: Path) -> None:
     """The lock is what stops two workers from training the same seed."""
     _write_graph(features / GRAPH_FILENAME)
     output = tmp_path / "run"
@@ -130,9 +124,7 @@ def test_a_second_process_cannot_enter_a_running_seed(
         held.release()
 
 
-def test_run_seed_rejects_a_seed_outside_the_protocol(
-    features: Path, tmp_path: Path
-) -> None:
+def test_run_seed_rejects_a_seed_outside_the_protocol(features: Path, tmp_path: Path) -> None:
     _write_graph(features / GRAPH_FILENAME)
     context = prepare_run(TINY_TWO_SEED, features, tmp_path / "run", device="cpu")
 
@@ -140,9 +132,7 @@ def test_run_seed_rejects_a_seed_outside_the_protocol(
         run_seed(context, 99)
 
 
-def test_a_run_from_before_per_seed_records_still_resumes(
-    features: Path, tmp_path: Path
-) -> None:
+def test_a_run_from_before_per_seed_records_still_resumes(features: Path, tmp_path: Path) -> None:
     """Completion used to live only in summary.json; those runs must not retrain."""
     _write_graph(features / GRAPH_FILENAME)
     output = tmp_path / "run"

@@ -9,7 +9,7 @@ import {
 import { createDetectionReportController } from "../application/detectionReportController";
 import { ATTENTION_DETECTION_CONFIG } from "../domain/attentionDetectionConfig";
 import type { AttentionPrediction, AttentionStatus } from "../domain/attentionPrediction";
-import type { DetectorReport } from "../domain/detectionOutcome";
+import type { DetectorOutput, DetectorReport } from "../domain/detectionOutcome";
 import { createAttentionInferenceClient } from "../infrastructure/attentionInferenceClient";
 import { createAttentionFeatureDetector } from "../infrastructure/faceLandmarker";
 import { createTrackProcessorFrameSource } from "../infrastructure/trackProcessorFrameSource";
@@ -36,6 +36,8 @@ export interface UseAttentionDetectionOptions
   readonly track: MediaStreamTrack | null;
   onPrediction?: (prediction: AttentionPrediction) => void;
   onStatusChange?: (status: AttentionStatus) => void;
+  /** 로컬 프롬프트 판정용 7종 출력. 4-class일 때만 확률을 포함한다. */
+  onDetection?: (output: DetectorOutput) => void;
   onReport?: (report: DetectorReport) => void;
 }
 // `createFeatureDetector`·`createInferenceClient`·`createFrameSource` 는 세션을 다시 시작할지 판단하는
@@ -78,6 +80,7 @@ export function useAttentionDetection(
     track,
     onPrediction,
     onStatusChange,
+    onDetection,
     onReport,
     createFeatureDetector,
     createInferenceClient,
@@ -101,9 +104,9 @@ export function useAttentionDetection(
   const prediction = effectiveCamera === "on" ? (activeReport?.prediction ?? null) : null;
 
   // 콜백 identity 가 바뀌어도 판정 세션을 다시 시작하지 않도록 ref 로 미러링한다.
-  const notifyRef = useRef({ onPrediction, onStatusChange, onReport });
+  const notifyRef = useRef({ onPrediction, onStatusChange, onDetection, onReport });
   useEffect(() => {
-    notifyRef.current = { onPrediction, onStatusChange, onReport };
+    notifyRef.current = { onPrediction, onStatusChange, onDetection, onReport };
   });
 
   const previousStatusRef = useRef<AttentionStatus | null>(null);
@@ -116,12 +119,14 @@ export function useAttentionDetection(
   useEffect(() => {
     const reports = createDetectionReportController({
       reportIntervalMs: ATTENTION_DETECTION_CONFIG.reportIntervalMs,
+      windowMs: ATTENTION_DETECTION_CONFIG.windowMs,
       isReportingAllowed: () => typeof document === "undefined" || !document.hidden,
       onReport: (report) => notifyRef.current.onReport?.(report),
     });
 
     // 카메라 OFF·권한 거부는 즉시 CAMERA_OFF를 보고하고 판정 세션은 시작하지 않는다.
     if (effectiveCamera !== "on" || !isUsableCameraTrack(track)) {
+      notifyRef.current.onDetection?.({ outcome: "CAMERA_OFF" });
       reports.startImmediate({ outcome: "CAMERA_OFF" });
       return () => reports.stop();
     }
@@ -146,6 +151,7 @@ export function useAttentionDetection(
         notifyRef.current.onPrediction?.(next);
       },
       onDetection(output) {
+        notifyRef.current.onDetection?.(output);
         if (output.outcome === "DETECTOR_UNAVAILABLE") {
           reports.startImmediate({ outcome: "DETECTOR_UNAVAILABLE" });
           return;

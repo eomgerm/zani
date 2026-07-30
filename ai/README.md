@@ -45,7 +45,7 @@ CUDA build는 필요한 CUDA runtime을 wheel에 포함하므로 별도 CUDA Too
 
 아래 명령들은 PowerShell 기준입니다. bash에서는 줄 이어쓰기를 백틱(`` ` ``) 대신
 백슬래시(`\`)로 바꾸면 그대로 동작합니다. 원격 L40S 서버(JupyterHub)에서의 실행 절차는
-[docs/remote-l40s.md](docs/remote-l40s.md)를 참고하세요.
+[../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md)를 참고하세요.
 
 ## EngageNet 데이터 준비
 
@@ -110,14 +110,58 @@ uv run python -m zani_ai engagement export `
   --output web/engagement-demo/public/models
 ```
 
-위 명령은 각 worker process에 독립적인 Face Landmarker를 만들며, 32GB RAM과
-i7-13700H 노트북을 위한 보수적인 기본값도 worker 2개입니다. 중단 후 같은 명령을 다시
-실행하면 원본 영상과 추출 프로토콜 fingerprint가 일치하는 clip별 원자적 `.npz` cache를
-재사용합니다. `manifest.json`은 진행 중에도 원자적으로 갱신되고 `processed/total`, cache,
+위 명령은 **clip 하나마다 Face Landmarker를 새로 만듭니다.** Face Landmarker는 VIDEO
+모드로 동작해 앞 프레임의 추적 상태를 다음 호출에 넘기므로, landmarker를 여러 clip에
+재사용하면 한 clip의 마지막 프레임이 다음 clip의 탐지에 섞여 들어갑니다. 그러면 clip의
+특징값이 worker 수와 처리 순서에 따라 달라지고, 같은 영상으로 두 번 추출해도 서로 다른
+데이터셋이 나옵니다. clip마다 새로 만들면 특징이 그 clip만의 함수가 됩니다. 이 범위는
+`landmarker_scope`로 fingerprint에 들어가므로, **이 규칙 이전에 만든 cache는 재사용되지
+않고 다시 추출됩니다.**
+
+32GB RAM과 i7-13700H 노트북을 위한 보수적인 기본값은 worker 2개입니다. 중단 후 같은
+명령을 다시 실행하면 원본 영상과 추출 프로토콜 fingerprint가 일치하는 clip별 원자적
+`.npz` cache를 재사용합니다. `manifest.json`은 진행 중에도 원자적으로 갱신되고 `processed/total`, cache,
 포함·제외 수, 처리 속도와 ETA를 출력합니다. 최종 manifest에는 MediaPipe/OpenCV 버전,
 Face Landmarker 모델 SHA-256과 크기, sampling/segment/feature schema, worker 수와 실제 제외
 임계값이 기록됩니다. 완료되지 않았거나 제외 임계값을 넘은 manifest로는 학습을 시작하지
 않습니다.
+
+### 브라우저 프레임 게이트 정합 감사
+
+브라우저는 10초 동안 기대한 100프레임 중 유효 프레임이 70개 미만이면 추론하지
+않습니다. 기존 세그먼트 조건(20개 세그먼트마다 3프레임 이상)은 통과하지만 이 총량
+조건에서 제외되는 60~69프레임 클립은 raw cache에서 다음 명령으로 집계합니다.
+
+```powershell
+uv run python -m zani_ai engagement audit-frame-gate `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output artifacts/engagement/frame-gate-audit.json
+```
+
+출력 JSON은 전체 불일치 수, 분할별·등급별·분할×등급별 수와 해당 clip ID를 기록합니다.
+수정된 98D 특징과 `manifest.json`은 MediaPipe를 다시 실행하지 않고 raw cache에서
+재생성할 수 있습니다.
+
+```powershell
+uv run python -m zani_ai engagement build-features `
+  --data-root datasets/raw/engagenet `
+  --raw-root datasets/processed/engagenet/raw_frames_v1 `
+  --output datasets/processed/engagenet `
+  --schema mediapipe_98_v1 `
+  --sample-fps 10
+```
+
+`artifacts/engagement/`의 체크포인트와 지표는 건드리지 않습니다. 다만 **특징 캐시는
+보존되지 않습니다.** `extract`와 `build-features`는 특징을
+`<output_root>/mediapipe_98_v1/<split>/`에, `manifest.json`을 `<output_root>/manifest.json`에
+쓰는 경로가 같아서, 같은 `--output`을 주면 뒤에 실행한 쪽이 앞의 산출물을 덮어씁니다.
+`manifest.json`에 어느 쪽이 썼는지 `pipeline` 필드로 기록하고 출처가 다르면 쓰기를
+거부하므로 사고로 덮이지는 않지만, **다른 파이프라인의 결과를 남겨두려면 `--output`을
+다른 경로로 지정해야 합니다.**
+
+새 `manifest.json`의 SHA-256이 달라지므로 재현성 identity 검증이 이전 결과의 재사용을
+차단합니다.
 
 ### E0 5-seed 재현
 

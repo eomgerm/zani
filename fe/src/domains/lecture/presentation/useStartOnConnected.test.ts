@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SessionStarter } from "@/domains/lecture/infrastructure/startSessionApi";
 import { useStartOnConnected } from "./useStartOnConnected";
 
 const { authState } = vi.hoisted(() => ({
@@ -23,14 +24,17 @@ type Options = {
   sessionStatus?: string | null;
   connected?: boolean;
   isInstructor?: boolean;
-  startSession?: ReturnType<typeof vi.fn>;
+  startSession?: SessionStarter;
 };
+
+/** 호출 여부를 보려면 mock 이어야 하고, 훅에 넘기려면 포트 타입이어야 한다. */
+const starter = (impl: () => Promise<unknown>) => vi.fn(impl) as unknown as SessionStarter & ReturnType<typeof vi.fn>;
 
 const render = ({
   sessionStatus = "PREPARING",
   connected = true,
   isInstructor = true,
-  startSession = vi.fn().mockResolvedValue(started),
+  startSession = starter(() => Promise.resolve(started)),
 }: Options = {}) => {
   const view = renderHook(() =>
     useStartOnConnected({
@@ -112,7 +116,7 @@ describe("useStartOnConnected", () => {
   /** 실패는 화면에 띄우지 않는다. 강사는 이미 방 안에 있고 수업을 진행할 수 있다 — 다만 학생이 못 들어오므로 원인은 남긴다. */
   it("실패하면 원인만 남기고 시작 표시를 켜지 않는다", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { result } = render({ startSession: vi.fn().mockRejectedValue(new Error("boom")) });
+    const { result } = render({ startSession: starter(() => Promise.reject(new Error("boom"))) });
 
     await waitFor(() => expect(warn).toHaveBeenCalled());
     expect(result.current.started).toBe(false);
