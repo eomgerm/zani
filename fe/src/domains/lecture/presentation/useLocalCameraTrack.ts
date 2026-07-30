@@ -25,9 +25,9 @@ export type LocalCameraTrack = {
  * `getUserMedia` 를 다시 부르지 않는다. 카메라를 두 번 열면 장치 충돌이 나고 학생 화면이
  * 끊기므로, LiveKit 이 이미 열어 둔 트랙을 그대로 쓴다.
  *
- * 판정은 Worker 에서 `MediaStreamTrackProcessor` 로 트랙에서 직접 프레임을 뽑기 때문에
- * 트랙을 붙일 video 요소가 필요하지 않다. 같은 트랙이면 참조를 그대로 유지해야 한다
- * (참조가 바뀌면 판정 세션이 재시작된다).
+ * 판정은 분석 전용 clone을 processor stream으로 바꿔 Worker에서 읽기 때문에 트랙을 붙일
+ * video 요소가 필요하지 않다. 같은 트랙이면 참조를 그대로 유지해야 한다(참조가 바뀌면
+ * 판정 세션이 재시작된다).
  */
 export function useLocalCameraTrack(): LocalCameraTrack {
   const { room } = useRoomConnection();
