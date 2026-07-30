@@ -1,0 +1,399 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 14,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6309887869520897,
+    "macro_f1": 0.5661976412306875,
+    "within_one_accuracy": 0.9683995922528033,
+    "quadratic_weighted_kappa": 0.6945384343927096,
+    "confusion_matrix": [
+      [
+        49,
+        15,
+        8,
+        0
+      ],
+      [
+        4,
+        21,
+        57,
+        11
+      ],
+      [
+        5,
+        20,
+        159,
+        82
+      ],
+      [
+        2,
+        5,
+        153,
+        390
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.8166666666666667,
+        "recall": 0.6805555555555556,
+        "f1-score": 0.7424242424242424,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3442622950819672,
+        "recall": 0.22580645161290322,
+        "f1-score": 0.2727272727272727,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.4217506631299735,
+        "recall": 0.5977443609022557,
+        "f1-score": 0.49455676516329705,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.8074534161490683,
+        "recall": 0.7090909090909091,
+        "f1-score": 0.755082284607938,
+        "support": 550.0
+      },
+      "accuracy": 0.6309887869520897,
+      "macro avg": {
+        "precision": 0.5975332602569189,
+        "recall": 0.5532993192904059,
+        "f1-score": 0.5661976412306875,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6596345042988618,
+        "recall": 0.6309887869520897,
+        "f1-score": 0.6377834229214931,
+        "support": 981.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5607802532182897,
+      "quadratic_weighted_kappa": 0.6731305781866648
+    },
+    {
+      "epoch": 1,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5876943831270466,
+      "quadratic_weighted_kappa": 0.7144235214877307
+    },
+    {
+      "epoch": 2,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5804835398949928,
+      "quadratic_weighted_kappa": 0.7232737048115512
+    },
+    {
+      "epoch": 3,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5139465360496126,
+      "quadratic_weighted_kappa": 0.6018296703648458
+    },
+    {
+      "epoch": 4,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5823485908120215,
+      "quadratic_weighted_kappa": 0.7264877976450729
+    },
+    {
+      "epoch": 5,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5660589105362732,
+      "quadratic_weighted_kappa": 0.7017041380519129
+    },
+    {
+      "epoch": 6,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5492279018643854,
+      "quadratic_weighted_kappa": 0.6550561565350487
+    },
+    {
+      "epoch": 7,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5431309796740798,
+      "quadratic_weighted_kappa": 0.6812211282496102
+    },
+    {
+      "epoch": 8,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5488249021327862,
+      "quadratic_weighted_kappa": 0.6789140728091283
+    },
+    {
+      "epoch": 9,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5443275611018416,
+      "quadratic_weighted_kappa": 0.6657887495577657
+    },
+    {
+      "epoch": 10,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5560531254243984,
+      "quadratic_weighted_kappa": 0.6725616262208969
+    },
+    {
+      "epoch": 11,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5537705888804987,
+      "quadratic_weighted_kappa": 0.6827932937801391
+    },
+    {
+      "epoch": 12,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5524666385892163,
+      "quadratic_weighted_kappa": 0.6671636860385175
+    },
+    {
+      "epoch": 13,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5380201184824045,
+      "quadratic_weighted_kappa": 0.6461036771189457
+    },
+    {
+      "epoch": 14,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5661976412306875,
+      "quadratic_weighted_kappa": 0.6945384343927096
+    },
+    {
+      "epoch": 15,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5493150070021723,
+      "quadratic_weighted_kappa": 0.6754167924660961
+    },
+    {
+      "epoch": 16,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5350474313753761,
+      "quadratic_weighted_kappa": 0.6636083634861952
+    },
+    {
+      "epoch": 17,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5449264359766672,
+      "quadratic_weighted_kappa": 0.6636625063786359
+    },
+    {
+      "epoch": 18,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5551271487647438,
+      "quadratic_weighted_kappa": 0.678565660580257
+    },
+    {
+      "epoch": 19,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5493299793996204,
+      "quadratic_weighted_kappa": 0.6632899656068096
+    },
+    {
+      "epoch": 20,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.534577751187485,
+      "quadratic_weighted_kappa": 0.6531285419512336
+    },
+    {
+      "epoch": 21,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5417247082037104,
+      "quadratic_weighted_kappa": 0.664986618971561
+    },
+    {
+      "epoch": 22,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5355904193256589,
+      "quadratic_weighted_kappa": 0.6723338558321599
+    },
+    {
+      "epoch": 23,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.528921949009337,
+      "quadratic_weighted_kappa": 0.6394250413736615
+    },
+    {
+      "epoch": 24,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5313815573511023,
+      "quadratic_weighted_kappa": 0.6493935520431194
+    },
+    {
+      "epoch": 25,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5260256028620585,
+      "quadratic_weighted_kappa": 0.6331554435500799
+    },
+    {
+      "epoch": 26,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5343636225897158,
+      "quadratic_weighted_kappa": 0.654955794896596
+    },
+    {
+      "epoch": 27,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5485001933357496,
+      "quadratic_weighted_kappa": 0.6504270624428864
+    },
+    {
+      "epoch": 28,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5236334880394908,
+      "quadratic_weighted_kappa": 0.6425428483767313
+    },
+    {
+      "epoch": 29,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5205035912552229,
+      "quadratic_weighted_kappa": 0.637790715751508
+    },
+    {
+      "epoch": 30,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5338925558568416,
+      "quadratic_weighted_kappa": 0.642716573166524
+    },
+    {
+      "epoch": 31,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5302861603822936,
+      "quadratic_weighted_kappa": 0.6638441886279713
+    },
+    {
+      "epoch": 32,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.530987729302336,
+      "quadratic_weighted_kappa": 0.6464895508784791
+    },
+    {
+      "epoch": 33,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5185533193512037,
+      "quadratic_weighted_kappa": 0.6528662420382165
+    },
+    {
+      "epoch": 34,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5549381398587871,
+      "quadratic_weighted_kappa": 0.67223174582801
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0i-rebuild/seed-45",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 45,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "curriculum": "label_reliability_v1",
+    "reliability_manifest": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability-rebuild/reliability_manifest.json",
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-I protocol."
+  },
+  "experiment": {
+    "protocol": "E0-I",
+    "seed": 45,
+    "feature_manifest_sha256": "a6df1570ebd38aff5e4687af314826472adf7caea646a9e98ab48a6450caad37",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "curriculum": "label_reliability_v1",
+      "reliable_warmup_epochs": 10,
+      "ambiguous_target_encoding": "adjacent_smoothing",
+      "ambiguous_neighbor_mass": 0.2
+    },
+    "configuration_sha256": "0da85a5f7b898984ae7f79bf959b0f604fba1c5177b3a6028fab0eb7b3e656f2",
+    "inputs": {
+      "label_reliability": {
+        "path": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability-rebuild/reliability_manifest.json",
+        "sha256": "c6b420edbc378dfe5f1d3a7a2d0d17abdbc04c1347b83fe1966259e65f095d27",
+        "size_bytes": 10731129
+      }
+    }
+  }
+}

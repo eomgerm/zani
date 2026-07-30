@@ -1,0 +1,381 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 11,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6625891946992865,
+    "macro_f1": 0.5684264205249919,
+    "within_one_accuracy": 0.9500509683995922,
+    "quadratic_weighted_kappa": 0.6883123160436668,
+    "confusion_matrix": [
+      [
+        42,
+        19,
+        9,
+        2
+      ],
+      [
+        2,
+        34,
+        42,
+        15
+      ],
+      [
+        3,
+        33,
+        99,
+        131
+      ],
+      [
+        1,
+        19,
+        55,
+        475
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.875,
+        "recall": 0.5833333333333334,
+        "f1-score": 0.7,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3238095238095238,
+        "recall": 0.3655913978494624,
+        "f1-score": 0.3434343434343434,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.48292682926829267,
+        "recall": 0.37218045112781956,
+        "f1-score": 0.42038216560509556,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7624398073836276,
+        "recall": 0.8636363636363636,
+        "f1-score": 0.8098891730605285,
+        "support": 550.0
+      },
+      "accuracy": 0.6625891946992865,
+      "macro avg": {
+        "precision": 0.611044040115361,
+        "recall": 0.5461853864867448,
+        "f1-score": 0.5684264205249919,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6533279473604962,
+        "recall": 0.6625891946992865,
+        "f1-score": 0.6519878646010602,
+        "support": 981.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5566589561705138,
+      "quadratic_weighted_kappa": 0.6985097580178103
+    },
+    {
+      "epoch": 1,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5465575197015663,
+      "quadratic_weighted_kappa": 0.6828931732671475
+    },
+    {
+      "epoch": 2,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5510102745174341,
+      "quadratic_weighted_kappa": 0.7027504350310365
+    },
+    {
+      "epoch": 3,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5286145141238995,
+      "quadratic_weighted_kappa": 0.6811821033694542
+    },
+    {
+      "epoch": 4,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5421454728729649,
+      "quadratic_weighted_kappa": 0.6930518329460957
+    },
+    {
+      "epoch": 5,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.533510981163879,
+      "quadratic_weighted_kappa": 0.6649375326339151
+    },
+    {
+      "epoch": 6,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5282477526089466,
+      "quadratic_weighted_kappa": 0.6728756403389335
+    },
+    {
+      "epoch": 7,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5532821239551983,
+      "quadratic_weighted_kappa": 0.6970344272041055
+    },
+    {
+      "epoch": 8,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5314122614694858,
+      "quadratic_weighted_kappa": 0.6701973609960785
+    },
+    {
+      "epoch": 9,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5238874447562274,
+      "quadratic_weighted_kappa": 0.6679182862095374
+    },
+    {
+      "epoch": 10,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5676680968709253,
+      "quadratic_weighted_kappa": 0.6817625702096557
+    },
+    {
+      "epoch": 11,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5684264205249919,
+      "quadratic_weighted_kappa": 0.6883123160436668
+    },
+    {
+      "epoch": 12,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5626638976469539,
+      "quadratic_weighted_kappa": 0.6879642048080066
+    },
+    {
+      "epoch": 13,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5563849561318246,
+      "quadratic_weighted_kappa": 0.6791547994098066
+    },
+    {
+      "epoch": 14,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5571410394348328,
+      "quadratic_weighted_kappa": 0.6854147205220082
+    },
+    {
+      "epoch": 15,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5308578978729251,
+      "quadratic_weighted_kappa": 0.6271142303580718
+    },
+    {
+      "epoch": 16,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5579603708480831,
+      "quadratic_weighted_kappa": 0.6804427024970423
+    },
+    {
+      "epoch": 17,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5206914216338723,
+      "quadratic_weighted_kappa": 0.676926190154984
+    },
+    {
+      "epoch": 18,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5175148371573354,
+      "quadratic_weighted_kappa": 0.6637688055193771
+    },
+    {
+      "epoch": 19,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5626346372784197,
+      "quadratic_weighted_kappa": 0.6993718079379063
+    },
+    {
+      "epoch": 20,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5257911682641332,
+      "quadratic_weighted_kappa": 0.6582386856669045
+    },
+    {
+      "epoch": 21,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5234131472263797,
+      "quadratic_weighted_kappa": 0.6625288652511474
+    },
+    {
+      "epoch": 22,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5290199748257938,
+      "quadratic_weighted_kappa": 0.6596614615025529
+    },
+    {
+      "epoch": 23,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5422502516166201,
+      "quadratic_weighted_kappa": 0.6714845902064361
+    },
+    {
+      "epoch": 24,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5202297953073237,
+      "quadratic_weighted_kappa": 0.653591198146223
+    },
+    {
+      "epoch": 25,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5127500905179806,
+      "quadratic_weighted_kappa": 0.6398451509717442
+    },
+    {
+      "epoch": 26,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5337398651568848,
+      "quadratic_weighted_kappa": 0.6664205792836659
+    },
+    {
+      "epoch": 27,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5381400007525236,
+      "quadratic_weighted_kappa": 0.657831346540563
+    },
+    {
+      "epoch": 28,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5310474849276641,
+      "quadratic_weighted_kappa": 0.6640400364541124
+    },
+    {
+      "epoch": 29,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5268793441157567,
+      "quadratic_weighted_kappa": 0.6468605048739107
+    },
+    {
+      "epoch": 30,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5181343671178018,
+      "quadratic_weighted_kappa": 0.6391985693185777
+    },
+    {
+      "epoch": 31,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5140174614518807,
+      "quadratic_weighted_kappa": 0.6399819943169563
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0i-rebuild/seed-42",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 42,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "curriculum": "label_reliability_v1",
+    "reliability_manifest": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability-rebuild/reliability_manifest.json",
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-I protocol."
+  },
+  "experiment": {
+    "protocol": "E0-I",
+    "seed": 42,
+    "feature_manifest_sha256": "a6df1570ebd38aff5e4687af314826472adf7caea646a9e98ab48a6450caad37",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "curriculum": "label_reliability_v1",
+      "reliable_warmup_epochs": 10,
+      "ambiguous_target_encoding": "adjacent_smoothing",
+      "ambiguous_neighbor_mass": 0.2
+    },
+    "configuration_sha256": "0da85a5f7b898984ae7f79bf959b0f604fba1c5177b3a6028fab0eb7b3e656f2",
+    "inputs": {
+      "label_reliability": {
+        "path": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability-rebuild/reliability_manifest.json",
+        "sha256": "c6b420edbc378dfe5f1d3a7a2d0d17abdbc04c1347b83fe1966259e65f095d27",
+        "size_bytes": 10731129
+      }
+    }
+  }
+}
