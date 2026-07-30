@@ -94,6 +94,15 @@ coach:
     # 조용히 줄어든다. 이 상한이 필요한 이유는 지연이 아니라(입력 1,500자와 3,331자 모두
     # 1.25초로 같았다) 최근성이다 — 입력을 늘리면 모델이 트리거 직전이 아닌 앞부분 개념을 골랐다.
     transcript-tail-chars: ${COACH_TIP_TRANSCRIPT_TAIL_CHARS:3000}
+  pipeline:
+    # 한 건이 전사 20초 + LLM 6초로 최대 26초 스레드를 점유한다. 오디오 버퍼가 동시에 들 수 있는
+    # 세션이 8개라 실행 2 + 대기 6 으로 상한을 맞춘다.
+    thread-count: ${COACH_PIPELINE_THREAD_COUNT:2}
+    queue-capacity: ${COACH_PIPELINE_QUEUE_CAPACITY:6}
+    # 트리거 시각부터 작업 시작까지 허용하는 지연. 이보다 밀리면 전사·GMS 를 호출하지 않는다 —
+    # 지금 오디오를 떠도 트리거 당시가 아닌 발화가 섞인다. 10초는 attention 판정 한 주기이고
+    # 300초 창의 약 3.3% 다. 링버퍼가 끝점 지정 스냅샷을 제공하면 이 상한이 필요 없어진다.
+    max-trigger-delay: ${COACH_PIPELINE_MAX_TRIGGER_DELAY:PT10S}
 
 attention:
   detector:

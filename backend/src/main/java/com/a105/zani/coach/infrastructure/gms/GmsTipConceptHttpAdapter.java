@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -39,7 +38,6 @@ import com.a105.zani.common.infrastructure.gms.GmsProperties;
  * <p>벤더 요청·응답 타입은 이 어댑터 안에서만 다룬다.
  */
 @Component
-@EnableConfigurationProperties(CoachTipProperties.class)
 @ConditionalOnProperty(prefix = "gms", name = "mock-enabled", havingValue = "false")
 public class GmsTipConceptHttpAdapter implements TipConceptPort {
 
