@@ -77,22 +77,51 @@ run otherwise, so that it can never stage code or touch files under a run in
 progress.
 
 Pushing needs credentials, and the publisher runs unattended, so store them once
-instead of letting a prompt block the loop. Use a GitLab Personal Access Token
-scoped to the minimum needed to push (`write_repository`), never a password:
+instead of letting a prompt block the loop.
+
+**Use a GitLab Project Access Token with the `write_repository` scope and an
+expiry date — not a personal token.** The training box is shared, and its
+JupyterHub account may be shared by a whole team, in which case a personal token
+sitting in the home directory delegates your GitLab identity to everyone who logs
+in. A project token belongs to no one and a leak reaches only this repository.
 
 ```bash
 git config --global credential.helper store
 ```
 
-The first push prompts for your GitLab username and the token and writes them to
-`~/.git-credentials`; every later cycle reuses them.
-
-The publisher also commits, so the clone needs a committer identity — a clone
-made only for reading code has none, and `git commit` then fails on every cycle:
+The first push prompts for the token and writes it **in plaintext** to
+`~/.git-credentials`; every later cycle reuses it. Two things to confirm on a
+shared machine:
 
 ```bash
-git config --global user.email "you@example.com"
-git config --global user.name "Your Name"
+stat -c '%a %U %n' ~ ~/.git-credentials
+```
+
+The home directory must not be readable by others (`750` or stricter, owned by a
+group nobody else is in), and the credentials file must be `600`. Git writes it
+`600`, but check — that mode is what protects the token if someone is later added
+to your group. A machine administrator can read it either way, which is why the
+token's scope and expiry are what actually bound the damage.
+
+If you would rather not write the token to disk at all, cache it in memory
+instead:
+
+```bash
+git config --global credential.helper 'cache --timeout=604800'
+```
+
+The cache daemon lives in the singleuser server's cgroup, so an idle cull takes
+it down — but it takes the publisher down too, so the two have the same lifetime.
+The cost is re-entering the token whenever you restart the publisher.
+
+The publisher also commits, so the clone needs a committer identity — a clone
+made only for reading code has none, and `git commit` then fails on every cycle.
+Set it on the repository rather than globally, so a shared account's other work
+is unaffected; worktrees share one `.git`, so this covers `~/zani-results` too:
+
+```bash
+git -C ~/zani config user.email "you@example.com"
+git -C ~/zani config user.name "Your Name"
 ```
 
 Check on it through its log. A cycle that fails — a flaky network, a rejected
