@@ -156,7 +156,7 @@ IDLE
 | `Reconnecting` / `Reconnected` | 연결 복구 UI |
 | `Disconnected` | 종료 사유에 따른 화면 전환 |
 | `ConnectionQualityChanged` | 연결 품질 경고 |
-| `ParticipantPermissionsChanged` | 학생 화면 공유 버튼 갱신 |
+| `ParticipantPermissionsChanged` | 화면 공유 버튼·권한 상태 갱신 |
 | `MediaDevicesChanged` | 장치 선택 목록 갱신 |
 
 React 구현 규칙:
@@ -186,21 +186,15 @@ SCREEN_SHARE_AUDIO → 공유 영상과 함께 재생
 
 ## 9. 화면 공유
 
-### 강사
+역할 제한이 없다. 두 역할 모두 같은 흐름을 따른다(2026-07-30 확정 — 승인 플로우 없음).
 
-- 기본적으로 공유 버튼을 표시한다.
-- 공유 시작 전 Spring Boot의 단일 공유 제어 API로 사용권을 획득한다.
+- 공유 버튼을 항상 표시한다.
+- 공유 시작 전 Spring Boot의 단일 공유 제어로 사용권을 획득한다.
 - 다른 공유자가 있으면 백엔드 결과에 따라 기존 공유를 중지하거나 요청을 거부한다.
+- 종료·중지·서버 회수 시 화면 Track과 화면 오디오 Track을 함께 정리한다.
+- 서버가 `SCREEN_SHARE_STOPPED`를 보내거나 LiveKit `ParticipantPermissionsChanged`로 권한이 내려가면 즉시 공유를 정리한다.
 
-### 학생
-
-1. `SCREEN_SHARE_REQUESTED`를 백엔드에 보낸다.
-2. 강사 승인 결과를 기다린다.
-3. `SCREEN_SHARE_GRANTED`와 LiveKit `ParticipantPermissionsChanged`를 모두 확인한다.
-4. 그 뒤에만 브라우저 화면 선택 UI를 연다.
-5. 종료·취소·권한 회수 시 화면 Track과 화면 오디오 Track을 함께 정리한다.
-
-권한이 없을 때 단순히 버튼만 숨기는 것으로 보안을 대신하지 않는다. 서버 grant가 최종 기준이다.
+버튼을 숨기는 것으로 보안을 대신하지 않는다. 활성 공유 단일성은 서버 판정이 최종 기준이다.
 
 ## 10. Spring Boot WebSocket 이벤트
 
@@ -210,9 +204,8 @@ SCREEN_SHARE_AUDIO → 공유 영상과 함께 재생
 SESSION_ENDING
 INSTRUCTOR_DISCONNECTED
 INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_REQUESTED
-SCREEN_SHARE_GRANTED
-SCREEN_SHARE_REVOKED
+SCREEN_SHARE_STARTED
+SCREEN_SHARE_STOPPED
 CHAT_MESSAGE
 HAND_RAISED
 HAND_LOWERED
@@ -270,7 +263,7 @@ PARTICIPANT_KICKED
 4. LiveKit Room 연결과 Track publish/subscribe 구현
 5. Room 이벤트와 레이아웃 연결
 6. Spring WebSocket 채팅·손들기·반응 연결
-7. 학생 화면 공유 승인 흐름 구현
+7. 화면 공유 시작·중지와 단일 활성 반영 구현
 8. 재연결·중복 탭·종료 UX 구현
 9. 단위·컴포넌트·브라우저 통합 테스트 추가
 
@@ -279,7 +272,7 @@ PARTICIPANT_KICKED
 - [ ] 프론트엔드가 Room·identity·role·grant를 생성하지 않는다.
 - [ ] 토큰을 영구 저장하거나 로그로 출력하지 않는다.
 - [ ] 학생 장치 테스트 실패 시 입장을 차단한다.
-- [ ] 학생 화면 공유는 승인 후에만 시작한다.
+- [ ] 화면 공유는 역할 제한 없이 시작하고, 서버가 판정한 활성 공유 단일성을 따른다.
 - [ ] LiveKit 미디어 이벤트와 Spring 업무 이벤트를 분리한다.
 - [ ] 모든 listener와 Track cleanup이 존재한다.
 - [ ] 공유 화면·강사 카메라 레이아웃이 요구사항과 일치한다.
