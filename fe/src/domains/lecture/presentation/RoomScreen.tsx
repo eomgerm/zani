@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
   CoachingPromptPanel,
+  INITIAL_ATTENTION_COACHING_STATE,
+  reduceAttentionCoaching,
   useCameraGuidePrompt,
   usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
   type AnalysisAvailability,
   type CameraGuideCause,
+  type DetectorOutput,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
 import { publicMessages } from "./fixtures";
@@ -156,8 +159,15 @@ function RoomScreenContent({
     enabled: isConfirmedInstructor,
     onResult: coachTip.accept,
   });
-  const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
-  const postureGuide = usePostureGuidePrompt();
+  const attentionCoachingStateRef = useRef(INITIAL_ATTENTION_COACHING_STATE);
+  const resetAttentionCoaching = useCallback(() => {
+    attentionCoachingStateRef.current = INITIAL_ATTENTION_COACHING_STATE;
+  }, []);
+  const understandingCheck = useUnderstandingCheckPrompt({
+    sessionId,
+    onClosed: resetAttentionCoaching,
+  });
+  const postureGuide = usePostureGuidePrompt({ onClosed: resetAttentionCoaching });
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
   const cameraGuide = useCameraGuidePrompt({
     sessionId,
@@ -165,7 +175,33 @@ function RoomScreenContent({
     // 학생 프롬프트라 강사 화면에서는 돌리지 않는다. 역할이 확인되기 전에는 isInstructor 가
     // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
     enabled: !isInstructor,
+    onClosed: resetAttentionCoaching,
   });
+  const promptVisible =
+    understandingCheck.prompt !== null ||
+    postureGuide.prompt !== null ||
+    cameraGuide.prompt !== null;
+  const promptVisibleRef = useRef(promptVisible);
+  useLayoutEffect(() => {
+    promptVisibleRef.current = promptVisible;
+  }, [promptVisible]);
+  const triggerUnderstandingCheck = understandingCheck.trigger;
+  const triggerPostureGuide = postureGuide.trigger;
+  const handleAttentionDetection = useCallback(
+    (output: DetectorOutput) => {
+      const decision = reduceAttentionCoaching(attentionCoachingStateRef.current, {
+        output,
+        promptVisible: promptVisibleRef.current,
+      });
+      attentionCoachingStateRef.current = decision.state;
+      if (decision.prompt === "UNDERSTANDING_CHECK") {
+        triggerUnderstandingCheck(`understanding-${Date.now()}`);
+      } else if (decision.prompt === "POSTURE_GUIDE") {
+        triggerPostureGuide(`posture-${Date.now()}`);
+      }
+    },
+    [triggerPostureGuide, triggerUnderstandingCheck],
+  );
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -254,6 +290,7 @@ function RoomScreenContent({
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
           onAvailabilityChange={setAnalysisAvailability}
+          onDetection={handleAttentionDetection}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -286,16 +323,6 @@ function RoomScreenContent({
         {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
         {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 역할이 확정된 강사에게만 알린다. */}
         {isConfirmedInstructor && <CoachingStatusNotice availability={coaching.availability} />}
-        {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
-        {!isInstructor && process.env.NODE_ENV !== "production" && (
-          <button
-            type="button"
-            onClick={() => understandingCheck.trigger(`dev-${Date.now()}`)}
-            className="rounded-[11px] border border-[#262b42] bg-[#151830] px-3 py-[9px] font-sans text-[12px] text-panel-muted"
-          >
-            확인 프롬프트 테스트
-          </button>
-        )}
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}

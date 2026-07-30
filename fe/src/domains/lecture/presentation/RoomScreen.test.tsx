@@ -45,18 +45,15 @@ vi.mock("./useRoomMediaControls", () => ({
 
 // 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
 const attentionSource = vi.hoisted(() => ({
-  props: [] as {
+  props: [] as Array<{
     active: boolean;
     denied?: boolean;
     onAvailabilityChange?: (availability: string) => void;
-  }[],
+    onDetection?: (output: unknown) => void;
+  }>,
 }));
 vi.mock("./components/room/AttentionCameraSource", () => ({
-  AttentionCameraSource: (props: {
-    active: boolean;
-    denied?: boolean;
-    onAvailabilityChange?: (availability: string) => void;
-  }) => {
+  AttentionCameraSource: (props: (typeof attentionSource.props)[number]) => {
     attentionSource.props.push(props);
     return <div data-testid="attention-camera-source" />;
   },
@@ -650,5 +647,58 @@ describe("RoomScreen attention wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
 
     expect(screen.getByText("강의자를 기다리고 있어요")).toBeVisible();
+  });
+
+  it("shows the understanding check after three low-engagement windows", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+    const lowOutput = {
+      outcome: "Barely-Engaged" as const,
+      probabilities: [0.1, 0.3, 0.5, 0.1],
+    };
+
+    act(() => {
+      lastProps()?.onDetection?.(lowOutput);
+      lastProps()?.onDetection?.(lowOutput);
+      lastProps()?.onDetection?.(lowOutput);
+    });
+
+    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+  });
+
+  it("pauses both counters while a prompt is visible and resets them when it closes", async () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+    const lowOutput = {
+      outcome: "Barely-Engaged" as const,
+      probabilities: [0.1, 0.3, 0.5, 0.1],
+    };
+    const unmeasurable = { outcome: "UNMEASURABLE" as const };
+    const capturedDetectionCallback = lastProps()?.onDetection;
+
+    act(() => {
+      for (let count = 0; count < 3; count += 1) capturedDetectionCallback?.(lowOutput);
+    });
+    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+
+    act(() => {
+      for (let count = 0; count < 3; count += 1) {
+        capturedDetectionCallback?.(unmeasurable);
+      }
+    });
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /이해했어요/ }));
+    });
+    act(() => {
+      for (let count = 0; count < 2; count += 1) {
+        lastProps()?.onDetection?.(unmeasurable);
+      }
+    });
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+
+    act(() => lastProps()?.onDetection?.(unmeasurable));
+    expect(screen.getByText("얼굴이 잘 보이지 않아요 🙂")).toBeVisible();
   });
 });

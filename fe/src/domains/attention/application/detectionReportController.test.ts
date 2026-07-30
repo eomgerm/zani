@@ -17,7 +17,7 @@ describe("createDetectionReportController", () => {
       probabilities: [0.1, 0.2, 0.6, 0.1],
     });
 
-    expect(reports).toEqual([{ outcome: "Engaged", observedAtMs: 12_345 }]);
+    expect(reports).toEqual([{ outcome: "ENGAGED", observedAtMs: 12_345 }]);
     expect(reports[0]).not.toHaveProperty("probabilities");
   });
 

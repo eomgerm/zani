@@ -59,7 +59,7 @@ describe("useUnderstandingCheckPrompt", () => {
   });
 
   // 무전송을 신호로 쓰면 서버가 학생의 무응답과 브라우저 중단을 구분할 수 없다.
-  it("sends NON_RESPONSE when the prompt closes without an answer", () => {
+  it("sends NO_RESPONSE when the prompt closes without an answer", () => {
     const sendResponse = vi.fn().mockResolvedValue(undefined);
     const onTimedOut = vi.fn();
     const { result } = renderHook(() =>
@@ -73,13 +73,13 @@ describe("useUnderstandingCheckPrompt", () => {
     expect(onTimedOut).toHaveBeenCalledTimes(1);
     expect(sendResponse).toHaveBeenCalledWith("s1", "prompt-1", {
       kind: "UNDERSTANDING_CHECK",
-      answer: "NON_RESPONSE",
+      answer: "NO_RESPONSE",
       shownAt: NOW.toISOString(),
       respondedAt: new Date(NOW.getTime() + DURATION_MS).toISOString(),
     });
   });
 
-  it("does not throw when the automatic NON_RESPONSE fails to send", () => {
+  it("does not throw when the automatic NO_RESPONSE fails to send", () => {
     const sendResponse = vi.fn().mockRejectedValue(new Error("network down"));
     const { result } = renderHook(() =>
       useUnderstandingCheckPrompt({ sessionId: "s1", sendResponse }),

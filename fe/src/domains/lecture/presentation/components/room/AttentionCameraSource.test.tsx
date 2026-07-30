@@ -51,15 +51,23 @@ vi.mock("../../RoomProvider", async (importOriginal) => {
 
 // 판정 엔진 자체는 attention 도메인 테스트가 검증한다. 여기서는 무엇을 넘기는지만 본다.
 const attention = vi.hoisted(() => ({
-  calls: [] as Array<{ camera: string; track: MediaStreamTrack | null }>,
+  calls: [] as Array<{
+    camera: string;
+    track: MediaStreamTrack | null;
+    onDetection?: (output: unknown) => void;
+  }>,
   status: "measuring" as string,
 }));
 vi.mock("@/domains/attention", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/domains/attention")>();
   return {
     ...actual,
-    useAttentionDetection: (options: { camera: string; track: MediaStreamTrack | null }) => {
-      attention.calls.push({ camera: options.camera, track: options.track });
+    useAttentionDetection: (options: {
+      camera: string;
+      track: MediaStreamTrack | null;
+      onDetection?: (output: unknown) => void;
+    }) => {
+      attention.calls.push(options);
       return { status: attention.status, prediction: null };
     },
   };
@@ -176,5 +184,14 @@ describe("AttentionCameraSource", () => {
     flushInitialSync();
 
     expect(lastCall()?.camera).toBe("denied");
+  });
+
+  it("forwards local detector outputs to the room coaching pipeline", () => {
+    const onDetection = vi.fn();
+
+    render(<AttentionCameraSource active onDetection={onDetection} />);
+    flushInitialSync();
+
+    expect(lastCall()?.onDetection).toBe(onDetection);
   });
 });

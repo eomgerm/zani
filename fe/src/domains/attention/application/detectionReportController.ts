@@ -1,7 +1,8 @@
-import type {
-  DetectorOutput,
-  DetectorReport,
-  ImmediateDetectorOutput,
+import {
+  toDetectorReportOutcome,
+  type DetectorOutput,
+  type DetectorReport,
+  type ImmediateDetectorOutput,
 } from "../domain/detectionOutcome";
 
 export interface DetectionReportControllerOptions {
@@ -31,7 +32,7 @@ export function createDetectionReportController(
 
   const emit = (output: DetectorOutput): void => {
     if (!isReportingAllowed()) return;
-    onReport({ outcome: output.outcome, observedAtMs: now() });
+    onReport({ outcome: toDetectorReportOutcome(output), observedAtMs: now() });
   };
 
   const stop = (): void => {
