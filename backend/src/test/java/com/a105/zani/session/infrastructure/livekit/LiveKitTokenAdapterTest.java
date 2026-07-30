@@ -25,6 +25,10 @@ class LiveKitTokenAdapterTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /** 어댑터 상수를 참조하지 않고 기대값을 따로 적는다. 상수를 잘못 바꾸면 테스트가 같이 따라가지 않고 실패해야 한다. */
+    private static final List<String> EXPECTED_PUBLISH_SOURCES =
+            List.of("camera", "microphone", "screen_share", "screen_share_audio");
+
     private final LiveKitProperties properties = new LiveKitProperties(
             "wss://livekit.example.com",
             "devkey",
@@ -59,30 +63,17 @@ class LiveKitTokenAdapterTest {
     }
 
     @Test
-    void instructorTokenAllowsScreenShareSourcesButDeniesDataPublish() {
-        JsonNode video = videoGrantOf(SessionParticipantRole.INSTRUCTOR);
+    void everyRoleAllowsTheSameScreenShareSourcesAndDeniesDataPublish() {
+        // 화면 공유에는 역할 제한을 두지 않는다. 학생도 승인 없이 공유를 시작할 수 있어야 하므로 기본 토큰에 공유 source 가 들어가고,
+        // 두 역할의 grant 가 같다. 동시 1명 제약은 토큰이 아니라 서버의 활성 공유 상태로 강제한다(티켓 65).
+        // 역할을 순회해 단정하므로 역할이 추가되어도 grant 검증이 비어 있지 않다.
+        for (SessionParticipantRole role : SessionParticipantRole.values()) {
+            JsonNode video = videoGrantOf(role);
 
-        assertEquals(List.of("camera", "microphone", "screen_share", "screen_share_audio"), publishSourcesOf(video));
-        // DataPacket 은 MVP 에서 쓰지 않는다. 업무 이벤트는 Spring WebSocket 으로 흐른다(가이드 §8).
-        assertFalse(video.get("canPublishData").asBoolean());
-    }
-
-    @Test
-    void studentTokenAllowsOnlyCameraAndMicrophoneAndDeniesDataPublish() {
-        JsonNode video = videoGrantOf(SessionParticipantRole.STUDENT);
-
-        assertEquals(List.of("camera", "microphone"), publishSourcesOf(video));
-        assertFalse(video.get("canPublishData").asBoolean());
-    }
-
-    @Test
-    void studentTokenCarriesNoScreenShareSourceSoSharingNeedsInstructorApproval() {
-        // 학생 공유는 승인 중에만 UpdateParticipant 로 임시 허용한다. 자체 구축 LiveKit 은 발급된 토큰을
-        // 폐기할 수 없어서, 기본 토큰에 공유 source 를 넣으면 승인을 회수해도 계속 공유할 수 있다(가이드 §8).
-        List<String> sources = publishSourcesOf(videoGrantOf(SessionParticipantRole.STUDENT));
-
-        assertFalse(sources.contains("screen_share"));
-        assertFalse(sources.contains("screen_share_audio"));
+            assertEquals(EXPECTED_PUBLISH_SOURCES, publishSourcesOf(video), "publish sources for " + role);
+            // DataPacket 은 MVP 에서 쓰지 않는다. 업무 이벤트는 Spring WebSocket 으로 흐른다.
+            assertFalse(video.get("canPublishData").asBoolean(), "canPublishData for " + role);
+        }
     }
 
     @Test
