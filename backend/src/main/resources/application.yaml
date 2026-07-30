@@ -60,6 +60,11 @@ session:
   # 최대 수업 시간(3시간) 초과 세션을 정리하는 주기(ISO-8601 duration).
   expiry-sweep-delay: ${SESSION_EXPIRY_SWEEP_DELAY:PT1M}
 
+postclass:
+  # 30분 넘게 입력이 없는 강사 메모를 확정하는 주기(ISO-8601 duration).
+  # 비활성 기준 30분 자체는 도메인 규칙(InstructorNote.INACTIVITY_WINDOW)이라 설정으로 열지 않는다.
+  note-inactivity-sweep-delay: ${POSTCLASS_NOTE_INACTIVITY_SWEEP_DELAY:PT1M}
+
 gms:
   base-url: ${GMS_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com}
   api-key: ${GMS_API_KEY:}
