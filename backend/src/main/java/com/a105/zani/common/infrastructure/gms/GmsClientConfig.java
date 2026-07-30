@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClient;
  * <ul>
  *   <li>{@code gmsRestClient} — 기본값({@code read-timeout})
  *   <li>{@code gmsTranscriptionRestClient} — 전사 전용({@code transcribe-timeout})
+ *   <li>{@code gmsTipRestClient} — 팁 문구 전용({@code tip-timeout})
  * </ul>
  */
 @Configuration
@@ -38,6 +39,11 @@ public class GmsClientConfig {
     @Bean
     public RestClient gmsTranscriptionRestClient(GmsProperties properties) {
         return buildClient(properties, properties.transcribeTimeout());
+    }
+
+    @Bean
+    public RestClient gmsTipRestClient(GmsProperties properties) {
+        return buildClient(properties, properties.tipTimeout());
     }
 
     private RestClient buildClient(GmsProperties properties, Duration readTimeout) {
