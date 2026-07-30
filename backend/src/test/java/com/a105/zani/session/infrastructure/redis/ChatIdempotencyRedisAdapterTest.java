@@ -85,6 +85,26 @@ class ChatIdempotencyRedisAdapterTest {
                 "5002", chatIdempotencyPort.claim(SESSION_ID, "c-2", "9999").orElse(null));
     }
 
+    /** 선점만 남고 행이 없을 때 쓴다. 지우기만 하면 이어지는 저장이 멱등 보호를 못 받는다. */
+    @Test
+    void 다시_잡으면_선점이_새_eventId를_가리킨다() {
+        chatIdempotencyPort.claim(SESSION_ID, "c-1", "5001");
+
+        chatIdempotencyPort.reclaim(SESSION_ID, "c-1", "5002");
+
+        assertEquals(
+                "5002", chatIdempotencyPort.claim(SESSION_ID, "c-1", "9999").orElse(null));
+    }
+
+    /** NX 가 아니라 덮어쓰기여야 한다. 조건이 붙으면 이미 있는 선점을 바꾸지 못한다. */
+    @Test
+    void 다시_잡기는_선점이_없어도_새로_만든다() {
+        chatIdempotencyPort.reclaim(SESSION_ID, "c-2", "5003");
+
+        assertEquals(
+                "5003", chatIdempotencyPort.claim(SESSION_ID, "c-2", "9999").orElse(null));
+    }
+
     /** 되돌리지 않으면 저장에 실패한 전송의 재시도가 영구히 중복으로 걸러져 메시지가 사라진다. */
     @Test
     void 되돌리면_같은_clientEventId가_다시_처음_보는_값이_된다() {

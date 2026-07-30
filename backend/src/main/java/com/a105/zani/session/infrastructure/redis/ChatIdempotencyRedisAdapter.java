@@ -61,6 +61,17 @@ public class ChatIdempotencyRedisAdapter implements ChatIdempotencyPort {
     }
 
     @Override
+    public void reclaim(long sessionId, String clientEventId, String eventId) {
+        try {
+            // NX 없이 덮어쓴다. 이미 있는 선점을 새 식별자로 바꾸는 것이 목적이라 "없을 때만" 조건이 붙으면 안 된다.
+            redisTemplate.opsForValue().set(key(sessionId, clientEventId), eventId, TTL);
+        } catch (DataAccessException unavailable) {
+            // 못 바꿔도 전송은 이어간다. claim 과 같은 판단이다 — 중복 한 건보다 채팅이 멎는 쪽이 나쁘다.
+            log.warn("채팅 멱등 선점을 새 식별자로 바꾸지 못했습니다. sessionId={}", sessionId, unavailable);
+        }
+    }
+
+    @Override
     public void release(long sessionId, String clientEventId) {
         try {
             redisTemplate.delete(key(sessionId, clientEventId));

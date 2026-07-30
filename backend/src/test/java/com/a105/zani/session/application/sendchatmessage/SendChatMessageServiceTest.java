@@ -27,7 +27,6 @@ import com.a105.zani.session.domain.repository.ChatMessageRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SendChatMessageServiceTest {
@@ -132,9 +131,7 @@ class SendChatMessageServiceTest {
     /** 선점만 남고 행이 없으면(저장 실패 뒤 되돌리기까지 실패) 재시도를 새 전송으로 처리해 메시지가 사라지지 않게 한다. */
     @Test
     void 선점만_남고_행이_없으면_새_전송으로_처리한다() {
-        messages.failNextSave = true;
-        assertThrows(IllegalStateException.class, () -> service.send(command("c-1", "안녕하세요")));
-        idempotency.claims.put("100:c-1", "999999"); // 되돌리기가 실패해 선점만 남은 상태를 만든다.
+        idempotency.claims.put("100:c-1", "999999"); // 저장 실패 뒤 되돌리기까지 실패해 선점만 남은 상태.
 
         SendChatMessageResult retry = service.send(command("c-1", "안녕하세요"));
 
@@ -148,10 +145,12 @@ class SendChatMessageServiceTest {
     void 저장이_실패하면_멱등_선점을_되돌려_재시도가_통과하게_한다() {
         messages.failNextSave = true;
 
-        assertThrows(IllegalStateException.class, () -> service.send(command("c-1", "안녕하세요")));
+        SendChatMessageResult failed = service.send(command("c-1", "안녕하세요"));
+        assertTrue(failed.rejected());
         assertTrue(idempotency.claims.isEmpty());
 
         SendChatMessageResult retry = service.send(command("c-1", "안녕하세요"));
+        assertFalse(retry.rejected());
         assertFalse(retry.duplicate());
         assertEquals(1, messages.saved.size());
     }
@@ -160,9 +159,12 @@ class SendChatMessageServiceTest {
     void 비멤버의_전송은_저장도_브로드캐스트도_하지_않고_거절한다() {
         resolveParticipant.member = false;
 
-        assertThrows(NotSessionMemberException.class, () -> service.send(command("c-1", "안녕하세요")));
+        SendChatMessageResult result = service.send(command("c-1", "안녕하세요"));
+
+        assertTrue(result.rejected());
         assertTrue(messages.saved.isEmpty());
         assertTrue(publisher.published.isEmpty());
+        assertEquals("c-1", publisher.rejections.getFirst().clientEventId());
     }
 
     @Test
@@ -170,6 +172,57 @@ class SendChatMessageServiceTest {
         service.send(command("c-1", "  질문 있습니다  "));
 
         assertEquals("질문 있습니다", messages.saved.getFirst().content());
+    }
+
+    /** 선점만 남고 행이 없을 때 지우기만 하면, 뒤따라온 재시도가 처음 보는 값으로 판단돼 한 번 더 저장된다. */
+    @Test
+    void 선점만_남은_복구_뒤에도_재시도는_멱등하게_걸러진다() {
+        idempotency.claims.put("100:c-1", "999999");
+
+        SendChatMessageResult recovered = service.send(command("c-1", "안녕하세요"));
+        SendChatMessageResult retry = service.send(command("c-1", "안녕하세요"));
+
+        assertFalse(recovered.duplicate());
+        assertTrue(retry.duplicate());
+        assertEquals(recovered.eventId(), retry.eventId());
+        assertEquals(1, messages.saved.size());
+    }
+
+    @Test
+    void 빈_본문은_저장하지_않고_보낸_사람에게만_거절을_알린다() {
+        SendChatMessageResult result = service.send(command("c-1", "   "));
+
+        assertEquals("EMPTY_CONTENT", result.rejectionReason());
+        assertTrue(messages.saved.isEmpty());
+        assertTrue(publisher.published.isEmpty());
+        assertEquals(String.valueOf(USER_ID), publisher.rejectedTo.getFirst());
+        assertEquals("c-1", publisher.rejections.getFirst().clientEventId());
+    }
+
+    @Test
+    void 상한을_넘긴_본문은_저장하지_않는다() {
+        SendChatMessageResult result = service.send(command("c-1", "a".repeat(ChatMessage.MAX_CONTENT_LENGTH + 1)));
+
+        assertEquals("CONTENT_TOO_LONG", result.rejectionReason());
+        assertTrue(messages.saved.isEmpty());
+    }
+
+    @Test
+    void 상한과_같은_길이의_본문은_통과시킨다() {
+        SendChatMessageResult result = service.send(command("c-1", "a".repeat(ChatMessage.MAX_CONTENT_LENGTH)));
+
+        assertFalse(result.rejected());
+        assertEquals(1, messages.saved.size());
+    }
+
+    /** 어느 전송이 실패했는지 짚어 줄 키가 없으면 통지해도 클라이언트가 쓸 수 없다. */
+    @Test
+    void clientEventId가_없으면_거절을_알리지_않고_버린다() {
+        SendChatMessageResult result = service.send(command(" ", "질문 있습니다"));
+
+        assertEquals("MISSING_CLIENT_EVENT_ID", result.rejectionReason());
+        assertTrue(messages.saved.isEmpty());
+        assertTrue(publisher.rejections.isEmpty());
     }
 
     private class StubResolveSessionParticipant implements ResolveSessionParticipantUseCase {
@@ -225,6 +278,11 @@ class SendChatMessageServiceTest {
         }
 
         @Override
+        public void reclaim(long sessionId, String clientEventId, String eventId) {
+            claims.put(key(sessionId, clientEventId), eventId);
+        }
+
+        @Override
         public void release(long sessionId, String clientEventId) {
             claims.remove(key(sessionId, clientEventId));
         }
@@ -244,9 +302,13 @@ class SendChatMessageServiceTest {
             published.add(event);
         }
 
+        private final List<SessionEventRejection> rejections = new ArrayList<>();
+        private final List<String> rejectedTo = new ArrayList<>();
+
         @Override
         public void publishRejection(String memberId, SessionEventRejection rejection) {
-            throw new UnsupportedOperationException("전송 경로는 거절을 내보내지 않는다(컨트롤러 책임).");
+            rejectedTo.add(memberId);
+            rejections.add(rejection);
         }
     }
 }

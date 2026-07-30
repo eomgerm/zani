@@ -9,12 +9,14 @@ import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.a105.zani.common.error.BusinessException;
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.member.application.get.GetMemberDisplayNameQuery;
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.port.ChatIdempotencyPort;
 import com.a105.zani.session.application.port.SessionEvent;
 import com.a105.zani.session.application.port.SessionEventPublishPort;
+import com.a105.zani.session.application.port.SessionEventRejection;
 import com.a105.zani.session.application.port.SessionEventSender;
 import com.a105.zani.session.application.port.SessionEventType;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
@@ -40,6 +42,13 @@ public class SendChatMessageService implements SendChatMessageUseCase {
     /** 표시 이름을 못 찾은 경우. {@code IssueMediaTokenService} 와 같은 값을 써서 같은 사람이 화면마다 다르게 보이지 않게 한다. */
     private static final String DEFAULT_DISPLAY_NAME = "참가자";
 
+    /** 거절 사유 코드. 화면에 그대로 띄우지 않고 클라이언트가 문구를 고르는 데 쓴다. */
+    private static final String REASON_MISSING_CLIENT_EVENT_ID = "MISSING_CLIENT_EVENT_ID";
+
+    private static final String REASON_EMPTY_CONTENT = "EMPTY_CONTENT";
+    private static final String REASON_CONTENT_TOO_LONG = "CONTENT_TOO_LONG";
+    private static final String REASON_SEND_FAILED = "SEND_FAILED";
+
     private final ResolveSessionParticipantUseCase resolveSessionParticipantUseCase;
     private final GetMemberDisplayNameUseCase getMemberDisplayNameUseCase;
     private final ChatMessageRepository chatMessageRepository;
@@ -64,9 +73,31 @@ public class SendChatMessageService implements SendChatMessageUseCase {
 
     @Override
     public SendChatMessageResult send(SendChatMessageCommand command) {
+        if (isBlank(command.clientEventId())) {
+            // 어느 전송이 실패했는지 짚어 줄 키가 없다. 통지해도 클라이언트가 쓸 수 없어 로그만 남기고 버린다.
+            log.warn("clientEventId 없는 채팅 전송을 버립니다. sessionId={}", command.sessionId());
+            return SendChatMessageResult.rejected(REASON_MISSING_CLIENT_EVENT_ID);
+        }
+
+        String content = command.content() == null ? "" : command.content().trim();
+        if (content.isEmpty()) {
+            return reject(command, REASON_EMPTY_CONTENT);
+        }
+        if (content.length() > ChatMessage.MAX_CONTENT_LENGTH) {
+            return reject(command, REASON_CONTENT_TOO_LONG);
+        }
+
         // 비멤버·없는 세션·종료된 세션은 여기서 걸러진다. 구독 검사(StompAuthChannelInterceptor)와 같은 판정을 쓴다.
-        ResolveSessionParticipantResult participant = resolveSessionParticipantUseCase.resolve(
-                new ResolveSessionParticipantQuery(command.sessionId(), command.userId()));
+        //
+        // 예외로 올리지 않고 거절로 바꾸는 이유: STOMP 는 돌려줄 상태 코드가 없어, 보낸 사람에게 알리지 않으면
+        // 클라이언트가 보내는 중 상태로 남는다. 이미 정의된 오류 코드를 사유로 그대로 쓴다.
+        ResolveSessionParticipantResult participant;
+        try {
+            participant = resolveSessionParticipantUseCase.resolve(
+                    new ResolveSessionParticipantQuery(command.sessionId(), command.userId()));
+        } catch (BusinessException notAllowed) {
+            return reject(command, notAllowed.errorCode().code());
+        }
 
         Instant now = clock.instant();
         String eventId = String.valueOf(TsidGenerator.generate());
@@ -83,11 +114,14 @@ public class SendChatMessageService implements SendChatMessageUseCase {
                 // 이력을 채우므로, 클라이언트가 clientEventId 로 들고 있던 실패 항목과 겹쳐 같은 메시지가
                 // 두 번 보인다. 받는 쪽은 eventId 로 거르므로 다시 뿌려도 중복이 생기지 않는다.
                 publish(command, participant, stored.get(), alreadyHandled.get(), now);
-                return new SendChatMessageResult(alreadyHandled.get(), true);
+                return SendChatMessageResult.duplicate(alreadyHandled.get());
             }
-            // 선점만 남고 행이 없다 — 앞선 저장이 실패했고 되돌리기까지 실패한 경우다. 새 전송으로 처리한다.
+            // 선점만 남고 행이 없다 — 앞선 저장이 실패했고 되돌리기까지 실패한 경우다.
+            //
+            // 지우기만 하고 이어서 저장하면 이 전송이 멱등 보호를 받지 못한다. 뒤따라온 재시도가 처음 보는 값으로
+            // 판단돼 한 번 더 저장된다. 새 식별자로 덮어써 선점과 행을 다시 맞춘다.
             log.warn("멱등 선점만 남고 채팅 행이 없어 새 전송으로 처리합니다. sessionId={}", command.sessionId());
-            chatIdempotencyPort.release(command.sessionId(), command.clientEventId());
+            chatIdempotencyPort.reclaim(command.sessionId(), command.clientEventId(), eventId);
         }
 
         ChatMessage saved;
@@ -96,16 +130,28 @@ public class SendChatMessageService implements SendChatMessageUseCase {
                     Long.parseLong(eventId),
                     command.sessionId(),
                     participant.participantId(),
-                    command.content().trim(),
+                    content,
                     offsetMs(participant.sessionStartedAt(), now)));
         } catch (RuntimeException failedToSave) {
             // 선점을 되돌리지 않으면 같은 clientEventId 로 다시 보낸 재시도가 중복으로 걸러져 메시지가 영구히 사라진다.
             chatIdempotencyPort.release(command.sessionId(), command.clientEventId());
-            throw failedToSave;
+            log.error("채팅 저장에 실패했습니다. sessionId={}", command.sessionId(), failedToSave);
+            return reject(command, REASON_SEND_FAILED);
         }
 
         publish(command, participant, saved, eventId, now);
-        return new SendChatMessageResult(eventId, false);
+        return SendChatMessageResult.sent(eventId);
+    }
+
+    /** 보낸 사람에게만 알린다. 다른 참가자에게 뿌릴 이유가 없다. */
+    private SendChatMessageResult reject(SendChatMessageCommand command, String reason) {
+        sessionEventPublishPort.publishRejection(
+                String.valueOf(command.userId()), new SessionEventRejection(command.clientEventId(), reason));
+        return SendChatMessageResult.rejected(reason);
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void publish(

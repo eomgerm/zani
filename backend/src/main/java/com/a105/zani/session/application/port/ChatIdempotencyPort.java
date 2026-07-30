@@ -17,6 +17,13 @@ public interface ChatIdempotencyPort {
      */
     Optional<String> claim(long sessionId, String clientEventId, String eventId);
 
+    /**
+     * 이미 있는 선점을 새 {@code eventId} 로 덮어쓴다.
+     *
+     * <p>선점은 남았는데 저장된 행이 없을 때 쓴다. 지우기만 하고 이어서 저장하면 그 전송이 멱등 보호를 받지 못해, 뒤따라온 재시도가 한 번 더 저장된다.
+     */
+    void reclaim(long sessionId, String clientEventId, String eventId);
+
     /** 선점 후 저장이 실패했을 때 되돌린다. 놔두면 같은 재시도가 영원히 중복으로 걸러져 메시지가 사라진다. */
     void release(long sessionId, String clientEventId);
 }
