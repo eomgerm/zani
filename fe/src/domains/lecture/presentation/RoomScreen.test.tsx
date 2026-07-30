@@ -46,6 +46,7 @@ vi.mock("./useRoomMediaControls", () => ({
 // 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
 const attentionSource = vi.hoisted(() => ({
   props: [] as Array<{
+    sessionId: string;
     active: boolean;
     denied?: boolean;
     onAvailabilityChange?: (availability: string) => void;
@@ -509,6 +510,15 @@ describe("RoomScreen attention wiring", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(lastProps()).toMatchObject({ active: true, denied: false });
+  });
+
+  // 관측 전송 경로가 세션별이라, 판정 소스는 자기가 어느 수업에 붙었는지 알아야 한다.
+  it("tells the attention source which session the observations belong to", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(lastProps()?.sessionId).toBe("123");
   });
 
   // 상단 바에 흐름대로 놓아야 한다. 띄워 얹으면 보기 전환·패널 토글 위를 가린다.

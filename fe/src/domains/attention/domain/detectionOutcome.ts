@@ -28,10 +28,27 @@ export type ImmediateDetectorOutput = {
   readonly outcome: "CAMERA_OFF" | "DETECTOR_UNAVAILABLE";
 };
 
-/** 서버 보고 경계. 원본 프레임·랜드마크·확률을 담을 수 없다. */
+/**
+ * 서버 보고 경계. 원본 프레임·랜드마크·확률을 담을 수 없다.
+ *
+ * 서버 `AttentionEventRequest` 가 계약 밖 필드를 400 으로 거절하므로, 여기에 필드를 더할 때는
+ * 그 계약에 있는 값인지 먼저 확인한다.
+ */
 export interface DetectorReport {
   readonly outcome: DetectionOutcome;
   readonly observedAtMs: number;
+  /**
+   * 10초 창의 시작 시각. 창을 관측한 보고에만 있다.
+   *
+   * 카메라 OFF·검출기 불가처럼 창 없이 상태만 반복해 알리는 보고에는 없다 — 없는 관측 구간을
+   * 지어내면 서버가 그것을 수업 후 리포트의 근거로 남긴다.
+   */
+  readonly windowStartedAtMs?: number;
+  /**
+   * 서버가 중복을 판별하는 멱등키. 리포트를 만들 때 한 번 정하고 재시도해도 바꾸지 않는다 —
+   * 새 값을 만들면 같은 관측이 두 번 반영된다.
+   */
+  readonly clientEventId: string;
 }
 
 const REPORT_OUTCOME_BY_ATTENTION_LABEL: Record<AttentionLabel, DetectionOutcome> = {
