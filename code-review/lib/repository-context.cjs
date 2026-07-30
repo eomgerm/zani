@@ -15,6 +15,10 @@ const SKIPPED_DIRECTORIES = new Set([
 ]);
 const SOURCE_FILE_PATTERN = /\.(?:cjs|cts|js|jsx|mjs|mts|ts|tsx)$/iu;
 
+// lock 파일처럼 사람이 읽지 않는 생성 파일 하나가 Claude 컨텍스트와 메모리를 다 쓰지 않도록
+// 파일당 상한을 둔다. 저장소에서 손으로 쓴 가장 큰 파일이 65KB이므로 원본 코드는 잘리지 않는다.
+const MAX_FILE_BYTES = 256 * 1024;
+
 function normalizePath(value) {
   return value.replaceAll('\\', '/');
 }
@@ -86,15 +90,55 @@ function fenceFor(content) {
   return '`'.repeat(longest + 1);
 }
 
-function readFileEntry(repositoryRoot, relativePath, kind) {
+function realPathOrNull(target) {
+  try {
+    return fs.realpathSync(target);
+  } catch (error) {
+    return null;
+  }
+}
+
+// 경로 문자열만으로는 저장소 안팎을 가릴 수 없다. 심볼릭 링크는 저장소 안 경로로 밖의 파일을
+// 가리킬 수 있으므로, 링크를 따라간 실제 경로까지 확인한 뒤에만 읽어 저장소 밖 내용이
+// Claude 프롬프트와 GitLab 댓글로 새지 않게 한다.
+function resolveReadablePath(repositoryRoot, relativePath) {
   const absolutePath = path.resolve(repositoryRoot, relativePath);
   if (!isInsideRepository(repositoryRoot, absolutePath)) {
-    return { path: relativePath, reason: 'outside the repository root' };
+    return { reason: 'outside the repository root' };
   }
 
+  const realPath = realPathOrNull(absolutePath);
+  if (!realPath) return { reason: 'deleted or unreadable' };
+
+  // 저장소 루트 자체가 링크 아래 있을 수 있어(임시 디렉터리 등) 루트도 실제 경로로 비교한다.
+  if (!isInsideRepository(realPathOrNull(repositoryRoot) ?? repositoryRoot, realPath)) {
+    return { reason: 'symlink outside the repository root' };
+  }
+
+  return { realPath };
+}
+
+// 상한을 넘는 파일은 전부 읽어 잘라내는 대신 앞부분만 읽는다. 13MB 모델 가중치처럼 큰 파일도
+// 버퍼가 상한을 넘지 않으므로 메모리 사용이 튀지 않는다.
+function readHead(absolutePath, limit) {
+  const handle = fs.openSync(absolutePath, 'r');
+  try {
+    const buffer = Buffer.alloc(limit);
+    return buffer.subarray(0, fs.readSync(handle, buffer, 0, limit, 0));
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+function readFileEntry(repositoryRoot, relativePath, kind) {
+  const resolved = resolveReadablePath(repositoryRoot, relativePath);
+  if (resolved.reason) return { path: relativePath, reason: resolved.reason };
+
+  let fileBytes;
   let buffer;
   try {
-    buffer = fs.readFileSync(absolutePath);
+    fileBytes = fs.statSync(resolved.realPath).size;
+    buffer = readHead(resolved.realPath, Math.min(fileBytes, MAX_FILE_BYTES));
   } catch (error) {
     return { path: relativePath, reason: 'deleted or unreadable' };
   }
@@ -102,18 +146,22 @@ function readFileEntry(repositoryRoot, relativePath, kind) {
   // NUL 바이트가 있으면 텍스트가 아니다. 이미지·모델 가중치 같은 파일은 첨부해도 검토에 쓸 수 없다.
   if (buffer.includes(0)) return { path: relativePath, reason: 'binary' };
 
-  return {
+  const entry = {
     path: relativePath,
     kind,
     content: buffer.toString('utf8'),
     bytes: buffer.byteLength,
   };
+  return fileBytes > buffer.byteLength ? { ...entry, originalBytes: fileBytes } : entry;
 }
 
 function renderFiles(files) {
   return files.flatMap((file) => {
     const fence = fenceFor(file.content);
-    return ['', `### \`${file.path}\``, fence, file.content, fence];
+    const heading = file.originalBytes
+      ? `### \`${file.path}\` (first ${file.bytes} of ${file.originalBytes} bytes; the rest is not attached)`
+      : `### \`${file.path}\``;
+    return ['', heading, fence, file.content, fence];
   });
 }
 
@@ -122,8 +170,9 @@ function renderContext(files, skipped) {
   const candidates = files.filter((file) => file.kind === 'candidate');
   const lines = [
     '## Changed files',
-    `Read-only full content of every changed file: ${changed.length} files, ${changed.reduce((total, file) => total + file.bytes, 0)} bytes.`,
-    'No file-count or size limit is applied. Review these files together with the diff.',
+    `Read-only content of every changed file: ${changed.length} files, ${changed.reduce((total, file) => total + file.bytes, 0)} bytes.`,
+    'No file-count or total-size limit is applied. Review these files together with the diff.',
+    `A file over ${MAX_FILE_BYTES} bytes keeps only its beginning, and its heading says so.`,
   ];
 
   if (changed.length === 0) lines.push('No readable changed file was available.');

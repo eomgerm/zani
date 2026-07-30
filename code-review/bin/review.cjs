@@ -120,6 +120,9 @@ async function main(argv, adapters = {}) {
           repositoryContext: {
             files: repositoryContext.files?.map((file) => file.path) || [],
             totalBytes: repositoryContext.totalBytes || 0,
+            truncatedFiles: repositoryContext.files
+              ?.filter((file) => file.originalBytes)
+              .map((file) => `${file.path} (${file.bytes}/${file.originalBytes} bytes)`) || [],
             skippedFiles: repositoryContext.skipped?.map((file) => `${file.path} (${file.reason})`) || [],
           },
         },
