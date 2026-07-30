@@ -127,15 +127,18 @@ describe("useAttentionDetection", () => {
     const view = render("off");
     await act(async () => {});
 
+    // 카메라 OFF 는 10초 창을 관측한 것이 아니라 창 시작 시각이 없다.
     expect(onReport).toHaveBeenNthCalledWith(1, {
       outcome: "CAMERA_OFF",
       observedAtMs: 0,
+      clientEventId: expect.any(String),
     });
 
     act(() => vi.advanceTimersByTime(10_000));
     expect(onReport).toHaveBeenNthCalledWith(2, {
       outcome: "CAMERA_OFF",
       observedAtMs: 10_000,
+      clientEventId: expect.any(String),
     });
 
     view.unmount();
@@ -175,12 +178,14 @@ describe("useAttentionDetection", () => {
     expect(onReport).toHaveBeenNthCalledWith(1, {
       outcome: "DETECTOR_UNAVAILABLE",
       observedAtMs: 0,
+      clientEventId: expect.any(String),
     });
 
     act(() => vi.advanceTimersByTime(10_000));
     expect(onReport).toHaveBeenNthCalledWith(2, {
       outcome: "DETECTOR_UNAVAILABLE",
       observedAtMs: 10_000,
+      clientEventId: expect.any(String),
     });
 
     view.unmount();
@@ -225,6 +230,44 @@ describe("useAttentionDetection", () => {
     expect(onPrediction).toHaveBeenCalledWith(PREDICTION);
     expect(onStatusChange).toHaveBeenCalledWith("collecting");
     expect(onStatusChange).toHaveBeenCalledWith("measuring");
+  });
+
+  // 서버는 이 관측이 어느 10초 구간을 잰 것인지 알아야 수업 후 리포트의 근거로 쓸 수 있다.
+  it("reports a judged window with the window it observed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const view = render();
+    await act(async () => {});
+    await advance(10_000);
+    vi.setSystemTime(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onReport).toHaveBeenLastCalledWith({
+      outcome: "ENGAGED",
+      observedAtMs: 10_000,
+      windowStartedAtMs: 0,
+      clientEventId: expect.any(String),
+    });
+
+    view.unmount();
+    vi.useRealTimers();
+  });
+
+  // 확률은 로컬 판정용이다. 서버 보고에 새어 들어가면 계약 밖 필드로 400 을 받는다.
+  it("never carries probabilities into a server report", async () => {
+    const view = render();
+    await act(async () => {});
+    await advance(10_000);
+
+    await act(async () => emitPrediction(PREDICTION));
+
+    expect(onReport).toHaveBeenCalled();
+    onReport.mock.calls.forEach(([report]) => {
+      expect(report).not.toHaveProperty("probabilities");
+    });
+
+    view.unmount();
   });
 
   it("notifies the local coaching pipeline with probabilities", async () => {

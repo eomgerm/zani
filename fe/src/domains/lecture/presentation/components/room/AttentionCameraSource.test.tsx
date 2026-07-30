@@ -49,13 +49,21 @@ vi.mock("../../RoomProvider", async (importOriginal) => {
   };
 });
 
+// 관측 전송에는 Bearer 토큰이 필요하다. 인증 컨텍스트가 없는 단위 테스트에서는 대체한다.
+vi.mock("@/domains/auth", () => ({
+  useAuth: () => ({ accessToken: "test-access-token" }),
+}));
+
 // 판정 엔진 자체는 attention 도메인 테스트가 검증한다. 여기서는 무엇을 넘기는지만 본다.
 const attention = vi.hoisted(() => ({
   calls: [] as Array<{
     camera: string;
     track: MediaStreamTrack | null;
     onDetection?: (output: unknown) => void;
+    onReport?: (report: unknown) => void;
   }>,
+  /** 리포터 훅이 받은 sessionId. 전송이 어느 수업으로 가는지 여기서 본다. */
+  reporterSessionIds: [] as string[],
   status: "measuring" as string,
 }));
 vi.mock("@/domains/attention", async (importOriginal) => {
@@ -66,12 +74,20 @@ vi.mock("@/domains/attention", async (importOriginal) => {
       camera: string;
       track: MediaStreamTrack | null;
       onDetection?: (output: unknown) => void;
+      onReport?: (report: unknown) => void;
     }) => {
       attention.calls.push(options);
       return { status: attention.status, prediction: null };
     },
+    useAttentionEventReporter: (options: { sessionId: string }) => {
+      attention.reporterSessionIds.push(options.sessionId);
+      return reportToServer;
+    },
   };
 });
+
+/** 리포터 훅이 돌려주는 전송 함수 대역. 판정 훅이 이것을 받아야 관측이 서버로 나간다. */
+const reportToServer = vi.hoisted(() => vi.fn());
 
 import { AttentionCameraSource } from "./AttentionCameraSource";
 
@@ -85,7 +101,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   hoisted.room = new FakeRoom(new FakeVideoTrack("camera"));
   attention.calls = [];
+  attention.reporterSessionIds = [];
   attention.status = "measuring";
+  reportToServer.mockClear();
 });
 
 afterEach(() => {
@@ -97,7 +115,7 @@ describe("AttentionCameraSource 가용 상태 알림", () => {
   it("reports the analysis as running while detection works", () => {
     const onAvailabilityChange = vi.fn();
 
-    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    render(<AttentionCameraSource sessionId="55" active onAvailabilityChange={onAvailabilityChange} />);
     flushInitialSync();
 
     expect(onAvailabilityChange).toHaveBeenLastCalledWith("ACTIVE");
@@ -108,7 +126,7 @@ describe("AttentionCameraSource 가용 상태 알림", () => {
     attention.status = "unavailable";
     const onAvailabilityChange = vi.fn();
 
-    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    render(<AttentionCameraSource sessionId="55" active onAvailabilityChange={onAvailabilityChange} />);
     flushInitialSync();
 
     expect(onAvailabilityChange).toHaveBeenLastCalledWith("UNAVAILABLE");
@@ -118,7 +136,7 @@ describe("AttentionCameraSource 가용 상태 알림", () => {
     attention.status = "idle";
     const onAvailabilityChange = vi.fn();
 
-    render(<AttentionCameraSource active={false} onAvailabilityChange={onAvailabilityChange} />);
+    render(<AttentionCameraSource sessionId="55" active={false} onAvailabilityChange={onAvailabilityChange} />);
     flushInitialSync();
 
     expect(onAvailabilityChange).toHaveBeenLastCalledWith("PAUSED");
@@ -129,7 +147,7 @@ describe("AttentionCameraSource 가용 상태 알림", () => {
     attention.status = "unmeasurable";
     const onAvailabilityChange = vi.fn();
 
-    render(<AttentionCameraSource active onAvailabilityChange={onAvailabilityChange} />);
+    render(<AttentionCameraSource sessionId="55" active onAvailabilityChange={onAvailabilityChange} />);
     flushInitialSync();
 
     expect(onAvailabilityChange).toHaveBeenLastCalledWith("ACTIVE");
@@ -141,7 +159,7 @@ describe("AttentionCameraSource", () => {
     const track = new FakeVideoTrack("camera");
     hoisted.room = new FakeRoom(track);
 
-    render(<AttentionCameraSource active />);
+    render(<AttentionCameraSource sessionId="55" active />);
     flushInitialSync();
 
     expect(lastCall()?.track).toBe(track.mediaStreamTrack);
@@ -149,21 +167,21 @@ describe("AttentionCameraSource", () => {
 
   it("renders no element because frames are read from the track, not the DOM", () => {
     // 프레임은 Worker 가 트랙에서 직접 읽는다. 화면에 붙일 video 요소가 필요 없다.
-    const { container } = render(<AttentionCameraSource active />);
+    const { container } = render(<AttentionCameraSource sessionId="55" active />);
     flushInitialSync();
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it("runs detection once the camera track is published", () => {
-    render(<AttentionCameraSource active />);
+    render(<AttentionCameraSource sessionId="55" active />);
     flushInitialSync();
 
     expect(lastCall()?.camera).toBe("on");
   });
 
   it("stops detection while the room is not usable or the camera is off", () => {
-    render(<AttentionCameraSource active={false} />);
+    render(<AttentionCameraSource sessionId="55" active={false} />);
     flushInitialSync();
 
     expect(lastCall()?.camera).toBe("off");
@@ -172,7 +190,7 @@ describe("AttentionCameraSource", () => {
   it("stops detection while no camera track is published", () => {
     hoisted.room = new FakeRoom();
 
-    render(<AttentionCameraSource active />);
+    render(<AttentionCameraSource sessionId="55" active />);
     flushInitialSync();
 
     expect(lastCall()?.camera).toBe("off");
@@ -180,7 +198,7 @@ describe("AttentionCameraSource", () => {
   });
 
   it("reports a denied camera apart from a camera the student turned off", () => {
-    render(<AttentionCameraSource active denied />);
+    render(<AttentionCameraSource sessionId="55" active denied />);
     flushInitialSync();
 
     expect(lastCall()?.camera).toBe("denied");
@@ -189,9 +207,27 @@ describe("AttentionCameraSource", () => {
   it("forwards local detector outputs to the room coaching pipeline", () => {
     const onDetection = vi.fn();
 
-    render(<AttentionCameraSource active onDetection={onDetection} />);
+    render(<AttentionCameraSource sessionId="55" active onDetection={onDetection} />);
     flushInitialSync();
 
     expect(lastCall()?.onDetection).toBe(onDetection);
+  });
+
+  /*
+    이 배선이 빠져 있어 서버가 학생의 참여 관측을 한 건도 받지 못했다(227 결함 1). 10초 주기와
+    엔드포인트는 양쪽 다 있었고 둘을 잇는 이 한 줄만 없었으므로, 회귀하지 않도록 여기서 고정한다.
+  */
+  it("sends the ten-second detector reports to the server", () => {
+    render(<AttentionCameraSource sessionId="55" active />);
+    flushInitialSync();
+
+    expect(lastCall()?.onReport).toBe(reportToServer);
+  });
+
+  it("reports the observations to the session the student is in", () => {
+    render(<AttentionCameraSource sessionId="77" active />);
+    flushInitialSync();
+
+    expect(attention.reporterSessionIds).toContain("77");
   });
 });

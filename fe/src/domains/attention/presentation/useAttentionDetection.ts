@@ -119,6 +119,7 @@ export function useAttentionDetection(
   useEffect(() => {
     const reports = createDetectionReportController({
       reportIntervalMs: ATTENTION_DETECTION_CONFIG.reportIntervalMs,
+      windowMs: ATTENTION_DETECTION_CONFIG.windowMs,
       isReportingAllowed: () => typeof document === "undefined" || !document.hidden,
       onReport: (report) => notifyRef.current.onReport?.(report),
     });
