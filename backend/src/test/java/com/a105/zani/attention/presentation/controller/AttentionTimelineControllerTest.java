@@ -1,0 +1,296 @@
+package com.a105.zani.attention.presentation.controller;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import com.a105.zani.auth.application.port.TokenProvider;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.nullValue;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 타임라인 API 두 개의 웹 레이어 검증. 실제 서명 JWT 로 인증 필터를 통과시키고 실제 행을 넣어 응답을 만든다 — 익명 계약과 {@code null} 직렬화는 실제 응답 본문으로만 확인할 수 있다. 로컬
+ * MySQL/Redis 가 떠 있어야 통과하며, 테스트가 넣은 행은 끝나고 지운다.
+ */
+@SpringBootTest
+class AttentionTimelineControllerTest {
+
+    private static final long INSTRUCTOR_ID = 9_300_900L;
+    private static final long STRANGER_ID = 9_300_901L;
+    private static final long ENDED_SESSION_ID = 9_300_910L;
+    private static final long LIVE_SESSION_ID = 9_300_911L;
+    private static final long MISSING_SESSION_ID = 9_300_999L;
+    private static final long INSTRUCTOR_PARTICIPANT_ID = 9_300_920L;
+
+    /** 학생 5명. 5명 미만 숨김 경계를 넘겨야 비율이 보인다. */
+    private static final int STUDENT_COUNT = 5;
+
+    private static final long STUDENT_ID_BASE = 9_300_930L;
+    private static final long STUDENT_PARTICIPANT_ID_BASE = 9_300_940L;
+
+    private static long eventId = 9_300_950_000L;
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private TokenProvider tokenProvider;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    private MockMvc mockMvc;
+    private Instant now;
+
+    private static LocalDateTime utc(Instant instant) {
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static long studentId(int index) {
+        return STUDENT_ID_BASE + index;
+    }
+
+    private static long studentParticipantId(int index) {
+        return STUDENT_PARTICIPANT_ID_BASE + index;
+    }
+
+    @BeforeEach
+    void setUp() {
+        now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply(springSecurity())
+                .build();
+        cleanUp();
+
+        insertMember(INSTRUCTOR_ID, "타임라인 API 테스트 강사");
+        insertMember(STRANGER_ID, "타임라인 API 테스트 외부인");
+        insertSession(ENDED_SESSION_ID, "ENDED", "TLAPI910");
+        insertSession(LIVE_SESSION_ID, "LIVE", "TLAPI911");
+        insertParticipant(INSTRUCTOR_PARTICIPANT_ID, ENDED_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
+        for (int index = 0; index < STUDENT_COUNT; index++) {
+            insertMember(studentId(index), "타임라인 API 테스트 학생" + index);
+            insertParticipant(studentParticipantId(index), ENDED_SESSION_ID, studentId(index), "STUDENT");
+            // 0~300초를 10초 간격으로 채운다. 연속 접속 1분을 넘겨야 집계 대상이 된다.
+            for (int step = 0; step <= 30; step++) {
+                insertEvent(ENDED_SESSION_ID, studentParticipantId(index), step * 10_000L, "ENGAGED");
+            }
+        }
+    }
+
+    @AfterEach
+    void cleanUp() {
+        jdbcTemplate.update(
+                "DELETE FROM attention_events WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update("DELETE FROM check_prompts WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_participants WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+    }
+
+    private String tokenOf(long memberId) {
+        return tokenProvider.issueAccessToken(String.valueOf(memberId)).value();
+    }
+
+    @Test
+    @DisplayName("강사 응답에 학생 식별자나 학생별 값이 없다")
+    void the_group_response_has_no_per_student_fields() throws Exception {
+        String body = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        // 익명 계약이 깨지면 여기서 잡힌다. 필드가 늘어나도 이 목록에 걸리는 개인 필드는 통과하지 못한다.
+        assertThat(body).doesNotContain("participantId", "memberId", "studentId", "displayName", "name");
+        // 학생 식별자 값 자체가 본문에 실려 나가지 않는지도 본다.
+        for (int index = 0; index < STUDENT_COUNT; index++) {
+            assertThat(body).doesNotContain(String.valueOf(studentParticipantId(index)));
+            assertThat(body).doesNotContain(String.valueOf(studentId(index)));
+        }
+    }
+
+    @Test
+    @DisplayName("모든 비율은 0.0~1.0 분수다 — 퍼센트가 아니다")
+    void group_ratios_are_fractions() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.intervalSeconds").value(5))
+                .andExpect(jsonPath("$.data.points[40].offsetSeconds").value(200))
+                .andExpect(jsonPath("$.data.points[40].connectedCount").value(STUDENT_COUNT))
+                .andExpect(jsonPath("$.data.points[40].eligibleCount").value(STUDENT_COUNT))
+                .andExpect(jsonPath("$.data.points[40].checkNeededRatio").value(0.0))
+                // 인원이 모자란 구간은 null 이다. 값이 있는 구간은 하나도 1.0 을 넘지 않아야 분수 계약이 지켜진다.
+                .andExpect(jsonPath(
+                        "$.data.points[*].cameraOffRatio",
+                        everyItem(anyOf(nullValue(Double.class), lessThanOrEqualTo(1.0)))));
+    }
+
+    @Test
+    @DisplayName("null 비율은 0 이 아니라 null 로 직렬화된다")
+    void null_ratios_stay_null() throws Exception {
+        // 세션 시작 직후는 연속 접속 1분을 못 채워 집계 대상이 0 명이다. 0% 로 채우면 안 된다.
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.points[0].eligibleCount").value(0))
+                .andExpect(jsonPath("$.data.points[0].checkNeededRatio").value(nullValue()))
+                .andExpect(jsonPath("$.data.points[0].cameraOffRatio").value(nullValue()))
+                .andExpect(jsonPath("$.data.points[0].confusedRatio").value(nullValue()))
+                .andExpect(jsonPath("$.data.points[0].unmeasurableRatio").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("학생 응답에 단계·확률·세부 신호가 없다")
+    void the_personal_response_hides_model_internals() throws Exception {
+        String body = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.points[20].offsetSeconds").value(100))
+                // 이름 그대로 퍼센트다. 강사 응답의 분수와 단위가 다르다.
+                .andExpect(jsonPath("$.data.points[20].focusPercent").value(100))
+                .andExpect(jsonPath("$.data.points[20].state").value("GOOD"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(body)
+                .doesNotContain(
+                        "attentionScore",
+                        "engagementLevel",
+                        "confidence",
+                        "signalQuality",
+                        "detectorOutcome",
+                        "average",
+                        "participantId");
+    }
+
+    @Test
+    @DisplayName("창을 못 채운 구간의 focusPercent 는 0 이 아니라 null 이다")
+    void the_first_focus_point_is_null() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.points[0].focusPercent").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("강사가 개인 경로를, 학생이 집단 경로를 부르면 403 이다")
+    void crossing_roles_is_forbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("진행 중인 세션은 409 다")
+    void live_session_returns_conflict() throws Exception {
+        insertParticipant(INSTRUCTOR_PARTICIPANT_ID + 1, LIVE_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
+
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", LIVE_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    @DisplayName("참가자가 아니면 403 이다")
+    void non_participant_returns_forbidden() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(STRANGER_ID)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("없는 세션은 404 다")
+    void missing_session_returns_not_found() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", MISSING_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("인증이 없으면 401 이다")
+    void anonymous_access_is_unauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private void insertMember(long id, String name) {
+        jdbcTemplate.update(
+                "INSERT IGNORE INTO members (id, google_subject, email, display_name, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                id,
+                "google-" + id,
+                id + "@example.com",
+                name,
+                utc(now),
+                utc(now));
+    }
+
+    private void insertSession(long sessionId, String status, String inviteCode) {
+        jdbcTemplate.update(
+                "INSERT INTO sessions (id, host_member_id, title, invite_code, status, analysis_status,"
+                        + " started_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, 'NOT_STARTED', ?, ?, ?)",
+                sessionId,
+                INSTRUCTOR_ID,
+                "타임라인 API 테스트",
+                inviteCode,
+                status,
+                utc(now.minusSeconds(3600)),
+                utc(now),
+                utc(now));
+    }
+
+    private void insertParticipant(long participantId, long sessionId, long memberId, String role) {
+        jdbcTemplate.update(
+                "INSERT INTO session_participants (id, session_id, member_id, role, first_joined_at,"
+                        + " last_accessed_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                participantId,
+                sessionId,
+                memberId,
+                role,
+                utc(now),
+                utc(now),
+                utc(now),
+                utc(now));
+    }
+
+    private void insertEvent(long sessionId, long participantId, long offsetMs, String outcome) {
+        jdbcTemplate.update(
+                "INSERT INTO attention_events (id, session_id, session_participant_id, detector_outcome,"
+                        + " occurred_offset_ms, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                eventId++,
+                sessionId,
+                participantId,
+                outcome,
+                offsetMs,
+                utc(now));
+    }
+}
