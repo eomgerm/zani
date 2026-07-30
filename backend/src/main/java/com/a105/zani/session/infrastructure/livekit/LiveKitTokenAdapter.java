@@ -7,6 +7,7 @@ import java.util.List;
 import io.livekit.server.AccessToken;
 import io.livekit.server.CanPublish;
 import io.livekit.server.CanPublishData;
+import io.livekit.server.CanPublishSources;
 import io.livekit.server.CanSubscribe;
 import io.livekit.server.RoomJoin;
 import io.livekit.server.RoomName;
@@ -21,10 +22,20 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
  * LiveKit 서버 SDK로 접속 토큰을 발급한다. 벤더 타입은 이 어댑터 안에만 존재한다. roomName은 환경 기준으로 서버가 재구성한다:
- * {@code zani-{environment}-session-{sessionId}}. 학생 기본 토큰에는 Data publish grant를 부여하지 않는다(가이드 §8).
+ * {@code zani-{environment}-session-{sessionId}}. 역할별 publish source는 최소 권한으로 제한하고 Data publish는 모든 역할에서 차단한다(가이드 §8).
  */
 @Component
 public class LiveKitTokenAdapter implements LiveKitTokenPort {
+
+    /**
+     * LiveKit JWT의 {@code canPublishSources}는 TrackSource의 <b>소문자</b> 표기를 문자열로 받는다. 가이드 문서는 protobuf enum 이름(대문자)으로
+     * 적어두었지만 서버는 이 문자열과 정확히 비교하므로, 대문자로 넣으면 어떤 source와도 일치하지 않아 publish가 조용히 전부 막힌다.
+     */
+    private static final List<String> INSTRUCTOR_PUBLISH_SOURCES =
+            List.of("camera", "microphone", "screen_share", "screen_share_audio");
+
+    /** 학생 기본 토큰에는 공유 source가 없다. 승인 중에만 UpdateParticipant로 임시 허용한다(가이드 §8). */
+    private static final List<String> STUDENT_PUBLISH_SOURCES = List.of("camera", "microphone");
 
     private final LiveKitProperties properties;
 
@@ -55,11 +66,17 @@ public class LiveKitTokenAdapter implements LiveKitTokenPort {
         grants.add(new RoomName(roomName));
         grants.add(new CanSubscribe(true));
         grants.add(new CanPublish(true));
-        grants.add(new CanPublishData(request.role() == SessionParticipantRole.INSTRUCTOR));
+        grants.add(new CanPublishSources(publishSourcesFor(request.role())));
+        // DataPacket은 MVP에서 쓰지 않는다. 업무 이벤트는 Spring WebSocket과 Redis로 흐르므로 모든 역할에서 차단한다(가이드 §2·§8).
+        grants.add(new CanPublishData(false));
         token.addGrants(grants.toArray(new VideoGrant[0]));
 
         Instant expiresAt = Instant.now().plus(properties.tokenTtl());
         return new IssuedMediaToken(properties.url(), token.toJwt(), roomName, expiresAt);
+    }
+
+    private static List<String> publishSourcesFor(SessionParticipantRole role) {
+        return role == SessionParticipantRole.INSTRUCTOR ? INSTRUCTOR_PUBLISH_SOURCES : STUDENT_PUBLISH_SOURCES;
     }
 
     private static boolean isBlank(String value) {
