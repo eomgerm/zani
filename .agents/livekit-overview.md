@@ -228,10 +228,11 @@ flowchart LR
 
 ## 14. 현재 코드와의 차이
 
-- FE에는 `/media-token` 어댑터, `RoomProvider`, `Room.connect`와 SDK 재연결 상태 처리가 구현돼 있다.
-- FE의 Track publish/subscribe, 실제 장치 점검, 참가자·미디어 UI는 아직 fixture와 로컬 상태 기반이다.
-- BE는 현재 세션 생성 즉시 `LIVE`와 초대 코드를 반환한다.
-- BE는 API 입장 시 `firstJoinedAt`을 즉시 저장한다.
-- BE의 LiveKit 토큰·Room·Webhook·Egress API는 아직 없다.
-- Flyway V1에는 세션·참가자·녹화 테이블이 있지만 목표 상태 전이, nullable 입장 시각, 로컬 저장 정책에는 후속 migration이 필요하다.
-- 구현 전 이 문서를 기준으로 OpenAPI 계약을 확정하고 공유된 V1은 수정하지 않은 채 새 Flyway migration을 추가한다.
+이 문서는 목표 구조를 서술한다. 구현 상태는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)이
+단독으로 소유하므로 여기에 중복해 적지 않는다. **작업 시작 전에 그 절을 먼저 읽는다** — 이미 구현된 것을 다시 만들지 않기 위해서다.
+
+구현할 때의 규칙은 그대로다.
+
+- 이 문서와 `livekit-integration-context.md`를 기준으로 OpenAPI 계약을 먼저 확정한다.
+- 공유된 `V1__create_initial_schema.sql`은 수정하지 않고 새 Flyway migration을 추가한다.

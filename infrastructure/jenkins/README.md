@@ -156,7 +156,7 @@ It covers frontend-only, backend-only, both, unrelated, and missing-before-SHA c
 
 ## Installation
 
-Installing this design requires creating `zani-jenkins-agent`, installing Java 21, creating Jenkins directories and secret files, installing one sudoers rule and one systemd service, and setting ownership/modes on those newly created paths. These operations require explicit operator approval on each target host. The current SSAFY EC2 installation result is recorded in `installation-report.md`.
+Installing this design requires creating `zani-jenkins-agent`, installing Java 21, creating Jenkins directories and secret files, installing one sudoers rule and one systemd service, and setting ownership/modes on those newly created paths. These operations require explicit operator approval on each target host.
 
 After approval, the reviewed installation command is:
 

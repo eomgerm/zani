@@ -11,9 +11,9 @@ livekit-client
 @livekit/components-react
 ```
 
-현재 `mediaTokenApi`, `liveKitRoom`, `RoomProvider`와 관련 테스트가 있어 `/media-token` 호출, `Room.connect`, SDK 재연결 이벤트 반영까지 구현돼 있다. `RoomScreen`도 이 연결 상태를 표시한다.
-
-다만 `CreateSetupScreen`, `PrejoinScreen`, 참가자·미디어 제어 UI는 아직 시연용 로컬 상태와 fixture를 사용한다. 기존 연결 기반을 유지하면서 실제 세션 API, 장치 점검, Track publish/subscribe, 업무 WebSocket을 단계적으로 연결한다.
+프론트엔드 구현 상태는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)이
+단독으로 소유한다. **작업 시작 전에 그 절을 먼저 읽는다.** 이 문서 아래 내용 중 상당 부분은 이미 구현돼 있고, 남은 큰 공백은 업무 WebSocket(§10)이다.
 
 ## 2. 프론트엔드가 결정하면 안 되는 값
 
@@ -70,27 +70,34 @@ CreateSetup
 ```http
 POST /api/v1/sessions/{sessionId}/media-token
 Authorization: Bearer {ZANI_ACCESS_TOKEN}
-Content-Type: application/json
-
-{}
+Accept: application/json
 ```
 
+본문을 보내지 않는다. 보낼 업무 값이 없다.
+
+Bearer 헤더는 생략할 수 없다. 쿠키에는 refresh 토큰만 있고 그마저 `/auth/refresh` 경로 전용이라, 헤더를 빼면 무조건 401이 되어 강의실이 LiveKit에 붙지 못한다.
+
+응답은 공통 `ApiResponse<T>` 봉투의 `data`에 담긴다. 현재 형태다(`mediaTokenApi.ts`).
+
 ```ts
-type MediaTokenResponse = {
-  sessionId: number;
-  roomName: string;
+type MediaToken = {
   liveKitUrl: string;
   accessToken: string;
+  roomName: string;
+  participantIdentity: string;
+  /** LiveKit 토큰 만료 시각(TTL 10분). */
   expiresAt: string;
-  participant: {
-    identity: string;
-    displayName: string;
-    role: "INSTRUCTOR" | "STUDENT";
-    recordingAlias: string;
-  };
+  /** 최대 수업 시간(3시간) 도달로 자동 종료될 시각. 종료 임박 안내의 기준. */
+  sessionExpiresAt: string;
+  /** 강의명. 서버가 안 내려주는 구성도 있어 필수 검증에 넣지 않는다. */
+  sessionTitle: string | null;
 };
 ```
 
+- `participant` 중첩 객체는 없다. `participantIdentity` 평면 필드다.
+- **`role`은 이 응답에 오지 않는다.** LiveKit 토큰 metadata JSON(`{"role":"INSTRUCTOR"}`)에 실려 오므로 `participant.metadata`에서 읽는다. metadata가 없거나 JSON이 깨져도 화면이 죽지 않게 `student`로 폴백한다(`useRoomParticipants.ts`). 역할이 바뀔 수 있으므로 metadata 변경 이벤트를 구독한다.
+- `displayName`도 응답에 없다. LiveKit participant의 `name`을 쓴다.
+- `recordingAlias`는 프론트엔드에 내려오지 않는다. 녹화 대상 결정은 서버 몫이므로 필요하지 않다.
 - 토큰은 React 상태나 Room 인스턴스가 살아 있는 메모리에만 둔다.
 - `localStorage`, `sessionStorage`, 쿠키, 로그에 저장하지 않는다.
 - URL query에 토큰을 직접 넣지 않는다.

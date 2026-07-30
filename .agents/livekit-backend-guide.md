@@ -13,28 +13,14 @@
 
 ## 2. 현재 구현 상태
 
-현재 코드에는 다음이 존재한다.
+백엔드 구현 상태는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)이
+단독으로 소유한다. **작업 시작 전에 그 절을 먼저 읽는다.** 이 문서 아래는 목표 계약이며 이미 구현된 부분과 아직 없는 부분이 섞여 있다.
 
-- `POST /api/v1/sessions`
-- `GET /api/v1/sessions`
-- `POST /api/v1/sessions/join`
-- `Session`, `SessionParticipant`, `SessionStatus`, `SessionParticipantRole`
-- TSID 기반 Long ID와 8자리 초대 코드
-- Flyway V1의 세션·참가자·녹화 테이블과 JPA 영속성 구현
+작업 방식 규칙은 그대로다.
 
-현재 동작과 목표 계약의 차이:
-
-| 현재 | 목표 |
-| --- | --- |
-| 세션 생성 즉시 `LIVE` | 내부 `PREPARING` 후 미디어·Egress 준비 시 `LIVE` |
-| 생성 즉시 `startedAt` | 실제 시작 성공 시 기록 |
-| 생성 응답에 초대 코드 | `/start` 성공 후 초대 코드 활성화·반환 |
-| API join 시 `firstJoinedAt` | `participant_joined` Webhook 시 최초 입장 확정 |
-| 강사 `SessionParticipant` 없음 | 세션 생성 시 강사 참가 관계 생성 |
-| LiveKit 코드 없음 | Room·토큰·권한·Webhook·Egress Port/Adapter 추가 |
-| `recording_files.storage_key`가 S3 객체 키로 설명됨 | EC2 로컬 상대 경로로 의미·코드 정리 |
-
-기존 코드를 직접 우회하지 말고 OpenAPI, Domain 상태 전이, DB migration을 함께 변경해야 한다. 공유된 `V1__create_initial_schema.sql`은 수정하지 않고 후속 버전 migration을 추가한다.
+- 기존 코드를 우회하지 말고 OpenAPI, Domain 상태 전이, DB migration을 함께 변경한다.
+- 공유된 `V1__create_initial_schema.sql`은 수정하지 않고 후속 버전 migration을 추가한다.
 
 ## 3. 권장 도메인 경계
 
@@ -48,27 +34,34 @@ session.presentation
 ← session.infrastructure.livekit
 ```
 
-권장 UseCase 단위:
+녹화·Webhook·Egress는 `session`이 아니라 별도 `recording` 도메인이 소유한다. room 이름과 접속 설정은 `session`이 소유하므로 `recording`은 `MediaRoomPort`를 통해서만 받는다.
+
+현재 UseCase 패키지는 아래와 같다. 새 UseCase를 만들 때 이 이름 규칙(도메인 접미사를 붙이지 않는다)을 따른다.
 
 ```text
-createsession
-startsession
-joinsession
-issuemediatoken
-endsession
-enforcesinglescreenshare
-handlelivekitwebhook
-getrecordingstatus
+session.application.create          join           issuemediatoken
+                    end             presence       get
+                    resolveparticipant             resolveconnectedstudents
+recording.application.orchestrate   webhook
 ```
 
-실제 호출자가 생기는 범위만 만든다. LiveKit client는 예를 들어 다음 application port 뒤에 둔다.
+아직 없는 것: 세션 시작(`/start`), 화면 공유 단일 활성 강제, 녹화 상태 조회. 실제 호출자가 생기는 범위만 만든다.
+
+외부 시스템 접점은 모두 application port 뒤에 있다. LiveKit SDK 타입은 어댑터 안에만 존재한다. **새 port를 만들기 전에 이 목록을 확인한다** — 같은 역할의 port를 다른 이름으로 하나 더 만들지 않기 위해서다.
 
 ```text
-LiveKitRoomPort
-LiveKitTokenPort
-LiveKitParticipantPort
-LiveKitEgressPort
+session.application.port    LiveKitTokenPort               LiveKit 토큰 발급
+                            MediaRoomPort                  room 이름·역파싱·접속 자격증명
+                            SessionPresencePort            presence (Redis)
+                            SessionActivationLockPort      강사 활성 세션 잠금 (Redis)
+recording.application.port  TrackEgressPort                Track Egress 시작
+                            RecordingWebhookVerifierPort   webhook 서명 검증
+                            RecordingWebhookEventPort      webhook 이벤트 저장
+                            RecordingOutboxPort            녹화 outbox
+                            AudioStreamEgressRegistryPort  코칭 오디오 Egress 등록 (Redis)
 ```
+
+`MediaRoomPort`가 room 관련 port다. `LiveKitRoomPort`라는 이름을 새로 만들지 않는다. 참가자 제어(`UpdateParticipant`·트랙 mute)용 port는 아직 없으므로 필요해질 때 만든다.
 
 벤더 DTO 대신 내부 Command/Result 또는 application-owned 값 객체를 사용한다.
 
@@ -173,7 +166,11 @@ metadata.sessionId={sessionId}
 - `LIVE` 동안만 유효하고 종료 즉시 만료한다.
 - 사용자·IP별 실패 시도를 분당 5회로 제한한다.
 
-현재 `@Size(min=8,max=8)`만으로는 표시형 9글자를 받을 수 없으므로 정규화와 pattern 기반 검증으로 바꿔야 한다.
+목표와 다른 현재 구현이 세 가지다.
+
+- `InviteCodeGenerator.ALPHABET`이 `A-Z0-9` 36자 전체여서 모호한 문자를 제외하지 않는다. `I`·`O`·`0`·`1`이 섞여 나올 수 있다.
+- `JoinSessionRequest`가 `@Size(min=8,max=8)`만 걸어 표시형 9글자(`A7KM-2PQR`)를 받을 수 없다. 정규화와 pattern 기반 검증으로 바꿔야 한다.
+- `LIVE` 상태 검사와 실패 시도 제한이 없다. 자세한 내용은 [`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)을 본다.
 
 ## 7. API 목표 계약
 
@@ -207,25 +204,13 @@ Authorization: Bearer {ZANI_ACCESS_TOKEN}
 {}
 ```
 
-```json
-{
-  "sessionId": 123,
-  "roomName": "zani-dev-session-123",
-  "liveKitUrl": "wss://i15a105.p.ssafy.io",
-  "accessToken": "<redacted>",
-  "expiresAt": "2026-07-23T15:30:00+09:00",
-  "participant": {
-    "identity": "p-456",
-    "displayName": "김싸피",
-    "role": "STUDENT",
-    "recordingAlias": "student-003"
-  }
-}
-```
+응답 스키마는 [`livekit-integration-context.md` §7](./livekit-integration-context.md#7-미디어-토큰)이
+소유한다. 여기에 중복해 적지 않는다. 요약하면 `participant` 중첩 객체가 없는 평면 구조이고,
+`role`과 `displayName`은 응답이 아니라 LiveKit 토큰의 metadata·name으로 전달된다.
 
 검증:
 
-- JWT 사용자와 SessionParticipant 일치
+- JWT 사용자와 SessionParticipant 일치. 멤버십을 세션 조회보다 먼저 확인해 비멤버에게 세션 존재·상태를 노출하지 않는다.
 - 강사: `PREPARING` 또는 `LIVE`
 - 학생: `LIVE`
 - 종료·삭제 상태 차단
@@ -347,14 +332,17 @@ PARTICIPANT_KICKED
 ## 11. Webhook
 
 ```http
-POST /internal/livekit/webhook
+POST /api/v1/internal/recordings/webhook
 Content-Type: application/webhook+json
 Authorization: Bearer {LIVEKIT_SIGNED_JWT}
 ```
 
+아래 이벤트별 처리 표는 목표다. 현재 처리 범위는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)을 확인한다.
+
 처리 원칙:
 
-- LiveKit Java SDK의 `WebhookReceiver`에 raw body와 Authorization을 전달한다.
+- LiveKit Java SDK의 `WebhookReceiver`에 raw body와 Authorization을 전달한다. 헤더가 `Bearer <token>` 형태로 올 수 있어 접두어를 허용한다.
 - 일반 ZANI JWT 인증과 분리한다.
 - 가능하면 EC2 내부 경로에서만 접근한다.
 - 이벤트 `id`에 unique constraint를 둔다.
@@ -426,20 +414,12 @@ S3는 사용하지 않는다.
 └── final/lecture.mp4
 ```
 
-manifest 최소 필드:
+manifest 스키마는 이 문서가 소유하지 않는다. 필드 이름과 불변식은
+[`media-finalize-recording-guide.md`](./media-finalize-recording-guide.md) §3이 정본이며,
+후처리 Worker와 `RecordingManifest`가 그 계약을 양쪽에서 강제한다. manifest를 만들거나
+읽는 코드를 쓸 때는 그 문서를 본다.
 
-```text
-sessionId
-recordingAlias
-trackSid
-source·kind·codec
-relativePath
-publishedAt·unpublishedAt
-offsetMs·durationMs
-egressId·egressStatus
-size·sha256
-failureCode
-```
+DB에는 그 밖에 Egress 운영 정보(egress ID, Egress 상태, Track SID, 발행·중단 시각, 파일 크기, 실패 코드)를 함께 남긴다. manifest에 넣을 필드와 DB에만 둘 필드를 섞지 않는다.
 
 - manifest에는 학생 실제 이름·이메일·userId를 넣지 않는다.
 - DB에서만 `SessionParticipant`와 alias를 연결한다.
@@ -465,12 +445,22 @@ Egress 종료
 - 전체 음성 혼합은 최종 MP4 생성 시에만 한다.
 - 공유 화면이 없으면 강사 카메라가 주 화면이다.
 - 공유 화면이 있으면 공유 화면이 주 화면이고 강사 카메라는 우측 하단이다.
-- 학생 카메라 파일이 입력 manifest에 존재하면 후처리를 실패시키고 보안 오류로 기록한다.
 
-녹화 상태:
+병합 단계의 레이아웃 도출, 오디오 혼합, 출력 규격, 검증, 종료 코드는
+[`media-finalize-recording-guide.md`](./media-finalize-recording-guide.md)가 정본이다.
+이 문서는 그 Worker를 언제 호출하고 결과 상태를 어디에 남기는지만 다룬다.
+
+manifest에 학생 카메라 트랙이 들어 있을 때의 처리는 두 문서가 어긋나 있다. 이 문서는 원래
+후처리를 실패시키라고 규정했지만, 현재 Worker는 **해당 트랙을 제외하고 경고만 남기며 계속
+진행**한다. 더 강한 쪽으로 합의된 바가 없으므로 지금 동작은 Worker 쪽이며, 결정 전까지 어느
+규칙도 근거로 삼지 않는다. `media-finalize-recording-guide.md` §9에 같은 미결 사항이 있다.
+
+애초에 학생 카메라는 Egress 요청 자체를 만들지 않으므로(§13) 정상 경로에서는 manifest에 들어올 수 없다.
+
+녹화 실행 상태(`RecordingStatus`, V1 스키마의 `status` 컬럼 값과 일치):
 
 ```text
-PREPARING → RECORDING → FINALIZING → READY | PARTIAL | FAILED
+STARTING → RECORDING → COMPLETE | PARTIAL | FAILED
 ```
 
 ## 16. 오류 계약
