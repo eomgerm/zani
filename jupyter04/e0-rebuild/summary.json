@@ -70,8 +70,117 @@
     "cublas_workspace_config": ":4096:8"
   },
   "test_evaluation": {
-    "status": "deferred",
-    "reason": "Test evaluation is deferred by the E0 protocol."
+    "status": "complete",
+    "policy": "Validation-only selection, then one frozen-checkpoint Test pass per seed.",
+    "results_path": "test_results.json",
+    "results_sha256": "0dd3db5af69c889fdc18877e6a861398fd81befac34a53eff7220a365670c1e9",
+    "aggregate": {
+      "completed_seed_count": 5,
+      "test_accuracy": {
+        "mean": 0.7048138957816377,
+        "sample_standard_deviation": 0.016636047049629375
+      },
+      "test_macro_f1": {
+        "mean": 0.5891823216563798,
+        "sample_standard_deviation": 0.009700473324783077
+      },
+      "pooled_confusion_matrix": [
+        [
+          970,
+          283,
+          139,
+          78
+        ],
+        [
+          159,
+          339,
+          449,
+          168
+        ],
+        [
+          119,
+          225,
+          921,
+          735
+        ],
+        [
+          11,
+          53,
+          555,
+          4871
+        ]
+      ],
+      "per_class": {
+        "Not-Engaged": {
+          "precision": {
+            "mean": 0.7735747376815677,
+            "sample_standard_deviation": 0.03557849801589168
+          },
+          "recall": {
+            "mean": 0.6598639455782312,
+            "sample_standard_deviation": 0.05085005574056481
+          },
+          "f1-score": {
+            "mean": 0.7102126229173965,
+            "sample_standard_deviation": 0.017759439206462745
+          },
+          "support_per_seed": 294
+        },
+        "Barely-Engaged": {
+          "precision": {
+            "mean": 0.3775723590505128,
+            "sample_standard_deviation": 0.023910261360423284
+          },
+          "recall": {
+            "mean": 0.3040358744394619,
+            "sample_standard_deviation": 0.037168369121259384
+          },
+          "f1-score": {
+            "mean": 0.33569051628465074,
+            "sample_standard_deviation": 0.02571343640092054
+          },
+          "support_per_seed": 223
+        },
+        "Engaged": {
+          "precision": {
+            "mean": 0.45118568190212044,
+            "sample_standard_deviation": 0.040263771242696346
+          },
+          "recall": {
+            "mean": 0.4605,
+            "sample_standard_deviation": 0.061476621572757226
+          },
+          "f1-score": {
+            "mean": 0.45222247492195733,
+            "sample_standard_deviation": 0.02273564626444273
+          },
+          "support_per_seed": 400
+        },
+        "Highly-Engaged": {
+          "precision": {
+            "mean": 0.8328784701294067,
+            "sample_standard_deviation": 0.011535920741302367
+          },
+          "recall": {
+            "mean": 0.8872495446265939,
+            "sample_standard_deviation": 0.041333258521346956
+          },
+          "f1-score": {
+            "mean": 0.8586036725015148,
+            "sample_standard_deviation": 0.01393200389741666
+          },
+          "support_per_seed": 1098
+        }
+      },
+      "test_within_one_accuracy": {
+        "mean": 0.9436228287841191,
+        "sample_standard_deviation": 0.001941201708745217
+      },
+      "test_quadratic_weighted_kappa": {
+        "mean": 0.7824403643753806,
+        "sample_standard_deviation": 0.012979716216336713
+      }
+    }
   },
   "seeds": [
     {
