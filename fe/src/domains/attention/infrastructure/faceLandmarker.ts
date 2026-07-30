@@ -27,9 +27,10 @@ interface ClosableFrame {
 /**
  * 49차원 특징 검출 어댑터가 제공하는 모양.
  *
- * <p>application 의 {@code AttentionFeatureDetector} 포트와 구조가 같지만 그 타입을 직접 가져오지 않는다 — infrastructure 는
- * application 을 알지 않는다. 어댑터가 포트와 실제로 맞는지는 둘을 잇는 조립 지점(`useAttentionDetection`)에서 타입으로 확인된다. 그래서 이 모양이 포트와 어긋나면 그쪽에서
- * 컴파일이 깨진다.
+ * <p>계약 타입을 바깥에서 가져오지 않고 여기서 직접 선언한다. 계층 방향이 그렇기 때문이다 — 이 파일은 자기보다 안쪽 계층을 알지 않는다.
+ *
+ * <p>이 모양이 실제 계약과 맞는지는 둘을 잇는 조립 지점(`useAttentionDetection`)에서 타입으로 확인된다. 어긋나면 그쪽에서 컴파일이 깨지므로, 여기서 계약을 직접 참조하지 않아도 검증은
+ * 남는다.
  */
 export interface FrameFeatureDetectorAdapter {
   detect(frame: ClosableFrame, timestampMs: number): Float32Array | null;
