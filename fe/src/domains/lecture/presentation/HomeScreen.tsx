@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/domains/auth";
 import { inviteCodeFrom } from "@/domains/lecture/domain/inviteCode";
+import { joinFailureMessage } from "@/domains/lecture/domain/joinFailure";
+import {
+  joinSession as joinSessionApi,
+  type SessionJoiner,
+} from "@/domains/lecture/infrastructure/joinSessionApi";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { useActiveInstructorSession } from "./useActiveInstructorSession";
@@ -18,23 +23,50 @@ const formatInviteCode = (code: string) =>
  */
 export function HomeScreen({
   requestSessionList,
+  joinSession = joinSessionApi,
 }: {
   /** 테스트에서 API 경계를 대체하기 위한 주입점. */
   requestSessionList?: SessionListRequester;
+  /** 입장 어댑터. 테스트에서 대체한다. */
+  joinSession?: SessionJoiner;
 } = {}) {
-  const { member } = useAuth();
+  const { member, accessToken } = useAuth();
   const router = useRouter();
   const [inviteInput, setInviteInput] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  // 코드 형식은 여기서 판정한다. 서버까지 보내 400 을 받은 뒤 입장 전 점검 화면에서 알려주면, 사용자는 이미 화면을 옮긴 뒤라 어디를 고쳐야 하는지 알기 어렵다.
-  const enterPrejoin = () => {
+  /**
+   * 참여하기. 코드 형식과 **수업 상태**를 여기서 확인하고 통과할 때만 입장 전 점검으로 넘긴다.
+   *
+   * <p>상태 확인을 여기서 하는 게 중요하다. 서버 검증을 점검 화면의 입장 버튼까지 미루면, 학생이 카메라·마이크를 다 맞춘 뒤에야 "아직 시작하지 않은 수업"이라는 걸 알게 된다. 코드를 넣는
+   * 자리에서 바로 알려주는 편이 되돌리기도 쉽다.
+   *
+   * <p>입장은 멱등하므로 점검 화면에서 한 번 더 불러도 참가자가 늘지 않는다. 그쪽 호출은 점검 도중에 수업이 끝났는지 마지막으로 확인하는 역할을 겸한다.
+   */
+  const enterPrejoin = async () => {
+    if (checking) {
+      return;
+    }
     const code = inviteCodeFrom(inviteInput);
     if (code === null) {
       setInviteError("초대 코드 또는 초대 링크를 확인해 주세요. 코드는 영문·숫자 8자예요.");
       return;
     }
-    router.push(`/prejoin/${code}`);
+    if (accessToken === null) {
+      setInviteError("로그인이 필요해요. 다시 로그인한 뒤 시도해 주세요.");
+      return;
+    }
+
+    setChecking(true);
+    setInviteError(null);
+    try {
+      await joinSession(code, accessToken);
+      router.push(`/prejoin/${code}`);
+    } catch (caught) {
+      setInviteError(joinFailureMessage(caught, code));
+      setChecking(false);
+    }
   };
   // 조회 실패는 화면에 띄우지 않는다. 이 배너의 용도는 "돌아가기·종료"뿐이라, 상태를 알 수 없을 때
   // 경고를 내밀면 진행 중인 수업이 없는 사용자에게도 고장처럼 보인다. 실패 원인은 콘솔에만 남긴다.
@@ -159,21 +191,23 @@ export function HomeScreen({
                 setInviteError(null);
               }}
               onKeyDown={(event) => {
-                if (event.key === "Enter") enterPrejoin();
+                if (event.key === "Enter") void enterPrejoin();
               }}
               placeholder="초대 코드 또는 초대 링크 입력"
               className="z-input min-w-0 flex-1 rounded-[13px] px-4 py-[15px] text-sm"
             />
             <button
               type="button"
-              onClick={enterPrejoin}
-              className="z-btn z-btn-primary z-btn-lg whitespace-nowrap"
+              data-testid="home-join-button"
+              disabled={checking}
+              onClick={() => void enterPrejoin()}
+              className="z-btn z-btn-primary z-btn-lg whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40"
             >
-              참여하기
+              {checking ? "확인 중…" : "참여하기"}
             </button>
           </div>
           {inviteError !== null && (
-            <div role="alert" className="mt-2.5 text-[13px] text-danger">
+            <div role="alert" data-testid="home-join-error" className="mt-2.5 text-[13px] text-danger">
               {inviteError}
             </div>
           )}

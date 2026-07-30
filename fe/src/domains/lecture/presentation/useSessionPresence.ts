@@ -17,18 +17,23 @@ import { useRoomReconnect, type ReconnectStatus } from "./useRoomReconnect";
  */
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
-/** 더 보내봐야 결과가 같은 상태 코드. 멤버십 없음(403)·방 종료(409)는 즉시 중단한다. */
-const TERMINAL_STATUSES = [403, 409];
+/** 멤버십이 없다는 응답. 더 보내봐야 결과가 같아 즉시 중단한다. */
+const NOT_A_MEMBER_STATUS = 403;
+/** 수업이 이미 끝났다는 응답. 강사의 명시 종료·3시간 자동 종료가 모두 이걸로 돌아온다. */
+const SESSION_CLOSED_STATUS = 409;
 
 const NOT_A_MEMBER_MESSAGE = "이 수업의 참가자가 아니라 상태를 보고할 수 없습니다.";
-const SESSION_CLOSED_MESSAGE = "이미 종료된 수업입니다.";
 
 export type SessionPresenceState = {
   /** 마지막 heartbeat 응답의 재연결·세션 신호. 아직 응답이 없으면 null. */
   reconnectStatus: PresenceReconnectStatus | null;
-  /** 강사 미복귀로 세션이 종료되었는지. */
+  /**
+   * 수업이 끝났는지. 왜 끝났는지는 가리지 않는다 — 강사의 명시 종료, 3시간 자동 종료, 강사 미복귀가 모두 여기에 들어온다.
+   *
+   * <p>이걸 한 값으로 합치는 이유는 화면이 해야 할 일이 하나이기 때문이다: 강의실을 떠나야 한다. 문구만 이유에 따라 다르다.
+   */
   sessionEnded: boolean;
-  /** 보고를 중단한 이유. 일시적 실패는 담지 않는다(다음 주기에 재시도). */
+  /** 보고를 중단한 이유. 수업 종료는 여기 담지 않는다(sessionEnded 가 답한다). 일시적 실패도 담지 않는다(다음 주기에 재시도). */
   error: string | null;
 };
 
@@ -38,10 +43,6 @@ function toConnectionState(status: ReconnectStatus): PresenceConnectionState {
     return "CONNECTED";
   }
   return status === "failed" ? "DISCONNECTED" : "RECONNECTING";
-}
-
-function terminalMessage(status: number): string {
-  return status === 403 ? NOT_A_MEMBER_MESSAGE : SESSION_CLOSED_MESSAGE;
 }
 
 export type UseSessionPresenceOptions = {
@@ -109,12 +110,18 @@ export function useSessionPresence(
           setSessionEnded(true);
         }
       } catch (failure) {
-        if (!isCurrent) {
+        if (!isCurrent || !(failure instanceof PresenceReportError)) {
+          // 일시적 실패(네트워크·5xx)는 다음 주기에 다시 보낸다.
           return;
         }
-        // 일시적 실패(네트워크·5xx)는 다음 주기에 다시 보낸다.
-        if (failure instanceof PresenceReportError && TERMINAL_STATUSES.includes(failure.status)) {
-          setError(terminalMessage(failure.status));
+        // 수업이 끝난 건 오류가 아니라 상태다. 강사가 종료하면 다음 heartbeat 가 이걸 받는데,
+        // 문구만 띄우고 남겨두면 학생이 끝난 수업에 카메라를 켠 채로 머문다.
+        if (failure.status === SESSION_CLOSED_STATUS) {
+          setSessionEnded(true);
+          return;
+        }
+        if (failure.status === NOT_A_MEMBER_STATUS) {
+          setError(NOT_A_MEMBER_MESSAGE);
         }
       }
     };

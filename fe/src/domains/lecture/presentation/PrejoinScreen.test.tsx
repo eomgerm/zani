@@ -155,7 +155,7 @@ describe('PrejoinScreen', () => {
     const joinSession = vi
       .fn()
       .mockRejectedValue(
-        new JoinSessionRequestError('capacity', 409, 'SESSION_APP_007'),
+        new JoinSessionRequestError('capacity', 409, 'SESSION_APP_009'),
       );
     await renderPage('ABC123', joinSession);
 
@@ -171,16 +171,35 @@ describe('PrejoinScreen', () => {
     stubSupportedBrowser();
     const joinSession = vi
       .fn()
-      .mockRejectedValue(new JoinSessionRequestError('not joinable', 409, 'SESSION_APP_008'));
+      .mockRejectedValue(new JoinSessionRequestError('not started', 409, 'SESSION_APP_007'));
     await renderPage('ABC123', joinSession);
 
     const enterButton = await passDeviceChecks();
     fireEvent.click(enterButton);
 
     expect(await screen.findByTestId('prejoin-join-error')).toHaveTextContent(
-      '아직 시작하지 않았거나 이미 끝난 수업이에요',
+      '강사가 아직 수업을 시작하지 않았어요',
     );
     await waitFor(() => expect(enterButton).toBeEnabled());
+  });
+
+  /**
+   * 점검을 시작할 때는 살아 있던 수업이 카메라를 맞추는 동안 끝날 수 있다. 그래서 입장 버튼의 호출은
+   * 홈에서 한 번 확인했더라도 여전히 마지막 관문이다.
+   */
+  it('점검 도중에 수업이 끝났으면 끝났다고 알린다', async () => {
+    stubSupportedBrowser();
+    const joinSession = vi
+      .fn()
+      .mockRejectedValue(new JoinSessionRequestError('ended', 409, 'SESSION_APP_008'));
+    await renderPage('ABC123', joinSession);
+
+    fireEvent.click(await passDeviceChecks());
+
+    expect(await screen.findByTestId('prejoin-join-error')).toHaveTextContent(
+      '이미 끝난 수업이에요',
+    );
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('로그인 토큰이 없으면 서버를 호출하지 않고 로그인을 안내한다', async () => {

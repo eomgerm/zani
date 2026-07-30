@@ -141,13 +141,29 @@ describe("useSessionPresence", () => {
     expect(report).toHaveBeenCalledTimes(1);
   });
 
-  it("stops reporting when the room is already closed", async () => {
+  /**
+   * 강사가 수업을 끝내면 다음 heartbeat 가 409 를 받는다. 이건 보고 실패가 아니라 "수업이 끝났다"는
+   * 상태라, 화면이 강의실을 떠날 수 있도록 오류가 아닌 종료 신호로 올린다.
+   */
+  it("reports the session as ended when the room is already closed", async () => {
     const report = vi.fn().mockRejectedValue(new PresenceReportError("conflict", 409));
 
     const { result } = renderPresence(report);
     await act(async () => vi.advanceTimersByTime(0));
 
-    expect(result.current.error).not.toBeNull();
+    expect(result.current.sessionEnded).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  /** 종료를 확인한 뒤에는 더 보내지 않는다. 끝난 수업에 heartbeat 를 계속 던질 이유가 없다. */
+  it("stops reporting once the session has ended", async () => {
+    const report = vi.fn().mockRejectedValue(new PresenceReportError("conflict", 409));
+
+    renderPresence(report);
+    await act(async () => vi.advanceTimersByTime(0));
+    await act(async () => vi.advanceTimersByTime(30_000));
+
+    expect(report).toHaveBeenCalledTimes(1);
   });
 
   it("retries after a transient failure", async () => {

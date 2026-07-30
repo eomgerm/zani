@@ -91,6 +91,16 @@ vi.mock("./useCoachingStatus", () => ({
   },
 }));
 
+// presence heartbeat 자체는 useSessionPresence.test 가 본다. 여기서는 그 신호에 화면이 어떻게 반응하는지만 본다.
+const presence = vi.hoisted(() => ({
+  reconnectStatus: null as string | null,
+  sessionEnded: false,
+  error: null as string | null,
+}));
+vi.mock("./useSessionPresence", () => ({
+  useSessionPresence: () => presence,
+}));
+
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
@@ -142,6 +152,9 @@ afterEach(() => {
   coaching.availability = "ACTIVE";
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
+  presence.reconnectStatus = null;
+  presence.sessionEnded = false;
+  presence.error = null;
   vi.useRealTimers();
 });
 
@@ -586,5 +599,73 @@ describe("RoomScreen attention wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
 
     expect(screen.getByText("강의자를 기다리고 있어요")).toBeVisible();
+  });
+});
+
+/**
+ * 수업이 끝나면 학생을 강의실에서 내보낸다.
+ *
+ * <p>배너만 띄우고 남겨두면 학생이 끝난 수업에 카메라를 켠 채로 머문다. 화면을 벗어나면 RoomProvider 정리 단계가 room.disconnect() 를 호출해 장치도 함께 꺼진다.
+ */
+describe("RoomScreen 수업 종료", () => {
+  it("종료를 알린 뒤 잠시 후 강의실에서 나간다", () => {
+    vi.useFakeTimers();
+    asStudent();
+    presence.sessionEnded = true;
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByTestId("presence-session-ended")).toBeVisible();
+    // 이유를 읽을 시간은 준다 — 곧바로 옮기지 않는다.
+    expect(push).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(3_000));
+
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+  });
+
+  it("기다리지 않고 지금 나가기로도 나갈 수 있다", () => {
+    asStudent();
+    presence.sessionEnded = true;
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByTestId("presence-leave-now"));
+
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+  });
+
+  /** 강사는 사후 메모 작성으로 이어진다. 3시간 자동 종료·강사 미복귀로 끝난 경우에도 같다. */
+  it("강사는 사후 메모 화면으로 보낸다", () => {
+    vi.useFakeTimers();
+    asInstructor();
+    presence.sessionEnded = true;
+    render(<RoomScreen sessionId="123" />);
+
+    act(() => vi.advanceTimersByTime(3_000));
+
+    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
+  });
+
+  it("수업이 살아 있으면 아무도 내보내지 않는다", () => {
+    vi.useFakeTimers();
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+
+    act(() => vi.advanceTimersByTime(10_000));
+
+    expect(screen.queryByTestId("presence-session-ended")).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  /** 비멤버(403)는 수업이 끝난 게 아니다. 원인만 알리고 내보내지 않는다. */
+  it("보고가 거부된 것만으로는 내보내지 않는다", () => {
+    vi.useFakeTimers();
+    asStudent();
+    presence.error = "이 수업의 참가자가 아니라 상태를 보고할 수 없습니다.";
+    render(<RoomScreen sessionId="123" />);
+
+    act(() => vi.advanceTimersByTime(10_000));
+
+    expect(screen.getByTestId("presence-error")).toBeVisible();
+    expect(push).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { SessionPresenceNotice } from "./SessionPresenceNotice";
 
@@ -21,13 +21,43 @@ describe("SessionPresenceNotice", () => {
     expect(notice.textContent).toContain("5분");
   });
 
-  it("offers a way out once the session has ended", () => {
+  /** 강사 미복귀로 끝난 경우는 이유를 알려줄 수 있다. heartbeat 응답이 그렇게 말해줬기 때문이다. */
+  it("names instructor absence as the reason when the server said so", () => {
+    render(<SessionPresenceNotice reconnectStatus="SESSION_ENDED" sessionEnded error={null} />);
+
+    const notice = screen.getByTestId("presence-session-ended");
+    expect(notice).toHaveAttribute("role", "alert");
+    expect(notice.textContent).toContain("강사가 복귀하지 않아");
+    expect(notice.textContent).toContain("잠시 후 강의실에서 나갑니다");
+  });
+
+  /**
+   * 강사가 직접 종료하면 다음 요청이 409 로 막혀 본문이 없다. 왜 끝났는지 모르는 상태이므로
+   * 이유를 단정하지 않는다 — "강사가 복귀하지 않아" 라고 쓰면 사실과 다른 안내가 된다.
+   */
+  it("does not guess a reason when the server only reported that it is over", () => {
+    render(<SessionPresenceNotice reconnectStatus="CONNECTED" sessionEnded error={null} />);
+
+    const notice = screen.getByTestId("presence-session-ended");
+    expect(notice.textContent).toContain("수업이 종료되었습니다");
+    expect(notice.textContent).not.toContain("강사가 복귀하지 않아");
+  });
+
+  /** 자동 이동을 기다리지 않으려는 사용자를 위한 출구. */
+  it("lets the viewer leave immediately", () => {
+    const onLeave = vi.fn();
     render(
-      <SessionPresenceNotice reconnectStatus="SESSION_ENDED" sessionEnded error={null} />,
+      <SessionPresenceNotice
+        reconnectStatus={null}
+        sessionEnded
+        error={null}
+        onLeave={onLeave}
+      />,
     );
 
-    expect(screen.getByTestId("presence-session-ended")).toHaveAttribute("role", "alert");
-    expect(screen.getByRole("link", { name: "나가기" })).toHaveAttribute("href", "/home");
+    fireEvent.click(screen.getByTestId("presence-leave-now"));
+
+    expect(onLeave).toHaveBeenCalled();
   });
 
   it("shows why reporting stopped when the server rejected it", () => {

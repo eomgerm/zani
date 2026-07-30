@@ -45,6 +45,13 @@ type RoomScreenProps = {
 
 type FloatingReaction = { key: number; emoji: string; left: number };
 
+/**
+ * 수업이 끝난 뒤 강의실을 떠날 때까지 두는 시간(ms).
+ *
+ * <p>왜 끝났는지 읽을 시간은 주되, 끝난 수업에 카메라를 켠 채로 오래 머물지 않을 만큼만 짧게 잡는다.
+ */
+const LEAVE_AFTER_SESSION_ENDED_MS = 3_000;
+
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
   disabled: {
@@ -219,9 +226,24 @@ function RoomScreenContent({
    * 나가기. 강사는 수업을 종료하는 것이라 사후 메모 작성으로 넘기고(프로토타입 endRoom),
    * 학생은 참여했던 강의 목록으로 돌아간다.
    */
-  const leaveRoom = () => {
+  const leaveRoom = useCallback(() => {
     router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
-  };
+  }, [router, isInstructor, sessionId]);
+
+  /**
+   * 수업이 끝나면 강의실에서 내보낸다.
+   *
+   * <p>배너만 띄우고 남겨두면 학생이 끝난 수업에 카메라를 켠 채로 머문다. 화면을 벗어나면 RoomProvider 정리 단계가 room.disconnect() 를 호출해 카메라·마이크도 함께 꺼진다.
+   *
+   * <p>곧바로 옮기지 않고 잠깐 두는 이유는 왜 끝났는지 읽을 시간을 주기 위해서다. 기다리지 않으려면 배너의 "지금 나가기"를 누르면 된다.
+   */
+  useEffect(() => {
+    if (!presence.sessionEnded) {
+      return;
+    }
+    const timer = setTimeout(leaveRoom, LEAVE_AFTER_SESSION_ENDED_MS);
+    return () => clearTimeout(timer);
+  }, [presence.sessionEnded, leaveRoom]);
 
   const answerPrompt = async (value: UnderstandingCheckResponse) => {
     const sent = await understandingCheck.respond(value);
@@ -253,6 +275,7 @@ function RoomScreenContent({
         reconnectStatus={presence.reconnectStatus}
         sessionEnded={presence.sessionEnded}
         error={presence.error}
+        onLeave={leaveRoom}
       />
       {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
       <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
