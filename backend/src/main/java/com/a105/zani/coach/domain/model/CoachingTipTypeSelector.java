@@ -1,39 +1,47 @@
 package com.a105.zani.coach.domain.model;
 
+import java.util.List;
 import java.util.Optional;
 
-import com.a105.zani.attention.domain.model.AttentionState;
-import com.a105.zani.attention.domain.model.CoachingSignalSummary;
+import com.a105.zani.attention.application.port.CoachingTipType;
 
 /**
- * 익명 집계로 팁 유형을 고른다(기준 문서 §7.6). (S15P11A105-204)
+ * 비율로 팁 유형을 고른다(기준 문서 §7.6). (S15P11A105-204)
  *
- * <p>§7.6 의 네 단계 중 셋은 79 가 이미 구현했다 — 상태별 비율은 {@code ratioOf}, 최다 선택과 동률 우선순위는 {@code dominantState()} 다. 여기서는 79 가 "팁
- * 유형을 고르는 쪽이 한다"며 남겨둔 복합 판정(§7.6-2)과 팁 유형 매핑만 한다. 같은 규칙을 두 곳에 두면 §7.6 을 고칠 때 한쪽만 바뀐다.
+ * <p>85 가 유형 enum 을 폴링 응답 계약으로 먼저 확정했고, 어느 유형을 고를지는 이 티켓이 정한다. enum 만 가져다 쓰고 선택 규칙은 여기 둔다 — §8 문구 템플릿과 같은 곳에 있어야 §7.6 을
+ * 고칠 때 문구와 함께 보인다.
  *
- * <p>외부 의존이 없는 계산이라 도메인 순수 Java 로 둔다.
+ * <p>79 의 {@code CoachingSignalSummary#dominantState()} 를 쓰지 못하는 이유: 85 의 {@code CoachingTipRequest} 가 상태별 비율을
+ * {@code double} 4개로 펼쳐 넘긴다. 집계 객체가 아니라 값만 오므로 최다 선택과 동률 우선순위를 여기서 다시 판단한다. 순서는 79 의 {@code TIE_BREAK_ORDER} 와 같아야 한다.
  */
 public final class CoachingTipTypeSelector {
 
-    /** 복합 팁의 하한(§7.6-2). 헷갈림·놓침이 각각 이 비율을 넘어야 한다. */
+    /** 복합 팁의 하한(§7.6-2). 헷갈림·놓침이 각각 이 비율을 <b>넘어야</b> 한다. */
     private static final double BOTH_HIGH_THRESHOLD = 0.20;
+
+    /**
+     * 상태별 비율이 같을 때 고를 순서(§7.6-4).
+     *
+     * <p>79 의 {@code CoachingSignalSummary.TIE_BREAK_ORDER} 와 순서가 같아야 한다. 결정론적 순서가 없으면 비율이 같을 때마다 팁이 달라져 강사가 보기에 이유 없이
+     * 조언이 바뀐다.
+     */
+    private static final List<CoachingTipType> TIE_BREAK_ORDER = List.of(
+            CoachingTipType.CONFUSED,
+            CoachingTipType.MISSED,
+            CoachingTipType.NON_RESPONSE,
+            CoachingTipType.UNMEASURABLE);
 
     private CoachingTipTypeSelector() {}
 
-    /**
-     * 팁 유형을 고른다. 분모가 0이거나 유의 상태를 겪은 학생이 없으면 비어 있다.
-     *
-     * <p>분모 0에서 유형을 고르지 않는 이유: 79 가 {@code ratio()} 를 {@code OptionalDouble} 로 둔 것과 같다. "아무도 어려워하지 않는다"와 "판단할 학생이 없다"는
-     * 다른 상황이고, 후자에서는 판단을 미뤄야 한다(§7).
-     */
-    public static Optional<CoachingTipType> select(CoachingSignalSummary summary) {
-        if (summary.denominator() == 0) {
+    /** 팁 유형을 고른다. 분모가 0이거나 유의 상태를 겪은 학생이 없으면 비어 있다. */
+    public static Optional<CoachingTipType> select(CoachingTipRatios ratios) {
+        if (ratios.isEmpty()) {
             return Optional.empty();
         }
-        if (isBothHigh(summary)) {
-            return Optional.of(CoachingTipType.CONFUSED_AND_MISSED_HIGH);
+        if (isBothHigh(ratios)) {
+            return Optional.of(CoachingTipType.CONFUSED_AND_MISSED);
         }
-        return summary.dominantState().map(CoachingTipType::of);
+        return dominant(ratios);
     }
 
     /**
@@ -41,19 +49,29 @@ public final class CoachingTipTypeSelector {
      *
      * <p>"둘의 합" 조건이 붙은 이유: 조건이 "각각 20% 초과"뿐이면 헷갈림 21%·놓침 21%·무응답 60% 일 때도 복합 팁이 떠서 정작 가장 큰 문제를 가린다. 복합 팁은 헷갈림과 놓침이 실제로
      * 지배적일 때만 뜬다.
-     *
-     * <p>합은 비율이 아니라 학생 수로 비교한다. 분모가 같아 결과는 동일하고 부동소수 비교를 피할 수 있다.
      */
-    private static boolean isBothHigh(CoachingSignalSummary summary) {
-        if (!exceedsThreshold(summary, AttentionState.CONFUSED) || !exceedsThreshold(summary, AttentionState.MISSED)) {
+    private static boolean isBothHigh(CoachingTipRatios ratios) {
+        if (ratios.confusedRatio() <= BOTH_HIGH_THRESHOLD || ratios.missedRatio() <= BOTH_HIGH_THRESHOLD) {
             return false;
         }
-        int bothCount = summary.countOf(AttentionState.CONFUSED) + summary.countOf(AttentionState.MISSED);
-        int restCount = summary.countOf(AttentionState.NON_RESPONSE) + summary.countOf(AttentionState.UNMEASURABLE);
-        return bothCount > restCount;
+        return ratios.confusedRatio() + ratios.missedRatio() > ratios.nonResponseRatio() + ratios.unmeasurableRatio();
     }
 
-    private static boolean exceedsThreshold(CoachingSignalSummary summary, AttentionState state) {
-        return summary.ratioOf(state).orElse(0) > BOTH_HIGH_THRESHOLD;
+    /** 가장 높은 비율의 유형(§7.6-3). 같으면 {@link #TIE_BREAK_ORDER} 순으로 고른다(§7.6-4). */
+    private static Optional<CoachingTipType> dominant(CoachingTipRatios ratios) {
+        return TIE_BREAK_ORDER.stream()
+                .filter(type -> ratioOf(ratios, type) > 0)
+                .reduce((left, right) -> ratioOf(ratios, right) > ratioOf(ratios, left) ? right : left);
+    }
+
+    static double ratioOf(CoachingTipRatios ratios, CoachingTipType type) {
+        return switch (type) {
+            case CONFUSED -> ratios.confusedRatio();
+            case MISSED -> ratios.missedRatio();
+            case NON_RESPONSE -> ratios.nonResponseRatio();
+            case UNMEASURABLE -> ratios.unmeasurableRatio();
+            // 복합 팁은 단일 상태에 대응하지 않는다. 첫 줄은 유의 학생 비율을 쓴다(§8).
+            case CONFUSED_AND_MISSED -> ratios.significantRatio();
+        };
     }
 }

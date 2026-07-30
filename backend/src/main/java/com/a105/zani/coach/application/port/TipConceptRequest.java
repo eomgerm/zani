@@ -1,6 +1,6 @@
 package com.a105.zani.coach.application.port;
 
-import com.a105.zani.coach.domain.model.CoachingTipType;
+import com.a105.zani.attention.application.port.CoachingTipType;
 
 /**
  * 팁 문구의 {@code {핵심 개념}}·{@code {핵심 내용}} 자리를 채우기 위해 LLM 에 넘길 입력. (S15P11A105-204)

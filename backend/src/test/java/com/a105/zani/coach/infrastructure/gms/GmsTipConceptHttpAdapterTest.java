@@ -15,9 +15,9 @@ import org.springframework.test.web.client.response.MockRestResponseCreators;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.a105.zani.attention.application.port.CoachingTipType;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptRequest;
-import com.a105.zani.coach.domain.model.CoachingTipType;
 import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
 
@@ -53,7 +53,7 @@ class GmsTipConceptHttpAdapterTest {
     }
 
     private TipConceptRequest request() {
-        return new TipConceptRequest(CoachingTipType.CONFUSED_HIGH, "오늘은 제네릭 와일드카드를 설명했습니다.", "자바 기초", 42);
+        return new TipConceptRequest(CoachingTipType.CONFUSED, "오늘은 제네릭 와일드카드를 설명했습니다.", "자바 기초", 42);
     }
 
     private record Fixture(GmsTipConceptHttpAdapter adapter, MockRestServiceServer server) {}
@@ -111,7 +111,7 @@ class GmsTipConceptHttpAdapterTest {
                         chatResponse("\"{\\\"concept\\\":\\\"상한 경계\\\",\\\"confidence\\\":0.7}\""),
                         MediaType.APPLICATION_JSON));
 
-        fixture.adapter().extract(new TipConceptRequest(CoachingTipType.MISSED_HIGH, "상한 경계를 설명했습니다.", "자바 기초", 10));
+        fixture.adapter().extract(new TipConceptRequest(CoachingTipType.MISSED, "상한 경계를 설명했습니다.", "자바 기초", 10));
         fixture.server().verify();
     }
 
@@ -120,7 +120,7 @@ class GmsTipConceptHttpAdapterTest {
     void skipsCallWhenTranscriptIsBlank() {
         Fixture fixture = fixture();
 
-        assertThat(fixture.adapter().extract(new TipConceptRequest(CoachingTipType.CONFUSED_HIGH, "  ", "자바 기초", 10)))
+        assertThat(fixture.adapter().extract(new TipConceptRequest(CoachingTipType.CONFUSED, "  ", "자바 기초", 10)))
                 .isEmpty();
         fixture.server().verify();
     }

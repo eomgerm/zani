@@ -15,10 +15,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
+import com.a105.zani.attention.application.port.CoachingTipType;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
-import com.a105.zani.coach.domain.model.CoachingTipType;
 import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
 
@@ -132,7 +132,7 @@ public class GmsTipConceptHttpAdapter implements TipConceptPort {
     }
 
     private String systemPrompt(CoachingTipType tipType) {
-        String slot = tipType == CoachingTipType.CONFUSED_HIGH ? "학생들이 헷갈릴 만한 핵심 개념" : "학생들이 놓쳤을 핵심 내용";
+        String slot = tipType == CoachingTipType.CONFUSED ? "학생들이 헷갈릴 만한 핵심 개념" : "학생들이 놓쳤을 핵심 내용";
         return """
                 너는 강사의 최근 발화를 읽고 %s 하나를 뽑는다.
                 규칙:
