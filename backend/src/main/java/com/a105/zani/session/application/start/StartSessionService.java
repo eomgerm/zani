@@ -1,6 +1,7 @@
 package com.a105.zani.session.application.start;
 
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +42,9 @@ public class StartSessionService implements StartSessionUseCase {
         }
 
         SessionStatus previous = session.status();
-        boolean started = session.start(clock.instant());
+        // DATETIME(6) 이 마이크로초까지만 담는다. 나노초를 그대로 쓰면 이 응답의 expiresAt 과
+        // 다시 읽은 뒤의 expiresAt 이 달라져, 멱등한 재호출이 다른 만료 시각을 돌려준다.
+        boolean started = session.start(clock.instant().truncatedTo(ChronoUnit.MICROS));
         if (!started) {
             return result(session, false);
         }

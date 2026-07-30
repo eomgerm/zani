@@ -58,7 +58,7 @@ public class IssueMediaTokenService implements IssueMediaTokenUseCase {
         String displayName = getMemberDisplayNameUseCase
                 .getDisplayName(new GetMemberDisplayNameQuery(command.userId()))
                 .orElse(DEFAULT_DISPLAY_NAME);
-        String identity = "p-" + participant.id();
+        String identity = participant.mediaIdentity();
 
         IssuedMediaToken issued =
                 liveKitTokenPort.issue(new MediaTokenRequest(identity, displayName, participant.role(), session.id()));

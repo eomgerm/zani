@@ -155,7 +155,14 @@ class ResolveConnectedStudentsServiceTest {
 
         private StubParticipantRepository() {
             participants.add(SessionParticipant.reconstitute(
-                    INSTRUCTOR_ID, SESSION_ID, 900L, SessionParticipantRole.INSTRUCTOR, SESSION_STARTED_AT, null));
+                    INSTRUCTOR_ID,
+                    SESSION_ID,
+                    900L,
+                    SessionParticipantRole.INSTRUCTOR,
+                    SESSION_STARTED_AT,
+                    null,
+                    null,
+                    null));
         }
 
         private void addStudent(long participantId) {
@@ -165,6 +172,8 @@ class ResolveConnectedStudentsServiceTest {
                     participantId + 1_000L,
                     SessionParticipantRole.STUDENT,
                     SESSION_STARTED_AT,
+                    null,
+                    null,
                     null));
         }
 

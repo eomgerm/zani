@@ -18,6 +18,8 @@ public class SessionParticipantPersistenceMapper {
                 .role(sessionParticipant.role())
                 .firstJoinedAt(sessionParticipant.firstJoinedAt())
                 .lastAccessedAt(sessionParticipant.lastAccessedAt())
+                .mediaFirstJoinedAt(sessionParticipant.mediaFirstJoinedAt())
+                .mediaLastLeftAt(sessionParticipant.mediaLastLeftAt())
                 .build();
     }
 
@@ -28,6 +30,8 @@ public class SessionParticipantPersistenceMapper {
                 entity.getMemberId(),
                 entity.getRole(),
                 entity.getFirstJoinedAt(),
-                entity.getLastAccessedAt());
+                entity.getLastAccessedAt(),
+                entity.getMediaFirstJoinedAt(),
+                entity.getMediaLastLeftAt());
     }
 }

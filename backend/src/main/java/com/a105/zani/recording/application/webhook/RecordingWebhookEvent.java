@@ -1,5 +1,6 @@
 package com.a105.zani.recording.application.webhook;
 
+import java.time.Instant;
 import java.util.List;
 
 import com.a105.zani.recording.domain.model.TrackSource;
@@ -26,4 +27,10 @@ public record RecordingWebhookEvent(
          * 저장소(Redis 표시)에만 의존하면 그 저장소가 죽었을 때 같은 증상이 돌아오므로, 이벤트 자체에서 읽을 수 있는 이 값을 1차 근거로 쓴다.
          */
         Boolean egressAudioStream,
-        List<EgressFileResult> files) {}
+        List<EgressFileResult> files,
+        /**
+         * 미디어 서버가 이 이벤트를 만든 시각.
+         *
+         * <p>출석 시각의 근거다. 서버가 webhook 을 받은 시각을 쓰면 전송 지연·재전송 때마다 입·이탈 시각이 뒤로 밀린다.
+         */
+        Instant occurredAt) {}

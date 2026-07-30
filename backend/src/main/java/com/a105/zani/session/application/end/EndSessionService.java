@@ -2,6 +2,7 @@ package com.a105.zani.session.application.end;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,7 +42,8 @@ public class EndSessionService implements EndSessionUseCase {
         Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
 
         SessionStatus beforeEnding = session.status();
-        Instant endedAt = clock.instant();
+        // DATETIME(6) 이 마이크로초까지만 담는다. 나노초를 그대로 쓰면 저장 전후의 값이 달라진다.
+        Instant endedAt = clock.instant().truncatedTo(ChronoUnit.MICROS);
         if (!session.beginEnding(endedAt, command.reason())) {
             // 이미 종료 절차에 들어간 세션은 그대로 둔다(중복 종료 요청·재시도에 멱등).
             return new EndSessionResult(session.id(), session.status(), false);

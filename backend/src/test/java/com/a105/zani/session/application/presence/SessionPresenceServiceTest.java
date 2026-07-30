@@ -77,11 +77,20 @@ class SessionPresenceServiceTest {
                         INSTRUCTOR_USER,
                         SessionParticipantRole.INSTRUCTOR,
                         T0,
-                        T0));
+                        T0,
+                        null,
+                        null));
         participantRepository.byUserId.put(
                 STUDENT_USER,
                 SessionParticipant.reconstitute(
-                        STUDENT_PARTICIPANT, SESSION_ID, STUDENT_USER, SessionParticipantRole.STUDENT, T0, T0));
+                        STUDENT_PARTICIPANT,
+                        SESSION_ID,
+                        STUDENT_USER,
+                        SessionParticipantRole.STUDENT,
+                        T0,
+                        T0,
+                        null,
+                        null));
     }
 
     private static Session liveSession() {

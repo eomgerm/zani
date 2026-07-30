@@ -56,4 +56,11 @@ public class SessionParticipantJpaEntity extends BaseJpaEntity {
 
     @Column(name = "last_accessed_at", columnDefinition = "DATETIME(6)")
     private Instant lastAccessedAt;
+
+    /** 실제 LiveKit 방에 처음 들어온 시각. 입장 API 만 부르고 방에 들어오지 않았으면 NULL 이다. */
+    @Column(name = "media_first_joined_at", columnDefinition = "DATETIME(6)")
+    private Instant mediaFirstJoinedAt;
+
+    @Column(name = "media_last_left_at", columnDefinition = "DATETIME(6)")
+    private Instant mediaLastLeftAt;
 }

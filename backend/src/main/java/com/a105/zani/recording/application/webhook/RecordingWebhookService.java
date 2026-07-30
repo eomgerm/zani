@@ -22,6 +22,9 @@ import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.domain.model.RecordingFile;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.attendance.RecordMediaAttendanceCommand;
+import com.a105.zani.session.application.attendance.RecordMediaAttendanceUseCase;
+import com.a105.zani.session.domain.model.ParticipantIdentity;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
@@ -40,8 +43,6 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 @RequiredArgsConstructor
 public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
 
-    private static final String PARTICIPANT_IDENTITY_PREFIX = "p-";
-
     private final RecordingWebhookVerifierPort verifierPort;
     private final RecordingWebhookEventPort eventStore;
     private final RequestTrackEgressUseCase requestTrackEgressUseCase;
@@ -50,6 +51,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     private final SessionRepository sessionRepository;
     private final SessionParticipantRepository sessionParticipantRepository;
     private final AudioStreamEgressRegistryPort audioStreamEgressRegistry;
+    private final RecordMediaAttendanceUseCase recordMediaAttendanceUseCase;
     private final Clock clock;
 
     @Override
@@ -72,6 +74,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             case TRACK_PUBLISHED -> handleTrackPublished(event);
             case EGRESS_STARTED, EGRESS_UPDATED -> handleEgressProgress(event);
             case EGRESS_ENDED -> handleEgressEnded(event);
+            case PARTICIPANT_JOINED, PARTICIPANT_LEFT -> handleAttendance(event);
             default -> log.debug("Webhook event {} needs no handling", event.type());
         }
         eventStore.markProcessed(event.eventId());
@@ -91,12 +94,29 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         return audioStreamEgressRegistry.isAudioStream(event.egressId());
     }
 
+    /**
+     * 참가자 입·이탈은 출석 기록이라 세션 도메인 소관이다. LiveKit 이 webhook URL 하나로 모든 이벤트를 보내 이 경로로 들어오므로, 여기서는 세션의 공개 UseCase 로 넘기기만 한다.
+     *
+     * <p>방 이름을 세션으로 해석하지 못한 이벤트는 이 배포의 세션이 아니다(같은 미디어 서버를 다른 환경과 공유한다).
+     */
+    private void handleAttendance(RecordingWebhookEvent event) {
+        if (event.sessionId() == null) {
+            log.debug("participant event outside this deployment, event={}", event.eventId());
+            return;
+        }
+        recordMediaAttendanceUseCase.record(new RecordMediaAttendanceCommand(
+                event.sessionId(),
+                event.participantIdentity(),
+                event.type() == RecordingWebhookEventType.PARTICIPANT_JOINED,
+                event.occurredAt()));
+    }
+
     private void handleTrackPublished(RecordingWebhookEvent event) {
         if (event.sessionId() == null || event.trackSid() == null || event.trackSource() == null) {
             log.debug("track_published without session/track context, event={}", event.eventId());
             return;
         }
-        Optional<SessionParticipant> participant = parseParticipantId(event.participantIdentity())
+        Optional<SessionParticipant> participant = ParticipantIdentity.parse(event.participantIdentity())
                 .flatMap(sessionParticipantRepository::findById)
                 .filter(found -> found.sessionId().equals(event.sessionId()));
         if (participant.isEmpty()) {
@@ -211,17 +231,6 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             }
         }
         return RecordingAlias.student(order + 1);
-    }
-
-    private static Optional<Long> parseParticipantId(String identity) {
-        if (identity == null || !identity.startsWith(PARTICIPANT_IDENTITY_PREFIX)) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(Long.parseLong(identity.substring(PARTICIPANT_IDENTITY_PREFIX.length())));
-        } catch (NumberFormatException invalid) {
-            return Optional.empty();
-        }
     }
 
     /** Egress 노드 절대 경로에서 세션 루트 이후의 상대 경로만 추출한다(가이드 §14). 마커가 없으면 null(저장 금지). */

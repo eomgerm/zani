@@ -27,6 +27,8 @@ import com.a105.zani.recording.domain.model.TrackRecordingDecision;
 import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.attendance.RecordMediaAttendanceCommand;
+import com.a105.zani.session.application.attendance.RecordMediaAttendanceUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -44,6 +46,9 @@ class RecordingWebhookServiceTest {
 
     private static final long SESSION_ID = 100L;
     private static final Instant SESSION_START = Instant.parse("2026-07-25T05:00:00Z");
+    /** 미디어 서버가 이벤트를 만든 시각. 출석 기록의 근거다. */
+    private static final Instant OCCURRED_AT = Instant.parse("2026-07-25T05:10:00Z");
+
     private static final Instant NOW = Instant.parse("2026-07-25T06:00:00Z");
 
     private RecordingWebhookEvent nextEvent;
@@ -69,7 +74,8 @@ class RecordingWebhookServiceTest {
                 null,
                 null,
                 null,
-                List.of());
+                List.of(),
+                OCCURRED_AT);
     }
 
     private static RecordingWebhookEvent egressEvent(
@@ -79,7 +85,7 @@ class RecordingWebhookServiceTest {
             Boolean complete,
             List<EgressFileResult> files) {
         return new RecordingWebhookEvent(
-                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files);
+                eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files, OCCURRED_AT);
     }
 
     @BeforeEach
@@ -202,8 +208,14 @@ class RecordingWebhookServiceTest {
                 sessionRepository,
                 participantRepository,
                 audioStreamRegistry,
+                attendance,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
+
+    /** 출석 기록 호출만 모으는 페이크. 이 경로가 세션 도메인으로 제대로 넘어가는지 본다. */
+    private final java.util.List<RecordMediaAttendanceCommand> attendanceCommands = new java.util.ArrayList<>();
+
+    private final RecordMediaAttendanceUseCase attendance = attendanceCommands::add;
 
     /** 코칭용 스트림 Egress 표시. 테스트가 직접 등록해 webhook 분기를 검증한다. */
     private final java.util.Set<String> audioStreamEgressIds = new java.util.HashSet<>();
@@ -223,7 +235,9 @@ class RecordingWebhookServiceTest {
 
     private void addParticipant(long id, SessionParticipantRole role) {
         participantsById.put(
-                id, SessionParticipant.reconstitute(id, SESSION_ID, id + 500, role, SESSION_START, SESSION_START));
+                id,
+                SessionParticipant.reconstitute(
+                        id, SESSION_ID, id + 500, role, SESSION_START, SESSION_START, null, null));
     }
 
     @Test
@@ -396,7 +410,8 @@ class RecordingWebhookServiceTest {
                 null,
                 "TR_src",
                 false,
-                List.of());
+                List.of(),
+                OCCURRED_AT);
 
         // 녹화 경로로 들어갔다면 recordings 행이 없으므로 재전송을 유도하는 예외가 나야 한다.
         // 표시를 우선했다면 조용히 PROCESSED 로 끝나 버려 정상 녹화가 통째로 누락된다.
@@ -417,7 +432,8 @@ class RecordingWebhookServiceTest {
                 null,
                 "TR_src",
                 true,
-                List.of());
+                List.of(),
+                OCCURRED_AT);
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.a105.zani.recording.infrastructure.livekit;
 
+import java.time.Instant;
 import java.util.List;
 
 import io.livekit.server.WebhookReceiver;
@@ -55,7 +56,8 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
                 egress != null && egress.hasTrack() ? egress.getTrack().getTrackId() : null,
                 // 출력 종류는 페이로드에 그대로 실려 온다. track 정보가 없는 이벤트는 판단하지 않고 null 로 둔다.
                 egress != null && egress.hasTrack() ? egress.getTrack().hasWebsocketUrl() : null,
-                egress != null ? filesOf(egress) : List.of());
+                egress != null ? filesOf(egress) : List.of(),
+                Instant.ofEpochSecond(event.getCreatedAt()));
     }
 
     /** LiveKit 설정에 따라 헤더가 {@code Bearer <token>} 형태로 올 수 있어 접두어를 허용한다(WebhookReceiver는 순수 토큰을 기대). */
@@ -86,6 +88,8 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
             case "egress_started" -> RecordingWebhookEventType.EGRESS_STARTED;
             case "egress_updated" -> RecordingWebhookEventType.EGRESS_UPDATED;
             case "egress_ended" -> RecordingWebhookEventType.EGRESS_ENDED;
+            case "participant_joined" -> RecordingWebhookEventType.PARTICIPANT_JOINED;
+            case "participant_left" -> RecordingWebhookEventType.PARTICIPANT_LEFT;
             default -> RecordingWebhookEventType.IGNORED;
         };
     }
