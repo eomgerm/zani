@@ -8,6 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,7 +24,9 @@ import com.a105.zani.common.infrastructure.gms.GmsProperties;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -32,6 +37,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
  * <p>포트 계약대로 성공은 텍스트를 반환하고, timeout·401·402·429·5xx 는 {@link AudioClipTranscriptionFailedException} 으로 던져야 한다. 팁을 건너뛸지
  * 결정하는 것은 호출자 몫이다.
  */
+@ExtendWith(OutputCaptureExtension.class)
 class GmsAudioTranscriptionAdapterTest {
 
     private static final String BASE_URL = "https://gms.test";
@@ -146,10 +152,22 @@ class GmsAudioTranscriptionAdapterTest {
     }
 
     @Test
-    void failsOnTimeout() {
+    void failureLogContainsStatusButOmitsVendorResponseBody(CapturedOutput output) {
+        assertFails(MockRestResponseCreators.withBadRequest().body("sensitive-vendor-response"));
+
+        assertTrue(output.getAll().contains("failureType=HTTP_ERROR"));
+        assertTrue(output.getAll().contains("statusCode=400"));
+        assertFalse(output.getAll().contains("sensitive-vendor-response"));
+    }
+
+    @Test
+    void failsOnTimeout(CapturedOutput output) {
         assertFails(request -> {
             throw new SocketTimeoutException("read timed out");
         });
+
+        assertTrue(output.getAll().contains("failureType=TIMEOUT"));
+        assertFalse(output.getAll().contains("read timed out"));
     }
 
     @Test
