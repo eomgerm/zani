@@ -1,11 +1,13 @@
 package com.a105.zani.session.infrastructure.redis;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import com.a105.zani.session.application.port.ChatIdempotencyPort;
@@ -23,6 +25,23 @@ public class ChatIdempotencyRedisAdapter implements ChatIdempotencyPort {
     /** 재시도는 몇 초 안에 온다. 오래 들고 있어도 얻는 게 없고 키만 쌓인다. */
     private static final Duration TTL = Duration.ofMinutes(10);
 
+    /**
+     * 선점과 기존 값 조회를 한 번의 왕복으로 처리한다.
+     *
+     * <p>두 명령으로 나누면 중간에 끊길 창이 생긴다. SET NX 가 false 를 돌려줘 <b>재시도임을 이미 확정한 뒤</b> GET 이 실패하면, 같은 catch 에 걸려 "처음 보는 값"으로
+     * 내려가고 이미 저장된 메시지가 한 번 더 저장·브로드캐스트된다. 행은 리포트에 영구히 남고 화면에도 두 번 보인다.
+     *
+     * <p>스크립트로 합치면 그 창이 사라진다. 호출이 실패하면 그때는 중복인지 <b>모르는</b> 상태이므로 전송을 살리는 판단이 옳다 — 아는 것과 모르는 것을 구분하는 것이 핵심이다.
+     *
+     * <p>반환: 처음 보는 값이면 nil, 재시도면 처음 부여했던 {@code eventId}.
+     */
+    private static final RedisScript<String> CLAIM = RedisScript.of("""
+            if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then
+              return nil
+            end
+            return redis.call('GET', KEYS[1])
+            """, String.class);
+
     private final StringRedisTemplate redisTemplate;
 
     public ChatIdempotencyRedisAdapter(StringRedisTemplate redisTemplate) {
@@ -31,14 +50,10 @@ public class ChatIdempotencyRedisAdapter implements ChatIdempotencyPort {
 
     @Override
     public Optional<String> claim(long sessionId, String clientEventId, String eventId) {
-        String key = key(sessionId, clientEventId);
         try {
-            // SET NX 한 번으로 "처음 보는 값인지"와 "선점"을 함께 처리한다. 나누면 동시 전송 두 건이 모두 통과한다.
-            if (Boolean.TRUE.equals(redisTemplate.opsForValue().setIfAbsent(key, eventId, TTL))) {
-                return Optional.empty();
-            }
-            // 선점에 실패했으면 먼저 처리된 값이 있다. 그 사이 TTL 이 끝나 사라졌다면 재시도로 볼 근거가 없으므로 새 전송으로 취급한다.
-            return Optional.ofNullable(redisTemplate.opsForValue().get(key));
+            // 선점에 실패했는데 값이 비어 있으면 그 사이 TTL 이 끝난 것이다. 재시도로 볼 근거가 없어 새 전송으로 취급한다.
+            return Optional.ofNullable(redisTemplate.execute(
+                    CLAIM, List.of(key(sessionId, clientEventId)), eventId, String.valueOf(TTL.toMillis())));
         } catch (DataAccessException unavailable) {
             log.warn("Redis 장애로 채팅 재시도 중복 검사를 건너뜁니다. sessionId={}", sessionId, unavailable);
             return Optional.empty();
