@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.domain.model.InstructorNote;
 import com.a105.zani.postclass.domain.model.NoteStatus;
 import com.a105.zani.postclass.domain.repository.InstructorNoteRepository;
@@ -31,6 +32,7 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
 
     private final ResolveEndedSessionParticipantUseCase resolveEndedSessionParticipantUseCase;
     private final InstructorNoteRepository instructorNoteRepository;
+    private final PipelineJobPort pipelineJobPort;
     private final Clock clock;
 
     @Override
@@ -62,6 +64,8 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
                     .orElse(now);
             return new FinalizeNoteResult(note.id(), NoteStatus.FINALIZED, finalizedAt, false);
         }
+        // 확정과 같은 트랜잭션에서 남긴다(NOTE-004). 확정만 커밋되고 작업이 없으면 그 수업의 분석은 영원히 시작되지 않는다.
+        pipelineJobPort.enqueue(command.sessionId(), now);
         return new FinalizeNoteResult(note.id(), NoteStatus.FINALIZED, now, true);
     }
 
@@ -74,6 +78,7 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
     private FinalizeNoteResult finalizeWithoutDraft(Long sessionId, Long participantId, Instant now) {
         Optional<Long> created = instructorNoteRepository.insertFinalizedIfAbsent(sessionId, participantId, now);
         if (created.isPresent()) {
+            pipelineJobPort.enqueue(sessionId, now);
             return new FinalizeNoteResult(created.get(), NoteStatus.FINALIZED, now, true);
         }
 
@@ -81,9 +86,10 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
         log.debug("메모 행이 같은 순간에 만들어졌습니다. sessionId={}", sessionId);
         Long noteId = instructorNoteRepository.findCommittedNoteId(sessionId).orElse(null);
         if (instructorNoteRepository.finalizeIfDraft(sessionId, now)) {
+            pipelineJobPort.enqueue(sessionId, now);
             return new FinalizeNoteResult(noteId, NoteStatus.FINALIZED, now, true);
         }
-        // 이미 확정된 행이었다. 중복 확정은 멱등 성공이다(FRD §16).
+        // 이미 확정된 행이었다. 중복 확정은 멱등 성공이므로 작업도 다시 만들지 않는다(FRD §16).
         Instant finalizedAt =
                 instructorNoteRepository.findCommittedFinalizedAt(sessionId).orElse(now);
         return new FinalizeNoteResult(noteId, NoteStatus.FINALIZED, finalizedAt, false);

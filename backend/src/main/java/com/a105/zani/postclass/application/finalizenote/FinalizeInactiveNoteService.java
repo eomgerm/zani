@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.domain.repository.InstructorNoteRepository;
 
 /**
@@ -20,11 +21,18 @@ import com.a105.zani.postclass.domain.repository.InstructorNoteRepository;
 public class FinalizeInactiveNoteService implements FinalizeInactiveNoteUseCase {
 
     private final InstructorNoteRepository instructorNoteRepository;
+    private final PipelineJobPort pipelineJobPort;
     private final Clock clock;
 
     @Override
     @Transactional
     public boolean finalizeInactiveNote(Long sessionId, Instant editedBefore) {
-        return instructorNoteRepository.finalizeIfStillInactive(sessionId, editedBefore, clock.instant());
+        Instant now = clock.instant();
+        if (!instructorNoteRepository.finalizeIfStillInactive(sessionId, editedBefore, now)) {
+            return false;
+        }
+        // 확정과 같은 트랜잭션에서 남긴다(NOTE-004). 확정만 커밋되고 작업이 없으면 그 수업의 분석은 영원히 시작되지 않는다.
+        pipelineJobPort.enqueue(sessionId, now);
+        return true;
     }
 }
