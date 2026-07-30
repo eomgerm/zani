@@ -6,6 +6,7 @@ const roomConnection = vi.hoisted(() => ({
   error: null,
   room: null,
   sessionExpiresAt: null as string | null,
+  sessionTitle: null as string | null,
   retry: vi.fn(),
 }));
 
@@ -44,10 +45,15 @@ vi.mock("./useRoomMediaControls", () => ({
 
 // 판정 배선의 세부 판단은 AttentionCameraSource.test 가 본다. 여기서는 누구에게 붙는지와 넘기는 props 만 본다.
 const attentionSource = vi.hoisted(() => ({
-  props: [] as { active: boolean; denied?: boolean }[],
+  props: [] as Array<{
+    active: boolean;
+    denied?: boolean;
+    onAvailabilityChange?: (availability: string) => void;
+    onDetection?: (output: unknown) => void;
+  }>,
 }));
 vi.mock("./components/room/AttentionCameraSource", () => ({
-  AttentionCameraSource: (props: { active: boolean; denied?: boolean }) => {
+  AttentionCameraSource: (props: (typeof attentionSource.props)[number]) => {
     attentionSource.props.push(props);
     return <div data-testid="attention-camera-source" />;
   },
@@ -68,6 +74,21 @@ const roomParticipants = vi.hoisted(() => ({
 
 vi.mock("./useRoomParticipants", () => ({
   useRoomParticipants: () => roomParticipants,
+}));
+
+// 폴링 자체는 useCoachingStatus.test 가 본다. 여기서는 누구에게 켜지는지와 배지가 뜨는지만 본다.
+const coaching = vi.hoisted(() => ({
+  enabledCalls: [] as boolean[],
+  availability: "ACTIVE" as string,
+  /** 팁 카드가 폴링 결과를 받아 가는 통로. 테스트가 여기로 팁을 흘려 넣는다. */
+  onResult: null as ((result: unknown) => void) | null,
+}));
+vi.mock("./useCoachingStatus", () => ({
+  useCoachingStatus: (options: { enabled: boolean; onResult?: (result: unknown) => void }) => {
+    coaching.enabledCalls.push(options.enabled);
+    coaching.onResult = options.onResult ?? null;
+    return { availability: coaching.availability };
+  },
 }));
 
 const push = vi.hoisted(() => vi.fn());
@@ -109,12 +130,17 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   roomConnection.sessionExpiresAt = null;
+  roomConnection.sessionTitle = null;
+  roomConnection.connectionState = "connected";
   media.cameraEnabled = true;
   media.microphoneEnabled = true;
   media.ready = true;
   media.cameraBlocked = false;
   media.cameraPermissionDenied = false;
   attentionSource.props = [];
+  coaching.enabledCalls = [];
+  coaching.availability = "ACTIVE";
+  coaching.onResult = null;
   media.toggleCamera.mockClear();
   media.toggleMicrophone.mockClear();
   vi.useRealTimers();
@@ -138,8 +164,12 @@ describe("RoomScreen side panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
 
-    expect(screen.getByText("✋ 손든 참가자")).toBeVisible();
     expect(screen.getByRole("button", { name: "참여자" })).toHaveAttribute("aria-pressed", "true");
+    // 참여자 탭에는 채팅 입력이 없다. 손든 참가자 목록은 실제로 손을 든 사람이 있을 때만 나오므로
+    // (업무 WebSocket 소관) 패널이 열렸는지는 탭 구분으로 확인한다.
+    expect(
+      screen.queryByRole("textbox", { name: "전체에게 메시지 보내기" }),
+    ).not.toBeInTheDocument();
   });
 
   it("switches between people and chat without closing the panel", () => {
@@ -274,17 +304,21 @@ describe("RoomScreen controls", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    // 강사에게는 학생용 카메라 안내가 뜨지 않는다.
-    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
+    // 강사는 판정 대상이 아니라 학생용 분석 안내가 뜨지 않는다.
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
   });
 
-  it("warns a student whose camera is off", () => {
+  /*
+    카메라가 꺼졌을 때의 안내는 카메라 안내 프롬프트(81)가 1분 지속 뒤 원인별로 맡는다.
+    여기 있던 "10분 이상·이후 5분마다" 배너는 확정 규칙과 어긋나 76 에서 제거했다.
+  */
+  it("leaves the camera-off guidance to the camera prompt instead of a standing banner", () => {
     asStudent();
     media.cameraEnabled = false;
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText(/카메라가 10분 이상 꺼져 있어요/)).toBeVisible();
+    expect(screen.queryByText(/카메라가 10분 이상 꺼져 있어요/)).not.toBeInTheDocument();
   });
 
   it("delegates the camera toggle to the media hook", () => {
@@ -349,6 +383,114 @@ describe("RoomScreen end-session control", () => {
   });
 });
 
+describe("RoomScreen coaching wiring", () => {
+  /** 폴링이 켜진 적이 있는지. */
+  const everEnabled = () => coaching.enabledCalls.some(Boolean);
+
+  it("polls and shows the coaching notice for an instructor", () => {
+    asInstructor();
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(true);
+    expect(screen.getByTestId("coaching-status-notice")).toHaveTextContent(
+      "수업 팁을 받아오지 못하고 있어요",
+    );
+  });
+
+  it("keeps the coaching notice away from students", () => {
+    asStudent();
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  // 참가자 목록이 오기 전에는 isInstructor 가 true 다. 그것만 보면 학생도 잠깐 강사 전용
+  // 엔드포인트를 두드리고 강사용 배지를 보게 된다.
+  it("waits for the role to be confirmed before polling", () => {
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+    coaching.availability = "POLL_FAILED";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(everEnabled()).toBe(false);
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+
+  /** 폴링이 팁을 물어 왔다고 알린다. */
+  const deliverTip = (triggerId: string, title: string) =>
+    act(() =>
+      coaching.onResult?.({
+        triggerId,
+        tip: {
+          tipType: "CONFUSED",
+          title,
+          message: "전체 학생의 30%가 현재 내용을 헷갈려 하고 있어요.",
+          targetConcept: "클로저",
+        },
+        unavailableReason: null,
+      }),
+    );
+
+  it("shows a tip the poll delivered to an instructor", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    expect(screen.getByTestId("coach-tip-card")).toHaveTextContent("추가 설명이 필요해요");
+  });
+
+  it("closes the tip card on 확인", () => {
+    asInstructor();
+    render(<RoomScreen sessionId="123" />);
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    fireEvent.click(screen.getByRole("button", { name: "확인" }));
+
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+  });
+
+  // 학생은 팁을 받지 않는다(86 요구사항). 폴링이 꺼져 있는 것과 별개로 카드도 막혀야 한다 —
+  // 나중에 폴링 조건이 바뀌어도 이 겹이 남는다.
+  it("never renders the tip card for a student", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    // 학생 화면에서는 폴링이 돌지 않으므로 결과가 전달될 통로 자체가 없다.
+    expect(coaching.enabledCalls.some(Boolean)).toBe(false);
+
+    // 어떤 경로로든 결과가 흘러 들어와도 카드는 뜨지 않는다.
+    deliverTip("t-1", "추가 설명이 필요해요");
+
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+  });
+
+  // 팁 카드는 폴러를 따로 두지 않는다. 두 번 돌면 분모 조회와 쿨타임 소모가 두 배가 된다.
+  it("feeds the tip card from the coaching poll instead of its own poller", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(coaching.onResult).not.toBeNull();
+  });
+
+  it("says nothing while coaching works", () => {
+    asInstructor();
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("coaching-status-notice")).not.toBeInTheDocument();
+  });
+});
+
 describe("RoomScreen attention wiring", () => {
   /** 판정 소스가 마지막으로 받은 props. */
   const lastProps = () => attentionSource.props.at(-1);
@@ -366,7 +508,34 @@ describe("RoomScreen attention wiring", () => {
 
     render(<RoomScreen sessionId="123" />);
 
-    expect(lastProps()).toEqual({ active: true, denied: false });
+    expect(lastProps()).toMatchObject({ active: true, denied: false });
+  });
+
+  // 상단 바에 흐름대로 놓아야 한다. 띄워 얹으면 보기 전환·패널 토글 위를 가린다.
+  it("shows the analysis notice once the source reports it stopped", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    expect(screen.queryByTestId("analysis-status-notice")).not.toBeInTheDocument();
+
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toHaveTextContent(
+      "학습 분석을 사용할 수 없어요",
+    );
+  });
+
+  // 어떤 비활성 상태도 수업을 막지 않는다(76 요구사항).
+  it("keeps the class controls usable while the analysis is unavailable", () => {
+    asStudent();
+
+    render(<RoomScreen sessionId="123" />);
+    act(() => lastProps()?.onAvailabilityChange?.("UNAVAILABLE"));
+
+    expect(screen.getByTestId("analysis-status-notice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "카메라 끄기" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "참여자" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /발표자 보기/ })).toBeVisible();
   });
 
   it("stops detection when the student turns the camera off", () => {
@@ -412,5 +581,124 @@ describe("RoomScreen attention wiring", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("attention-camera-source")).not.toBeInTheDocument();
+  });
+  /** 강의명은 강사가 입력한 값이다. 픽스처 기본값을 보여주면 다른 수업에 들어온 것처럼 읽힌다. */
+  it("서버가 내려준 강의명을 보여준다", () => {
+    roomConnection.sessionTitle = "JavaScript 기초 1강";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("JavaScript 기초 1강")).toBeVisible();
+  });
+
+  /** 아직 못 받았을 때 픽스처 제목이 새지 않아야 한다. */
+  it("강의명을 못 받았으면 픽스처 제목을 보여주지 않는다", () => {
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByText("React 상태관리 심화")).not.toBeInTheDocument();
+  });
+
+  /** 발표자 보기는 강사 화면을 크게 보는 기능이다. 영상이 없으면 아바타만 남아 목데이터처럼 보인다. */
+  it("발표자 보기에서 강사 카메라를 붙인다", () => {
+    roomParticipants.participants = [
+      {
+        id: "host-1",
+        name: "김강사",
+        color: "#2aa584",
+        role: "instructor",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+      },
+    ];
+    roomParticipants.localParticipantId = "host-1";
+
+    render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByTestId("speaker-video")).toBeInTheDocument();
+  });
+  /**
+   * 제목은 미디어 토큰 응답으로 오므로 연결이 끝나기 전에는 알 수 없다. 그 동안 최종값처럼 보이는 문구를 그리면
+   * 제목이 "수업" 에서 실제 이름으로 바뀌는 것처럼 보인다.
+   */
+  it("연결 중에는 제목 대신 자리만 잡는다", () => {
+    roomConnection.connectionState = "connecting";
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByTestId("room-title-loading")).toBeVisible();
+    expect(screen.queryByText("수업")).not.toBeInTheDocument();
+  });
+
+  /** 서버가 제목을 안 내려주는 구성에서 자리만 잡고 영원히 기다리면 안 된다. */
+  it("연결이 끝났는데 제목이 없으면 기본 문구를 쓴다", () => {
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.queryByTestId("room-title-loading")).not.toBeInTheDocument();
+    expect(screen.getByText("수업")).toBeVisible();
+  });
+
+  /** 강사가 아직 안 잡혔을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */
+  it("발표자 보기에서 강사가 아직 없으면 기다린다고 알린다", () => {
+    roomParticipants.participants = [];
+
+    render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByText("강의자를 기다리고 있어요")).toBeVisible();
+  });
+
+  it("shows the understanding check after three low-engagement windows", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+    const lowOutput = {
+      outcome: "Barely-Engaged" as const,
+      probabilities: [0.1, 0.3, 0.5, 0.1],
+    };
+
+    act(() => {
+      lastProps()?.onDetection?.(lowOutput);
+      lastProps()?.onDetection?.(lowOutput);
+      lastProps()?.onDetection?.(lowOutput);
+    });
+
+    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+  });
+
+  it("pauses both counters while a prompt is visible and resets them when it closes", async () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+    const lowOutput = {
+      outcome: "Barely-Engaged" as const,
+      probabilities: [0.1, 0.3, 0.5, 0.1],
+    };
+    const unmeasurable = { outcome: "UNMEASURABLE" as const };
+    const capturedDetectionCallback = lastProps()?.onDetection;
+
+    act(() => {
+      for (let count = 0; count < 3; count += 1) capturedDetectionCallback?.(lowOutput);
+    });
+    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+
+    act(() => {
+      for (let count = 0; count < 3; count += 1) {
+        capturedDetectionCallback?.(unmeasurable);
+      }
+    });
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /이해했어요/ }));
+    });
+    act(() => {
+      for (let count = 0; count < 2; count += 1) {
+        lastProps()?.onDetection?.(unmeasurable);
+      }
+    });
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+
+    act(() => lastProps()?.onDetection?.(unmeasurable));
+    expect(screen.getByText("얼굴이 잘 보이지 않아요 🙂")).toBeVisible();
   });
 });

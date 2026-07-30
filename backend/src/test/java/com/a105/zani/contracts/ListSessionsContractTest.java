@@ -19,6 +19,7 @@ import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRep
 import static com.atlassian.oai.validator.mockmvc.OpenApiValidationMatchers.openApi;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** 실제로 뜬 GET /api/v1/sessions 응답이 zani.yaml 계약과 일치하는지 검증한다. 로컬 MySQL, Redis가 떠 있어야 통과한다. */
@@ -51,13 +52,21 @@ class ListSessionsContractTest {
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
         insertInstructorIfAbsent();
+        // 앞선 실행이 정리를 못 마치고 죽었으면 3시간짜리 잠금이 남아 이 테스트가 409 를 받는다.
+        activationLockPort.release(INSTRUCTOR_ID);
     }
 
     @AfterEach
     void tearDown() {
-        sessionJpaRepository.findAll().stream()
-                .filter(session -> session.getHostMemberId().equals(INSTRUCTOR_ID))
-                .forEach(sessionJpaRepository::delete);
+        // 자식 행을 먼저 지운다. 세션 생성이 강사 참가자 행을 함께 만들므로, 세션부터 지우면 FK 위반으로 정리가 끊기고
+        // 그 뒤의 잠금 해제가 실행되지 않아 다음 실행이 "이미 진행 중인 수업" 으로 막힌다.
+        jdbcTemplate.update(
+                "DELETE FROM session_participants WHERE session_id IN (SELECT id FROM sessions WHERE host_member_id = ?)",
+                INSTRUCTOR_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_status_changes WHERE session_id IN (SELECT id FROM sessions WHERE host_member_id = ?)",
+                INSTRUCTOR_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE host_member_id = ?", INSTRUCTOR_ID);
         activationLockPort.release(INSTRUCTOR_ID);
         jdbcTemplate.update("DELETE FROM members WHERE id = ?", INSTRUCTOR_ID);
     }
@@ -86,5 +95,22 @@ class ListSessionsContractTest {
         mockMvc.perform(get("/api/v1/sessions").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(openApi().isValid(SPEC_PATH));
+    }
+
+    /** 강사는 자기 수업의 참가자이기도 하다. 주최 목록과 참가 목록을 합칠 때 걸러내지 않으면 같은 수업이 두 번 실려 내 수업 목록에 중복으로 뜬다. */
+    @Test
+    void listsASessionOwnedByTheInstructorExactlyOnce() throws Exception {
+        String accessToken =
+                tokenProvider.issueAccessToken(String.valueOf(INSTRUCTOR_ID)).value();
+
+        mockMvc.perform(post("/api/v1/sessions")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"중복 방지 검증용 세션\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/sessions").header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
     }
 }

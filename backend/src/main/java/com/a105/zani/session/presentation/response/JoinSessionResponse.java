@@ -5,9 +5,10 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 import com.a105.zani.session.domain.model.SessionStatus;
 
 public record JoinSessionResponse(
-        Long sessionId, String inviteCode, SessionStatus status, SessionParticipantRole role) {
+        String sessionId, String inviteCode, SessionStatus status, SessionParticipantRole role) {
 
     public static JoinSessionResponse from(JoinSessionResult result) {
-        return new JoinSessionResponse(result.sessionId(), result.inviteCode(), result.status(), result.role());
+        return new JoinSessionResponse(
+                String.valueOf(result.sessionId()), result.inviteCode(), result.status(), result.role());
     }
 }

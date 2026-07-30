@@ -1,23 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChatIcon, MonitorIcon, PeopleIcon } from "@/shared/ui";
 import {
   CoachingPromptPanel,
+  INITIAL_ATTENTION_COACHING_STATE,
+  reduceAttentionCoaching,
   useCameraGuidePrompt,
   usePostureGuidePrompt,
   useUnderstandingCheckPrompt,
+  type AnalysisAvailability,
   type CameraGuideCause,
+  type DetectorOutput,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
-import {
-  participantTiles,
-  participants as participantsFixture,
-  publicMessages,
-} from "./fixtures";
+import { publicMessages } from "./fixtures";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { useRoomParticipants } from "./useRoomParticipants";
+import { useParticipantVideos } from "./useParticipantVideos";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -25,6 +26,11 @@ import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
 import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
+import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
+import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
+import { CoachTipCard } from "./components/room/CoachTipCard";
+import { useCoachingStatus } from "./useCoachingStatus";
+import { useCoachTipCard } from "./useCoachTipCard";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useSessionPresence } from "./useSessionPresence";
 
@@ -40,11 +46,6 @@ type RoomScreenProps = {
    * 스토리북·테스트처럼 서버 없이 배너를 보여줄 때만 지정한다.
    */
   expiresAt?: string;
-  /**
-   * 입장 전 점검이 장치를 저장할 때 쓴 초대 코드. 지금은 강의실 경로 파라미터가 초대 코드와 같아
-   * 기본값이 sessionId 지만, sessions/join 이 붙어 경로가 실제 세션 ID 로 바뀌면 이 값을 따로 넘겨야 한다.
-   */
-  prejoinInviteCode?: string;
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
@@ -101,14 +102,13 @@ function PanelToggle({
   );
 }
 
-export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode }: RoomScreenProps) {
+export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
       <RoomScreenContent
         sessionId={sessionId}
         roomTitle={roomTitle}
         expiresAt={expiresAt}
-        prejoinInviteCode={prejoinInviteCode ?? sessionId}
       />
     </RoomProvider>
   );
@@ -116,17 +116,18 @@ export function RoomScreen({ sessionId, roomTitle, expiresAt, prejoinInviteCode 
 
 function RoomScreenContent({
   sessionId,
-  roomTitle = "React 상태관리 심화",
+  roomTitle,
   expiresAt,
-  prejoinInviteCode,
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt } = useRoomConnection();
-  const media = useRoomMediaControls(prejoinInviteCode);
+  const { sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
+  const media = useRoomMediaControls(sessionId);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
+  // 로컬·원격 카메라 화면을 타일에 붙인다. 훅은 여기서 한 번만 부르고 ref 를 내려보낸다.
+  const participantVideos = useParticipantVideos();
   // 역할은 백엔드가 토큰에 심은 값(useRoomParticipants)에서 파생한다. 프론트가 정하지 않는다.
   // 아직 room 이 붙지 않은 시연 상태에서는 강사 화면을 기준으로 본다.
   const connected = tileParticipants.length > 0;
@@ -142,8 +143,31 @@ function RoomScreenContent({
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [promptToast, setPromptToast] = useState<string | null>(null);
-  const understandingCheck = useUnderstandingCheckPrompt({ sessionId });
-  const postureGuide = usePostureGuidePrompt();
+  // 판정 상태가 아니라 접힌 가용 상태만 들고 있다. 카메라·검출기가 실제로 바뀔 때만 갱신된다.
+  const [analysisAvailability, setAnalysisAvailability] = useState<AnalysisAvailability>("ACTIVE");
+  // 팁을 받는 쪽이 강사라 강사 화면에서만 폴링한다. 팁 카드 배선은 86 소관이다.
+  //
+  // 역할이 확정되기 전(connected=false)에는 isInstructor 가 true 이므로 그것만 보면 학생도
+  // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
+  // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
+  const isConfirmedInstructor = connected && isInstructor;
+  // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
+  // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
+  const coachTip = useCoachTipCard();
+  const coaching = useCoachingStatus({
+    sessionId,
+    enabled: isConfirmedInstructor,
+    onResult: coachTip.accept,
+  });
+  const attentionCoachingStateRef = useRef(INITIAL_ATTENTION_COACHING_STATE);
+  const resetAttentionCoaching = useCallback(() => {
+    attentionCoachingStateRef.current = INITIAL_ATTENTION_COACHING_STATE;
+  }, []);
+  const understandingCheck = useUnderstandingCheckPrompt({
+    sessionId,
+    onClosed: resetAttentionCoaching,
+  });
+  const postureGuide = usePostureGuidePrompt({ onClosed: resetAttentionCoaching });
   // 트랙 muted(다른 앱 점유)는 아직 미디어 훅이 알려주지 않아 원인에 들어오지 않는다.
   const cameraGuide = useCameraGuidePrompt({
     sessionId,
@@ -151,8 +175,33 @@ function RoomScreenContent({
     // 학생 프롬프트라 강사 화면에서는 돌리지 않는다. 역할이 확인되기 전에는 isInstructor 가
     // true 라, 켜지지 않는 쪽이 기본값이다(AttentionCameraSource 와 같은 판단).
     enabled: !isInstructor,
+    onClosed: resetAttentionCoaching,
   });
-  const [alertOpen, setAlertOpen] = useState(false);
+  const promptVisible =
+    understandingCheck.prompt !== null ||
+    postureGuide.prompt !== null ||
+    cameraGuide.prompt !== null;
+  const promptVisibleRef = useRef(promptVisible);
+  useLayoutEffect(() => {
+    promptVisibleRef.current = promptVisible;
+  }, [promptVisible]);
+  const triggerUnderstandingCheck = understandingCheck.trigger;
+  const triggerPostureGuide = postureGuide.trigger;
+  const handleAttentionDetection = useCallback(
+    (output: DetectorOutput) => {
+      const decision = reduceAttentionCoaching(attentionCoachingStateRef.current, {
+        output,
+        promptVisible: promptVisibleRef.current,
+      });
+      attentionCoachingStateRef.current = decision.state;
+      if (decision.prompt === "UNDERSTANDING_CHECK") {
+        triggerUnderstandingCheck(`understanding-${Date.now()}`);
+      } else if (decision.prompt === "POSTURE_GUIDE") {
+        triggerPostureGuide(`posture-${Date.now()}`);
+      }
+    },
+    [triggerPostureGuide, triggerUnderstandingCheck],
+  );
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const reactionSeq = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -169,15 +218,29 @@ function RoomScreenContent({
     timers.current.push(id);
   }, []);
 
-  // room 에 참가자가 없으면 갤러리가 빈 화면이 되므로 사이드 패널과 같은 시연용 픽스처로 채운다.
-  // 실제 참가자가 한 명이라도 잡히면 그쪽이 우선한다(WebSocket·미디어 연동 시 이 분기를 제거).
-  const galleryParticipants = connected ? tileParticipants : participantTiles;
+  // 갤러리는 LiveKit 이 알려주는 실제 참가자만 보여준다. 아직 아무도 없으면 빈 화면이 맞다 —
+  // 시연용 픽스처로 채우면 들어오지 않은 학생이 참가 중인 것처럼 보인다.
+  const galleryParticipants = tileParticipants;
 
-  // 사이드 패널 people/chat 목록은 아직 fixture 기반(WebSocket·57 소관).
-  const meId = isInstructor ? "p0" : "p7";
-  const list = participantsFixture.map((p) => (p.id === meId ? { ...p, ...me } : p));
-  const meCamOff = !list.find((p) => p.id === meId)?.cam;
-  const hostName = "박서준";
+  // 사이드 패널 사람 목록도 갤러리와 같은 실제 참가자를 쓴다. 내 마이크·카메라는 LiveKit 반영보다
+  // 로컬 토글이 먼저 움직이므로, 내 행만 로컬 상태로 덮어 즉시 반응하게 한다.
+  // 손들기는 업무 WebSocket 소관이라 아직 항상 내려간 상태다.
+  const meId = localParticipantId;
+  const list = tileParticipants.map((participant) => ({
+    id: participant.id,
+    name: participant.name,
+    color: participant.color,
+    host: participant.role === "instructor",
+    cam: participant.cameraEnabled,
+    mic: participant.microphoneEnabled,
+    hand: participant.handRaised,
+    ...(participant.id === meId ? me : {}),
+  }));
+  // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
+  // 자리만 잡고 기다리지 않고 기본 문구를 쓴다. 그러지 않으면 스켈레톤이 영원히 뛴다.
+  const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
+  const host = tileParticipants.find((participant) => participant.role === "instructor");
+  const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
 
   const toggleHand = () => setHandRaised((raised) => !raised);
 
@@ -226,6 +289,8 @@ function RoomScreenContent({
         <AttentionCameraSource
           active={media.ready && media.cameraEnabled}
           denied={media.cameraPermissionDenied}
+          onAvailabilityChange={setAnalysisAvailability}
+          onDetection={handleAttentionDetection}
         />
       )}
       {/* presence 응답 반영(세션 종료·강사 유예 안내) */}
@@ -239,18 +304,25 @@ function RoomScreenContent({
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
-        <div className="text-[14.5px] font-extrabold">{roomTitle}</div>
+        {/*
+          강의명은 서버가 미디어 토큰 응답으로 내려주므로 연결이 끝나기 전에는 알 수 없다.
+          그 동안 "수업" 같은 최종값처럼 보이는 문구를 그리면 제목이 바뀌는 것처럼 보인다. 자리만 잡아 둔다.
+          prop 은 테스트·스토리북 강제 지정용이다.
+        */}
+        <div className="text-[14.5px] font-extrabold">
+          {title ?? (
+            <span
+              data-testid="room-title-loading"
+              aria-label="강의명을 불러오는 중"
+              className="inline-block h-[15px] w-28 animate-pulse rounded bg-white/15 align-middle"
+            />
+          )}
+        </div>
         <div className="flex-1" />
-        {/* TODO(S15P11A105-75): 판정 파이프라인이 NEEDS_CHECK 를 감지하면 이 버튼 대신 그쪽에서 trigger 를 호출한다. */}
-        {!isInstructor && process.env.NODE_ENV !== "production" && (
-          <button
-            type="button"
-            onClick={() => understandingCheck.trigger(`dev-${Date.now()}`)}
-            className="rounded-[11px] border border-[#262b42] bg-[#151830] px-3 py-[9px] font-sans text-[12px] text-panel-muted"
-          >
-            확인 프롬프트 테스트
-          </button>
-        )}
+        {/* 분석 가용 상태(76). 학생에게 동작 여부만 알리고 점수·개별 판정은 담지 않는다. */}
+        {!isInstructor && <AnalysisStatusNotice availability={analysisAvailability} />}
+        {/* 코칭 가용 상태(76). 팁을 받는 쪽이 강사라 역할이 확정된 강사에게만 알린다. */}
+        {isConfirmedInstructor && <CoachingStatusNotice availability={coaching.availability} />}
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
@@ -317,7 +389,8 @@ function RoomScreenContent({
             ) : view === "gallery" ? (
               <ParticipantGrid
                 participants={galleryParticipants}
-                currentParticipantId={localParticipantId ?? "p0"}
+                currentParticipantId={localParticipantId ?? undefined}
+                videoRefFor={participantVideos.refFor}
                 isInstructor={isInstructor}
                 narrow={panelOpen}
               />
@@ -328,50 +401,56 @@ function RoomScreenContent({
                     {hostName.charAt(0)}
                   </div>
                 </div>
+                {/*
+                  강사 카메라. 아바타 뒤에 두어 영상이 위에 그려지고, 카메라가 꺼져 있으면 감춰 아바타가 보이게 한다.
+                  요소를 항상 마운트해 둬야 트랙 부착 훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유).
+                  내 화면일 때만 거울처럼 뒤집는다.
+                */}
+                {host !== undefined && (
+                  <video
+                    ref={participantVideos.refFor(host.id)}
+                    autoPlay
+                    muted
+                    playsInline
+                    data-testid="speaker-video"
+                    className={`absolute inset-0 size-full object-contain ${
+                      host.id === localParticipantId ? "scale-x-[-1]" : ""
+                    } ${host.cameraEnabled ? "" : "invisible"}`}
+                  />
+                )}
+                {/* 강사 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
                 <div className="pointer-events-none absolute inset-0">
-                  <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                    강의: {hostName} 선생님
-                  </div>
-                  <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                    📶 {hostName} 선생님
-                  </div>
+                  {hostName === "" ? (
+                    <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                      강의자를 기다리고 있어요
+                    </div>
+                  ) : (
+                    <>
+                      <div className="z-stage-chip absolute left-4 top-4 font-bold">
+                        강의: {hostName} 선생님
+                      </div>
+                      <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
+                        📶 {hostName} 선생님
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
 
-            {/* 카메라 꺼짐 안내 (학생) */}
-            {!isInstructor && meCamOff && (
-              <div className="absolute left-1/2 top-[18px] z-[5] -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-[#f3dc90] bg-warn-soft px-[18px] py-[11px] text-[13px] font-bold text-[#836607] shadow-[0_8px_24px_#0004]">
-                📷 카메라가 10분 이상 꺼져 있어요. 켜면 학습 신호 분석에 참여할 수 있어요.{" "}
-                <span className="font-semibold opacity-80">(이후 5분마다 안내)</span>
-              </div>
-            )}
+            {/*
+              카메라 꺼짐 안내는 카메라 안내 프롬프트(81)가 원인별로 맡는다. 여기 있던 프로토타입
+              배너는 "10분 이상·이후 5분마다"라는 옛 규칙이라 확정된 1분 발동·5분 재권유와
+              어긋나고 문구도 겹쳐 제거했다(76: 중복 구현하지 않는다).
+            */}
 
-            {/* 집단 알림 (강사) */}
-            {isInstructor && alertOpen && (
-              <div className="absolute right-2.5 top-2 z-[5] w-[290px] animate-[zPop_.2s] rounded-[18px] bg-surface p-[18px] text-ink shadow-[0_16px_44px_#0006]">
-                <div className="mb-2.5 flex items-center justify-between">
-                  <span className="z-pill bg-warn-soft px-3 py-[5px] text-[13px] text-warn">
-                    ⚠ 개념 확인 필요
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setAlertOpen(false)}
-                    aria-label="알림 닫기"
-                    className="cursor-pointer border-0 bg-transparent text-base text-ink-quiet"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex flex-col gap-2.5">
-                  <p className="m-0 text-[13.5px] font-bold leading-[1.5] text-ink">
-                    학생 <b className="text-warn">30%</b>에게서 신호가 나타났어요.
-                  </p>
-                  <p className="m-0 text-[13.5px] leading-[1.5] text-ink-label">
-                    잠시 속도를 늦추거나 짚어주면 좋아요.
-                  </p>
-                </div>
-              </div>
+            {/*
+              수업 팁 (강사). 문구는 서버가 §8 템플릿으로 완성해 내려주므로 그대로 표시한다.
+              여기 있던 프로토타입 카드는 "학생 30%에게서 신호가 나타났어요" 라는 고정 문구라
+              실제 집계와 무관했다(86).
+            */}
+            {isConfirmedInstructor && coachTip.tip !== null && (
+              <CoachTipCard tip={coachTip.tip} onDismiss={coachTip.dismiss} />
             )}
 
             {/* 플로팅 반응 */}
@@ -415,7 +494,7 @@ function RoomScreenContent({
             panel={panel}
             participants={list}
             messages={publicMessages}
-            meId={meId}
+            meId={meId ?? ""}
             isInstructor={isInstructor}
           />
         )}

@@ -3,6 +3,7 @@ package com.a105.zani.session.infrastructure.persistence.query;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -45,9 +46,13 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
                                 .toList())
                         .stream()
                         .collect(Collectors.toMap(SessionJpaEntity::getId, Function.identity()));
+        // 강사는 자기 수업의 참가자이기도 하므로 주최 목록과 참가 목록에 같은 세션이 함께 잡힌다.
+        // 그대로 두면 내 수업 목록에 같은 수업이 두 번 뜬다. 주최 항목을 우선해 걸러낸다.
+        Set<Long> alreadyListed =
+                results.stream().map(SessionSummaryResult::sessionId).collect(Collectors.toSet());
         for (SessionParticipantJpaEntity participant : participants) {
             SessionJpaEntity session = joinedSessionsById.get(participant.getSessionId());
-            if (session != null) {
+            if (session != null && alreadyListed.add(session.getId())) {
                 results.add(toSummary(session, participant.getRole()));
             }
         }

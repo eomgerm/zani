@@ -47,14 +47,14 @@ describe("sendPromptResponse", () => {
     expect(Object.keys(sentBody).sort()).toEqual(["answer", "kind", "respondedAt", "shownAt"]);
   });
 
-  it("carries NON_RESPONSE for a prompt that closed without an answer", async () => {
+  it("carries NO_RESPONSE for a prompt that closed without an answer", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await sendPromptResponse("55", "prompt-1", { ...payload, answer: "NON_RESPONSE" });
+    await sendPromptResponse("55", "prompt-1", { ...payload, answer: "NO_RESPONSE" });
 
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).answer).toBe("NON_RESPONSE");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).answer).toBe("NO_RESPONSE");
   });
 
   it("throws PromptResponseSendError when the request fails", async () => {

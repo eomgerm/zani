@@ -240,8 +240,9 @@ components:
       type: object
       properties:
         sessionId:
-          type: integer
-          format: int64
+          # TSID 는 JavaScript 안전 정수 상한(2^53-1)을 넘어 브라우저에서 값이 반올림된다.
+          # 그래서 식별자는 문자열로 내보낸다.
+          type: string
         inviteCode:
           type: string
           minLength: 8
@@ -287,8 +288,9 @@ components:
       type: object
       properties:
         sessionId:
-          type: integer
-          format: int64
+          # TSID 는 JavaScript 안전 정수 상한(2^53-1)을 넘어 브라우저에서 값이 반올림된다.
+          # 그래서 식별자는 문자열로 내보낸다.
+          type: string
         inviteCode:
           type: string
         status:
@@ -319,8 +321,9 @@ components:
       type: object
       properties:
         sessionId:
-          type: integer
-          format: int64
+          # TSID 는 JavaScript 안전 정수 상한(2^53-1)을 넘어 브라우저에서 값이 반올림된다.
+          # 그래서 식별자는 문자열로 내보낸다.
+          type: string
         inviteCode:
           type: string
         status:

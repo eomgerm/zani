@@ -6,11 +6,23 @@ export type {
   UseAttentionDetectionOptions,
 } from "./presentation/useAttentionDetection";
 export { ATTENTION_LABELS } from "./domain/attentionPrediction";
+export { analysisAvailabilityOf } from "./domain/analysisAvailability";
+export type { AnalysisAvailability } from "./domain/analysisAvailability";
 export type {
   AttentionLabel,
   AttentionPrediction,
   AttentionStatus,
 } from "./domain/attentionPrediction";
+export {
+  INITIAL_ATTENTION_COACHING_STATE,
+  reduceAttentionCoaching,
+} from "./domain/attentionCoachingDecision";
+export type {
+  AttentionCoachingDecision,
+  AttentionCoachingInput,
+  AttentionCoachingState,
+} from "./domain/attentionCoachingDecision";
+export type { DetectionOutcome, DetectorOutput, DetectorReport } from "./domain/detectionOutcome";
 export { CoachingPromptPanel } from "./presentation/CoachingPromptPanel";
 export type {
   CoachingPromptOption,
