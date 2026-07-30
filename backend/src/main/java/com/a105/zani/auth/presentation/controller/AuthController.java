@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.a105.zani.auth.application.exception.InvalidRefreshTokenException;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginCommand;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginResult;
 import com.a105.zani.auth.application.googlelogin.GoogleLoginUseCase;
@@ -96,8 +97,19 @@ public class AuthController {
     @SecurityRequirements
     @PostMapping("/refresh")
     public ApiResponse<RotateRefreshTokenResponse> refresh(HttpServletRequest request, HttpServletResponse response) {
-        RotateRefreshTokenResult result = rotateRefreshTokenUseCase.rotate(new RotateRefreshTokenCommand(
-                refreshTokenCookieManager.find(request).orElse(null)));
+        RotateRefreshTokenResult result;
+        try {
+            result = rotateRefreshTokenUseCase.rotate(new RotateRefreshTokenCommand(
+                    refreshTokenCookieManager.find(request).orElse(null)));
+        } catch (InvalidRefreshTokenException invalid) {
+            // 무효한 토큰을 브라우저가 계속 들고 있으면 새로고침마다 같은 401 이 나고 스스로 회복되지 않는다.
+            // 사용자가 쿠키를 직접 지워야만 벗어난다. 여기서 만료시켜 다음 요청부터는 보내지 않게 한다.
+            //
+            // RefreshSessionUnavailableException(Redis 장애)은 일부러 잡지 않는다. 그때는 토큰이 무효한지
+            // 알 수 없는 상태라, 지우면 Redis 가 한 번 깜빡일 때 접속 중인 전원이 로그아웃된다.
+            refreshTokenCookieManager.clear(response);
+            throw invalid;
+        }
         refreshTokenCookieManager.write(response, result.refreshToken());
         return ApiResponse.success(RotateRefreshTokenResponse.from(result));
     }
