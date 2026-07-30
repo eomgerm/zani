@@ -1,5 +1,6 @@
 package com.a105.zani.session.infrastructure.websocket;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -34,8 +35,11 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private final JwtDecoder accessTokenJwtDecoder;
     private final ResolveSessionParticipantUseCase resolveSessionParticipantUseCase;
 
+    // JwtDecoder 빈이 셋(accessToken·refresh·Google ID) 있어 한정자가 없으면 파라미터 이름 일치에 기대게 된다.
+    // 이름이 바뀌거나 -parameters 없이 컴파일되면 다른 디코더가 주입돼 모든 CONNECT 가 실패한다.
     public StompAuthChannelInterceptor(
-            JwtDecoder accessTokenJwtDecoder, ResolveSessionParticipantUseCase resolveSessionParticipantUseCase) {
+            @Qualifier("accessTokenJwtDecoder") JwtDecoder accessTokenJwtDecoder,
+            ResolveSessionParticipantUseCase resolveSessionParticipantUseCase) {
         this.accessTokenJwtDecoder = accessTokenJwtDecoder;
         this.resolveSessionParticipantUseCase = resolveSessionParticipantUseCase;
     }
