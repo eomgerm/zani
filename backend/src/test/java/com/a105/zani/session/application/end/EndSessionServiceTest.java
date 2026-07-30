@@ -52,6 +52,20 @@ class EndSessionServiceTest {
         assertEquals(List.of(INSTRUCTOR_ID), activationLock.released());
     }
 
+    /** 오디오 버퍼 반납이 실패해도 종료를 되돌리지 않는다. 트랜잭션 안이라 예외가 올라가면 종료가 롤백된다. */
+    @Test
+    void endsTheSessionEvenWhenTheAudioBufferCannotBeReleased() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+        audioRelease.failWith(new IllegalStateException("buffer gone"));
+
+        EndSessionResult result = service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
+
+        assertTrue(result.ended());
+        assertEquals(SessionStatus.NOTE_PENDING, sessionRepository.session.status());
+        // 버퍼 반납이 실패해도 잠금은 반납돼야 한다 — 아니면 강사가 3시간 동안 새 수업을 열 수 없다.
+        assertEquals(List.of(INSTRUCTOR_ID), activationLock.released());
+    }
+
     /** 잠금 반납이 실패해도 종료를 되돌리지 않는다. 수업이 계속 살아 있는 것으로 남는 편이 더 나쁘다. */
     @Test
     void endsTheSessionEvenWhenTheLockStoreIsDown() {
@@ -170,9 +184,17 @@ class EndSessionServiceTest {
             implements com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase {
 
         private final List<Long> released = new java.util.ArrayList<>();
+        private RuntimeException failure;
+
+        void failWith(RuntimeException exception) {
+            this.failure = exception;
+        }
 
         @Override
         public void release(long sessionId) {
+            if (failure != null) {
+                throw failure;
+            }
             released.add(sessionId);
         }
     }
