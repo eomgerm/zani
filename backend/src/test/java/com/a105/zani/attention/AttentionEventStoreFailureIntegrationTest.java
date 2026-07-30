@@ -161,6 +161,9 @@ class AttentionEventStoreFailureIntegrationTest {
     @AfterEach
     void cleanUp() {
         jdbcTemplate.update("DELETE FROM session_participants WHERE id = ?", PARTICIPANT_ID);
+        // 세션 상태 전이 이력을 먼저 지운다. 3시간 만료 스윕이 테스트 중에도 돌아(1분 주기)
+        // 오래된 시작 시각을 가진 이 세션을 종료시키면서 이력 행을 남기므로, FK 때문에 세션을 지울 수 없다.
+        jdbcTemplate.update("DELETE FROM session_status_changes WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
     }
 
