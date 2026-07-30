@@ -140,6 +140,11 @@ class GetLiveStateServiceTest {
         }
 
         @Override
+        public Optional<ChatMessage> findById(Long id) {
+            throw new UnsupportedOperationException("스냅샷은 단건을 읽지 않는다.");
+        }
+
+        @Override
         public List<ChatMessage> findRecentPublic(Long sessionId, int limit) {
             assertEquals(SESSION_ID, sessionId);
             return List.of(

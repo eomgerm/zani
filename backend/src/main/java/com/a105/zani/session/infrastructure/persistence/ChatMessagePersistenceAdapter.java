@@ -2,6 +2,7 @@ package com.a105.zani.session.infrastructure.persistence;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -32,6 +33,11 @@ public class ChatMessagePersistenceAdapter implements ChatMessageRepository {
     public ChatMessage save(ChatMessage chatMessage) {
         ChatMessageJpaEntity saved = chatMessageJpaRepository.saveAndFlush(mapper.toEntity(chatMessage));
         return mapper.toDomain(saved);
+    }
+
+    @Override
+    public Optional<ChatMessage> findById(Long id) {
+        return chatMessageJpaRepository.findById(id).map(mapper::toDomain);
     }
 
     @Override

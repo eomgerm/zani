@@ -1,12 +1,16 @@
 package com.a105.zani.session.domain.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import com.a105.zani.session.domain.model.ChatMessage;
 
 public interface ChatMessageRepository {
 
     ChatMessage save(ChatMessage chatMessage);
+
+    /** 이미 처리된 재시도에 같은 내용을 다시 알려 주기 위해 읽는다. */
+    Optional<ChatMessage> findById(Long id);
 
     /**
      * 공개 채팅 이력을 오래된 것부터 최대 {@code limit} 건 반환한다. 재입장 스냅샷이 쓴다.

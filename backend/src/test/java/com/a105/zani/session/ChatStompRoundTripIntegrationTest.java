@@ -210,17 +210,24 @@ class ChatStompRoundTripIntegrationTest {
         assertTrue(storedOffset >= 600_000L && storedOffset < 660_000L, "수업 시작 기준 오프셋이 아니다: " + storedOffset);
     }
 
+    /**
+     * 재시도는 저장을 늘리지 않지만 확정은 다시 알린다.
+     *
+     * <p>조용히 넘기면 첫 전송의 echo 를 놓친 클라이언트가 재시도해도 확인을 받지 못해 보내는 중·실패 상태로 영원히 남는다. 받는 쪽은 {@code eventId} 로 거르므로 다시 뿌려도 중복이
+     * 생기지 않는다.
+     */
     @Test
-    void 같은_clientEventId로_다시_보내면_한_번만_저장하고_한_번만_뿌린다() throws Exception {
+    void 같은_clientEventId로_다시_보내면_저장은_한_번이고_확정은_다시_알린다() throws Exception {
         StompSession session = connectAs(STUDENT_ID);
         BlockingQueue<String> received = subscribeToSession(session);
 
         sendChat(session, "c-1", "질문 있습니다");
-        awaitFrame(received);
+        String firstEventId = JsonPath.read(awaitFrame(received), "$.eventId");
         sendChat(session, "c-1", "질문 있습니다");
 
-        // 두 번째 프레임이 오지 않아야 한다. 짧게 기다려 확인한다.
-        assertNull(received.poll(2, TimeUnit.SECONDS));
+        String republished = awaitFrame(received);
+        assertEquals(firstEventId, JsonPath.read(republished, "$.eventId"));
+        assertEquals("c-1", JsonPath.read(republished, "$.clientEventId"));
         assertEquals(
                 1,
                 jdbcTemplate.queryForObject(

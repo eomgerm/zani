@@ -107,12 +107,38 @@ class SendChatMessageServiceTest {
     }
 
     @Test
-    void 같은_clientEventId로_다시_보내면_저장도_브로드캐스트도_하지_않는다() {
+    void 같은_clientEventId로_다시_보내면_두_번_저장하지_않는다() {
         SendChatMessageResult first = service.send(command("c-1", "안녕하세요"));
         SendChatMessageResult retry = service.send(command("c-1", "안녕하세요"));
 
         assertTrue(retry.duplicate());
         assertEquals(first.eventId(), retry.eventId());
+        assertEquals(1, messages.saved.size());
+    }
+
+    /** 조용히 넘기면 첫 전송의 echo 를 놓친 클라이언트가 재시도해도 확인을 받지 못해 보내는 중·실패 상태로 영원히 남는다. 받는 쪽은 eventId 로 거르므로 다시 뿌려도 중복이 생기지 않는다. */
+    @Test
+    void 재시도에도_확정을_다시_알린다() {
+        SendChatMessageResult first = service.send(command("c-1", "안녕하세요"));
+        service.send(command("c-1", "안녕하세요"));
+
+        assertEquals(2, publisher.published.size());
+        SessionEvent republished = publisher.published.getLast();
+        assertEquals(first.eventId(), republished.eventId());
+        assertEquals("c-1", republished.clientEventId());
+        assertEquals("안녕하세요", republished.payload().get("content"));
+    }
+
+    /** 선점만 남고 행이 없으면(저장 실패 뒤 되돌리기까지 실패) 재시도를 새 전송으로 처리해 메시지가 사라지지 않게 한다. */
+    @Test
+    void 선점만_남고_행이_없으면_새_전송으로_처리한다() {
+        messages.failNextSave = true;
+        assertThrows(IllegalStateException.class, () -> service.send(command("c-1", "안녕하세요")));
+        idempotency.claims.put("100:c-1", "999999"); // 되돌리기가 실패해 선점만 남은 상태를 만든다.
+
+        SendChatMessageResult retry = service.send(command("c-1", "안녕하세요"));
+
+        assertFalse(retry.duplicate());
         assertEquals(1, messages.saved.size());
         assertEquals(1, publisher.published.size());
     }
@@ -179,8 +205,13 @@ class SendChatMessageServiceTest {
         }
 
         @Override
+        public Optional<ChatMessage> findById(Long id) {
+            return saved.stream().filter(m -> m.id().equals(id)).findFirst();
+        }
+
+        @Override
         public List<ChatMessage> findRecentPublic(Long sessionId, int limit) {
-            throw new UnsupportedOperationException("전송 경로는 이력을 읽지 않는다.");
+            throw new UnsupportedOperationException("전송 경로는 이력 목록을 읽지 않는다.");
         }
     }
 

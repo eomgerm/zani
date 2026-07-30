@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -32,6 +33,7 @@ import com.a105.zani.session.domain.repository.ChatMessageRepository;
  * <p><b>메서드에 트랜잭션을 걸지 않는다.</b> 브로드캐스트까지 한 트랜잭션에 넣으면 커밋 전에 메시지가 나가거나, 롤백된 메시지가 이미 전송된 상태가 된다. 저장은 리포지터리 트랜잭션에서 끝내고, 커밋된
  * 뒤에 내보낸다.
  */
+@Slf4j
 @Service
 public class SendChatMessageService implements SendChatMessageUseCase {
 
@@ -72,8 +74,20 @@ public class SendChatMessageService implements SendChatMessageUseCase {
         Optional<String> alreadyHandled =
                 chatIdempotencyPort.claim(command.sessionId(), command.clientEventId(), eventId);
         if (alreadyHandled.isPresent()) {
-            // 같은 전송의 재시도다. 두 번 저장하거나 두 번 뿌리지 않고, 처음 부여한 식별자를 그대로 알려 준다.
-            return new SendChatMessageResult(alreadyHandled.get(), true);
+            Optional<ChatMessage> stored = parseEventId(alreadyHandled.get()).flatMap(chatMessageRepository::findById);
+            if (stored.isPresent()) {
+                // 같은 전송의 재시도다. 저장은 건너뛰되 **브로드캐스트는 다시 한다.**
+                //
+                // 조용히 넘기면 첫 전송의 echo 를 놓친 클라이언트가 재시도해도 확인을 받지 못해
+                // 보내는 중·실패 상태로 영원히 남는다. 게다가 재연결 스냅샷은 서버가 부여한 eventId 로
+                // 이력을 채우므로, 클라이언트가 clientEventId 로 들고 있던 실패 항목과 겹쳐 같은 메시지가
+                // 두 번 보인다. 받는 쪽은 eventId 로 거르므로 다시 뿌려도 중복이 생기지 않는다.
+                publish(command, participant, stored.get(), alreadyHandled.get(), now);
+                return new SendChatMessageResult(alreadyHandled.get(), true);
+            }
+            // 선점만 남고 행이 없다 — 앞선 저장이 실패했고 되돌리기까지 실패한 경우다. 새 전송으로 처리한다.
+            log.warn("멱등 선점만 남고 채팅 행이 없어 새 전송으로 처리합니다. sessionId={}", command.sessionId());
+            chatIdempotencyPort.release(command.sessionId(), command.clientEventId());
         }
 
         ChatMessage saved;
@@ -90,6 +104,16 @@ public class SendChatMessageService implements SendChatMessageUseCase {
             throw failedToSave;
         }
 
+        publish(command, participant, saved, eventId, now);
+        return new SendChatMessageResult(eventId, false);
+    }
+
+    private void publish(
+            SendChatMessageCommand command,
+            ResolveSessionParticipantResult participant,
+            ChatMessage message,
+            String eventId,
+            Instant deliveredAt) {
         sessionEventPublishPort.publishToSession(
                 command.sessionId(),
                 new SessionEvent(
@@ -97,11 +121,18 @@ public class SendChatMessageService implements SendChatMessageUseCase {
                         command.clientEventId(),
                         SessionEventType.CHAT_MESSAGE,
                         sender(participant, command.userId()),
-                        saved.occurredOffsetMs(),
-                        now,
-                        Map.of("content", saved.content())));
+                        message.occurredOffsetMs(),
+                        deliveredAt,
+                        Map.of("content", message.content())));
+    }
 
-        return new SendChatMessageResult(eventId, false);
+    /** 우리가 쓴 값이라 항상 숫자지만, 읽을 수 없으면 재시도로 보지 않고 새 전송으로 넘긴다. */
+    private static Optional<Long> parseEventId(String eventId) {
+        try {
+            return Optional.of(Long.parseLong(eventId));
+        } catch (NumberFormatException unreadable) {
+            return Optional.empty();
+        }
     }
 
     private SessionEventSender sender(ResolveSessionParticipantResult participant, Long userId) {
