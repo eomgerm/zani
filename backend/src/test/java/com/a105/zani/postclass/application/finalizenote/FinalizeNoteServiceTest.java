@@ -12,6 +12,7 @@ import com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException;
 import com.a105.zani.postclass.domain.model.InstructorNote;
 import com.a105.zani.postclass.domain.model.NoteStatus;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
+import com.a105.zani.session.application.exception.SessionNotEndedException;
 import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantQuery;
 import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantResult;
 import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantUseCase;
@@ -108,6 +109,13 @@ class FinalizeNoteServiceTest {
     }
 
     @Test
+    void propagatesTheStillLiveSessionRejection() {
+        resolveParticipant.failure = new SessionNotEndedException();
+
+        assertThrows(SessionNotEndedException.class, () -> service.finalizeNote(command()));
+    }
+
+    @Test
     void surfacesAConcurrentFirstFinalizeAsAConflict() {
         noteRepository.failSaveWithDuplicateKey = true;
 
@@ -127,9 +135,13 @@ class FinalizeNoteServiceTest {
     private static final class StubResolveEndedParticipant implements ResolveEndedSessionParticipantUseCase {
 
         private SessionParticipantRole role = SessionParticipantRole.INSTRUCTOR;
+        private RuntimeException failure;
 
         @Override
         public ResolveEndedSessionParticipantResult resolve(ResolveEndedSessionParticipantQuery query) {
+            if (failure != null) {
+                throw failure;
+            }
             return new ResolveEndedSessionParticipantResult(INSTRUCTOR_PARTICIPANT, role);
         }
     }
