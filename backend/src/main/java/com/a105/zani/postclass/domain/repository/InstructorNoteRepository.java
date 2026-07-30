@@ -37,6 +37,14 @@ public interface InstructorNoteRepository {
     boolean finalizeIfDraft(Long sessionId, Instant finalizedAt);
 
     /**
+     * 여전히 방치 상태인 초안만 FINALIZED 로 원자 전환한다. 전이가 실제로 일어났을 때만 {@code true}.
+     *
+     * <p>{@link #finalizeIfDraft} 와 달리 마지막 입력 시각까지 다시 검사한다. 스윕이 대상을 고른 뒤 확정하기 전에 강사가 다시 입력할 수 있는데, 상태만 보면 그 메모가 방금
+     * 살아났는데도 확정된다 — 입력이 타이머를 초기화한다는 규칙(NOTE-002)이 깨진다.
+     */
+    boolean finalizeIfStillInactive(Long sessionId, Instant editedBefore, Instant finalizedAt);
+
+    /**
      * 초안 없이 확정된 메모를 만든다. 같은 세션의 행이 이미 있으면 아무것도 하지 않는다.
      *
      * <p>유니크 제약 위반을 예외로 받지 않는 이유: 확정은 멱등이어야 한다(FRD §16). 위반이 한 번 나면 그 트랜잭션은 롤백 대상이 되어, 예외를 잡아 다시 읽어도 커밋할 수 없다. 그래서 애초에

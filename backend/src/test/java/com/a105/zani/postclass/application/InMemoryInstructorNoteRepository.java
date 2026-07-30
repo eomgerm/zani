@@ -139,6 +139,15 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
         return true;
     }
 
+    @Override
+    public boolean finalizeIfStillInactive(Long sessionId, Instant editedBefore, Instant finalizedAt) {
+        InstructorNote note = findBySessionId(sessionId).orElse(null);
+        if (note == null || note.lastEditedAt() == null || note.lastEditedAt().isAfter(editedBefore)) {
+            return false;
+        }
+        return finalizeIfDraft(sessionId, finalizedAt);
+    }
+
     private void replace(Long sessionId, Instant finalizedAt) {
         InstructorNote note = findBySessionId(sessionId).orElse(null);
         if (note == null) {

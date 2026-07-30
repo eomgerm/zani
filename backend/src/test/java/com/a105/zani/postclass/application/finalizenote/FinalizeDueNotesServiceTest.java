@@ -55,6 +55,16 @@ class FinalizeDueNotesServiceTest {
     }
 
     @Test
+    void skipsANoteTheInstructorStartedWritingAgainAfterItWasPicked() {
+        givenDraftEditedAt(NOW.minus(InstructorNote.INACTIVITY_WINDOW));
+        // 대상을 고른 뒤 강사가 다시 입력했다. 그 입력이 타이머를 초기화하므로(NOTE-002) 확정해서는 안 된다.
+        finalizeInactiveNote.editAgainBeforeTransition = true;
+
+        assertEquals(0, service.finalizeDueNotes());
+        assertFalse(noteRepository.findBySessionId(SESSION_ID).orElseThrow().isFinalized());
+    }
+
+    @Test
     void keepsSweepingAfterOneNoteFails() {
         givenDraftEditedAt(NOW.minus(InstructorNote.INACTIVITY_WINDOW).minusSeconds(60), SESSION_ID);
         givenDraftEditedAt(NOW.minus(InstructorNote.INACTIVITY_WINDOW), SESSION_ID + 1);
@@ -88,17 +98,26 @@ class FinalizeDueNotesServiceTest {
 
         private boolean failFirstAttempt;
 
+        /** 전환 직전에 강사가 다시 입력한다. 조건부 전환이 마지막 입력 시각까지 보는지 확인하기 위한 훅이다. */
+        private boolean editAgainBeforeTransition;
+
         private RecordingFinalizeInactiveNote(InMemoryInstructorNoteRepository repository) {
             this.repository = repository;
         }
 
         @Override
-        public boolean finalizeInactiveNote(Long sessionId) {
+        public boolean finalizeInactiveNote(Long sessionId, Instant editedBefore) {
             attempted.add(sessionId);
             if (failFirstAttempt && attempted.size() == 1) {
                 throw new IllegalStateException("db down");
             }
-            return repository.finalizeIfDraft(sessionId, NOW);
+            if (editAgainBeforeTransition) {
+                editAgainBeforeTransition = false;
+                InstructorNote note = repository.findBySessionId(sessionId).orElseThrow();
+                note.saveDraft("다시 쓰기 시작한 입력", NOW);
+                repository.save(note);
+            }
+            return repository.finalizeIfStillInactive(sessionId, editedBefore, NOW);
         }
     }
 }

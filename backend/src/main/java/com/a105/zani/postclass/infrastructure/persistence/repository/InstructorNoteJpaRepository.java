@@ -57,6 +57,22 @@ public interface InstructorNoteJpaRepository extends JpaRepository<InstructorNot
     int finalizeIfDraft(@Param("sessionId") Long sessionId, @Param("finalizedAt") Instant finalizedAt);
 
     /**
+     * 마지막 입력이 여전히 기준 시각보다 이전인 초안만 FINALIZED 로 바꾼다.
+     *
+     * <p>스윕이 대상을 고른 뒤 확정하기 전에 강사가 다시 입력할 수 있다. 상태만 검사하면 방금 살아난 메모가 확정되어 "입력이 타이머를 초기화한다"(NOTE-002)가 깨진다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update InstructorNoteJpaEntity note
+               set note.status = 'FINALIZED', note.finalizedAt = :finalizedAt, note.updatedAt = :finalizedAt
+             where note.sessionId = :sessionId and note.status = 'DRAFT' and note.lastEditedAt <= :editedBefore
+            """)
+    int finalizeIfStillInactive(
+            @Param("sessionId") Long sessionId,
+            @Param("editedBefore") Instant editedBefore,
+            @Param("finalizedAt") Instant finalizedAt);
+
+    /**
      * 초안 없이 확정된 메모를 넣는다. 같은 세션의 행이 이미 있으면 아무것도 바꾸지 않는다.
      *
      * <p>INSERT IGNORE 를 쓰지 않는 이유: 이 테이블은 session_participants 로 FK 가 걸려 있어 IGNORE 가 FK 위반까지 경고로 삼켜 버린다. ON DUPLICATE

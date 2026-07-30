@@ -39,7 +39,7 @@ public class FinalizeDueNotesService implements FinalizeDueNotesUseCase {
         int finalized = 0;
         for (Long sessionId : due) {
             try {
-                if (finalizeInactiveNoteUseCase.finalizeInactiveNote(sessionId)) {
+                if (finalizeInactiveNoteUseCase.finalizeInactiveNote(sessionId, editedBefore)) {
                     finalized++;
                 }
             } catch (RuntimeException exception) {

@@ -89,6 +89,11 @@ public class InstructorNotePersistenceAdapter implements InstructorNoteRepositor
     }
 
     @Override
+    public boolean finalizeIfStillInactive(Long sessionId, Instant editedBefore, Instant finalizedAt) {
+        return instructorNoteJpaRepository.finalizeIfStillInactive(sessionId, editedBefore, finalizedAt) == 1;
+    }
+
+    @Override
     public Optional<Long> insertFinalizedIfAbsent(Long sessionId, Long instructorParticipantId, Instant finalizedAt) {
         long id = TsidGenerator.generate();
         int inserted = instructorNoteJpaRepository.insertFinalizedIfAbsent(
