@@ -16,6 +16,7 @@ import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
  */
 @ConfigurationProperties(prefix = "attention.timeline")
 public record AttentionTimelineProperties(
+        Duration maxDuration,
         Duration samplingInterval,
         Duration groupWindow,
         Duration focusWindow,
@@ -34,6 +35,9 @@ public record AttentionTimelineProperties(
 
     public AttentionTimelineProperties {
         TimelinePolicy defaults = TimelinePolicy.defaults();
+        if (maxDuration == null) {
+            maxDuration = defaults.maxDuration();
+        }
         if (samplingInterval == null) {
             samplingInterval = defaults.samplingInterval();
         }

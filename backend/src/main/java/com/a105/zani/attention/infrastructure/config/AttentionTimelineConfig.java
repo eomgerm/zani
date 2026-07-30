@@ -14,6 +14,7 @@ public class AttentionTimelineConfig {
     @Bean
     public TimelinePolicy timelinePolicy(AttentionTimelineProperties properties) {
         return new TimelinePolicy(
+                properties.maxDuration(),
                 properties.samplingInterval(),
                 properties.groupWindow(),
                 properties.focusWindow(),

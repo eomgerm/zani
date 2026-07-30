@@ -14,6 +14,9 @@ class TimelinePolicyTest {
     void defaults_match_the_decided_values() {
         TimelinePolicy policy = TimelinePolicy.defaults();
 
+        // 세션 자동 종료 시각(Session.ACTIVE_DURATION)과 같은 값이다. 오프셋이 망가진 데이터에서 격자가
+        // 무한히 늘어나는 것을 막는 안전장치다.
+        assertThat(policy.maxDuration()).isEqualTo(Duration.ofHours(3));
         assertThat(policy.samplingInterval()).isEqualTo(Duration.ofSeconds(5));
         assertThat(policy.groupWindow()).isEqualTo(Duration.ofMinutes(5));
         assertThat(policy.focusWindow()).isEqualTo(Duration.ofSeconds(30));

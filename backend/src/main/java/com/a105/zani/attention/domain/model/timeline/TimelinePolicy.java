@@ -7,6 +7,7 @@ import java.time.Duration;
  *
  * <p>값의 출처는 두 곳이다 — FRD §18.2·§18.3·§19.2 와 확정 문서 §6.2·§7.1·§7.3. 계산기들이 상수를 각자 들고 있으면 한 곳만 고쳐지는 사고가 나므로 하나로 모은다.
  *
+ * @param maxDuration 시계열이 다룰 수 있는 최대 길이. 세션 자동 종료 시각과 같은 3시간이며 안전장치로 둔다 — 오프셋이 한 건이라도 망가지면 격자 수가 그대로 응답 크기가 된다
  * @param samplingInterval 격자 간격. 이 간격마다 시계열 점을 하나 찍는다
  * @param groupWindow 집단 비율이 참고하는 창. 이 창을 채우지 못한 구간은 비율을 내지 않는다
  * @param focusWindow 개인 집중 흐름의 이동창
@@ -24,6 +25,7 @@ import java.time.Duration;
  * @param distractionMergeGap 두 구간의 간격이 이보다 짧으면 하나로 합친다
  */
 public record TimelinePolicy(
+        Duration maxDuration,
         Duration samplingInterval,
         Duration groupWindow,
         Duration focusWindow,
@@ -42,6 +44,9 @@ public record TimelinePolicy(
 
     public static TimelinePolicy defaults() {
         return new TimelinePolicy(
+                // session 도메인의 Session.ACTIVE_DURATION 과 같은 값이다. 다른 도메인의 모델을 직접 참조하지
+                // 않으려고 값을 여기 다시 적는다.
+                Duration.ofHours(3),
                 Duration.ofSeconds(5),
                 Duration.ofMinutes(5),
                 Duration.ofSeconds(30),
