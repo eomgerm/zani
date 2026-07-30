@@ -1,19 +1,19 @@
 import Link from "next/link";
-import { Badge, BookmarkIcon, Card, FocusFlowChart } from "@/shared/ui";
+import { Badge, BookmarkIcon, Card } from "@/shared/ui";
+import { StudentAttentionTimeline } from "@/domains/report";
 import { learnSegments, recommendations, studentGlance, studentSummary } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
-import { FocusLegend } from "./FocusLegend";
 
 interface Props {
   lectureId: string;
+  /** 집중 흐름을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
+  sessionId: string;
   activeSeg: number;
   onSelect: (i: number) => void;
 }
 
 /** 리포트 탭 2 (학생) — 한눈에 보기 · 참여도 요약 · 집중 흐름 · 타임라인 · 복습 추천 + 퀴즈. */
-export function StudentReport({ lectureId, activeSeg, onSelect }: Props) {
-  const flow = learnSegments.map((s) => ({ range: s.range, score: s.fMine }));
-
+export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <Card className="px-6 py-[22px]">
@@ -44,10 +44,7 @@ export function StudentReport({ lectureId, activeSeg, onSelect }: Props) {
         </div>
       </Card>
 
-      <Card className="px-6 pb-3.5 pt-[22px]">
-        <FocusLegend title="집중 흐름" scope="내 집중도" />
-        <FocusFlowChart segments={flow} activeSeg={activeSeg} onSelect={onSelect} />
-      </Card>
+      <StudentAttentionTimeline sessionId={sessionId} />
 
       <Card className="px-6 py-[22px]">
         <div className="mb-1 flex flex-wrap items-center gap-2">

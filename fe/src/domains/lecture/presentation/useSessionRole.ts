@@ -41,7 +41,13 @@ export function useSessionRole(
   const { request = requestSessionList } = options;
   const { accessToken } = useAuth();
 
-  const [state, setState] = useState<UseSessionRoleResult>({ status: "loading", role: null });
+  // 답에 어느 세션의 답인지 함께 담는다. 세션이 바뀐 순간 이전 역할을 물려주면 그 짧은 사이에
+  // 잘못된 엔드포인트를 부른다.
+  const [answer, setAnswer] = useState<UseSessionRoleResult & { sessionId: string }>({
+    sessionId: "",
+    status: "loading",
+    role: null,
+  });
 
   useEffect(() => {
     // 로그인 전에는 확인할 방법이 없다. 로딩에 머문다.
@@ -52,22 +58,20 @@ export function useSessionRole(
     const controller = new AbortController();
     let active = true;
 
-    setState({ status: "loading", role: null });
-
     request(accessToken, controller.signal)
       .then((sessions) => {
         if (!active) return;
         const found = sessions.find((session) => session.sessionId === sessionId);
         if (found === undefined || (found.role !== "INSTRUCTOR" && found.role !== "STUDENT")) {
-          setState({ status: "unknown", role: null });
+          setAnswer({ sessionId, status: "unknown", role: null });
           return;
         }
-        setState({ status: "ready", role: found.role });
+        setAnswer({ sessionId, status: "ready", role: found.role });
       })
       .catch((caught: unknown) => {
         // 취소는 실패가 아니다. 화면을 떠났거나 토큰이 갱신되어 다시 조회하는 경우다.
         if (!active || controller.signal.aborted) return;
-        setState({ status: "unknown", role: null });
+        setAnswer({ sessionId, status: "unknown", role: null });
         console.warn("세션 역할 조회 실패", caught);
       });
 
@@ -77,5 +81,7 @@ export function useSessionRole(
     };
   }, [sessionId, accessToken, request]);
 
-  return state;
+  return answer.sessionId === sessionId
+    ? { status: answer.status, role: answer.role }
+    : { status: "loading", role: null };
 }

@@ -51,10 +51,17 @@ export function useAttentionTimeline<T>(
   const { sessionId, enabled, request } = options;
   const { accessToken } = useAuth();
 
-  const [status, setStatus] = useState<TimelineStatus>("loading");
-  const [timeline, setTimeline] = useState<T | null>(null);
   // 값 자체는 쓰지 않는다. 효과를 다시 돌리기 위한 트리거다.
   const [attempt, setAttempt] = useState(0);
+  const key = `${sessionId}|${attempt}`;
+
+  // 결과에 그 결과를 만든 시도를 함께 담는다. 효과 안에서 "다시 로딩" 을 setState 로 되돌리면
+  // 렌더가 한 번 더 도는 데다, 재시도 순간 잠깐 이전 결과가 그대로 보인다.
+  const [answer, setAnswer] = useState<{
+    key: string;
+    status: TimelineStatus;
+    timeline: T | null;
+  }>({ key: "", status: "loading", timeline: null });
 
   const retry = useCallback(() => setAttempt((count) => count + 1), []);
 
@@ -67,26 +74,25 @@ export function useAttentionTimeline<T>(
     const controller = new AbortController();
     let active = true;
 
-    setStatus("loading");
-
     request(sessionId, accessToken, controller.signal)
       .then((result) => {
         if (!active) return;
-        setTimeline(result);
-        setStatus("ready");
+        setAnswer({ key, status: "ready", timeline: result });
       })
       .catch((error: unknown) => {
         // 취소는 실패가 아니다. 화면을 떠났거나 다시 조회하는 중이다.
         if (!active || controller.signal.aborted) return;
-        setTimeline(null);
-        setStatus(statusOf(error));
+        setAnswer({ key, status: statusOf(error), timeline: null });
       });
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, [sessionId, enabled, accessToken, request, attempt]);
+  }, [sessionId, enabled, accessToken, request, key]);
 
-  return { status, timeline, retry };
+  // 아직 이번 시도의 답이 오지 않았으면 로딩이다. 이전 시도의 결과를 물려주지 않는다.
+  return answer.key === key
+    ? { status: answer.status, timeline: answer.timeline, retry }
+    : { status: "loading", timeline: null, retry };
 }
