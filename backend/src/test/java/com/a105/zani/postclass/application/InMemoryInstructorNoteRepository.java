@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException;
+import com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException;
 import com.a105.zani.postclass.domain.model.InstructorNote;
 import com.a105.zani.postclass.domain.model.NoteStatus;
 import com.a105.zani.postclass.domain.repository.InstructorNoteRepository;
@@ -30,6 +31,13 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
     /** 다음 {@link #finalizeIfDraft} 직전에 다른 경로가 확정을 가져간다(수동·자동 확정 경합). */
     public boolean stealFinalizationBeforeNextTransition;
 
+    /**
+     * 다음 {@link #save} 직전에 다른 경로가 확정을 가져간다.
+     *
+     * <p>초안을 읽은 뒤 저장하기 전에 30분 비활성 확정이 끼어드는 상황이다. 실제 어댑터는 조건부 UPDATE 라 그 행을 건드리지 못한다.
+     */
+    public boolean stealFinalizationBeforeNextSave;
+
     private long nextId = 1L;
 
     @Override
@@ -42,6 +50,10 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
         if (failSaveWithDuplicateKey) {
             throw new ConcurrentNoteOpenException();
         }
+        if (stealFinalizationBeforeNextSave) {
+            stealFinalizationBeforeNextSave = false;
+            replace(instructorNote.sessionId(), Instant.EPOCH);
+        }
         Optional<InstructorNote> existing = findBySessionId(instructorNote.sessionId());
         if (instructorNote.id() == null) {
             if (existing.isPresent()) {
@@ -50,6 +62,10 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
             InstructorNote stored = copyWithId(instructorNote, nextId++);
             notes.add(stored);
             return stored;
+        }
+        // 조건부 UPDATE 와 같은 계약: 확정된 행에는 본문을 덮어쓸 수 없다.
+        if (existing.isPresent() && existing.get().isFinalized()) {
+            throw new NoteAlreadyFinalizedException();
         }
         notes.removeIf(note -> note.id().equals(instructorNote.id()));
         notes.add(instructorNote);

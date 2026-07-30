@@ -9,6 +9,12 @@ public interface InstructorNoteRepository {
 
     Optional<InstructorNote> findBySessionId(Long sessionId);
 
+    /**
+     * 메모를 저장한다. 아직 없으면 만들고, 있으면 본문과 마지막 입력 시각만 덮어쓴다.
+     *
+     * @throws com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException 읽어 둔 사이에 확정되어 더는 수정할 수 없음
+     * @throws com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException 다른 요청이 같은 세션의 메모를 먼저 열었음
+     */
     InstructorNote save(InstructorNote instructorNote);
 
     /**

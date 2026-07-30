@@ -23,6 +23,7 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SaveNoteDraftServiceTest {
 
@@ -109,6 +110,17 @@ class SaveNoteDraftServiceTest {
         SaveNoteDraftCommand command = command("확정 후 수정");
 
         assertThrows(NoteAlreadyFinalizedException.class, () -> service.save(command));
+    }
+
+    @Test
+    void refusesToOverwriteAFinalizationThatLandedWhileSaving() {
+        service.save(command("첫 입력"));
+        // 초안을 읽은 뒤 저장하기 전에 30분 비활성 확정이 끼어들었다. 덮어쓰면 확정이 DRAFT 로 되돌아간다.
+        noteRepository.stealFinalizationBeforeNextSave = true;
+        SaveNoteDraftCommand command = command("확정과 겹친 입력");
+
+        assertThrows(NoteAlreadyFinalizedException.class, () -> service.save(command));
+        assertTrue(noteRepository.findBySessionId(SESSION_ID).orElseThrow().isFinalized());
     }
 
     @Test
