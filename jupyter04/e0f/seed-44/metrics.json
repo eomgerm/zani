@@ -1,0 +1,168 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 2,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6605504587155964,
+    "macro_f1": 0.5757156782985835,
+    "confusion_matrix": [
+      [
+        43,
+        22,
+        7,
+        0
+      ],
+      [
+        8,
+        35,
+        46,
+        4
+      ],
+      [
+        8,
+        33,
+        140,
+        85
+      ],
+      [
+        2,
+        15,
+        103,
+        430
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.7049180327868853,
+        "recall": 0.5972222222222222,
+        "f1-score": 0.6466165413533834,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3333333333333333,
+        "recall": 0.3763440860215054,
+        "f1-score": 0.35353535353535354,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.47297297297297297,
+        "recall": 0.5263157894736842,
+        "f1-score": 0.498220640569395,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.8285163776493256,
+        "recall": 0.7818181818181819,
+        "f1-score": 0.804490177736202,
+        "support": 550.0
+      },
+      "accuracy": 0.6605504587155964,
+      "macro avg": {
+        "precision": 0.5849351791856293,
+        "recall": 0.5704250698838984,
+        "f1-score": 0.5757156782985835,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6760947164919425,
+        "recall": 0.6605504587155964,
+        "f1-score": 0.6671064903186562,
+        "support": 981.0
+      }
+    }
+  },
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0f/seed-44",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 44,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "balanced",
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-F protocol."
+  },
+  "experiment": {
+    "protocol": "E0-F",
+    "seed": 44,
+    "feature_manifest_sha256": "ae4318ccc71cb3dcaf5f5ffb0798af759dd9d70244eebc073885c0192166811b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "sampler": "balanced"
+    },
+    "configuration_sha256": "32fa6faa58b51f2b1d6ac71ca54605b6a4e1f1910aecac071925b9a270decdca"
+  }
+}

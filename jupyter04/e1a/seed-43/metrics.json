@@ -1,0 +1,164 @@
+{
+  "schema": "landmark_78_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 67,
+  "model_family": "stgcn",
+  "validation": {
+    "accuracy": 0.6408163265306123,
+    "macro_f1": 0.5336405202849464,
+    "confusion_matrix": [
+      [
+        42,
+        10,
+        16,
+        3
+      ],
+      [
+        9,
+        25,
+        44,
+        15
+      ],
+      [
+        20,
+        23,
+        128,
+        95
+      ],
+      [
+        4,
+        11,
+        102,
+        433
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.56,
+        "recall": 0.5915492957746479,
+        "f1-score": 0.5753424657534246,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.36231884057971014,
+        "recall": 0.26881720430107525,
+        "f1-score": 0.30864197530864196,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.4413793103448276,
+        "recall": 0.48120300751879697,
+        "f1-score": 0.460431654676259,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.793040293040293,
+        "recall": 0.7872727272727272,
+        "f1-score": 0.7901459854014599,
+        "support": 550.0
+      },
+      "accuracy": 0.6408163265306123,
+      "macro avg": {
+        "precision": 0.5391846109912077,
+        "recall": 0.5322105587168118,
+        "f1-score": 0.5336405202849464,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6398313366304065,
+        "recall": 0.6408163265306123,
+        "f1-score": 0.6393960519253926,
+        "support": 980.0
+      }
+    }
+  },
+  "training": {
+    "features_root": "datasets/processed/engagenet/e1",
+    "output_dir": "artifacts/engagement/e1a/seed-43",
+    "max_epochs": 300,
+    "batch_size": 16,
+    "learning_rate": 0.001,
+    "patience": 300,
+    "seed": 43,
+    "device": "cuda",
+    "class_weighting": "none",
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "in_channels": 3,
+      "num_nodes": 78,
+      "num_partitions": 3,
+      "channels": [
+        64,
+        128,
+        256
+      ],
+      "temporal_kernel": 9,
+      "dropout": 0.1,
+      "num_classes": 4
+    },
+    "build_model": "build_stgcn_model",
+    "needs_feature_stats": false,
+    "lr_step": 100,
+    "array_key": "sequence",
+    "array_shape": [
+      3,
+      100,
+      78
+    ]
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E1-A protocol."
+  },
+  "experiment": {
+    "protocol": "E1-A",
+    "seed": 43,
+    "feature_manifest_sha256": "b1ac0ff241b81319ac299b7819a7379fa21f29f8755e2c8fb54d497fa4a6c632",
+    "configuration": {
+      "representation": "landmark_78_v1",
+      "model_family": "stgcn",
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.001,
+      "batch_size": 16,
+      "maximum_epochs": 300,
+      "lr_step": 100,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 300
+      },
+      "class_weighting": false,
+      "model": {
+        "in_channels": 3,
+        "num_nodes": 78,
+        "num_partitions": 3,
+        "channels": [
+          64,
+          128,
+          256
+        ],
+        "temporal_kernel": 9,
+        "dropout": 0.1,
+        "num_classes": 4
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0
+    },
+    "configuration_sha256": "5bc0d7f9ae6420c53d3b1a3d107d2a2165b5ee22aa88541a24468051f608d07e"
+  }
+}

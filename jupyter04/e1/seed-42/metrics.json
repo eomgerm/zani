@@ -1,0 +1,164 @@
+{
+  "schema": "landmark_78_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 44,
+  "model_family": "stgcn",
+  "validation": {
+    "accuracy": 0.6193877551020408,
+    "macro_f1": 0.5247925489725123,
+    "confusion_matrix": [
+      [
+        44,
+        11,
+        14,
+        2
+      ],
+      [
+        8,
+        18,
+        50,
+        17
+      ],
+      [
+        14,
+        15,
+        144,
+        93
+      ],
+      [
+        4,
+        7,
+        138,
+        401
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.6285714285714286,
+        "recall": 0.6197183098591549,
+        "f1-score": 0.624113475177305,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.35294117647058826,
+        "recall": 0.1935483870967742,
+        "f1-score": 0.25,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.4161849710982659,
+        "recall": 0.5413533834586466,
+        "f1-score": 0.47058823529411764,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7816764132553606,
+        "recall": 0.7290909090909091,
+        "f1-score": 0.7544684854186265,
+        "support": 550.0
+      },
+      "accuracy": 0.6193877551020408,
+      "macro avg": {
+        "precision": 0.5448434973489109,
+        "recall": 0.5209277473763712,
+        "f1-score": 0.5247925489725123,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6306931943295135,
+        "recall": 0.6193877551020408,
+        "f1-score": 0.6200981574551719,
+        "support": 980.0
+      }
+    }
+  },
+  "training": {
+    "features_root": "datasets/processed/engagenet/e1",
+    "output_dir": "artifacts/engagement/e1/seed-42",
+    "max_epochs": 300,
+    "batch_size": 32,
+    "learning_rate": 0.002,
+    "patience": 20,
+    "seed": 42,
+    "device": "cuda",
+    "use_class_weights": false,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "in_channels": 3,
+      "num_nodes": 78,
+      "num_partitions": 3,
+      "channels": [
+        64,
+        128,
+        256
+      ],
+      "temporal_kernel": 9,
+      "dropout": 0.1,
+      "num_classes": 4
+    },
+    "build_model": "build_stgcn_model",
+    "needs_feature_stats": false,
+    "lr_step": 100,
+    "array_key": "sequence",
+    "array_shape": [
+      3,
+      100,
+      78
+    ]
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E1 protocol."
+  },
+  "experiment": {
+    "protocol": "E1",
+    "seed": 42,
+    "feature_manifest_sha256": "b1ac0ff241b81319ac299b7819a7379fa21f29f8755e2c8fb54d497fa4a6c632",
+    "configuration": {
+      "representation": "landmark_78_v1",
+      "model_family": "stgcn",
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.002,
+      "batch_size": 32,
+      "maximum_epochs": 300,
+      "lr_step": 100,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "in_channels": 3,
+        "num_nodes": 78,
+        "num_partitions": 3,
+        "channels": [
+          64,
+          128,
+          256
+        ],
+        "temporal_kernel": 9,
+        "dropout": 0.1,
+        "num_classes": 4
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0
+    },
+    "configuration_sha256": "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e"
+  }
+}

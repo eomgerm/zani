@@ -1,0 +1,387 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 12,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6442405708460754,
+    "macro_f1": 0.5595148138540381,
+    "within_one_accuracy": 0.9561671763506626,
+    "quadratic_weighted_kappa": 0.6920000617636614,
+    "confusion_matrix": [
+      [
+        47,
+        14,
+        10,
+        1
+      ],
+      [
+        4,
+        29,
+        43,
+        17
+      ],
+      [
+        6,
+        23,
+        93,
+        144
+      ],
+      [
+        1,
+        8,
+        78,
+        463
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.8103448275862069,
+        "recall": 0.6527777777777778,
+        "f1-score": 0.7230769230769231,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3918918918918919,
+        "recall": 0.3118279569892473,
+        "f1-score": 0.3473053892215569,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.41517857142857145,
+        "recall": 0.34962406015037595,
+        "f1-score": 0.3795918367346939,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7408,
+        "recall": 0.8418181818181818,
+        "f1-score": 0.7880851063829787,
+        "support": 550.0
+      },
+      "accuracy": 0.6442405708460754,
+      "macro avg": {
+        "precision": 0.5895538227266676,
+        "recall": 0.5390119941838958,
+        "f1-score": 0.5595148138540381,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6245344276576482,
+        "recall": 0.6442405708460754,
+        "f1-score": 0.6307636867902243,
+        "support": 981.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5516219737609532,
+      "quadratic_weighted_kappa": 0.693015315102389
+    },
+    {
+      "epoch": 1,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5345788539417627,
+      "quadratic_weighted_kappa": 0.6920253364518436
+    },
+    {
+      "epoch": 2,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5484313434047747,
+      "quadratic_weighted_kappa": 0.6969912167923735
+    },
+    {
+      "epoch": 3,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5581941110125919,
+      "quadratic_weighted_kappa": 0.7133994841290731
+    },
+    {
+      "epoch": 4,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5705605152231459,
+      "quadratic_weighted_kappa": 0.7124925684332164
+    },
+    {
+      "epoch": 5,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5596016333033853,
+      "quadratic_weighted_kappa": 0.6963401966625843
+    },
+    {
+      "epoch": 6,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5721435292470608,
+      "quadratic_weighted_kappa": 0.6949714539539866
+    },
+    {
+      "epoch": 7,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5400206737300003,
+      "quadratic_weighted_kappa": 0.6860695104350475
+    },
+    {
+      "epoch": 8,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.565687306068202,
+      "quadratic_weighted_kappa": 0.6973579967390573
+    },
+    {
+      "epoch": 9,
+      "curriculum_stage": "reliable_warmup",
+      "macro_f1": 0.5548749406251693,
+      "quadratic_weighted_kappa": 0.6864854272400991
+    },
+    {
+      "epoch": 10,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5518754103965215,
+      "quadratic_weighted_kappa": 0.6876779132831929
+    },
+    {
+      "epoch": 11,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5346593327247608,
+      "quadratic_weighted_kappa": 0.6702098708117887
+    },
+    {
+      "epoch": 12,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5595148138540381,
+      "quadratic_weighted_kappa": 0.6920000617636614
+    },
+    {
+      "epoch": 13,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.549893819678481,
+      "quadratic_weighted_kappa": 0.6801638872191669
+    },
+    {
+      "epoch": 14,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5551954652478455,
+      "quadratic_weighted_kappa": 0.6860004534482069
+    },
+    {
+      "epoch": 15,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5447671878429093,
+      "quadratic_weighted_kappa": 0.6900102355879207
+    },
+    {
+      "epoch": 16,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5424349765197123,
+      "quadratic_weighted_kappa": 0.6618055590378241
+    },
+    {
+      "epoch": 17,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5396735315325594,
+      "quadratic_weighted_kappa": 0.6786592038171321
+    },
+    {
+      "epoch": 18,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5167637673494295,
+      "quadratic_weighted_kappa": 0.6685493651751554
+    },
+    {
+      "epoch": 19,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5208181626591033,
+      "quadratic_weighted_kappa": 0.6619394937540563
+    },
+    {
+      "epoch": 20,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5221429209391313,
+      "quadratic_weighted_kappa": 0.6589885366422671
+    },
+    {
+      "epoch": 21,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5307503729748828,
+      "quadratic_weighted_kappa": 0.6630699218638197
+    },
+    {
+      "epoch": 22,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5179072137176814,
+      "quadratic_weighted_kappa": 0.6649273815732524
+    },
+    {
+      "epoch": 23,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5364402588967987,
+      "quadratic_weighted_kappa": 0.6472565307150868
+    },
+    {
+      "epoch": 24,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.511371034089668,
+      "quadratic_weighted_kappa": 0.628056164572901
+    },
+    {
+      "epoch": 25,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5392234634748091,
+      "quadratic_weighted_kappa": 0.6432681435032894
+    },
+    {
+      "epoch": 26,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5203140929473756,
+      "quadratic_weighted_kappa": 0.6558614549707538
+    },
+    {
+      "epoch": 27,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5497116301714552,
+      "quadratic_weighted_kappa": 0.672107695742681
+    },
+    {
+      "epoch": 28,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5274316219949047,
+      "quadratic_weighted_kappa": 0.6584112601168008
+    },
+    {
+      "epoch": 29,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5161610657546738,
+      "quadratic_weighted_kappa": 0.6339870348722861
+    },
+    {
+      "epoch": 30,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.49683726806538764,
+      "quadratic_weighted_kappa": 0.6234017737285711
+    },
+    {
+      "epoch": 31,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.5074649150659896,
+      "quadratic_weighted_kappa": 0.6271180289604825
+    },
+    {
+      "epoch": 32,
+      "curriculum_stage": "mixed",
+      "macro_f1": 0.502783732972003,
+      "quadratic_weighted_kappa": 0.616164035080832
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0i/seed-42",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 42,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "curriculum": "label_reliability_v1",
+    "reliability_manifest": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability/reliability_manifest.json",
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-I protocol."
+  },
+  "experiment": {
+    "protocol": "E0-I",
+    "seed": 42,
+    "feature_manifest_sha256": "ae4318ccc71cb3dcaf5f5ffb0798af759dd9d70244eebc073885c0192166811b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "curriculum": "label_reliability_v1",
+      "reliable_warmup_epochs": 10,
+      "ambiguous_target_encoding": "adjacent_smoothing",
+      "ambiguous_neighbor_mass": 0.2
+    },
+    "configuration_sha256": "0da85a5f7b898984ae7f79bf959b0f604fba1c5177b3a6028fab0eb7b3e656f2",
+    "inputs": {
+      "label_reliability": {
+        "path": "/home/j-i15a105/zani/ai/artifacts/engagement/reliability/reliability_manifest.json",
+        "sha256": "5efba4d9ec16c66d803439cbfe98341dd9669c5c0937815ab81ab66955cf0d11",
+        "size_bytes": 10746611
+      }
+    }
+  }
+}

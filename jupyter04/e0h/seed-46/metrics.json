@@ -1,0 +1,305 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 5,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6870540265035678,
+    "macro_f1": 0.5737801552569736,
+    "within_one_accuracy": 0.9643221202854231,
+    "quadratic_weighted_kappa": 0.7337477371601129,
+    "confusion_matrix": [
+      [
+        47,
+        14,
+        11,
+        0
+      ],
+      [
+        4,
+        21,
+        50,
+        18
+      ],
+      [
+        4,
+        17,
+        106,
+        139
+      ],
+      [
+        0,
+        2,
+        48,
+        500
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.8545454545454545,
+        "recall": 0.6527777777777778,
+        "f1-score": 0.7401574803149606,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3888888888888889,
+        "recall": 0.22580645161290322,
+        "f1-score": 0.2857142857142857,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.4930232558139535,
+        "recall": 0.39849624060150374,
+        "f1-score": 0.4407484407484408,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.76103500761035,
+        "recall": 0.9090909090909091,
+        "f1-score": 0.8285004142502072,
+        "support": 550.0
+      },
+      "accuracy": 0.6870540265035678,
+      "macro avg": {
+        "precision": 0.6243731517146618,
+        "recall": 0.5465428447707734,
+        "f1-score": 0.5737801552569736,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6599463604751719,
+        "recall": 0.6870540265035678,
+        "f1-score": 0.6654200613973547,
+        "support": 981.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5344084524036137,
+      "quadratic_weighted_kappa": 0.6778253994099579
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5368634959809824,
+      "quadratic_weighted_kappa": 0.6822540943526959
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.5283323886151897,
+      "quadratic_weighted_kappa": 0.6881415541843825
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.5646981105896,
+      "quadratic_weighted_kappa": 0.7184349890065294
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5653049310149296,
+      "quadratic_weighted_kappa": 0.7131785238273513
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5737801552569736,
+      "quadratic_weighted_kappa": 0.7337477371601129
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5684005947378221,
+      "quadratic_weighted_kappa": 0.7135326800594958
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.5528335323649343,
+      "quadratic_weighted_kappa": 0.6974821886310765
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5321415386406486,
+      "quadratic_weighted_kappa": 0.7016694537594317
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5666183573655453,
+      "quadratic_weighted_kappa": 0.7217296180335626
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.5454577407394002,
+      "quadratic_weighted_kappa": 0.7090844411984146
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.5327418609015386,
+      "quadratic_weighted_kappa": 0.6291695452116219
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.5546523488081576,
+      "quadratic_weighted_kappa": 0.6940108193205595
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5462846397150873,
+      "quadratic_weighted_kappa": 0.6795885145710471
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5400277890461718,
+      "quadratic_weighted_kappa": 0.6781795043858481
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5374535643069667,
+      "quadratic_weighted_kappa": 0.6726993400914794
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5220743351866632,
+      "quadratic_weighted_kappa": 0.676494816456499
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5457012071661291,
+      "quadratic_weighted_kappa": 0.679657551750575
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.5446337870809869,
+      "quadratic_weighted_kappa": 0.6392146265587514
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.5531441374147958,
+      "quadratic_weighted_kappa": 0.6939964181801559
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5502304725489601,
+      "quadratic_weighted_kappa": 0.6693374014391507
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.528394287866968,
+      "quadratic_weighted_kappa": 0.6824841927703076
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.545003607214388,
+      "quadratic_weighted_kappa": 0.6584455643185417
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.529723773831029,
+      "quadratic_weighted_kappa": 0.6530074681399097
+    },
+    {
+      "epoch": 24,
+      "macro_f1": 0.5281093317300327,
+      "quadratic_weighted_kappa": 0.6470692886116185
+    },
+    {
+      "epoch": 25,
+      "macro_f1": 0.518097574578646,
+      "quadratic_weighted_kappa": 0.6450100171805735
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0h/seed-46",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 46,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "sord",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-H protocol."
+  },
+  "experiment": {
+    "protocol": "E0-H",
+    "seed": 46,
+    "feature_manifest_sha256": "ae4318ccc71cb3dcaf5f5ffb0798af759dd9d70244eebc073885c0192166811b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "target_encoding": "sord",
+      "sord_alpha": 2.0
+    },
+    "configuration_sha256": "766e2ceb2272162a63756ecd23d3add33c20cf0a99e2a2a09228a313ce13d864"
+  }
+}

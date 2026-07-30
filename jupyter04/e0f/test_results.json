@@ -1,0 +1,499 @@
+{
+  "protocol": "E0-F-fixed-checkpoint-test",
+  "status": "complete",
+  "selection_policy": "Validation-only; Test is evaluated once after all checkpoints are frozen.",
+  "feature_manifest_sha256": "ae4318ccc71cb3dcaf5f5ffb0798af759dd9d70244eebc073885c0192166811b",
+  "configuration_sha256": "32fa6faa58b51f2b1d6ac71ca54605b6a4e1f1910aecac071925b9a270decdca",
+  "seeds": [
+    {
+      "seed": 42,
+      "checkpoint_path": "seed-42/best.pt",
+      "checkpoint_sha256": "8075317e60dc836b047fe4dcfe9e03ad767a7b950ab2d432bb4c1b40e6a447f6",
+      "validation": {
+        "accuracy": 0.6462793068297655,
+        "macro_f1": 0.5545614035087719
+      },
+      "test": {
+        "accuracy": 0.6966236345580934,
+        "macro_f1": 0.5854998728338138,
+        "confusion_matrix": [
+          [
+            199,
+            46,
+            35,
+            12
+          ],
+          [
+            36,
+            70,
+            87,
+            31
+          ],
+          [
+            22,
+            57,
+            180,
+            141
+          ],
+          [
+            7,
+            30,
+            107,
+            954
+          ]
+        ],
+        "classification_report": {
+          "Not-Engaged": {
+            "precision": 0.7537878787878788,
+            "recall": 0.6815068493150684,
+            "f1-score": 0.7158273381294964,
+            "support": 292.0
+          },
+          "Barely-Engaged": {
+            "precision": 0.3448275862068966,
+            "recall": 0.3125,
+            "f1-score": 0.32786885245901637,
+            "support": 224.0
+          },
+          "Engaged": {
+            "precision": 0.4400977995110024,
+            "recall": 0.45,
+            "f1-score": 0.44499381953028433,
+            "support": 400.0
+          },
+          "Highly-Engaged": {
+            "precision": 0.8383128295254832,
+            "recall": 0.8688524590163934,
+            "f1-score": 0.853309481216458,
+            "support": 1098.0
+          },
+          "accuracy": 0.6966236345580934,
+          "macro avg": {
+            "precision": 0.5942565235078152,
+            "recall": 0.5782148270828654,
+            "f1-score": 0.5854998728338138,
+            "support": 2014.0
+          },
+          "weighted avg": {
+            "precision": 0.6920824461468654,
+            "recall": 0.6966236345580934,
+            "f1-score": 0.6938408857360562,
+            "support": 2014.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 43,
+      "checkpoint_path": "seed-43/best.pt",
+      "checkpoint_sha256": "f04164bd9b55cb4597c45ba0ad5ba1b24cb126932216a271d87129f4d6b24785",
+      "validation": {
+        "accuracy": 0.6615698267074414,
+        "macro_f1": 0.6024111228855114
+      },
+      "test": {
+        "accuracy": 0.6529294935451837,
+        "macro_f1": 0.5522998465888509,
+        "confusion_matrix": [
+          [
+            192,
+            46,
+            24,
+            30
+          ],
+          [
+            37,
+            70,
+            72,
+            45
+          ],
+          [
+            31,
+            76,
+            168,
+            125
+          ],
+          [
+            14,
+            19,
+            180,
+            885
+          ]
+        ],
+        "classification_report": {
+          "Not-Engaged": {
+            "precision": 0.7007299270072993,
+            "recall": 0.6575342465753424,
+            "f1-score": 0.6784452296819788,
+            "support": 292.0
+          },
+          "Barely-Engaged": {
+            "precision": 0.33175355450236965,
+            "recall": 0.3125,
+            "f1-score": 0.3218390804597701,
+            "support": 224.0
+          },
+          "Engaged": {
+            "precision": 0.3783783783783784,
+            "recall": 0.42,
+            "f1-score": 0.3981042654028436,
+            "support": 400.0
+          },
+          "Highly-Engaged": {
+            "precision": 0.815668202764977,
+            "recall": 0.8060109289617486,
+            "f1-score": 0.8108108108108109,
+            "support": 1098.0
+          },
+          "accuracy": 0.6529294935451837,
+          "macro avg": {
+            "precision": 0.5566325156632561,
+            "recall": 0.5490112938842727,
+            "f1-score": 0.5522998465888509,
+            "support": 2014.0
+          },
+          "weighted avg": {
+            "precision": 0.6583321613117966,
+            "recall": 0.6529294935451837,
+            "f1-score": 0.6552680921159554,
+            "support": 2014.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 44,
+      "checkpoint_path": "seed-44/best.pt",
+      "checkpoint_sha256": "c0a7d36509385b004e6ad724df7c48a4ddd95b398d519780b2fe6d3d44f0963e",
+      "validation": {
+        "accuracy": 0.6605504587155964,
+        "macro_f1": 0.5757156782985835
+      },
+      "test": {
+        "accuracy": 0.6871896722939425,
+        "macro_f1": 0.5857216348616843,
+        "confusion_matrix": [
+          [
+            194,
+            61,
+            29,
+            8
+          ],
+          [
+            32,
+            64,
+            109,
+            19
+          ],
+          [
+            24,
+            39,
+            219,
+            118
+          ],
+          [
+            3,
+            20,
+            168,
+            907
+          ]
+        ],
+        "classification_report": {
+          "Not-Engaged": {
+            "precision": 0.766798418972332,
+            "recall": 0.6643835616438356,
+            "f1-score": 0.7119266055045872,
+            "support": 292.0
+          },
+          "Barely-Engaged": {
+            "precision": 0.34782608695652173,
+            "recall": 0.2857142857142857,
+            "f1-score": 0.3137254901960784,
+            "support": 224.0
+          },
+          "Engaged": {
+            "precision": 0.41714285714285715,
+            "recall": 0.5475,
+            "f1-score": 0.4735135135135135,
+            "support": 400.0
+          },
+          "Highly-Engaged": {
+            "precision": 0.8621673003802282,
+            "recall": 0.8260473588342441,
+            "f1-score": 0.8437209302325581,
+            "support": 1098.0
+          },
+          "accuracy": 0.6871896722939425,
+          "macro avg": {
+            "precision": 0.5984836658629847,
+            "recall": 0.5809113015480913,
+            "f1-score": 0.5857216348616843,
+            "support": 2014.0
+          },
+          "weighted avg": {
+            "precision": 0.7027482723400273,
+            "recall": 0.6871896722939425,
+            "f1-score": 0.6921390592909709,
+            "support": 2014.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 45,
+      "checkpoint_path": "seed-45/best.pt",
+      "checkpoint_sha256": "2e32ece63788cccf59fa2606e3f9a8ff53a50e5141051601cb52d38fb041529e",
+      "validation": {
+        "accuracy": 0.6574923547400612,
+        "macro_f1": 0.5873583468158599
+      },
+      "test": {
+        "accuracy": 0.6300893743793445,
+        "macro_f1": 0.5460560460793596,
+        "confusion_matrix": [
+          [
+            169,
+            74,
+            30,
+            19
+          ],
+          [
+            20,
+            70,
+            110,
+            24
+          ],
+          [
+            20,
+            61,
+            216,
+            103
+          ],
+          [
+            16,
+            31,
+            237,
+            814
+          ]
+        ],
+        "classification_report": {
+          "Not-Engaged": {
+            "precision": 0.7511111111111111,
+            "recall": 0.5787671232876712,
+            "f1-score": 0.6537717601547389,
+            "support": 292.0
+          },
+          "Barely-Engaged": {
+            "precision": 0.2966101694915254,
+            "recall": 0.3125,
+            "f1-score": 0.30434782608695654,
+            "support": 224.0
+          },
+          "Engaged": {
+            "precision": 0.3642495784148398,
+            "recall": 0.54,
+            "f1-score": 0.4350453172205438,
+            "support": 400.0
+          },
+          "Highly-Engaged": {
+            "precision": 0.8479166666666667,
+            "recall": 0.7413479052823315,
+            "f1-score": 0.7910592808551993,
+            "support": 1098.0
+          },
+          "accuracy": 0.6300893743793445,
+          "macro avg": {
+            "precision": 0.5649718814210357,
+            "recall": 0.5431537571425007,
+            "f1-score": 0.5460560460793596,
+            "support": 2014.0
+          },
+          "weighted avg": {
+            "precision": 0.6765032044570417,
+            "recall": 0.6300893743793445,
+            "f1-score": 0.6463140438311263,
+            "support": 2014.0
+          }
+        }
+      }
+    },
+    {
+      "seed": 46,
+      "checkpoint_path": "seed-46/best.pt",
+      "checkpoint_sha256": "d7dfecd7522a4605b2d1cc21f3c037e8038851ea2135b23adcb8ea9a9c763a73",
+      "validation": {
+        "accuracy": 0.6442405708460754,
+        "macro_f1": 0.5770534897896983
+      },
+      "test": {
+        "accuracy": 0.6906653426017875,
+        "macro_f1": 0.5898165307239767,
+        "confusion_matrix": [
+          [
+            197,
+            61,
+            29,
+            5
+          ],
+          [
+            33,
+            75,
+            91,
+            25
+          ],
+          [
+            24,
+            58,
+            194,
+            124
+          ],
+          [
+            3,
+            19,
+            151,
+            925
+          ]
+        ],
+        "classification_report": {
+          "Not-Engaged": {
+            "precision": 0.7665369649805448,
+            "recall": 0.6746575342465754,
+            "f1-score": 0.7176684881602914,
+            "support": 292.0
+          },
+          "Barely-Engaged": {
+            "precision": 0.352112676056338,
+            "recall": 0.33482142857142855,
+            "f1-score": 0.34324942791762014,
+            "support": 224.0
+          },
+          "Engaged": {
+            "precision": 0.4172043010752688,
+            "recall": 0.485,
+            "f1-score": 0.4485549132947977,
+            "support": 400.0
+          },
+          "Highly-Engaged": {
+            "precision": 0.8572752548656163,
+            "recall": 0.8424408014571949,
+            "f1-score": 0.8497932935231971,
+            "support": 1098.0
+          },
+          "accuracy": 0.6906653426017875,
+          "macro avg": {
+            "precision": 0.598282299244442,
+            "recall": 0.5842299410687997,
+            "f1-score": 0.5898165307239767,
+            "support": 2014.0
+          },
+          "weighted avg": {
+            "precision": 0.7005322658805824,
+            "recall": 0.6906653426017875,
+            "f1-score": 0.6946087745793156,
+            "support": 2014.0
+          }
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "completed_seed_count": 5,
+    "test_accuracy": {
+      "mean": 0.6714995034756703,
+      "sample_standard_deviation": 0.028741854542607366
+    },
+    "test_macro_f1": {
+      "mean": 0.571878786217537,
+      "sample_standard_deviation": 0.020910941647847674
+    },
+    "pooled_confusion_matrix": [
+      [
+        951,
+        288,
+        147,
+        74
+      ],
+      [
+        158,
+        349,
+        469,
+        144
+      ],
+      [
+        121,
+        291,
+        977,
+        611
+      ],
+      [
+        43,
+        119,
+        843,
+        4485
+      ]
+    ],
+    "per_class": {
+      "Not-Engaged": {
+        "precision": {
+          "mean": 0.7477928601718332,
+          "sample_standard_deviation": 0.02726913752739221
+        },
+        "recall": {
+          "mean": 0.6513698630136986,
+          "sample_standard_deviation": 0.04162050986964203
+        },
+        "f1-score": {
+          "mean": 0.6955278843262185,
+          "sample_standard_deviation": 0.028313350272676306
+        },
+        "support_per_seed": 292
+      },
+      "Barely-Engaged": {
+        "precision": {
+          "mean": 0.3346260146427303,
+          "sample_standard_deviation": 0.022569630084920723
+        },
+        "recall": {
+          "mean": 0.31160714285714286,
+          "sample_standard_deviation": 0.017404989901444578
+        },
+        "f1-score": {
+          "mean": 0.3222061354238883,
+          "sample_standard_deviation": 0.014712764937265215
+        },
+        "support_per_seed": 224
+      },
+      "Engaged": {
+        "precision": {
+          "mean": 0.4034145829044693,
+          "sample_standard_deviation": 0.031164841308521218
+        },
+        "recall": {
+          "mean": 0.4885,
+          "sample_standard_deviation": 0.05549774770204644
+        },
+        "f1-score": {
+          "mean": 0.4400423657923966,
+          "sample_standard_deviation": 0.02739102429438149
+        },
+        "support_per_seed": 400
+      },
+      "Highly-Engaged": {
+        "precision": {
+          "mean": 0.8442680508405942,
+          "sample_standard_deviation": 0.018413981501411103
+        },
+        "recall": {
+          "mean": 0.8169398907103826,
+          "sample_standard_deviation": 0.048118986997151315
+        },
+        "f1-score": {
+          "mean": 0.8297387593276447,
+          "sample_standard_deviation": 0.027420948494403196
+        },
+        "support_per_seed": 1098
+      }
+    }
+  },
+  "completed_at_utc": "2026-07-28T00:28:30.846231+00:00"
+}

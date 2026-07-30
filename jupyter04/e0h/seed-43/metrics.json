@@ -1,0 +1,340 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 12,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6758409785932722,
+    "macro_f1": 0.564711752836583,
+    "within_one_accuracy": 0.9520897043832823,
+    "quadratic_weighted_kappa": 0.6939243872253801,
+    "confusion_matrix": [
+      [
+        48,
+        13,
+        6,
+        5
+      ],
+      [
+        8,
+        29,
+        43,
+        13
+      ],
+      [
+        11,
+        25,
+        98,
+        132
+      ],
+      [
+        5,
+        7,
+        50,
+        488
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.6666666666666666,
+        "recall": 0.6666666666666666,
+        "f1-score": 0.6666666666666666,
+        "support": 72.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3918918918918919,
+        "recall": 0.3118279569892473,
+        "f1-score": 0.3473053892215569,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.49746192893401014,
+        "recall": 0.3684210526315789,
+        "f1-score": 0.42332613390928725,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7648902821316614,
+        "recall": 0.8872727272727273,
+        "f1-score": 0.8215488215488216,
+        "support": 550.0
+      },
+      "accuracy": 0.6758409785932722,
+      "macro avg": {
+        "precision": 0.5802276924060575,
+        "recall": 0.5585471008900551,
+        "f1-score": 0.564711752836583,
+        "support": 981.0
+      },
+      "weighted avg": {
+        "precision": 0.6498068034809444,
+        "recall": 0.6758409785932722,
+        "f1-score": 0.6572436337098134,
+        "support": 981.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5490717313598892,
+      "quadratic_weighted_kappa": 0.6573446617668037
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5284290298472315,
+      "quadratic_weighted_kappa": 0.6692064218383473
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.5249492471890089,
+      "quadratic_weighted_kappa": 0.6874242077950015
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.5553876073492607,
+      "quadratic_weighted_kappa": 0.6980972130973957
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5572289383554943,
+      "quadratic_weighted_kappa": 0.7153354980245066
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5399272214220344,
+      "quadratic_weighted_kappa": 0.6502174998217214
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5321567923222521,
+      "quadratic_weighted_kappa": 0.6390456837510348
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.530370796630875,
+      "quadratic_weighted_kappa": 0.6878819188191883
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5284811949263846,
+      "quadratic_weighted_kappa": 0.6755425509180872
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5362604358233183,
+      "quadratic_weighted_kappa": 0.656758503504371
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.5153621001601072,
+      "quadratic_weighted_kappa": 0.6908116849887113
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.5292674228518757,
+      "quadratic_weighted_kappa": 0.6782168641336802
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.564711752836583,
+      "quadratic_weighted_kappa": 0.6939243872253801
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5313520002551646,
+      "quadratic_weighted_kappa": 0.6790771164572392
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5624125855343629,
+      "quadratic_weighted_kappa": 0.6920029112874663
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5316774572445494,
+      "quadratic_weighted_kappa": 0.6615631763672687
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5175706716610589,
+      "quadratic_weighted_kappa": 0.6496559230724013
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5410928916154599,
+      "quadratic_weighted_kappa": 0.6594349827677292
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.5241614897124387,
+      "quadratic_weighted_kappa": 0.6219531414464792
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.5318125774356404,
+      "quadratic_weighted_kappa": 0.6599489012236611
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5260967562694915,
+      "quadratic_weighted_kappa": 0.6546379332730863
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.5309664492088836,
+      "quadratic_weighted_kappa": 0.6497214394913983
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.5424567801571507,
+      "quadratic_weighted_kappa": 0.6687032778850754
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.5169419537247684,
+      "quadratic_weighted_kappa": 0.656178788621842
+    },
+    {
+      "epoch": 24,
+      "macro_f1": 0.5376301528998855,
+      "quadratic_weighted_kappa": 0.660436137071651
+    },
+    {
+      "epoch": 25,
+      "macro_f1": 0.5347095764606079,
+      "quadratic_weighted_kappa": 0.6675464377433544
+    },
+    {
+      "epoch": 26,
+      "macro_f1": 0.5248682899887736,
+      "quadratic_weighted_kappa": 0.6332175532133657
+    },
+    {
+      "epoch": 27,
+      "macro_f1": 0.5170670470468501,
+      "quadratic_weighted_kappa": 0.639466092516644
+    },
+    {
+      "epoch": 28,
+      "macro_f1": 0.5452428166107652,
+      "quadratic_weighted_kappa": 0.6635290823647697
+    },
+    {
+      "epoch": 29,
+      "macro_f1": 0.525718886293731,
+      "quadratic_weighted_kappa": 0.6319478939349121
+    },
+    {
+      "epoch": 30,
+      "macro_f1": 0.5204836410267432,
+      "quadratic_weighted_kappa": 0.6367346412143812
+    },
+    {
+      "epoch": 31,
+      "macro_f1": 0.5096912309484312,
+      "quadratic_weighted_kappa": 0.6123448984430571
+    },
+    {
+      "epoch": 32,
+      "macro_f1": 0.49416540591555197,
+      "quadratic_weighted_kappa": 0.6225394644442215
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0h/seed-43",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 43,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "sord",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-H protocol."
+  },
+  "experiment": {
+    "protocol": "E0-H",
+    "seed": 43,
+    "feature_manifest_sha256": "ae4318ccc71cb3dcaf5f5ffb0798af759dd9d70244eebc073885c0192166811b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "target_encoding": "sord",
+      "sord_alpha": 2.0
+    },
+    "configuration_sha256": "766e2ceb2272162a63756ecd23d3add33c20cf0a99e2a2a09228a313ce13d864"
+  }
+}
