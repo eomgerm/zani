@@ -15,7 +15,8 @@ public enum SessionApplicationErrorCode implements ErrorCode {
             ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it"),
     SCREEN_SHARE_IN_USE(ErrorType.CONFLICT, "SESSION_APP_007", "Another participant is already sharing their screen"),
     SCREEN_SHARE_STATE_UNAVAILABLE(
-            ErrorType.SERVICE_UNAVAILABLE, "SESSION_APP_008", "Screen share state store is unavailable");
+            ErrorType.SERVICE_UNAVAILABLE, "SESSION_APP_008", "Screen share state store is unavailable"),
+    SESSION_NOT_ENDED(ErrorType.CONFLICT, "SESSION_APP_009", "The session is still in progress");
 
     private final ErrorType type;
     private final String code;
