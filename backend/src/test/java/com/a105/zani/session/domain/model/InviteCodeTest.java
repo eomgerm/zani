@@ -18,6 +18,16 @@ class InviteCodeTest {
         assertEquals("GPH7GQ5Q", InviteCode.canonicalize(raw));
     }
 
+    /**
+     * 대문자 변환은 로케일에 흔들리지 않아야 한다. 기본 로케일을 쓰면 터키어 환경에서 {@code i} 가 점 있는 {@code İ} 로 올라가 영숫자 검증에 걸린다. 초대 코드는 기계가 대조하는 값이라
+     * 서버가 어느 로케일로 떴는지에 결과가 달라져선 안 된다.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"abci2345", "ABCI2345", "abci-2345"})
+    void mapsLowercaseIToAsciiCapitalI(String raw) {
+        assertEquals("ABCI2345", InviteCode.canonicalize(raw));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"GPH7GQ5", "GPH7GQ5QQ", "GPH7GQ5!", "", "   ", "--------"})
     void rejectsAnythingThatIsNotEightAlphanumericCharacters(String raw) {

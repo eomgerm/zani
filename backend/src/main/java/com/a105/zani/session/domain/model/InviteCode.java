@@ -1,5 +1,6 @@
 package com.a105.zani.session.domain.model;
 
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 import com.a105.zani.session.domain.exception.InvalidInviteCodeException;
@@ -21,13 +22,17 @@ public final class InviteCode {
     /**
      * 저장 형태로 맞춘다. 하이픈·공백을 지우고 대문자로 올린다.
      *
+     * <p>대문자 변환에 {@link Locale#ROOT} 를 못 박는다. 기본 로케일을 쓰면 서버가 어느 로케일로 떠 있는지에 따라 결과가 달라진다 — 터키어에서 {@code "i"} 는 ASCII
+     * {@code "I"} 가 아니라 점 있는 {@code "İ"} 로 올라가고, 그러면 영숫자 8자 검증에 걸려 정상 코드가 거절된다. 초대 코드는 사람 언어가 아니라 기계가 대조하는 값이라 로케일에 따라
+     * 흔들려선 안 된다.
+     *
      * @throws InvalidInviteCodeException 정규화한 결과가 대문자 영숫자 8자가 아니면
      */
     public static String canonicalize(String raw) {
         if (raw == null) {
             throw new InvalidInviteCodeException();
         }
-        String canonical = SEPARATORS.matcher(raw).replaceAll("").toUpperCase();
+        String canonical = SEPARATORS.matcher(raw).replaceAll("").toUpperCase(Locale.ROOT);
         if (!CANONICAL.matcher(canonical).matches()) {
             throw new InvalidInviteCodeException();
         }
