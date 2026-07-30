@@ -1,9 +1,10 @@
-package com.a105.zani.coach.domain.model;
+package com.a105.zani.coach.application.generatetip;
 
 import java.util.List;
 import java.util.Optional;
 
 import com.a105.zani.attention.application.port.CoachingTipType;
+import com.a105.zani.coach.domain.model.CoachingTipRatios;
 
 /**
  * 비율로 팁 유형을 고른다(기준 문서 §7.6). (S15P11A105-204)
@@ -13,6 +14,9 @@ import com.a105.zani.attention.application.port.CoachingTipType;
  *
  * <p>79 의 {@code CoachingSignalSummary#dominantState()} 를 쓰지 못하는 이유: 85 의 {@code CoachingTipRequest} 가 상태별 비율을
  * {@code double} 4개로 펼쳐 넘긴다. 집계 객체가 아니라 값만 오므로 최다 선택과 동률 우선순위를 여기서 다시 판단한다. 순서는 79 의 {@code TIE_BREAK_ORDER} 와 같아야 한다.
+ *
+ * <p>계산 자체는 외부 의존이 없지만 85 가 소유한 {@code CoachingTipType} 을 돌려주므로 application 계층에 둔다. 도메인에 두면 coach 의 domain 이 타 도메인
+ * application 계층을 import 하게 된다. coach 전용 enum 을 따로 만들어 매핑하는 방법도 있지만, 85 가 유형을 늘릴 때 조용히 어긋나는 평행 계약이 생긴다.
  */
 public final class CoachingTipTypeSelector {
 

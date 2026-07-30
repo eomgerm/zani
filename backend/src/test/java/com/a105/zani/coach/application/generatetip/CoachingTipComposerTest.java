@@ -1,10 +1,11 @@
-package com.a105.zani.coach.domain.model;
+package com.a105.zani.coach.application.generatetip;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.a105.zani.attention.application.port.CoachingTip;
 import com.a105.zani.attention.application.port.CoachingTipType;
+import com.a105.zani.coach.domain.model.CoachingTipRatios;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

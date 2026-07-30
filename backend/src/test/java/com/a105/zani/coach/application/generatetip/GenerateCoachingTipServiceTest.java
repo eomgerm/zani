@@ -28,6 +28,7 @@ import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
 import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
 import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
+import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
 
@@ -264,6 +265,28 @@ class GenerateCoachingTipServiceTest {
         service.start(conceptTipRequest());
 
         assertThat(onlyStored().unavailableReason()).isEqualTo(CoachingTipUnavailableReason.TRANSCRIPTION_FAILED);
+    }
+
+    @Test
+    @DisplayName("세션 조회 실패는 전사 실패와 다른 사유다 — 같이 묶으면 GMS 가 느린 줄로 읽힌다")
+    void separatesSessionLookupFailureFromTranscriptionFailure() {
+        GenerateCoachingTipService service = new GenerateCoachingTipService(
+                DIRECT,
+                Clock.fixed(TRIGGERED_AT.plusSeconds(1), ZoneOffset.UTC),
+                query -> {
+                    throw new SessionNotFoundException();
+                },
+                command -> {
+                    throw new AssertionError("세션 조회가 실패하면 전사를 부르지 않아야 한다");
+                },
+                request -> null,
+                statePort(),
+                new CoachTipProperties(0.5, 100, 3000),
+                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+
+        service.start(conceptTipRequest());
+
+        assertThat(onlyStored().unavailableReason()).isEqualTo(CoachingTipUnavailableReason.TIP_GENERATION_FAILED);
     }
 
     @Test

@@ -24,12 +24,9 @@ import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipUseCase;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
-import com.a105.zani.coach.domain.model.CoachingTipComposer;
 import com.a105.zani.coach.domain.model.CoachingTipRatios;
-import com.a105.zani.coach.domain.model.CoachingTipTypeSelector;
 import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
 import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
-import com.a105.zani.common.error.BusinessException;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextQuery;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -130,12 +127,37 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             return;
         }
 
+        GetSessionCoachingContextResult context;
         try {
-            GetSessionCoachingContextResult context =
-                    getSessionCoachingContextUseCase.get(new GetSessionCoachingContextQuery(request.sessionId()));
+            context = getSessionCoachingContextUseCase.get(new GetSessionCoachingContextQuery(request.sessionId()));
+        } catch (RuntimeException exception) {
+            // 세션 조회 실패는 전사 실패가 아니다. 같은 사유로 묶으면 로그에서 "GMS 가 느리다" 로 읽혀 엉뚱한 곳을 본다.
+            complete(
+                    request,
+                    CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    "CONTEXT",
+                    triggerDelayMs,
+                    elapsedMs(startedAt),
+                    exception);
+            return;
+        }
 
-            CaptureAudioClipResult captured =
-                    captureAudioClipUseCase.capture(new CaptureAudioClipCommand(request.sessionId()));
+        CaptureAudioClipResult captured;
+        try {
+            captured = captureAudioClipUseCase.capture(new CaptureAudioClipCommand(request.sessionId()));
+        } catch (RuntimeException exception) {
+            // AudioClipTranscriptionFailedException 과 버퍼 조회 실패가 여기로 온다.
+            complete(
+                    request,
+                    CoachingTipUnavailableReason.TRANSCRIPTION_FAILED,
+                    "TRANSCRIBE",
+                    triggerDelayMs,
+                    elapsedMs(startedAt),
+                    exception);
+            return;
+        }
+
+        try {
             if (!captured.transcribed()
                     || captured.transcript() == null
                     || captured.transcript().isBlank()) {
@@ -172,15 +194,6 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             CoachingTip tip =
                     CoachingTipComposer.compose(tipType, ratios, concept.get().concept());
             complete(request, tip, "COMPOSE", triggerDelayMs, elapsedMs(startedAt));
-        } catch (BusinessException exception) {
-            // 전사 실패(AudioClipTranscriptionFailedException)와 세션 조회 실패가 여기로 온다.
-            complete(
-                    request,
-                    CoachingTipUnavailableReason.TRANSCRIPTION_FAILED,
-                    "TRANSCRIBE",
-                    triggerDelayMs,
-                    elapsedMs(startedAt),
-                    exception);
         } catch (RuntimeException exception) {
             complete(
                     request,

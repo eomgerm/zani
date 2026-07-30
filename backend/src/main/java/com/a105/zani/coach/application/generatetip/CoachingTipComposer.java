@@ -1,7 +1,8 @@
-package com.a105.zani.coach.domain.model;
+package com.a105.zani.coach.application.generatetip;
 
 import com.a105.zani.attention.application.port.CoachingTip;
 import com.a105.zani.attention.application.port.CoachingTipType;
+import com.a105.zani.coach.domain.model.CoachingTipRatios;
 
 /**
  * §8 고정 템플릿에 실제 퍼센트와 LLM 이 채운 개념을 넣어 팁 문구를 완성한다. (S15P11A105-204)
@@ -9,7 +10,8 @@ import com.a105.zani.attention.application.port.CoachingTipType;
  * <p>LLM 이 문구 전체를 쓰지 않는 이유: 같은 상황에서 조언이 매번 달라지면 §8 이 문구를 확정한 목적(강사가 읽고 바로 행동할 수 있는 형태)이 무너진다. LLM 은 {@code {핵심
  * 개념}}·{@code {핵심 내용}} 한 자리만 채운다.
  *
- * <p>외부 의존이 없는 계산이라 도메인에 둔다. 유형 선택 규칙과 같은 패키지에 있어야 §7.6·§8 을 함께 고칠 수 있다.
+ * <p>계산 자체는 외부 의존이 없지만 85 가 소유한 {@code CoachingTip}·{@code CoachingTipType} 을 다루므로 application 계층에 둔다. 도메인에 두면 coach 의
+ * domain 이 타 도메인 application 계층을 import 하게 된다. 유형 선택 규칙과 같은 패키지에 있어야 §7.6·§8 을 함께 고칠 수 있다.
  */
 public final class CoachingTipComposer {
 
