@@ -1,0 +1,18 @@
+ALTER TABLE `group_alerts`
+    ADD COLUMN `trigger_id` VARCHAR(64) NULL COMMENT 'Idempotency key for one coaching trigger',
+    ADD COLUMN `triggered_at` DATETIME(6) NULL COMMENT 'Absolute UTC time when coaching was triggered',
+    ADD COLUMN `significant_ratio` DECIMAL(7, 6) NULL COMMENT 'Distinct significant-student ratio from 0 to 1',
+    ADD COLUMN `confused_ratio` DECIMAL(7, 6) NULL COMMENT 'CONFUSED response ratio from 0 to 1',
+    ADD COLUMN `missed_ratio` DECIMAL(7, 6) NULL COMMENT 'MISSED response ratio from 0 to 1',
+    ADD COLUMN `non_response_ratio` DECIMAL(7, 6) NULL COMMENT 'NON_RESPONSE ratio from 0 to 1',
+    ADD COLUMN `unmeasurable_ratio` DECIMAL(7, 6) NULL COMMENT 'UNMEASURABLE ratio from 0 to 1',
+    ADD COLUMN `transcript_status` VARCHAR(30) NULL COMMENT 'TRANSCRIBED, SKIPPED_NOT_REQUIRED, NOT_ATTEMPTED, TRANSCRIPTION_FAILED, or NO_TRANSCRIPT',
+    ADD COLUMN `transcript_text` TEXT NULL COMMENT 'Anonymous instructor transcript for this coaching interval',
+    ADD COLUMN `transcript_started_at` DATETIME(6) NULL COMMENT 'Absolute UTC start of the transcribed audio interval',
+    ADD COLUMN `transcript_ended_at` DATETIME(6) NULL COMMENT 'Absolute UTC end of the transcribed audio interval',
+    ADD COLUMN `tip_type` VARCHAR(50) NULL COMMENT 'Generated coaching tip type',
+    ADD COLUMN `tip_title` VARCHAR(200) NULL COMMENT 'Completed coaching tip title',
+    ADD COLUMN `tip_message` TEXT NULL COMMENT 'Completed coaching tip message',
+    ADD COLUMN `target_concept` VARCHAR(500) NULL COMMENT 'Concept extracted by GMS when applicable',
+    ADD COLUMN `unavailable_reason` VARCHAR(50) NULL COMMENT 'Reason a coaching tip was not shown',
+    ADD CONSTRAINT `UK_GROUP_ALERTS_TRIGGER_ID` UNIQUE (`trigger_id`);

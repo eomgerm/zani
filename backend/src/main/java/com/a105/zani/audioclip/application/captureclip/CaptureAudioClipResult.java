@@ -7,13 +7,14 @@ package com.a105.zani.audioclip.application.captureclip;
  * @param transcript 전사 텍스트. transcribed 가 false 면 null
  * @param availableMs 시도 시점에 버퍼가 갖고 있던 오디오 길이. 건너뛴 이유를 판단할 근거다
  */
-public record CaptureAudioClipResult(boolean transcribed, String transcript, long availableMs) {
+public record CaptureAudioClipResult(
+        boolean transcribed, String transcript, long availableMs, Long fromEpochMs, Long toEpochMs) {
 
     static CaptureAudioClipResult skipped(long availableMs) {
-        return new CaptureAudioClipResult(false, null, availableMs);
+        return new CaptureAudioClipResult(false, null, availableMs, null, null);
     }
 
-    static CaptureAudioClipResult of(String transcript, long availableMs) {
-        return new CaptureAudioClipResult(true, transcript, availableMs);
+    static CaptureAudioClipResult of(String transcript, long availableMs, long fromEpochMs, long toEpochMs) {
+        return new CaptureAudioClipResult(true, transcript, availableMs, fromEpochMs, toEpochMs);
     }
 }

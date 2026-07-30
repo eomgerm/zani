@@ -19,6 +19,7 @@ import com.a105.zani.audioclip.application.port.InstructorAudioBufferPort;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,6 +67,8 @@ class CaptureAudioClipServiceTest {
         assertTrue(result.transcribed());
         assertEquals(transcription.transcript, result.transcript());
         assertEquals(Duration.ofMinutes(5).toMillis(), result.availableMs());
+        assertEquals(0L, result.fromEpochMs());
+        assertEquals(Duration.ofMinutes(5).toMillis(), result.toEpochMs());
         assertEquals(1, transcription.calls);
     }
 
@@ -87,6 +90,8 @@ class CaptureAudioClipServiceTest {
         // 수업 시작 직후 등. 전사 비용을 쓰지 않고 상위가 팁·쿨타임을 건너뛰게 한다.
         assertFalse(result.transcribed());
         assertEquals(30_000, result.availableMs());
+        assertNull(result.fromEpochMs());
+        assertNull(result.toEpochMs());
         assertEquals(0, transcription.calls);
     }
 

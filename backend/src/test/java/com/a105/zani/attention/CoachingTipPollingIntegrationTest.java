@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import com.jayway.jsonpath.JsonPath;
 import org.hamcrest.Matchers;
@@ -12,9 +13,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -75,6 +78,9 @@ class CoachingTipPollingIntegrationTest {
     @Autowired
     private InstructorAudioBuffer instructorAudioBuffer;
 
+    @Autowired
+    @Qualifier("coachingTipExecutor") private ThreadPoolTaskExecutor coachingTipExecutor;
+
     private MockMvc mockMvc;
 
     /** 시각은 테스트마다 새로 잡는다. 고정 시각을 쓰면 3시간 뒤부터 만료 스케줄러가 세션을 끝낸다. */
@@ -104,11 +110,29 @@ class CoachingTipPollingIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        awaitCoachingTasks();
         clearState();
         instructorAudioBuffer.release(SESSION_ID);
         jdbcTemplate.update(
+                "DELETE FROM group_alert_response_counts WHERE group_alert_id IN"
+                        + " (SELECT id FROM group_alerts WHERE session_id = ?)",
+                SESSION_ID);
+        jdbcTemplate.update("DELETE FROM group_alerts WHERE session_id = ?", SESSION_ID);
+        jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE id IN (?, ?)", PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
+    }
+
+    private void awaitCoachingTasks() {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while ((coachingTipExecutor.getActiveCount() > 0
+                        || !coachingTipExecutor
+                                .getThreadPoolExecutor()
+                                .getQueue()
+                                .isEmpty())
+                && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(Duration.ofMillis(10).toNanos());
+        }
     }
 
     @Test
