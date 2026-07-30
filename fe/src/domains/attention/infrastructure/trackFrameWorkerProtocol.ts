@@ -1,6 +1,6 @@
 export interface StartTrackFrameWorkerRequest {
   readonly type: "start";
-  readonly track: MediaStreamTrack;
+  readonly readable: ReadableStream<VideoFrame>;
   readonly sampleIntervalMs: number;
 }
 
@@ -26,8 +26,7 @@ export interface TrackFrameFailureResponse {
 /**
  * 정지 요청 처리 완료 보고.
  *
- * 카메라 트랙은 Worker 로 transfer 되어 메인 스레드 핸들이 떨어졌으므로 Worker 만
- * 정지시킬 수 있다. 메인 스레드는 이 응답을 받은 뒤에 Worker 를 종료한다.
+ * Worker가 전송받은 프레임 스트림의 정지 요청 처리를 마쳤음을 알린다.
  */
 export interface TrackFrameStoppedResponse {
   readonly type: "stopped";
