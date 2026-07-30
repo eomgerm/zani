@@ -65,15 +65,11 @@ def test_audit_frame_gate_writes_mismatch_counts_by_split_and_label(
         ("valid_gap", "valid", "Engaged", 69),
         ("test_pass", "test", "Highly-Engaged", 70),
     )
-    with (data_root / "final_labels.csv").open(
-        "w", newline="", encoding="utf-8"
-    ) as file:
+    with (data_root / "final_labels.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=["clip_id", "label", "subject_id"])
         writer.writeheader()
         for clip_id, _, label, _ in clips:
-            writer.writerow(
-                {"clip_id": clip_id, "label": label, "subject_id": clip_id}
-            )
+            writer.writerow({"clip_id": clip_id, "label": label, "subject_id": clip_id})
     for split in ("train", "valid", "test"):
         clip_id = next(clip_id for clip_id, item_split, _, _ in clips if item_split == split)
         (data_root / f"{split}.txt").write_text(f"{clip_id}\n", encoding="utf-8")

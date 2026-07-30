@@ -175,8 +175,8 @@ Watching GPU utilization alongside it tells you where the bottleneck is.
 nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv -l 5 -i 2
 ```
 
-Test evaluation and the HTML report run exactly once, after all five seeds have
-finished.
+Test evaluation runs exactly once after all five seeds have finished and writes
+the aggregate metrics to `test_results.json`.
 
 ```bash
 cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 uv run python -m zani_ai engagement finalize-<protocol> --features datasets/processed/engagenet/e1 --output artifacts/engagement/<protocol> --device cuda

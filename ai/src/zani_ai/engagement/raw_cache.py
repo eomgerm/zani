@@ -241,9 +241,7 @@ def is_clip_included(
         index = min(int(timestamp_seconds / segment_seconds), segment_count - 1)
         counts[index] += 1
     valid_frame_count = sum(counts)
-    minimum_valid_frame_count = math.ceil(
-        expected_frame_count * minimum_valid_frame_ratio
-    )
+    minimum_valid_frame_count = math.ceil(expected_frame_count * minimum_valid_frame_ratio)
     return valid_frame_count >= minimum_valid_frame_count and all(
         count >= minimum_valid_frames for count in counts
     )
@@ -314,18 +312,13 @@ def _process_raw_clip(
     clip = collect_raw_clip(video_path, landmarker, frame_source=frame_source)
     valid_frame_count = sum(
         bool(valid) and 0 <= float(timestamp_ms) < WINDOW_SECONDS * 1000
-        for valid, timestamp_ms in zip(
-            clip.valid_mask, clip.timestamps_ms, strict=True
-        )
+        for valid, timestamp_ms in zip(clip.valid_mask, clip.timestamps_ms, strict=True)
     )
     expected_frame_count = round(WINDOW_SECONDS * sample_fps)
-    minimum_valid_frame_count = math.ceil(
-        expected_frame_count * MINIMUM_VALID_FRAME_RATIO
-    )
+    minimum_valid_frame_count = math.ceil(expected_frame_count * MINIMUM_VALID_FRAME_RATIO)
     if valid_frame_count < minimum_valid_frame_count:
         raise InsufficientRawTotalCoverageError(
-            f"window has {valid_frame_count} valid frames; "
-            f"{minimum_valid_frame_count} required"
+            f"window has {valid_frame_count} valid frames; {minimum_valid_frame_count} required"
         )
     if not is_clip_included(
         clip.valid_mask,
@@ -526,9 +519,7 @@ def _build_raw_provenance(
         },
         "algorithm_source_sha256": algorithm_source_sha256,
     }
-    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode(
-        "utf-8"
-    )
+    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return RawProvenance(
         created_at_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         mediapipe_version=mediapipe_version,
@@ -827,9 +818,7 @@ def extract_raw_contract_parallel(
                         raise
 
         fraction = len(excluded) / total if total else 0.0
-        status = (
-            "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
-        )
+        status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
         manifest = report("complete", status, force=True)
         if fraction > max_excluded_fraction:
             raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)

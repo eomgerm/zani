@@ -26,7 +26,6 @@ def _artifacts(root: Path) -> Path:
     _write(artifacts / "e1" / "test_results.json", '{"accuracy": 0.5}\n')
     _write(artifacts / "e1" / "seed-42" / "record.json", '{"seed": 42}\n')
     _write(artifacts / "e1" / "seed-42" / "metrics.json", '{"macro_f1": 0.4}\n')
-    _write(artifacts / "e1" / "engagenet_e1_reproduction_report.html", "<html></html>")
     _write(artifacts / "e1" / "seed-42" / "best.pt", "not really a checkpoint")
     _write(artifacts / "e1" / "seed-42" / ".seed.lock", "\0")
     _write(artifacts / "e1" / "seed-42" / "scratch.json", '{"unrelated": true}\n')

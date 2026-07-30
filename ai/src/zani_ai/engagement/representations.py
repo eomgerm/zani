@@ -197,9 +197,7 @@ class LandmarkSequenceRepresentation:
             # Scale by the rate rather than dividing by a rounded step size:
             # at 30 FPS a 33ms step accumulates error until the last frames
             # fall outside the grid entirely (step 299 would land on 302).
-            step = round(
-                float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0
-            )
+            step = round(float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0)
             if 0 <= step < step_count and step not in frame_index_by_step:
                 frame_index_by_step[step] = frame_index
 
@@ -310,12 +308,8 @@ def _save_representation_tokens(
                 schema=np.asarray(schema_name),
                 source_fingerprint=np.asarray(source_fingerprint),
                 expected_frame_count=np.int64(provenance.expected_frame_count),
-                minimum_valid_frame_ratio=np.float64(
-                    provenance.minimum_valid_frame_ratio
-                ),
-                representation_fingerprint=np.asarray(
-                    provenance.representation_fingerprint
-                ),
+                minimum_valid_frame_ratio=np.float64(provenance.minimum_valid_frame_ratio),
+                representation_fingerprint=np.asarray(provenance.representation_fingerprint),
                 raw_manifest_sha256=np.asarray(provenance.raw_manifest_sha256),
                 **{array_key: tokens},
             )
@@ -367,9 +361,7 @@ def build_feature_manifest(
     representation_source_sha256 = sha256(
         inspect.getsource(type(representation)).encode("utf-8")
     ).hexdigest()
-    representation_dependencies_sha256 = _representation_dependencies_sha256(
-        representation
-    )
+    representation_dependencies_sha256 = _representation_dependencies_sha256(representation)
     segment_aggregation_source_sha256 = sha256(
         inspect.getsource(aggregate_segments).encode("utf-8")
     ).hexdigest()
@@ -430,9 +422,7 @@ def build_feature_manifest(
         source_fingerprint = str(item["source_fingerprint"])
         key = (split, clip_id)
         if key not in label_index_by_clip:
-            excluded.append(
-                ExcludedClip(clip_id, split, "clip not present in dataset contract")
-            )
+            excluded.append(ExcludedClip(clip_id, split, "clip not present in dataset contract"))
             continue
         label_index = label_index_by_clip[key]
         raw_feature_path = raw_root / str(item["feature_path"])
@@ -446,8 +436,7 @@ def build_feature_manifest(
                 )
             if not np.isfinite(tokens).all():
                 raise ValueError(
-                    f"representation {representation.name} produced non-finite "
-                    "token values"
+                    f"representation {representation.name} produced non-finite token values"
                 )
         except (ValueError, OSError, KeyError) as error:
             excluded.append(ExcludedClip(clip_id, split, f"{type(error).__name__}: {error}"))
@@ -463,9 +452,7 @@ def build_feature_manifest(
             representation.array_key,
             provenance,
         )
-        included.append(
-            IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint)
-        )
+        included.append(IncludedClip(clip_id, split, label_index, feature_path, source_fingerprint))
 
     total = len(raw_included) + len(raw_excluded)
     manifest = ExtractionManifest(

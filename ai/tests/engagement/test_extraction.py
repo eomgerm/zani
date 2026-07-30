@@ -55,9 +55,7 @@ def _contract(tmp_path: Path) -> DatasetContract:
 def test_extract_contract_writes_tokens_and_manifest(tmp_path: Path) -> None:
     output = tmp_path / "out"
 
-    manifest = extract_contract(
-        _contract(tmp_path), _AlwaysFace(), output, frame_source=_frames
-    )
+    manifest = extract_contract(_contract(tmp_path), _AlwaysFace(), output, frame_source=_frames)
 
     assert manifest.schema == "mediapipe_98_v1"
     assert len(manifest.included) == 1
@@ -93,9 +91,7 @@ def test_extract_contract_reuses_matching_cache(tmp_path: Path) -> None:
 def test_extracted_cache_records_runtime_frame_gate(tmp_path: Path) -> None:
     output = tmp_path / "out"
 
-    manifest = extract_contract(
-        _contract(tmp_path), _AlwaysFace(), output, frame_source=_frames
-    )
+    manifest = extract_contract(_contract(tmp_path), _AlwaysFace(), output, frame_source=_frames)
 
     with np.load(manifest.included[0].feature_path) as cached:
         assert cached["expected_frame_count"].item() == 100
@@ -120,6 +116,4 @@ def test_extract_contract_does_not_reuse_cache_without_frame_gate_contract(
     with pytest.raises(ExtractionThresholdError) as error:
         extract_contract(contract, _NeverFace(), output, frame_source=_frames)
 
-    assert error.value.manifest.excluded[0].reason.startswith(
-        "InsufficientTotalFaceCoverageError"
-    )
+    assert error.value.manifest.excluded[0].reason.startswith("InsufficientTotalFaceCoverageError")

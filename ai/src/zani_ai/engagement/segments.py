@@ -58,13 +58,10 @@ def aggregate_segments(
         buckets[index].append(frame.values)
 
     valid_frame_count = sum(map(len, buckets))
-    minimum_valid_frame_count = math.ceil(
-        expected_frame_count * minimum_valid_frame_ratio
-    )
+    minimum_valid_frame_count = math.ceil(expected_frame_count * minimum_valid_frame_ratio)
     if valid_frame_count < minimum_valid_frame_count:
         raise InsufficientTotalFaceCoverageError(
-            f"window has {valid_frame_count} valid frames; "
-            f"{minimum_valid_frame_count} required"
+            f"window has {valid_frame_count} valid frames; {minimum_valid_frame_count} required"
         )
 
     for index, bucket in enumerate(buckets):

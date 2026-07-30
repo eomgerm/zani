@@ -130,9 +130,7 @@ def _add_data_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--video-extension", default=".mp4")
 
 
-def _load_contract(
-    args: argparse.Namespace, *, require_videos: bool = True
-) -> DatasetContract:
+def _load_contract(args: argparse.Namespace, *, require_videos: bool = True) -> DatasetContract:
     return load_dataset_contract(
         args.data_root,
         id_column=args.id_column,
@@ -224,13 +222,9 @@ def _audit_frame_gate(args: argparse.Namespace) -> int:
         write_frame_gate_audit,
     )
 
-    report = audit_frame_gate_gap(
-        _load_contract(args, require_videos=False), args.raw_root
-    )
+    report = audit_frame_gate_gap(_load_contract(args, require_videos=False), args.raw_root)
     write_frame_gate_audit(report, args.output)
-    print(
-        f"Frame gate audit | mismatched={report['mismatch_clip_count']} | {args.output}"
-    )
+    print(f"Frame gate audit | mismatched={report['mismatch_clip_count']} | {args.output}")
     return 0
 
 
@@ -321,16 +315,13 @@ def _finalize(protocol: str) -> Command:
         from zani_ai.engagement.experiment import SPECS
         from zani_ai.engagement.report import finalize_experiment
 
-        report_path = finalize_experiment(
+        results_path = finalize_experiment(
             SPECS[protocol],
             args.features,
             args.output,
             device=_resolve_device(args),
-            face_landmarker_model=args.face_landmarker_model,
-            preparation_manifest=args.preparation_manifest,
-            threshold_manifest=args.threshold_manifest,
         )
-        print(f"{protocol} Test evaluation and report complete | {report_path}", flush=True)
+        print(f"{protocol} Test evaluation complete | {results_path}", flush=True)
         return 0
 
     return handler
@@ -561,12 +552,9 @@ def build_parser() -> argparse.ArgumentParser:
 
         finalize = commands.add_parser(
             f"finalize-{command}",
-            help=(f"evaluate frozen {description} checkpoints once and write the HTML report"),
+            help=(f"evaluate frozen {description} checkpoints once and write JSON results"),
         )
         _add_experiment_options(finalize)
-        finalize.add_argument("--face-landmarker-model", type=Path)
-        finalize.add_argument("--preparation-manifest", type=Path)
-        finalize.add_argument("--threshold-manifest", type=Path)
         finalize.set_defaults(handler=_finalize(protocol))
 
     publish = commands.add_parser(

@@ -60,9 +60,7 @@ def test_report_aggregate_includes_ordinal_metrics_only_when_all_seeds_have_them
     with_metrics = report_aggregate(
         [_test_record(0.6, ordinal=True), _test_record(0.7, ordinal=True)]
     )
-    mixed = report_aggregate(
-        [_test_record(0.6, ordinal=True), _test_record(0.7, ordinal=False)]
-    )
+    mixed = report_aggregate([_test_record(0.6, ordinal=True), _test_record(0.7, ordinal=False)])
 
     assert with_metrics["test_within_one_accuracy"]["mean"] == pytest.approx(0.9)
     assert with_metrics["test_quadratic_weighted_kappa"]["mean"] == pytest.approx(0.7)

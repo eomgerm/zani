@@ -131,42 +131,31 @@ def test_python_frame_gate_matches_browser_runtime_contract() -> None:
     assert getattr(segments, "MINIMUM_VALID_FRAME_RATIO", None) == _runtime_config_value(
         "minimumValidFrameRatio"
     )
-    assert _runtime_config_value(
-        "minimumValidFramesPerSegment"
-    ) == MINIMUM_VALID_FRAMES
+    assert _runtime_config_value("minimumValidFramesPerSegment") == MINIMUM_VALID_FRAMES
 
 
 def test_representation_dependency_hash_tracks_token_and_landmark_contracts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     token_representation = TokenRepresentation(get_schema("mediapipe_98_v1"))
-    token_hash = representations._representation_dependencies_sha256(
-        token_representation
-    )
+    token_hash = representations._representation_dependencies_sha256(token_representation)
     monkeypatch.setattr(
         representations,
         "BLENDSHAPE_NAMES_132",
         (*representations.BLENDSHAPE_NAMES_132, "changedDependency"),
     )
-    assert (
-        representations._representation_dependencies_sha256(token_representation)
-        != token_hash
-    )
+    assert representations._representation_dependencies_sha256(token_representation) != token_hash
 
     monkeypatch.undo()
     landmark_representation = LandmarkSequenceRepresentation()
-    landmark_hash = representations._representation_dependencies_sha256(
-        landmark_representation
-    )
+    landmark_hash = representations._representation_dependencies_sha256(landmark_representation)
     monkeypatch.setattr(
         representations,
         "LANDMARK_78_INDICES",
         tuple(reversed(representations.LANDMARK_78_INDICES)),
     )
     assert (
-        representations._representation_dependencies_sha256(
-            landmark_representation
-        )
+        representations._representation_dependencies_sha256(landmark_representation)
         != landmark_hash
     )
 
@@ -337,15 +326,12 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
             "clip_id": "clip",
             "split": "train",
             "reason": (
-                "InsufficientTotalFaceCoverageError: "
-                "window has 69 valid frames; 70 required"
+                "InsufficientTotalFaceCoverageError: window has 69 valid frames; 70 required"
             ),
         }
     ]
     provenance = manifest["provenance"]
-    assert provenance["raw_manifest_sha256"] == sha256(
-        raw_manifest_path.read_bytes()
-    ).hexdigest()
+    assert provenance["raw_manifest_sha256"] == sha256(raw_manifest_path.read_bytes()).hexdigest()
     assert provenance["raw_schema"] == "raw_frames_v1"
     assert provenance["representation_name"] == "mediapipe_98_v1"
     assert provenance["expected_frame_count"] == 100
@@ -360,7 +346,6 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
         assert cached["expected_frame_count"].item() == 100
         assert cached["minimum_valid_frame_ratio"].item() == 0.7
         assert (
-            cached["representation_fingerprint"].item()
-            == provenance["representation_fingerprint"]
+            cached["representation_fingerprint"].item() == provenance["representation_fingerprint"]
         )
         assert cached["raw_manifest_sha256"].item() == provenance["raw_manifest_sha256"]

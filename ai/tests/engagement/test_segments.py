@@ -26,9 +26,7 @@ def _window_with_valid_counts(counts: list[int]) -> list[TimedFeatures]:
         for offset in range(5):
             timestamp = segment * 0.5 + offset * 0.1
             values = (
-                np.full(49, segment + offset, dtype=np.float32)
-                if offset < valid_count
-                else None
+                np.full(49, segment + offset, dtype=np.float32) if offset < valid_count else None
             )
             frames.append(TimedFeatures(timestamp, values))
     return frames

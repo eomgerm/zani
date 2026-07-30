@@ -62,8 +62,7 @@ GAZE_PROXY_DEFINITION = (
     "axis_position=dot(point-start,end-start)/max(dot(end-start,end-start),1e-6)",
     "mean_xy=(right_xy+left_xy)/2",
     "difference_xy=right_xy-left_xy",
-    "order=(right_x,right_y,left_x,left_y,mean_x,mean_y,right_minus_left_x,"
-    "right_minus_left_y)",
+    "order=(right_x,right_y,left_x,left_y,mean_x,mean_y,right_minus_left_x,right_minus_left_y)",
 )
 HEAD_POSE_DEFINITION = (
     "yaw_pitch_roll=XYZ_Euler_radians(facial_transformation_matrix[:3,:3])",
@@ -91,9 +90,7 @@ class FrameResult:
 
 
 class FrameLandmarker(Protocol):
-    def detect(
-        self, rgb_frame: NDArray[np.uint8], timestamp_ms: int
-    ) -> FrameResult | None: ...
+    def detect(self, rgb_frame: NDArray[np.uint8], timestamp_ms: int) -> FrameResult | None: ...
 
 
 class MediaPipeFaceLandmarker:
@@ -124,13 +121,9 @@ class MediaPipeFaceLandmarker:
         self._last_detection_timestamp_ms = translated
         return translated
 
-    def detect(
-        self, rgb_frame: NDArray[np.uint8], timestamp_ms: int
-    ) -> FrameResult | None:
+    def detect(self, rgb_frame: NDArray[np.uint8], timestamp_ms: int) -> FrameResult | None:
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        result = self._landmarker.detect_for_video(
-            image, self._translate_timestamp(timestamp_ms)
-        )
+        result = self._landmarker.detect_for_video(image, self._translate_timestamp(timestamp_ms))
         if not result.face_landmarks:
             return None
         landmarks = np.asarray(
@@ -243,9 +236,7 @@ class ExtractionManifest:
                 else len(self.included) + len(self.excluded)
             ),
             "excluded_fraction": (
-                len(self.excluded) / self.total_count
-                if self.total_count
-                else 0.0
+                len(self.excluded) / self.total_count if self.total_count else 0.0
             ),
             "included": [
                 {
@@ -453,8 +444,7 @@ def _cached_clip(
                 "expected_frame_count" not in cache.files
                 or int(cache["expected_frame_count"].item()) != EXPECTED_FRAME_COUNT
                 or "minimum_valid_frame_ratio" not in cache.files
-                or float(cache["minimum_valid_frame_ratio"].item())
-                != MINIMUM_VALID_FRAME_RATIO
+                or float(cache["minimum_valid_frame_ratio"].item()) != MINIMUM_VALID_FRAME_RATIO
             ):
                 return None
             tokens = np.asarray(cache["tokens"])
@@ -469,9 +459,7 @@ def _cached_clip(
                 return None
     except (OSError, ValueError, KeyError):
         return None
-    return IncludedClip(
-        record.clip_id, record.split, record.label_index, feature_path, fingerprint
-    )
+    return IncludedClip(record.clip_id, record.split, record.label_index, feature_path, fingerprint)
 
 
 def _save_tokens(
@@ -511,9 +499,7 @@ def _save_tokens(
         temporary.replace(feature_path)
     finally:
         temporary.unlink(missing_ok=True)
-    return IncludedClip(
-        record.clip_id, record.split, record.label_index, feature_path, fingerprint
-    )
+    return IncludedClip(record.clip_id, record.split, record.label_index, feature_path, fingerprint)
 
 
 def _write_manifest(output_root: Path, manifest: ExtractionManifest) -> None:
@@ -653,9 +639,7 @@ def _package_version(distribution: str, module: object) -> str:
         return version
 
 
-def _source_sha256(
-    value: ModuleType | type[object] | Callable[..., object], name: str
-) -> str:
+def _source_sha256(value: ModuleType | type[object] | Callable[..., object], name: str) -> str:
     try:
         source = inspect.getsource(value)
     except (OSError, TypeError) as error:
@@ -680,12 +664,8 @@ def _build_provenance(
             MediaPipeFaceLandmarker, "Face Landmarker adapter"
         ),
         "timestamp_sampler": _source_sha256(iter_sampled_frames, "timestamp sampler"),
-        "clip_extraction_pipeline": _source_sha256(
-            extract_clip, "clip extraction pipeline"
-        ),
-        "frame_features_module": _source_sha256(
-            feature_algorithms, "frame feature module"
-        ),
+        "clip_extraction_pipeline": _source_sha256(extract_clip, "clip extraction pipeline"),
+        "frame_features_module": _source_sha256(feature_algorithms, "frame feature module"),
         "segment_aggregation_module": _source_sha256(
             segment_algorithms, "segment aggregation module"
         ),
@@ -718,9 +698,7 @@ def _build_provenance(
         "aggregation": ["mean", "population_standard_deviation"],
         "algorithm_source_sha256": algorithm_source_sha256,
     }
-    encoded = json.dumps(
-        fingerprint_payload, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return ExtractionProvenance(
         created_at_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         mediapipe_version=mediapipe_version,
@@ -768,9 +746,7 @@ def _validate_unique_records(records: tuple[ClipRecord, ...]) -> None:
     for record in records:
         identity = (record.split, record.clip_id)
         if identity in seen:
-            raise ValueError(
-                f"duplicate extraction clip identity: {record.split}/{record.clip_id}"
-            )
+            raise ValueError(f"duplicate extraction clip identity: {record.split}/{record.clip_id}")
         seen.add(identity)
 
 
@@ -854,9 +830,7 @@ def extract_contract_parallel(
         _write_manifest(output_root, manifest)
         elapsed = time.monotonic() - started
         extraction_elapsed = (
-            time.monotonic() - extraction_started
-            if extraction_started is not None
-            else 0.0
+            time.monotonic() - extraction_started if extraction_started is not None else 0.0
         )
         rate = fresh_processed / extraction_elapsed if extraction_elapsed > 0 else 0.0
         if phase == "cache_scan":
@@ -943,9 +917,7 @@ def extract_contract_parallel(
             try:
                 report(phase, force=True)
             except BaseException as report_error:
-                _warn_best_effort(
-                    f"Emergency extraction manifest update failed: {report_error}"
-                )
+                _warn_best_effort(f"Emergency extraction manifest update failed: {report_error}")
             raise
         finally:
             if executor is not None:
@@ -969,11 +941,7 @@ def extract_contract_parallel(
                         raise
 
         fraction = len(excluded) / total if total else 0.0
-        status = (
-            "complete"
-            if fraction <= max_excluded_fraction
-            else "exclusion_threshold_exceeded"
-        )
+        status = "complete" if fraction <= max_excluded_fraction else "exclusion_threshold_exceeded"
         manifest = report("complete", status, force=True)
         if fraction > max_excluded_fraction:
             raise ExtractionThresholdError(manifest, fraction, max_excluded_fraction)

@@ -159,9 +159,7 @@ def export_onnx(
         element_count *= axis_size
     # Byte-identical to the previous `torch.arange(seg * dim).reshape(1, seg, dim)`
     # for the 2-dim token form; generalizes to the 3-dim ST-GCN sequence form.
-    example = (
-        torch.arange(element_count, dtype=torch.float32).reshape(1, *shape_after_batch) / 1000
-    )
+    example = torch.arange(element_count, dtype=torch.float32).reshape(1, *shape_after_batch) / 1000
     model = model.cpu().eval()
     export_module: torch.nn.Module = (
         _CoralClassProbModule(model).eval()
@@ -197,12 +195,8 @@ def export_onnx(
         exported = onnx.load(temporary_model)
         onnx.checker.check_model(exported)
         expected = export_module(example).detach().numpy()
-        session = ort.InferenceSession(
-            str(temporary_model), providers=["CPUExecutionProvider"]
-        )
-        actual = session.run(
-            [metadata.output_name], {metadata.input_name: example.numpy()}
-        )[0]
+        session = ort.InferenceSession(str(temporary_model), providers=["CPUExecutionProvider"])
+        actual = session.run([metadata.output_name], {metadata.input_name: example.numpy()})[0]
         assert_output_parity(actual, expected)
         temporary_metadata.write_text(
             json.dumps(asdict(metadata), ensure_ascii=False, indent=2), encoding="utf-8"

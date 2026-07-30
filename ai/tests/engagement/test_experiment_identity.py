@@ -112,9 +112,7 @@ def test_configuration_hash_is_unchanged(spec: ExperimentSpec, device: str) -> N
 
 @pytest.mark.parametrize("spec", SPECS_TUPLE, ids=lambda spec: spec.protocol)
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_configuration_records_only_the_device_type(
-    spec: ExperimentSpec, device: str
-) -> None:
+def test_configuration_records_only_the_device_type(spec: ExperimentSpec, device: str) -> None:
     """An explicit device index must not reach ``configuration``.
 
     ``cuda:2`` and ``cuda`` are the same protocol run on different hardware,
@@ -233,6 +231,7 @@ def test_curriculum_alone_separates_e0i_from_e0() -> None:
 
 def test_reliability_input_is_fingerprinted_and_must_be_go(tmp_path: Path) -> None:
     path = tmp_path / "reliability.json"
+
     def record(clip_id: str, split: str, label: int, predictions: tuple[int, ...]):
         return ClipReliability.from_seed_logits(
             clip_id=clip_id,
@@ -263,15 +262,17 @@ def test_reliability_input_is_fingerprinted_and_must_be_go(tmp_path: Path) -> No
     criteria = ReliabilityCriteria()
     assessment = assess_reliability_signal(records, criteria=criteria)
     assert assessment.decision == "go"
-    payload = _json_safe({
-        "schema_version": "label_reliability_v1",
-        "decision": assessment.decision,
-        "inputs": {"feature_manifest": {"sha256": "feature-hash"}},
-        "criteria": asdict(criteria),
-        "assessment": asdict(assessment),
-        "summary": asdict(summarize_reliability(records)),
-        "clips": [asdict(item) for item in records],
-    })
+    payload = _json_safe(
+        {
+            "schema_version": "label_reliability_v1",
+            "decision": assessment.decision,
+            "inputs": {"feature_manifest": {"sha256": "feature-hash"}},
+            "criteria": asdict(criteria),
+            "assessment": asdict(assessment),
+            "summary": asdict(summarize_reliability(records)),
+            "clips": [asdict(item) for item in records],
+        }
+    )
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     record = _reliability_record(path, feature_manifest_sha256="feature-hash")

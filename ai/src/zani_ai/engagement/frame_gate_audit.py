@@ -42,14 +42,11 @@ def audit_frame_gate_gap(contract: DatasetContract, raw_root: Path) -> dict[str,
     by_split = {split: 0 for split in ("train", "valid", "test")}
     by_label = {label: 0 for label in LABELS}
     by_split_and_label = {
-        split: {label: 0 for label in LABELS}
-        for split in ("train", "valid", "test")
+        split: {label: 0 for label in LABELS} for split in ("train", "valid", "test")
     }
     mismatches: list[dict[str, object]] = []
     segment_ms = WINDOW_SECONDS * 1000 / SEGMENT_COUNT
-    minimum_valid_frame_count = math.ceil(
-        EXPECTED_FRAME_COUNT * MINIMUM_VALID_FRAME_RATIO
-    )
+    minimum_valid_frame_count = math.ceil(EXPECTED_FRAME_COUNT * MINIMUM_VALID_FRAME_RATIO)
 
     for item in included:
         if not isinstance(item, dict):
@@ -59,8 +56,7 @@ def audit_frame_gate_gap(contract: DatasetContract, raw_root: Path) -> dict[str,
         key = (split, clip_id)
         if key not in records:
             raise ValueError(
-                "raw manifest clip is absent from dataset contract: "
-                f"{split}/{clip_id}"
+                f"raw manifest clip is absent from dataset contract: {split}/{clip_id}"
             )
         feature_path = raw_root / str(item.get("feature_path", ""))
         with np.load(feature_path, allow_pickle=False) as cache:

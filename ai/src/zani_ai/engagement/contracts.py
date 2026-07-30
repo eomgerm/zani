@@ -143,9 +143,7 @@ def _validate_split_ids(
                 problems.append(f"clip {clip_id} has no label")
             elif label.subject_id:
                 subject_splits.setdefault(label.subject_id, set()).add(split)
-            if require_videos and not (
-                videos_dir / f"{clip_id}{video_extension}"
-            ).is_file():
+            if require_videos and not (videos_dir / f"{clip_id}{video_extension}").is_file():
                 problems.append(f"missing video: videos/{clip_id}{video_extension}")
     for clip_id, splits in clip_splits.items():
         if len(splits) > 1 and len(set(splits)) == 1:

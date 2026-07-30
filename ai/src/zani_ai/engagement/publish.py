@@ -20,9 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-#: Filenames the publisher moves. ``best.pt``, ONNX exports and the HTML report
-#: are deliberately absent: they are large or binary, and judging a run needs
-#: only these four.
+#: Filenames the publisher moves. ``best.pt`` and ONNX exports are deliberately
+#: absent: they are large or binary, and judging a run needs only these four.
 METRIC_FILENAMES = frozenset({"summary.json", "test_results.json", "record.json", "metrics.json"})
 
 
