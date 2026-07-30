@@ -7,7 +7,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/domains/auth";
 import { canonicalInviteCode } from "../domain/inviteCode";
 import { joinFailureMessage } from "../domain/joinFailure";
-import { joinSession as joinSessionApi, type SessionJoiner } from "../infrastructure/joinSessionApi";
+import {
+  joinFailureReasonOf,
+  joinSession as joinSessionApi,
+  type SessionJoiner,
+} from "../infrastructure/joinSessionApi";
 import {
   detectBrowserSupport,
   readBrowserEnvironment,
@@ -99,7 +103,7 @@ export function PrejoinScreen({
       });
       router.push(`/room/${joined.sessionId}`);
     } catch (caught) {
-      setJoinError(joinFailureMessage(caught, canonicalInviteCode(inviteCode)));
+      setJoinError(joinFailureMessage(joinFailureReasonOf(caught), canonicalInviteCode(inviteCode)));
       setJoining(false);
     }
   }, [canEnter, deviceState, testedAt, joining, accessToken, joinSession, inviteCode, router]);

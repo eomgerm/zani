@@ -132,7 +132,7 @@ paths:
               example:
                 isSuccess: false
                 code: SESSION_APP_006
-                message: Only the instructor who opened this session can end it
+                message: Only the instructor who opened this session can control it
         "404":
           description: 그런 세션이 없음
           content:

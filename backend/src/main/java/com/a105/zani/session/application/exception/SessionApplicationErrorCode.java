@@ -11,8 +11,9 @@ public enum SessionApplicationErrorCode implements ErrorCode {
     INVITE_CODE_GENERATION_FAILED(
             ErrorType.INTERNAL_SERVER_ERROR, "SESSION_APP_004", "Failed to generate a unique invite code"),
     SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found"),
+    // 시작·종료가 같은 코드를 쓰므로 문구는 동작을 특정하지 않는다. "can end it" 이면 시작 실패에도 종료 얘기가 나온다.
     NOT_SESSION_INSTRUCTOR(
-            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it"),
+            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can control it"),
     SESSION_NOT_STARTED(ErrorType.CONFLICT, "SESSION_APP_007", "Session has not started yet"),
     SESSION_ENDED(ErrorType.CONFLICT, "SESSION_APP_008", "Session has already ended"),
     SESSION_FULL(ErrorType.CONFLICT, "SESSION_APP_009", "Session has reached its participant limit");

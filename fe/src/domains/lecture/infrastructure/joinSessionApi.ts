@@ -1,4 +1,5 @@
 import { canonicalInviteCode } from "@/domains/lecture/domain/inviteCode";
+import type { JoinFailureReason } from "@/domains/lecture/domain/joinFailure";
 
 export type JoinedSession = {
   /** TSID 라 JS 안전 정수 범위를 넘는다. 문자열로만 다뤄야 값이 깨지지 않는다. */
@@ -119,4 +120,44 @@ export const joinSession: SessionJoiner = async (inviteCode, accessToken, signal
 
   const data = (envelope as { data: JoinedSession }).data;
   return { ...data, sessionId: String(data.sessionId) };
+};
+
+/** 백엔드 {@code SessionApplicationErrorCode} 의 값. 여기를 고칠 때는 그쪽과 대조해야 한다. */
+const SESSION_NOT_STARTED_CODE = "SESSION_APP_007";
+const SESSION_ENDED_CODE = "SESSION_APP_008";
+const SESSION_FULL_CODE = "SESSION_APP_009";
+
+/**
+ * 입장 실패를 도메인이 이해하는 이유로 옮긴다.
+ *
+ * <p>업무 코드를 HTTP 상태보다 먼저 본다. 같은 409 안에 시작 전·종료·정원 초과가 함께 들어 있어 상태만으로는 구분되지 않는다.
+ *
+ * <p>이 번역이 infrastructure 에 있는 이유: 상태 코드와 업무 코드는 이 어댑터가 서버와 주고받는 약속이다. 도메인은 그 약속을 몰라야 전송 방식이 바뀔 때 문구가 함께 흔들리지 않는다.
+ */
+export const joinFailureReasonOf = (error: unknown): JoinFailureReason => {
+  if (!(error instanceof JoinSessionRequestError)) {
+    return "UNKNOWN";
+  }
+
+  switch (error.code) {
+    case SESSION_NOT_STARTED_CODE:
+      return "NOT_STARTED";
+    case SESSION_ENDED_CODE:
+      return "ENDED";
+    case SESSION_FULL_CODE:
+      return "FULL";
+    default:
+      break;
+  }
+
+  switch (error.status) {
+    case 404:
+      return "NOT_FOUND";
+    case 400:
+      return "INVALID_CODE";
+    case 401:
+      return "SIGNED_OUT";
+    default:
+      return "UNKNOWN";
+  }
 };

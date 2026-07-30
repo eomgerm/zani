@@ -7,6 +7,7 @@ import { useAuth } from "@/domains/auth";
 import { inviteCodeFrom } from "@/domains/lecture/domain/inviteCode";
 import { joinFailureMessage } from "@/domains/lecture/domain/joinFailure";
 import {
+  joinFailureReasonOf,
   joinSession as joinSessionApi,
   type SessionJoiner,
 } from "@/domains/lecture/infrastructure/joinSessionApi";
@@ -64,7 +65,7 @@ export function HomeScreen({
       await joinSession(code, accessToken);
       router.push(`/prejoin/${code}`);
     } catch (caught) {
-      setInviteError(joinFailureMessage(caught, code));
+      setInviteError(joinFailureMessage(joinFailureReasonOf(caught), code));
       setChecking(false);
     }
   };

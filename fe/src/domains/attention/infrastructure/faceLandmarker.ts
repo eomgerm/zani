@@ -1,6 +1,5 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-import type { AttentionFeatureDetector } from "../application/attentionDetectionPorts";
 import { attentionAssetPaths, type AttentionAssetPaths } from "./attentionAssets";
 import type { FrameLandmarkerValues } from "./frameContracts";
 import { extractFrameFeatures } from "./frameFeatures";
@@ -17,6 +16,23 @@ import { columnMajorTransformToRowMajor } from "./faceTransform";
 export interface BrowserFaceLandmarker {
   /** 프레임 1장에서 랜드마크·변환행렬·blendshape 를 뽑는다. 얼굴이 없으면 null. */
   detect(frame: TexImageSource, timestampMs: number): FrameLandmarkerValues | null;
+  close(): void;
+}
+
+/** 프레임의 최소 계약. 이 어댑터는 닫을 수 있다는 것 외에 프레임의 정체를 알 필요가 없다. */
+interface ClosableFrame {
+  close(): void;
+}
+
+/**
+ * 49차원 특징 검출 어댑터가 제공하는 모양.
+ *
+ * <p>application 의 {@code AttentionFeatureDetector} 포트와 구조가 같지만 그 타입을 직접 가져오지 않는다 — infrastructure 는
+ * application 을 알지 않는다. 어댑터가 포트와 실제로 맞는지는 둘을 잇는 조립 지점(`useAttentionDetection`)에서 타입으로 확인된다. 그래서 이 모양이 포트와 어긋나면 그쪽에서
+ * 컴파일이 깨진다.
+ */
+export interface FrameFeatureDetectorAdapter {
+  detect(frame: ClosableFrame, timestampMs: number): Float32Array | null;
   close(): void;
 }
 
@@ -79,8 +95,8 @@ export async function createBrowserFaceLandmarker(
   };
 }
 
-/** application 포트에 맞춰 MediaPipe 출력과 49차원 특징 추출을 한 어댑터로 감싼다. */
-export async function createAttentionFeatureDetector(): Promise<AttentionFeatureDetector> {
+/** MediaPipe 출력과 49차원 특징 추출을 한 어댑터로 감싼다. */
+export async function createAttentionFeatureDetector(): Promise<FrameFeatureDetectorAdapter> {
   const landmarker = await createBrowserFaceLandmarker();
   return {
     detect(frame, timestampMs): Float32Array | null {
