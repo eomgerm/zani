@@ -1,18 +1,15 @@
 import { pumpTrackFrames } from "./trackFramePump";
 import type { TrackFrameWorkerResponse } from "./trackFrameWorkerProtocol";
 
-export interface TrackProcessorLike {
-  readonly readable: {
-    getReader(): {
-      read(): Promise<ReadableStreamReadResult<VideoFrame>>;
-    };
+export interface TrackFrameReadable {
+  getReader(): {
+    read(): Promise<ReadableStreamReadResult<VideoFrame>>;
   };
 }
 
 export interface TrackFrameWorkerRuntimeOptions {
-  readonly track: MediaStreamTrack;
+  readonly readable: TrackFrameReadable;
   readonly sampleIntervalMs: number;
-  createProcessor(track: MediaStreamTrack): TrackProcessorLike;
   postMessage(message: TrackFrameWorkerResponse, transfer?: Transferable[]): void;
   isStopped(): boolean;
 }
@@ -24,9 +21,9 @@ function reason(error: unknown): string {
 export async function runTrackFrameWorker(
   options: TrackFrameWorkerRuntimeOptions,
 ): Promise<void> {
-  const { track, sampleIntervalMs, createProcessor, postMessage, isStopped } = options;
+  const { readable, sampleIntervalMs, postMessage, isStopped } = options;
   try {
-    const reader = createProcessor(track).readable.getReader();
+    const reader = readable.getReader();
     await pumpTrackFrames<VideoFrame>({
       sampleIntervalMs,
       isStopped,
@@ -39,7 +36,7 @@ export async function runTrackFrameWorker(
       onFrame(frame, timestampMs) {
         postMessage(
           { type: "frame", frame, timestampMs },
-          [frame as unknown as Transferable],
+          [frame],
         );
       },
     });

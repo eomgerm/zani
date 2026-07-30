@@ -32,7 +32,7 @@ export interface UseAttentionDetectionOptions
   >> {
   /** `on` 이 아니면 판정을 중단하고 상태만 알린다. */
   readonly camera: CameraAvailability;
-  /** Worker TrackProcessor가 읽을 LiveKit 로컬 카메라 트랙. */
+  /** 분석 전용 processor stream을 만들 LiveKit 로컬 카메라 트랙. */
   readonly track: MediaStreamTrack | null;
   onPrediction?: (prediction: AttentionPrediction) => void;
   onStatusChange?: (status: AttentionStatus) => void;
