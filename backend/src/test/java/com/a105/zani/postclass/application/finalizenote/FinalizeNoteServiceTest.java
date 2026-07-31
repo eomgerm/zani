@@ -3,11 +3,13 @@ package com.a105.zani.postclass.application.finalizenote;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.a105.zani.postclass.application.InMemoryInstructorNoteRepository;
+import com.a105.zani.postclass.application.InMemoryPipelineJobPort;
 import com.a105.zani.postclass.domain.model.InstructorNote;
 import com.a105.zani.postclass.domain.model.NoteStatus;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
@@ -32,13 +34,15 @@ class FinalizeNoteServiceTest {
     private static final Instant EARLIER = NOW.minusSeconds(600);
 
     private final InMemoryInstructorNoteRepository noteRepository = new InMemoryInstructorNoteRepository();
+    private final InMemoryPipelineJobPort pipelineJobPort = new InMemoryPipelineJobPort();
     private final StubResolveEndedParticipant resolveParticipant = new StubResolveEndedParticipant();
 
     private FinalizeNoteService service;
 
     @BeforeEach
     void setUp() {
-        service = new FinalizeNoteService(resolveParticipant, noteRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new FinalizeNoteService(
+                resolveParticipant, noteRepository, pipelineJobPort, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -52,6 +56,8 @@ class FinalizeNoteServiceTest {
         // 확정 후속 작업(사후 처리 job 생성)은 이 값이 true 인 경로에서만 해야 세션당 한 번이 지켜진다.
         assertTrue(result.finalizedNow());
         assertTrue(noteRepository.findBySessionId(SESSION_ID).orElseThrow().isFinalized());
+        // 확정이 곧 사후 처리의 시작점이다(NOTE-004).
+        assertEquals(List.of(SESSION_ID), pipelineJobPort.enqueuedSessionIds);
     }
 
     @Test
@@ -75,6 +81,8 @@ class FinalizeNoteServiceTest {
         assertEquals(NoteStatus.FINALIZED, result.status());
         assertEquals(NOW, result.finalizedAt());
         assertFalse(result.finalizedNow());
+        // 두 번 눌러도 작업은 한 건이다(§17.1 처리 순서의 시작점이 두 번 열리지 않는다).
+        assertEquals(List.of(SESSION_ID), pipelineJobPort.enqueuedSessionIds);
     }
 
     @Test
@@ -86,6 +94,8 @@ class FinalizeNoteServiceTest {
         InstructorNote saved = noteRepository.findBySessionId(SESSION_ID).orElseThrow();
         assertNull(saved.content());
         assertEquals(INSTRUCTOR_PARTICIPANT, saved.instructorParticipantId());
+        // 메모가 비어도 분석은 시작된다.
+        assertEquals(List.of(SESSION_ID), pipelineJobPort.enqueuedSessionIds);
     }
 
     @Test
@@ -101,6 +111,8 @@ class FinalizeNoteServiceTest {
         assertFalse(result.finalizedNow());
         // 이긴 쪽이 기록한 시각을 응답한다. 이 요청의 시계값(NOW)을 확정 시각인 것처럼 내보내면 안 된다.
         assertEquals(EARLIER, result.finalizedAt());
+        // 작업은 이긴 쪽(자동 확정)이 남긴다. 이 경로에서 또 남기면 세션당 하나가 깨진다.
+        assertTrue(pipelineJobPort.enqueuedSessionIds.isEmpty());
     }
 
     @Test
@@ -129,6 +141,8 @@ class FinalizeNoteServiceTest {
         assertEquals(NoteStatus.FINALIZED, result.status());
         assertEquals(EARLIER, result.finalizedAt());
         assertFalse(result.finalizedNow());
+        // 작업은 먼저 확정한 쪽이 남겼다. 여기서 또 남기면 같은 수업의 분석이 두 번 돌아간다.
+        assertTrue(pipelineJobPort.enqueuedSessionIds.isEmpty());
     }
 
     @Test
@@ -143,6 +157,8 @@ class FinalizeNoteServiceTest {
         assertEquals(NoteStatus.FINALIZED, result.status());
         assertTrue(result.finalizedNow());
         assertTrue(noteRepository.findBySessionId(SESSION_ID).orElseThrow().isFinalized());
+        // 확정한 쪽이 작업을 남긴다 — 초안이 이 요청보다 먼저 만들어졌더라도 마찬가지다.
+        assertEquals(List.of(SESSION_ID), pipelineJobPort.enqueuedSessionIds);
     }
 
     private void givenDraft() {

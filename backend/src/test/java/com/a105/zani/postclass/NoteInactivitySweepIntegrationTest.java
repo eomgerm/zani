@@ -75,6 +75,21 @@ class NoteInactivitySweepIntegrationTest {
         assertEquals("FINALIZED", statusOf(IDLE_NOTE_ID));
         assertEquals(1, finalizedAtCount(IDLE_NOTE_ID));
         assertEquals("DRAFT", statusOf(FRESH_NOTE_ID));
+        // 확정이 곧 사후 처리의 시작점이다(FRD §16 NOTE-004). 아직 만료되지 않은 세션에는 작업이 없다.
+        assertEquals(1, queuedJobCount(SESSION_ID));
+        assertEquals(0, queuedJobCount(FRESH_SESSION_ID));
+    }
+
+    @Test
+    void queuesTheJobOnlyOnceEvenIfTheSweepRunsAgain() {
+        insertDraft(
+                IDLE_NOTE_ID, SESSION_ID, INSTRUCTOR_PARTICIPANT_ID, InstructorNote.INACTIVITY_WINDOW.plusMinutes(1));
+
+        finalizeDueNotesUseCase.finalizeDueNotes();
+        finalizeDueNotesUseCase.finalizeDueNotes();
+
+        // 두 번째 스윕은 이미 확정된 메모를 고르지 않는다. 골랐더라도 session_id UNIQUE 가 작업을 하나로 묶는다.
+        assertEquals(1, queuedJobCount(SESSION_ID));
     }
 
     @Test
@@ -114,6 +129,13 @@ class NoteInactivitySweepIntegrationTest {
 
     private String statusOf(long noteId) {
         return jdbcTemplate.queryForObject("SELECT status FROM instructor_notes WHERE id = ?", String.class, noteId);
+    }
+
+    private int queuedJobCount(long sessionId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pipeline_jobs WHERE session_id = ? AND status = 'QUEUED'",
+                Integer.class,
+                sessionId);
     }
 
     private int finalizedAtCount(long noteId) {
@@ -178,6 +200,7 @@ class NoteInactivitySweepIntegrationTest {
     }
 
     private void cleanUpRows() {
+        jdbcTemplate.update("DELETE FROM pipeline_jobs WHERE session_id IN (?, ?)", SESSION_ID, FRESH_SESSION_ID);
         jdbcTemplate.update("DELETE FROM instructor_notes WHERE session_id IN (?, ?)", SESSION_ID, FRESH_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", SESSION_ID, FRESH_SESSION_ID);
