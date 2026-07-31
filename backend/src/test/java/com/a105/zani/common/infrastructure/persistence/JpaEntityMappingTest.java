@@ -30,6 +30,7 @@ import com.a105.zani.attention.infrastructure.persistence.entity.CheckPromptJpaE
 import com.a105.zani.attention.infrastructure.persistence.entity.GroupAlertJpaEntity;
 import com.a105.zani.attention.infrastructure.persistence.entity.GroupAlertResponseCountJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
+import com.a105.zani.postclass.infrastructure.persistence.entity.InstructorNoteJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizAnswerJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizOptionJpaEntity;
@@ -48,7 +49,6 @@ import com.a105.zani.report.infrastructure.persistence.entity.SessionReportJpaEn
 import com.a105.zani.report.infrastructure.persistence.entity.SessionSectionJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.StudentReportJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.ChatMessageJpaEntity;
-import com.a105.zani.session.infrastructure.persistence.entity.InstructorNoteJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.InteractionEventJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionJpaEntity;
 import com.a105.zani.session.infrastructure.persistence.entity.SessionParticipantJpaEntity;
