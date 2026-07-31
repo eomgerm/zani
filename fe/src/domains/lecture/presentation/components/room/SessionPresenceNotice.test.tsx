@@ -21,13 +21,18 @@ describe("SessionPresenceNotice", () => {
     expect(notice.textContent).toContain("5분");
   });
 
-  it("offers a way out once the session has ended", () => {
+  it("says the class ended and offers an immediate way out to my lectures", () => {
     render(
       <SessionPresenceNotice reconnectStatus="SESSION_ENDED" sessionEnded error={null} />,
     );
 
-    expect(screen.getByTestId("presence-session-ended")).toHaveAttribute("role", "alert");
-    expect(screen.getByRole("link", { name: "나가기" })).toHaveAttribute("href", "/home");
+    const notice = screen.getByTestId("presence-session-ended");
+    expect(notice).toHaveAttribute("role", "alert");
+    expect(notice.textContent).toContain("잠시 후 강의실에서 나갑니다");
+    expect(screen.getByRole("link", { name: "지금 나가기" })).toHaveAttribute(
+      "href",
+      "/my-lectures",
+    );
   });
 
   it("shows why reporting stopped when the server rejected it", () => {

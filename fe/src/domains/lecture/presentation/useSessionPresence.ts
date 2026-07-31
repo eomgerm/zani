@@ -26,7 +26,7 @@ const SESSION_CLOSED_MESSAGE = "이미 종료된 수업입니다.";
 export type SessionPresenceState = {
   /** 마지막 heartbeat 응답의 재연결·세션 신호. 아직 응답이 없으면 null. */
   reconnectStatus: PresenceReconnectStatus | null;
-  /** 강사 미복귀로 세션이 종료되었는지. */
+  /** 세션이 종료되었는지 — 강사 미복귀 자동 종료 스냅숏 또는 이미 종료된 방(409) 둘 다 담는다. */
   sessionEnded: boolean;
   /** 보고를 중단한 이유. 일시적 실패는 담지 않는다(다음 주기에 재시도). */
   error: string | null;
@@ -115,6 +115,11 @@ export function useSessionPresence(
         // 일시적 실패(네트워크·5xx)는 다음 주기에 다시 보낸다.
         if (failure instanceof PresenceReportError && TERMINAL_STATUSES.includes(failure.status)) {
           setError(terminalMessage(failure.status));
+          // 409 는 방이 이미 종료된 것이다. 유예 만료 스냅숏과 같은 신호로 올려
+          // 화면이 남은 참가자를 바로 내보낼 수 있게 한다.
+          if (failure.status === 409) {
+            setSessionEnded(true);
+          }
         }
       }
     };

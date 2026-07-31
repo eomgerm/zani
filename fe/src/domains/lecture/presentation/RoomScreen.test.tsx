@@ -1,5 +1,12 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// 강사 나가기가 세션을 실제로 종료하는지 본다. 어댑터 동작 자체는 endSessionApi.test 가 검증한다.
+const endSessionRequest = vi.hoisted(() => vi.fn());
+vi.mock("../infrastructure/endSessionApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infrastructure/endSessionApi")>()),
+  endSession: endSessionRequest,
+}));
 
 const roomConnection = vi.hoisted(() => ({
   connectionState: "connected" as "connecting" | "connected" | "error",
@@ -122,6 +129,17 @@ vi.mock("./useScreenShare", () => ({
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
+// heartbeat 자체는 useSessionPresence.test 가 검증한다. 여기서는 종료 신호에 화면이 어떻게
+// 반응하는지(남은 참가자 내보내기)만 본다.
+const presence = vi.hoisted(() => ({
+  reconnectStatus: null as string | null,
+  sessionEnded: false,
+  error: null as string | null,
+}));
+vi.mock("./useSessionPresence", () => ({
+  useSessionPresence: () => presence,
+}));
+
 import { RoomScreen } from "./RoomScreen";
 
 const asStudent = () => {
@@ -157,6 +175,10 @@ const asInstructor = () => {
 afterEach(() => {
   cleanup();
   push.mockClear();
+  endSessionRequest.mockReset();
+  presence.reconnectStatus = null;
+  presence.sessionEnded = false;
+  presence.error = null;
   roomConnection.sessionExpiresAt = null;
   roomConnection.sessionTitle = null;
   roomConnection.connectionState = "connected";
@@ -321,22 +343,59 @@ describe("RoomScreen controls", () => {
     expect(screen.getByRole("button", { name: "다른 참가자가 공유 중입니다" })).toBeDisabled();
   });
 
-  it("sends a leaving student back to their lecture list", () => {
+  it("sends a leaving student back to their lecture list without ending the session", () => {
     asStudent();
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
     expect(push).toHaveBeenCalledWith("/my-lectures");
+    expect(endSessionRequest).not.toHaveBeenCalled();
   });
 
-  it("sends a leaving instructor to the post-class note screen", () => {
+  it("asks the instructor to confirm, then ends the session and moves to the note screen", async () => {
+    asInstructor();
+    endSessionRequest.mockResolvedValue({ sessionId: "123", status: "ENDED", ended: true });
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+    // 말풍선이 먼저 뜨고, 종료는 아직 나가지 않았다.
+    expect(screen.getByText(/수업을 종료할까요/)).toBeInTheDocument();
+    expect(endSessionRequest).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("leave-confirm-end"));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/my-lectures/123/note"));
+    expect(endSessionRequest).toHaveBeenCalledWith("123", "test-access-token");
+  });
+
+  it("keeps the class running when the instructor cancels the confirmation", () => {
     asInstructor();
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+    fireEvent.click(screen.getByTestId("leave-confirm-cancel"));
 
-    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
+    expect(endSessionRequest).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("leave-confirm-bubble")).toBeNull();
+  });
+
+  it("keeps the instructor in the room and explains when ending fails", async () => {
+    asInstructor();
+    endSessionRequest.mockRejectedValue(new Error("network down"));
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
+    fireEvent.click(screen.getByTestId("leave-confirm-end"));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("수업을 종료하지 못했습니다. 잠시 후 다시 시도해 주세요."),
+      ).toBeInTheDocument(),
+    );
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("derives the instructor role from the token-provided participant role", () => {
@@ -411,28 +470,53 @@ describe("RoomScreen maximum duration warning", () => {
 });
 
 describe("RoomScreen end-session control", () => {
-  it("offers the end-class button to the instructor only", () => {
+  it("no longer renders a separate end-class button — leaving is the only exit", () => {
     asInstructor();
-    render(<RoomScreen sessionId="123" />);
-
-    expect(screen.getByTestId("end-session-button")).toBeVisible();
-  });
-
-  it("hides the end-class button from students", () => {
-    asStudent();
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.queryByTestId("end-session-button")).toBeNull();
   });
 
-  it("hides the end-class button until the role is confirmed", () => {
-    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 이때 종료 버튼이 보이면 학생에게도 잠시 노출된다.
+  it("moves an unconfirmed leaver straight out without asking to end", () => {
+    // 참가자 목록이 도착하기 전에는 역할을 알 수 없다. 되돌릴 수 없는 종료는 묻지 않고 이동만 한다.
     roomParticipants.participants = [];
     roomParticipants.localParticipantId = null;
 
     render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: "나가기" }));
 
-    expect(screen.queryByTestId("end-session-button")).toBeNull();
+    expect(screen.queryByTestId("leave-confirm-bubble")).toBeNull();
+    expect(endSessionRequest).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
+  });
+});
+
+describe("RoomScreen ended-session kick", () => {
+  it("shows a remaining student the end notice before moving them out", () => {
+    vi.useFakeTimers();
+    asStudent();
+    presence.sessionEnded = true;
+
+    render(<RoomScreen sessionId="123" />);
+
+    // 안내가 먼저 뜨고, 아직 이동하지 않았다.
+    expect(screen.getByTestId("presence-session-ended").textContent).toContain(
+      "잠시 후 강의실에서 나갑니다",
+    );
+    expect(push).not.toHaveBeenCalled();
+
+    // 잠깐 뒤에 강의 목록으로 내보낸다.
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+  });
+
+  it("sends the instructor to the note screen right away when the session ends behind them", () => {
+    asInstructor();
+    presence.sessionEnded = true;
+
+    render(<RoomScreen sessionId="123" />);
+
+    expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
   });
 });
 

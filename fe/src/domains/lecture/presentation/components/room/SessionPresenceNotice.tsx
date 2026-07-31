@@ -10,8 +10,12 @@ type SessionPresenceNoticeProps = Pick<
 >;
 
 /**
- * presence heartbeat 응답을 화면에 반영한다. 세션이 종료되면 나가기를 안내하고,
- * 강사 유예(GRACE_PERIOD) 중에는 자동 종료가 임박했음을 알린다. 그 밖에는 아무것도 그리지 않는다.
+ * presence heartbeat 응답을 화면에 반영한다. 세션이 종료되면(강사가 방을 닫았거나, 미복귀로
+ * 자동 종료됐거나, 이미 닫힌 방) 곧 강의실에서 나간다는 것을 알리고, 강사 유예(GRACE_PERIOD)
+ * 중에는 자동 종료가 임박했음을 알린다. 그 밖에는 아무것도 그리지 않는다.
+ *
+ * 종료 뒤 실제 이동은 RoomScreen 이 잠깐 뒤에 처리한다. 여기 나가기 링크는 기다리지 않고
+ * 바로 나가려는 참가자를 위한 것이라, 자동 이동과 같은 목적지(내 강의실)로 보낸다.
  */
 export function SessionPresenceNotice({
   reconnectStatus,
@@ -25,9 +29,9 @@ export function SessionPresenceNotice({
         data-testid="presence-session-ended"
         className="flex items-center justify-center gap-3 bg-danger-softer px-4 py-2 text-sm font-bold text-danger"
       >
-        <span>강사가 복귀하지 않아 수업이 종료되었습니다.</span>
-        <Link href="/home" className="rounded-lg bg-danger px-3 py-1 font-bold text-surface">
-          나가기
+        <span>수업이 종료되었습니다. 잠시 후 강의실에서 나갑니다.</span>
+        <Link href="/my-lectures" className="rounded-lg bg-danger px-3 py-1 font-bold text-surface">
+          지금 나가기
         </Link>
       </div>
     );
