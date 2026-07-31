@@ -4,12 +4,18 @@ import com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException;
 import com.a105.zani.postclass.domain.exception.InvalidNoteContentException;
 import com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
+import com.a105.zani.session.application.exception.NotSessionMemberException;
+import com.a105.zani.session.application.exception.SessionNotEndedException;
+import com.a105.zani.session.application.exception.SessionNotFoundException;
 
 public interface SaveNoteDraftUseCase {
 
     /**
      * 강사 메모 초안을 저장하고 30분 비활성 타이머를 초기화한다(NOTE-002).
      *
+     * @throws NotSessionMemberException 해당 세션의 멤버가 아님
+     * @throws SessionNotFoundException 세션 없음
+     * @throws SessionNotEndedException 아직 진행 중인 세션
      * @throws NotSessionInstructorException 세션 강사가 아님
      * @throws InvalidNoteContentException 본문이 5000자를 넘음
      * @throws NoteAlreadyFinalizedException 이미 확정된 메모
