@@ -11,9 +11,9 @@ import java.util.List;
 public interface RaisedHandQueuePort {
 
     /**
-     * 손을 든 것으로 기록한다. 이미 들고 있었다면 순번은 그대로 유지한다.
+     * 손을 든 것으로 기록한다. 이미 들고 있었다면 자리를 그대로 둔다 — 재시도가 목록을 흔들지 않게 한다.
      *
-     * @param raisedAtMillis 순번의 기준. 서버가 받은 시각이라 클라이언트 시계와 무관하다
+     * @param raisedAtMillis 정렬 기준. 서버가 받은 시각이라 클라이언트 시계와 무관하다. 같은 밀리초의 앞뒤까지는 보장하지 않는다
      */
     RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis);
 

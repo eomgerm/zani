@@ -15,11 +15,16 @@ import com.a105.zani.session.application.port.RaisedHandQueuePort;
 /**
  * 손든 참가자 큐를 Redis Sorted Set 으로 들고 있다.
  *
- * <p><b>왜 Sorted Set 인가.</b> 요구사항이 "서버 수신 시각 기준 순번"인데, score 에 시각을 넣으면 자료구조 자체가 순서를 보장한다. 목록·집합으로 두면 순서를 따로 관리해야 하고,
- * {@code interaction_events} 에서 파생하려면 참가자별 최신 행을 뽑는 윈도 함수 질의가 필요하다.
+ * <p><b>현재 상태만 여기 둔다.</b> 이력은 {@code interaction_events} 가 따로 남긴다. 지금 손든 사람을 그 표에서 파생하려면 참가자별 최신 행을 뽑는 윈도 함수 질의가 필요한데,
+ * 화면이 볼 때마다 그걸 돌릴 이유가 없다.
  *
- * <p><b>Redis 장애 때는 조용히 실패한다.</b> 손들기는 화면 표시용이라, 못 읽으면 목록이 비어 보일 뿐 수업이 멈추지는 않는다. 이력은 {@code interaction_events} 가 따로
- * 남기므로 리포트도 잃지 않는다.
+ * <p><b>Sorted Set 이지만 순번을 제공하지는 않는다.</b> score(서버 수신 시각)로 안정적인 순서가 나오긴 하나, 같은 밀리초에 들어온 멤버는 Redis 가 identity 사전순으로
+ * 정렬하므로 실제 도착 순서와 달라진다. 화면이 포함 여부만 쓰기로 해서 받아들인 한계다 — 순번을 노출하게 되면 세션별 {@code INCR} 순번을 score 로 쓰고 발급과 {@code ZADD} 를 Lua
+ * 로 묶어야 한다. 지금 집합으로 바꾸지 않는 이유는 그때 되돌릴 일을 만들지 않기 위해서일 뿐, 비용 차이는 없다.
+ *
+ * <p><b>읽기는 조용히 실패한다.</b> 못 읽으면 목록이 비어 보일 뿐 사실과 다른 것을 주장하지 않는다. 쓰기는 반대로
+ * {@link com.a105.zani.session.application.port.RaisedHandChange#UNAVAILABLE} 로 알려 호출한 쪽이 브로드캐스트를 멈추게 한다 — 기록하지 못했는데
+ * 알리면 화면에는 손이 올라가 있고 서버는 모르는 상태가 된다.
  */
 @Slf4j
 @Component
@@ -37,8 +42,8 @@ public class RaisedHandQueueRedisAdapter implements RaisedHandQueuePort {
     @Override
     public RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis) {
         try {
-            // ZADD 는 이미 있는 멤버의 score 를 덮어쓴다. NX 를 붙여 먼저 든 순번을 지킨다 —
-            // 두 번 눌렀다고 뒤로 밀리면 안 된다.
+            // ZADD 는 이미 있는 멤버의 score 를 덮어쓴다. NX 를 붙여 자리를 그대로 둔다 — 재시도나
+            // 두 번 누름이 목록을 흔들면 화면이 불필요하게 다시 그려진다.
             Boolean added = redisTemplate.opsForZSet().addIfAbsent(key(sessionId), identity, (double) raisedAtMillis);
             if (added == null) {
                 // 파이프라인·트랜잭션 모드에서만 나오는 값이라 여기서는 오지 않아야 한다. 온다면 기록 여부를 알 수 없다.

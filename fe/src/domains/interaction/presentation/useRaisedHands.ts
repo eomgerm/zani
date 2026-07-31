@@ -24,7 +24,7 @@ export interface UseRaisedHandsOptions {
 }
 
 export interface UseRaisedHandsResult {
-  /** 손든 순서대로. 인덱스가 곧 순번이다. */
+  /** 지금 손을 든 참가자. 화면은 포함 여부만 보고 순서는 쓰지 않는다. */
   readonly raisedIdentities: readonly string[];
   readonly myHandRaised: boolean;
   /** 채널이 붙어 있어 바꿀 수 있는지. */

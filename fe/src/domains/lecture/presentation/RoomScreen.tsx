@@ -166,8 +166,8 @@ function RoomScreenContent({
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
-  // 손들기 현재 상태는 서버가 들고 있다. 순번이 필요해 서버가 수신 시각으로 줄을 세우므로,
-  // 여기서 로컬로 뒤집으면 내 화면의 순번만 남과 달라진다.
+  // 손들기 현재 상태는 서버가 들고 있다. 여기서 로컬로 뒤집으면 서버가 거절했을 때(비멤버·저장소
+  // 장애) 내 화면만 손이 올라간 채로 남는다. 아래에서 집합 포함 여부로만 쓰고 순서는 보지 않는다.
   const hands = useRaisedHands({ myIdentity: localParticipantId });
   // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기도 이제 서버 확정 값이다.
   const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: hands.myHandRaised };

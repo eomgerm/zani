@@ -13,8 +13,16 @@ public final class SessionChannelDestinations {
     /** WebSocket 핸드셰이크 경로. SecurityConfig 의 permitAll 목록과 함께 바뀌어야 한다. */
     public static final String HANDSHAKE_PATH = "/ws";
 
-    /** 브로커가 구독을 받는 접두사. */
+    /** 모두에게 뿌리는 구독의 접두사. */
     public static final String BROKER_PREFIX = "/topic";
+
+    /**
+     * 한 사람에게만 가는 구독의 접두사.
+     *
+     * <p><b>브로커에 함께 등록해야 한다.</b> 사용자별 목적지는 {@code /user/queue/errors} 로 구독하지만 브로커에는 {@code /queue/errors-user{세션ID}} 로
+     * 도착한다. 이 접두사를 빼면 브로커가 그 목적지를 아예 다루지 않아 <b>오류 없이 조용히 버린다</b> — 거절 통지가 사라져도 어디에도 흔적이 남지 않는다.
+     */
+    public static final String USER_QUEUE_PREFIX = "/queue";
 
     /** 클라이언트가 서버 핸들러로 보낼 때 쓰는 접두사({@code @MessageMapping}). */
     public static final String APPLICATION_PREFIX = "/app";
@@ -23,7 +31,7 @@ public final class SessionChannelDestinations {
     public static final String USER_PREFIX = "/user";
 
     /** 전송이 거절됐을 때 보낸 사람에게만 알리는 큐. */
-    public static final String ERROR_QUEUE = "/queue/errors";
+    public static final String ERROR_QUEUE = USER_QUEUE_PREFIX + "/errors";
 
     private static final String SESSION_TOPIC_PREFIX = BROKER_PREFIX + "/sessions/";
 

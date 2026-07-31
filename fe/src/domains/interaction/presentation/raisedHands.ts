@@ -1,8 +1,10 @@
 /**
  * 손든 참가자 목록을 스냅샷과 실시간 이벤트로 유지하는 순수 리듀서.
  *
- * 순번이 곧 배열 인덱스다. 서버가 손든 순서대로 스냅샷을 주고 이후 이벤트는 뒤에 붙으므로,
- * 이 규칙만 지키면 클라이언트가 손든 시각을 따로 들고 있지 않아도 순번이 맞는다.
+ * **순번은 쓰지 않는다.** 배열이라 순서가 생기긴 하지만 화면은 이 목록을 집합으로만 쓴다 —
+ * 갤러리 타일과 명단 모두 `includes()` 로 포함 여부만 묻고, 순회는 LiveKit 참가자 순서로 한다.
+ * 그래서 서버도 밀리초 단위 도착 순서를 보장하지 않는다(같은 밀리초면 Redis 가 identity
+ * 사전순으로 정렬한다). 순번을 화면에 노출하게 되면 그 보장부터 서버에 만들어야 한다.
  *
  * ## 스냅샷과 실시간 이벤트의 도착 순서
  *
@@ -24,7 +26,7 @@ interface HandChange {
 }
 
 export interface RaisedHandsState {
-  /** 손든 순서. 중복 없이 유지한다. */
+  /** 지금 손을 든 참가자. 중복이 없다는 것만 보장한다(순서는 위 설명 참고). */
   readonly identities: readonly string[];
   /**
    * 이번 연결의 스냅샷을 기다리는 동안 받은 변경. 스냅샷이 도착하면 그 위에 다시 얹고 비운다.
@@ -58,8 +60,9 @@ export const initialRaisedHandsState: RaisedHandsState = {
 function applyChange(identities: readonly string[], change: HandChange): readonly string[] {
   const present = identities.includes(change.identity);
   if (change.raised) {
-    // 이미 있으면 그대로 둔다. 서버가 재시도에도 알림을 다시 보내므로 같은 이벤트가 두 번 올 수 있고,
-    // 그때 뒤로 옮기면 먼저 든 사람이 밀린다.
+    // 이미 있으면 배열을 그대로 둔다. 서버가 재시도에도 알림을 다시 보내고 스냅샷 뒤 재적용도 있어서
+    // 같은 이벤트가 여러 번 지나가는데, 그때마다 목록이 바뀌면 참조가 달라져 화면이 불필요하게 다시
+    // 그려진다. 순번 때문이 아니라 **재수신에도 목록이 안정적이어야** 하기 때문이다.
     return present ? identities : [...identities, change.identity];
   }
   return present ? identities.filter((id) => id !== change.identity) : identities;

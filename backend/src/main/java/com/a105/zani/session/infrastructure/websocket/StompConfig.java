@@ -56,7 +56,10 @@ public class StompConfig implements WebSocketMessageBrokerConfigurer, Disposable
         // 그 상태에서는 조용한 수업의 연결이 몇 시간 동안 바이트를 하나도 보내지 않아 중간 홉이 끊는다.
         // 자동 재연결이 있어 복구는 되지만, 재연결마다 스냅샷을 다시 받고 그동안 버튼이 잠긴다.
         // 죽은 상대를 감지할 수단이 없어 half-open 연결이 TCP keepalive 까지 남는 문제도 함께 없앤다.
-        registry.enableSimpleBroker(SessionChannelDestinations.BROKER_PREFIX)
+        // 두 접두사를 모두 등록한다. /topic 만 두면 사용자별 목적지(/queue/errors-user{세션ID})를
+        // 브로커가 다루지 않아 거절 통지가 오류 없이 사라진다 — 보낸 쪽도 받는 쪽도 알 방법이 없다.
+        registry.enableSimpleBroker(
+                        SessionChannelDestinations.BROKER_PREFIX, SessionChannelDestinations.USER_QUEUE_PREFIX)
                 .setTaskScheduler(heartbeatScheduler)
                 .setHeartbeatValue(HEARTBEAT_MS);
         registry.setApplicationDestinationPrefixes(SessionChannelDestinations.APPLICATION_PREFIX);

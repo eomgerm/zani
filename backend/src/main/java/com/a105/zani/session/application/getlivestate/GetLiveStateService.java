@@ -58,8 +58,7 @@ public class GetLiveStateService implements GetLiveStateUseCase {
         // 비멤버에게 이력을 보여주지 않는다. 구독 검사(StompAuthChannelInterceptor)와 같은 판정이다.
         resolveSessionParticipantUseCase.resolve(new ResolveSessionParticipantQuery(query.sessionId(), query.userId()));
 
-        // 손든 순서 그대로 내려간다. 클라이언트가 정렬하려면 손든 시각을 함께 내려야 하고, 그러면 참가자별 시각을
-        // 화면 상태로 들고 있어야 한다. 순번만 필요하므로 순서 있는 목록으로 충분하다.
+        // 큐가 준 순서 그대로 내려보낸다. 클라이언트는 포함 여부만 쓰므로 여기서 다시 정렬하지 않는다.
         return new LiveStateResult(
                 directoryOf(query.sessionId()),
                 chatHistoryOf(query.sessionId()),
