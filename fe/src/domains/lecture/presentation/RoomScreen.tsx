@@ -21,6 +21,7 @@ import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { RoomRoster } from "./components/room/RoomRoster";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { useParticipantVideos } from "./useParticipantVideos";
+import { useRemoteAudio } from "./useRemoteAudio";
 import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
@@ -143,8 +144,10 @@ function RoomScreenContent({
 }: RoomScreenProps) {
   const router = useRouter();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
-  const { sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
+  const { room, sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
   const media = useRoomMediaControls(sessionId);
+  // 원격 참가자 마이크 소리를 실제로 들리게 한다. 타일 video 는 전부 muted 라 이 배선이 없으면 무음이다.
+  useRemoteAudio(room);
   // 서버는 이 heartbeat 로 강사 5분 유예·자동 종료를 판단한다(가이드 §12).
   const presence = useSessionPresence(sessionId);
   const { participants: tileParticipants, localParticipantId } = useRoomParticipants();
