@@ -113,13 +113,29 @@ describe("useSessionReactions", () => {
     expect(result.current.reactions).toEqual([]);
   });
 
-  /** 배포 시점이 어긋나면 이 화면이 모르는 종류가 먼저 올 수 있다. 화면이 죽지 않고 그냥 건너뛴다. */
-  it("모르는 종류는 그리지 않는다", async () => {
+  /**
+   * 배포 시점이 어긋나면 이 화면이 모르는 종류가 먼저 올 수 있다. 화면이 죽지 않고 그냥 건너뛴다.
+   *
+   * `toString`·`constructor` 는 `in` 이나 `undefined` 비교로 검사하면 통과해 버리는 값들이다. 통과하면
+   * 이모지 자리에 함수가 실린다.
+   */
+  it.each(["TROPHY", "toString", "constructor", "__proto__", "hasOwnProperty"])(
+    "모르는 종류는 그리지 않는다: %s",
+    async (unknown) => {
+      const { result } = renderReactions();
+      await connect();
+
+      await receive("5001", unknown);
+
+      expect(result.current.reactions).toEqual([]);
+    },
+  );
+
+  it("종류가 문자열이 아니면 그리지 않는다", async () => {
     const { result } = renderReactions();
     await connect();
 
-    await receive("5001", "TROPHY");
-    await receive("5002", 7);
+    await receive("5001", 7);
 
     expect(result.current.reactions).toEqual([]);
   });

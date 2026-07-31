@@ -19,7 +19,17 @@ export const REACTION_EMOJI: Record<ReactionKind, string> = {
   CHEER: "🙌",
 };
 
+/**
+ * 아는 종류인지 좁힌다.
+ *
+ * `in` 이나 `REACTION_EMOJI[value] !== undefined` 로 검사하면 안 된다 — 둘 다 프로토타입 체인을 타서
+ * `toString`·`constructor` 같은 상속 키가 통과하고, 이모지 자리에 함수가 실려 나간다.
+ */
+function isReactionKind(value: string): value is ReactionKind {
+  return (REACTION_KINDS as readonly string[]).includes(value);
+}
+
 /** 모르는 값은 그리지 않는다. 서버가 걸러주지만 배포 시점이 어긋나면 새 종류가 먼저 올 수 있다. */
 export function reactionEmojiOf(reaction: string): string | null {
-  return reaction in REACTION_EMOJI ? REACTION_EMOJI[reaction as ReactionKind] : null;
+  return isReactionKind(reaction) ? REACTION_EMOJI[reaction] : null;
 }
