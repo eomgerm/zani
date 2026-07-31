@@ -93,12 +93,15 @@ class FinalizeNoteServiceTest {
     void yieldsToTheAutomaticFinalizationThatWonTheTransition() {
         givenDraft();
         noteRepository.stealFinalizationBeforeNextTransition = true;
+        noteRepository.stolenFinalizedAt = EARLIER;
 
         FinalizeNoteResult result = service.finalizeNote(command());
 
         assertEquals(NoteStatus.FINALIZED, result.status());
         // 확정은 이미 한 번 일어났으므로 성공이지만, 후속 작업을 두 번 하지 않도록 false 로 알린다.
         assertFalse(result.finalizedNow());
+        // 이긴 쪽이 기록한 시각을 응답한다. 이 요청의 시계값(NOW)을 확정 시각인 것처럼 내보내면 안 된다.
+        assertEquals(EARLIER, result.finalizedAt());
     }
 
     @Test

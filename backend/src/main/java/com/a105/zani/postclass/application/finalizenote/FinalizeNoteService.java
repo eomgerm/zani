@@ -55,9 +55,10 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
         if (!instructorNoteRepository.finalizeIfDraft(command.sessionId(), now)) {
             // 자동 확정이 먼저 이겼다. 확정은 이미 한 번 일어났으므로 성공으로 돌려주되 후속 작업은 이 경로에서 하지 않는다.
             log.debug("메모가 이미 다른 경로에서 확정됐습니다. sessionId={}, noteId={}", command.sessionId(), note.id());
+            // 이긴 쪽이 기록한 시각을 커밋본에서 읽는다. 일반 조회로는 이 트랜잭션의 스냅숏에 묶여 방금 커밋된 확정이 보이지 않아,
+            // 응답에 이 요청의 시계값이 확정 시각인 것처럼 실려 나간다.
             Instant finalizedAt = instructorNoteRepository
-                    .findBySessionId(command.sessionId())
-                    .map(InstructorNote::finalizedAt)
+                    .findCommittedFinalizedAt(command.sessionId())
                     .orElse(now);
             return new FinalizeNoteResult(note.id(), NoteStatus.FINALIZED, finalizedAt, false);
         }

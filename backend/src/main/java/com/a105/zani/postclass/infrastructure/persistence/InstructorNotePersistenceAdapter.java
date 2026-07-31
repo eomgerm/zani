@@ -65,4 +65,10 @@ public class InstructorNotePersistenceAdapter implements InstructorNoteRepositor
     public boolean finalizeIfDraft(Long sessionId, Instant finalizedAt) {
         return instructorNoteJpaRepository.finalizeIfDraft(sessionId, finalizedAt) == 1;
     }
+
+    /** 잠금 읽기로 스냅숏을 우회한다 — 일반 조회는 이 트랜잭션이 처음 읽은 시점을 계속 보므로 방금 커밋된 확정을 놓친다. */
+    @Override
+    public Optional<Instant> findCommittedFinalizedAt(Long sessionId) {
+        return instructorNoteJpaRepository.findFinalizedAtForUpdate(sessionId);
+    }
 }

@@ -27,4 +27,12 @@ public interface InstructorNoteRepository {
      * <p>메모 ID 가 아니라 세션 ID 로 지목하는 이유: 메모는 세션당 한 행이고 후속 작업도 세션 단위라, 두 확정 경로 모두 세션 ID 만으로 끝난다.
      */
     boolean finalizeIfDraft(Long sessionId, Instant finalizedAt);
+
+    /**
+     * <b>이미 커밋된</b> 확정 시각. 아직 확정되지 않았으면 빈 값.
+     *
+     * <p>{@link #findBySessionId} 로는 이 값을 얻을 수 없다. 같은 트랜잭션의 일반 조회는 처음 읽은 시점의 스냅숏을 계속 쓰기 때문에, 그 사이 다른 요청이 커밋한 확정이 보이지
+     * 않는다. 확정 경합에서 진 경로가 실제 확정 시각을 응답하려면 스냅숏 밖을 봐야 한다.
+     */
+    Optional<Instant> findCommittedFinalizedAt(Long sessionId);
 }
