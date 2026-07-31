@@ -518,6 +518,20 @@ describe("RoomScreen ended-session kick", () => {
 
     expect(push).toHaveBeenCalledWith("/my-lectures/123/note");
   });
+
+  it("does not leak an unconfirmed participant into the instructor-only note page", () => {
+    // 참가자 목록이 오기 전에는 역할을 알 수 없다. 강사용 사후 메모로 새지 않고 학생 경로로 나간다.
+    vi.useFakeTimers();
+    roomParticipants.participants = [];
+    roomParticipants.localParticipantId = null;
+    presence.sessionEnded = true;
+
+    render(<RoomScreen sessionId="123" />);
+
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(push).toHaveBeenCalledWith("/my-lectures");
+    expect(push).not.toHaveBeenCalledWith("/my-lectures/123/note");
+  });
 });
 
 describe("RoomScreen coaching wiring", () => {

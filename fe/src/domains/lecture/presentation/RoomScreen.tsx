@@ -400,9 +400,13 @@ function RoomScreenContent({
   // 종료된 수업에 남아 있는 참가자를 내보낸다 — 강사 미복귀 자동 종료든, 강사가 방을 닫았든,
   // 다른 화면에서의 종료든 presence 가 종료를 알리는 즉시. 강사는 사후 메모 작성으로 바로 이동하고,
   // 학생은 "곧 종료" 안내(SessionPresenceNotice)를 잠깐 본 뒤 강의 목록으로 나간다.
+  //
+  // 사후 메모는 강사 전용 페이지라, 역할이 확정된(isConfirmedInstructor) 강사만 그리로 보낸다.
+  // 참가자 목록이 오기 전에는 isInstructor 가 시연용 true 라, 그것만 보면 학생이 강사 페이지로
+  // 새어 나간다. 확정 전에는 안전한 학생 경로(강의 목록)로 보낸다.
   useEffect(() => {
     if (!presence.sessionEnded || leaveRequested.current) return;
-    if (isInstructor) {
+    if (isConfirmedInstructor) {
       leaveRequested.current = true;
       router.push(`/my-lectures/${sessionId}/note`);
       return;
@@ -412,7 +416,7 @@ function RoomScreenContent({
       router.push("/my-lectures");
     }, ENDED_KICK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [presence.sessionEnded, isInstructor, router, sessionId]);
+  }, [presence.sessionEnded, isConfirmedInstructor, router, sessionId]);
 
   const answerPrompt = async (value: UnderstandingCheckResponse) => {
     const sent = await understandingCheck.respond(value);
