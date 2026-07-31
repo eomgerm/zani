@@ -31,28 +31,54 @@ function fakeWorker() {
 function startSource(harness: ReturnType<typeof fakeWorker>) {
   const clonedTrack = { stop: vi.fn() } as unknown as MediaStreamTrack;
   const originalTrack = { clone: () => clonedTrack } as unknown as MediaStreamTrack;
+  const readable = new ReadableStream<VideoFrame>();
+  const createProcessor = vi.fn(() => ({ readable }));
   const received: Array<{ frame: VideoFrame; timestampMs: number }> = [];
   const onFailure = vi.fn();
   const source = createTrackProcessorFrameSource({
     track: originalTrack,
     createWorker: () => harness.worker,
+    createProcessor,
     onFrame: (frame, timestampMs) => received.push({ frame, timestampMs }),
     onFailure,
   });
-  return { source, clonedTrack, received, onFailure };
+  return { source, clonedTrack, readable, createProcessor, received, onFailure };
 }
 
 describe("createTrackProcessorFrameSource", () => {
-  it("transfers a cloned camera track and delivers worker frames", () => {
+  it("transfers the processor stream instead of the cloned camera track", () => {
+    const harness = fakeWorker();
+    const { clonedTrack, readable, createProcessor } = startSource(harness);
+
+    expect(createProcessor).toHaveBeenCalledWith(clonedTrack);
+    expect(harness.posted[0]?.message).toEqual({
+      type: "start",
+      readable,
+      sampleIntervalMs: 100,
+    });
+    expect(harness.posted[0]?.transfer).toEqual([readable]);
+    expect(harness.posted[0]?.transfer).not.toContain(clonedTrack);
+  });
+
+  it("delivers worker frames to the consumer", () => {
     const harness = fakeWorker();
     const frame = { close: vi.fn() } as unknown as VideoFrame;
-    const { clonedTrack, received } = startSource(harness);
-
-    expect(harness.posted[0]?.message).toMatchObject({ type: "start", track: clonedTrack });
-    expect(harness.posted[0]?.transfer).toContain(clonedTrack);
+    const { received } = startSource(harness);
 
     harness.emit({ type: "frame", frame, timestampMs: 500 });
+
     expect(received).toEqual([{ frame, timestampMs: 500 }]);
+  });
+
+  it("releases the cloned track and worker when frame reading fails", () => {
+    const harness = fakeWorker();
+    const { clonedTrack, onFailure } = startSource(harness);
+
+    harness.emit({ type: "failure", message: "카메라 프레임을 읽지 못했습니다." });
+
+    expect(clonedTrack.stop).toHaveBeenCalledTimes(1);
+    expect(harness.worker.terminate).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenCalledWith("카메라 프레임을 읽지 못했습니다.");
   });
 
   describe("stop", () => {
@@ -64,12 +90,13 @@ describe("createTrackProcessorFrameSource", () => {
       vi.useRealTimers();
     });
 
-    it("keeps the worker alive until it acknowledges camera track cleanup", () => {
+    it("stops the cloned track while keeping the worker alive until acknowledgement", () => {
       const harness = fakeWorker();
-      const { source } = startSource(harness);
+      const { source, clonedTrack } = startSource(harness);
 
       source.stop();
 
+      expect(clonedTrack.stop).toHaveBeenCalledTimes(1);
       expect(harness.posted[1]?.message).toEqual({ type: "stop" });
       expect(harness.worker.terminate).not.toHaveBeenCalled();
     });

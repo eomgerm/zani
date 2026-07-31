@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SchedulingPoolSizeTest {
 
-    /** 무음 패딩·outbox 릴레이·세션 만료. 작업이 늘면 이 값과 설정을 함께 올려야 한다. */
+    /** 무음 패딩·outbox 릴레이·코칭 이력 재시도·세션 만료·메모 비활성 확정. 작업이 늘면 이 값과 설정을 함께 올려야 한다. */
     private static final int SCHEDULED_TASK_COUNT = 5;
 
     @Test

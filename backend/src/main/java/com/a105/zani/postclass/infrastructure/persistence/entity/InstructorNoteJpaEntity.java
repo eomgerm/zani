@@ -1,4 +1,4 @@
-package com.a105.zani.session.infrastructure.persistence.entity;
+package com.a105.zani.postclass.infrastructure.persistence.entity;
 
 import java.time.Instant;
 import jakarta.persistence.Column;
@@ -17,6 +17,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import com.a105.zani.common.infrastructure.persistence.BaseJpaEntity;
+import com.a105.zani.session.infrastructure.persistence.entity.SessionParticipantJpaEntity;
 
 @Entity
 @Table(name = "instructor_notes")

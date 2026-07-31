@@ -9,6 +9,9 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
 import com.a105.zani.audioclip.application.port.AudioClip;
@@ -23,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@ExtendWith(OutputCaptureExtension.class)
 class CaptureAudioClipServiceTest {
 
     private static final long SESSION_ID = 100L;
@@ -142,6 +146,21 @@ class CaptureAudioClipServiceTest {
 
         assertNotNull(buffer.clip, "다음 트리거가 같은 구간을 다시 시도할 수 있어야 한다");
         assertEquals(0, buffer.releaseCalls, "전사가 버퍼를 반납하지는 않는다(세션 종료 소관)");
+    }
+
+    @Test
+    void transcriptionFailureLogsOnlySafeClipMetadata(CapturedOutput output) {
+        bufferHolds(Duration.ofMinutes(2).toMillis());
+        transcription.failure = new IllegalStateException("whisper down");
+
+        assertThrows(AudioClipTranscriptionFailedException.class, this::capture);
+
+        String logs = output.getAll();
+        assertTrue(logs.contains("session 100"));
+        assertTrue(logs.contains("120000ms"));
+        assertTrue(logs.contains("4 bytes"));
+        assertTrue(logs.contains(CLIP_CONTENT_TYPE));
+        assertFalse(logs.contains("whisper down"));
     }
 
     private static final class FakeBuffer implements InstructorAudioBufferPort {

@@ -70,7 +70,12 @@ public class CaptureAudioClipService implements CaptureAudioClipUseCase {
         try {
             return transcriptionPort.transcribe(new ByteArrayInputStream(audio.audio()), audio.contentType());
         } catch (RuntimeException exception) {
-            log.warn("Audio clip transcription failed for session {}", sessionId);
+            log.warn(
+                    "Audio clip transcription failed for session {} ({}ms, {} bytes, {})",
+                    sessionId,
+                    audio.actual().toMillis(),
+                    audio.audio().length,
+                    audio.contentType());
             if (exception instanceof BusinessException businessException) {
                 throw businessException;
             }

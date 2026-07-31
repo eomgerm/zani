@@ -20,6 +20,7 @@ const renderBar = (overrides: Partial<Parameters<typeof RoomControlBar>[0]> = {}
     onSelectMicrophone: vi.fn(),
     onSelectCamera: vi.fn(),
     sharing: false,
+    shareBlocked: false,
     reactMenuOpen: false,
     onToggleMic: vi.fn(),
     onToggleCam: vi.fn(),

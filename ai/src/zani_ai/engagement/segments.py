@@ -81,6 +81,48 @@ def aggregate_segments(
     return result
 
 
+def aggregate_segments_with_zero_placeholders(
+    frames: Sequence[TimedFeatures],
+    *,
+    window_seconds: float = 10.0,
+    segment_count: int = 20,
+    minimum_valid_frames: int = 3,
+    expected_frame_count: int = EXPECTED_FRAME_COUNT,
+    minimum_valid_frame_ratio: float = MINIMUM_VALID_FRAME_RATIO,
+    raw_feature_count: int = RAW_FEATURE_COUNT,
+    token_feature_count: int = TOKEN_FEATURE_COUNT,
+) -> NDArray[np.float32]:
+    """Aggregate fixed frame slots while representing detection failures as zeros.
+
+    The ordinary aggregation runs first to preserve its existing total and
+    per-segment face-coverage gate. Only clips that pass that gate reach the
+    second pass, where each timestamped missing-face slot becomes a zero raw
+    feature vector instead of disappearing from the mean and population std.
+    """
+    def aggregate(candidate_frames: Sequence[TimedFeatures]) -> NDArray[np.float32]:
+        return aggregate_segments(
+            candidate_frames,
+            window_seconds=window_seconds,
+            segment_count=segment_count,
+            minimum_valid_frames=minimum_valid_frames,
+            expected_frame_count=expected_frame_count,
+            minimum_valid_frame_ratio=minimum_valid_frame_ratio,
+            raw_feature_count=raw_feature_count,
+            token_feature_count=token_feature_count,
+        )
+
+    aggregate(frames)
+    placeholder = np.zeros(raw_feature_count, dtype=np.float32)
+    fixed_slots = tuple(
+        TimedFeatures(
+            frame.timestamp_seconds,
+            placeholder if frame.values is None else frame.values,
+        )
+        for frame in frames
+    )
+    return aggregate(fixed_slots)
+
+
 __all__ = [
     "EXPECTED_FRAME_COUNT",
     "MINIMUM_VALID_FRAME_RATIO",
@@ -88,4 +130,5 @@ __all__ = [
     "InsufficientTotalFaceCoverageError",
     "TimedFeatures",
     "aggregate_segments",
+    "aggregate_segments_with_zero_placeholders",
 ]

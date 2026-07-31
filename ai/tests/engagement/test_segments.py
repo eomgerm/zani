@@ -7,6 +7,7 @@ from zani_ai.engagement.segments import (
     InsufficientFaceCoverageError,
     TimedFeatures,
     aggregate_segments,
+    aggregate_segments_with_zero_placeholders,
 )
 
 
@@ -49,6 +50,24 @@ def test_aggregate_segments_ignores_missing_faces_when_three_frames_remain() -> 
     tokens = aggregate_segments(frames)
 
     np.testing.assert_allclose(tokens[0, :49], 3)
+
+
+def test_zero_placeholder_aggregation_keeps_missing_face_slots() -> None:
+    frames = _complete_window()
+    frames[0] = TimedFeatures(frames[0].timestamp_seconds, None)
+    frames[1] = TimedFeatures(frames[1].timestamp_seconds, None)
+
+    tokens = aggregate_segments_with_zero_placeholders(frames)
+
+    np.testing.assert_allclose(tokens[0, :49], 1.8)
+    np.testing.assert_allclose(tokens[0, 49:], 1.6)
+
+
+def test_zero_placeholder_aggregation_keeps_the_existing_coverage_gate() -> None:
+    frames = _window_with_valid_counts([3] * 20)
+
+    with pytest.raises(InsufficientFaceCoverageError, match=r"60 valid frames; 70 required"):
+        aggregate_segments_with_zero_placeholders(frames)
 
 
 def test_aggregate_segments_rejects_segment_with_two_valid_frames() -> None:

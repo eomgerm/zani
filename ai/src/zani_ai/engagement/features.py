@@ -119,8 +119,12 @@ BLENDSHAPE_NAMES_132 = (
 )
 
 SCHEMA_98 = FeatureSchema("mediapipe_98_v1", BLENDSHAPE_NAMES_98)
+SCHEMA_98_PLACEHOLDER = FeatureSchema(
+    "mediapipe_98_placeholder_v1",
+    BLENDSHAPE_NAMES_98,
+)
 SCHEMA_132 = FeatureSchema("mediapipe_132_v1", BLENDSHAPE_NAMES_132)
-SCHEMAS = {s.name: s for s in (SCHEMA_98, SCHEMA_132)}
+SCHEMAS = {s.name: s for s in (SCHEMA_98, SCHEMA_98_PLACEHOLDER, SCHEMA_132)}
 
 
 def get_schema(name: str) -> FeatureSchema:
@@ -251,6 +255,7 @@ __all__ = [
     "RAW_FEATURE_COUNT",
     "SCHEMAS",
     "SCHEMA_98",
+    "SCHEMA_98_PLACEHOLDER",
     "SCHEMA_132",
     "SCHEMA_NAME",
     "TOKEN_FEATURE_COUNT",

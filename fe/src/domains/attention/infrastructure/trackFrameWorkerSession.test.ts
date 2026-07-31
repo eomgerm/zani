@@ -2,77 +2,59 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { TrackFrameWorkerResponse } from "./trackFrameWorkerProtocol";
 import { createTrackFrameWorkerSession } from "./trackFrameWorkerSession";
-import type { TrackProcessorLike } from "./trackFrameWorkerRuntime";
 
-function neverEndingProcessor(): TrackProcessorLike {
+function neverEndingStream(): ReadableStream<VideoFrame> {
   return {
-    readable: {
-      getReader: () => ({
-        read: () => new Promise<ReadableStreamReadResult<VideoFrame>>(() => {}),
-      }),
-    },
-  };
+    getReader: () => ({
+      read: () => new Promise<ReadableStreamReadResult<VideoFrame>>(() => {}),
+    }),
+  } as ReadableStream<VideoFrame>;
 }
 
-function harness(createProcessor: () => TrackProcessorLike = neverEndingProcessor) {
+function harness() {
   const messages: TrackFrameWorkerResponse[] = [];
   const session = createTrackFrameWorkerSession({
-    createProcessor,
     postMessage: (message) => messages.push(message),
   });
   return { session, messages };
 }
 
-function startRequest(track: MediaStreamTrack) {
-  return { type: "start", track, sampleIntervalMs: 100 } as const;
+function startRequest(readable: ReadableStream<VideoFrame> = neverEndingStream()) {
+  return { type: "start", readable, sampleIntervalMs: 100 } as const;
 }
 
 describe("createTrackFrameWorkerSession", () => {
-  it("stops the started camera track before acknowledging the stop request", () => {
-    const stopOrder: string[] = [];
-    const track = {
-      stop: () => stopOrder.push("track.stop"),
-    } as unknown as MediaStreamTrack;
-    const { session, messages } = harness();
-
-    session.handle(startRequest(track));
-    session.handle({ type: "stop" });
-
-    expect(stopOrder).toEqual(["track.stop"]);
-    expect(messages).toEqual([{ type: "stopped" }]);
-  });
-
-  it("acknowledges a stop request that arrives before any track", () => {
-    const { session, messages } = harness();
-
-    session.handle({ type: "stop" });
-
-    expect(messages).toEqual([{ type: "stopped" }]);
-  });
-
-  it("stops the camera track only once across repeated stop requests", () => {
-    const track = { stop: vi.fn() } as unknown as MediaStreamTrack;
-    const { session, messages } = harness();
-
-    session.handle(startRequest(track));
-    session.handle({ type: "stop" });
-    session.handle({ type: "stop" });
-
-    expect(track.stop).toHaveBeenCalledTimes(1);
-    expect(messages).toEqual([{ type: "stopped" }, { type: "stopped" }]);
-  });
-
-  it("reports a detector failure when the processor cannot start", async () => {
-    const track = { stop: vi.fn() } as unknown as MediaStreamTrack;
-    const { session, messages } = harness(() => {
-      throw new Error("TrackProcessor unsupported");
+  it("reads frames from the transferred stream", async () => {
+    const frame = { timestamp: 300_000, close: vi.fn() } as unknown as VideoFrame;
+    const readable = new ReadableStream<VideoFrame>({
+      start(controller) {
+        controller.enqueue(frame);
+        controller.close();
+      },
     });
+    const { session, messages } = harness();
 
-    session.handle(startRequest(track));
+    session.handle(startRequest(readable));
     await vi.waitFor(() => expect(messages).toHaveLength(1));
 
-    expect(messages).toEqual([
-      { type: "failure", message: "TrackProcessor unsupported" },
-    ]);
+    expect(messages).toEqual([{ type: "frame", frame, timestampMs: 300 }]);
+  });
+
+  it("acknowledges a stop request that arrives before any stream", () => {
+    const { session, messages } = harness();
+
+    session.handle({ type: "stop" });
+
+    expect(messages).toEqual([{ type: "stopped" }]);
+  });
+
+  it("acknowledges repeated stop requests without owning the camera track", () => {
+    const { session, messages } = harness();
+
+    session.handle(startRequest());
+    session.handle({ type: "stop" });
+    session.handle({ type: "stop" });
+
+    expect(messages).toEqual([{ type: "stopped" }, { type: "stopped" }]);
   });
 });

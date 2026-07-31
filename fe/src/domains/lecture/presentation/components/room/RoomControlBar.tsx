@@ -33,6 +33,8 @@ interface RoomControlBarProps {
   onSelectMicrophone: (deviceId: string) => void;
   onSelectCamera: (deviceId: string) => void;
   sharing: boolean;
+  /** 다른 참가자가 화면을 공유 중이라 내가 시작할 수 없는 상태(세션당 활성 공유 1명). */
+  shareBlocked: boolean;
   reactMenuOpen: boolean;
   onToggleMic: () => void;
   onToggleCam: () => void;
@@ -135,6 +137,7 @@ export function RoomControlBar({
   onSelectMicrophone,
   onSelectCamera,
   sharing,
+  shareBlocked,
   reactMenuOpen,
   onToggleMic,
   onToggleCam,
@@ -174,15 +177,16 @@ export function RoomControlBar({
         onChange={onSelectCamera}
       />
 
-      {/* 공유를 멈추는 주 동작은 스테이지 오버레이의 "화면 공유 중지" 버튼이다.
-          여기서는 프로토타입대로 상태만 알리고, 켜짐 여부는 aria-pressed로 전달한다. */}
+      {/* 공유를 멈추는 주 동작은 스테이지 오버레이의 "화면 공유 중지" 버튼이다. 여기서는 켬/끔을 토글한다.
+          다른 참가자가 공유 중이면(세션당 1명) 비활성화한다 — 내가 공유 중일 때는 중지해야 하므로 막지 않는다. */}
       <button
         type="button"
         onClick={onToggleShare}
-        title={sharing ? "공유 중" : "화면 공유"}
-        aria-label={sharing ? "공유 중" : "화면 공유"}
+        disabled={shareBlocked && !sharing}
+        title={sharing ? "공유 중지" : shareBlocked ? "다른 참가자가 공유 중입니다" : "화면 공유"}
+        aria-label={sharing ? "공유 중지" : shareBlocked ? "다른 참가자가 공유 중입니다" : "화면 공유"}
         aria-pressed={sharing}
-        className={toneCls(sharing, "bg-primary")}
+        className={`${toneCls(sharing, "bg-primary")} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <ScreenShareIcon />
       </button>

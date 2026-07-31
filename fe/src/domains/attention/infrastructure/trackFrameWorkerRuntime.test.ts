@@ -1,42 +1,49 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { runTrackFrameWorker } from "./trackFrameWorkerRuntime";
 
 describe("runTrackFrameWorker", () => {
-  it("reports detector unavailability when TrackProcessor cannot start", async () => {
+  it("posts the first VideoFrame read from the transferred stream", async () => {
     const messages: unknown[] = [];
+    const frame = { timestamp: 500_000, close: vi.fn() } as unknown as VideoFrame;
+    let readCount = 0;
 
     await runTrackFrameWorker({
-      track: {} as MediaStreamTrack,
-      sampleIntervalMs: 100,
-      createProcessor: () => {
-        throw new Error("TrackProcessor unsupported");
+      readable: {
+        getReader: () => ({
+          read: async () =>
+            readCount++ === 0
+              ? { done: false as const, value: frame }
+              : { done: true as const, value: undefined },
+        }),
       },
-      postMessage: (message) => messages.push(message),
+      sampleIntervalMs: 100,
+      postMessage: (message, transfer) => messages.push({ message, transfer }),
       isStopped: () => false,
     });
 
-    expect(messages).toEqual([{ type: "failure", message: "TrackProcessor unsupported" }]);
+    expect(messages).toEqual([
+      {
+        message: { type: "frame", frame, timestampMs: 500 },
+        transfer: [frame],
+      },
+    ]);
   });
 
-  it("stays silent when the frame read fails because the stop request ended the track", async () => {
+  it("stays silent when the frame read fails after the stop request", async () => {
     const messages: unknown[] = [];
     let stopped = false;
 
     await runTrackFrameWorker({
-      track: {} as MediaStreamTrack,
+      readable: {
+        getReader: () => ({
+          read: () => {
+            stopped = true;
+            return Promise.reject(new Error("track ended"));
+          },
+        }),
+      },
       sampleIntervalMs: 100,
-      createProcessor: () => ({
-        readable: {
-          getReader: () => ({
-            read: () => {
-              // 정지 요청이 트랙을 끝내면 리더가 거부된다.
-              stopped = true;
-              return Promise.reject(new Error("track ended"));
-            },
-          }),
-        },
-      }),
       postMessage: (message) => messages.push(message),
       isStopped: () => stopped,
     });

@@ -11,8 +11,13 @@ public enum SessionApplicationErrorCode implements ErrorCode {
     INVITE_CODE_GENERATION_FAILED(
             ErrorType.INTERNAL_SERVER_ERROR, "SESSION_APP_004", "Failed to generate a unique invite code"),
     SESSION_NOT_FOUND(ErrorType.NOT_FOUND, "SESSION_APP_005", "No session found"),
+    // 종료 외에도 코칭 팁 폴링·사후 메모가 같은 인가를 쓴다. 특정 행위를 문구에 박으면 다른 응답에서 사실과 달라진다.
     NOT_SESSION_INSTRUCTOR(
-            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor who opened this session can end it");
+            ErrorType.FORBIDDEN, "SESSION_APP_006", "Only the instructor of this session can perform this action"),
+    SCREEN_SHARE_IN_USE(ErrorType.CONFLICT, "SESSION_APP_007", "Another participant is already sharing their screen"),
+    SCREEN_SHARE_STATE_UNAVAILABLE(
+            ErrorType.SERVICE_UNAVAILABLE, "SESSION_APP_008", "Screen share state store is unavailable"),
+    SESSION_NOT_ENDED(ErrorType.CONFLICT, "SESSION_APP_009", "The session is still in progress");
 
     private final ErrorType type;
     private final String code;
