@@ -24,12 +24,26 @@ public record CoachingTipRequest(
         String triggerId,
         Instant triggeredAt,
         int studentsCounted,
-        double significantRatio,
-        double confusedRatio,
-        double missedRatio,
-        double nonResponseRatio,
-        double unmeasurableRatio,
+        int significantCount,
+        int confusedCount,
+        int missedCount,
+        int nonResponseCount,
+        int unmeasurableCount,
         PreviousCoachingTip previousTip) {
+
+    public CoachingTipRequest {
+        if (sessionId <= 0 || triggerId == null || triggerId.isBlank() || triggeredAt == null) {
+            throw new IllegalArgumentException("session, trigger id, and trigger time are required");
+        }
+        if (studentsCounted <= 0) {
+            throw new IllegalArgumentException("students counted must be positive");
+        }
+        requireCount(significantCount, studentsCounted);
+        requireCount(confusedCount, studentsCounted);
+        requireCount(missedCount, studentsCounted);
+        requireCount(nonResponseCount, studentsCounted);
+        requireCount(unmeasurableCount, studentsCounted);
+    }
 
     public static CoachingTipRequest of(
             long sessionId,
@@ -42,11 +56,41 @@ public record CoachingTipRequest(
                 triggerId,
                 triggeredAt,
                 summary.denominator(),
-                summary.ratio().orElse(0),
-                summary.ratioOf(AttentionState.CONFUSED).orElse(0),
-                summary.ratioOf(AttentionState.MISSED).orElse(0),
-                summary.ratioOf(AttentionState.NON_RESPONSE).orElse(0),
-                summary.ratioOf(AttentionState.UNMEASURABLE).orElse(0),
+                summary.numerator(),
+                summary.countOf(AttentionState.CONFUSED),
+                summary.countOf(AttentionState.MISSED),
+                summary.countOf(AttentionState.NON_RESPONSE),
+                summary.countOf(AttentionState.UNMEASURABLE),
                 previousTip);
+    }
+
+    public double significantRatio() {
+        return ratioOf(significantCount);
+    }
+
+    public double confusedRatio() {
+        return ratioOf(confusedCount);
+    }
+
+    public double missedRatio() {
+        return ratioOf(missedCount);
+    }
+
+    public double nonResponseRatio() {
+        return ratioOf(nonResponseCount);
+    }
+
+    public double unmeasurableRatio() {
+        return ratioOf(unmeasurableCount);
+    }
+
+    private double ratioOf(int count) {
+        return (double) count / studentsCounted;
+    }
+
+    private static void requireCount(int count, int denominator) {
+        if (count < 0 || count > denominator) {
+            throw new IllegalArgumentException("coaching counts must be between zero and the denominator");
+        }
     }
 }

@@ -25,6 +25,7 @@ import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
+import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
 import com.a105.zani.coach.application.storehistory.CoachingTranscript;
 import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.coach.domain.model.CoachingTipRatios;
@@ -236,6 +237,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                         "EXTRACT",
                         triggerDelayMs,
                         elapsedMs(startedAt),
+                        concept.get().concept(),
                         null);
                 return;
             }
@@ -307,7 +309,12 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                 tip.tipType(),
                 triggerDelayMs,
                 elapsedMs);
-        store(request, CoachingOutcome.completed(request.triggerId(), tip), tip.tipType(), transcript);
+        store(
+                request,
+                CoachingOutcome.completed(request.triggerId(), tip),
+                tip.tipType(),
+                transcript,
+                tip.targetConcept());
     }
 
     private void completeFailure(
@@ -319,6 +326,19 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             long triggerDelayMs,
             long elapsedMs,
             RuntimeException cause) {
+        completeFailure(request, selectedTipType, reason, transcript, stage, triggerDelayMs, elapsedMs, null, cause);
+    }
+
+    private void completeFailure(
+            CoachingTipRequest request,
+            CoachingTipType selectedTipType,
+            CoachingTipUnavailableReason reason,
+            CoachingTranscript transcript,
+            String stage,
+            long triggerDelayMs,
+            long elapsedMs,
+            String topic,
+            RuntimeException cause) {
         String message =
                 "팁을 만들지 못했습니다. sessionId={}, triggerId={}, stage={}, result={}," + " triggerDelayMs={}, elapsedMs={}";
         if (cause == null) {
@@ -327,7 +347,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             log.warn(
                     message, request.sessionId(), request.triggerId(), stage, reason, triggerDelayMs, elapsedMs, cause);
         }
-        store(request, CoachingOutcome.unavailable(request.triggerId(), reason), selectedTipType, transcript);
+        store(request, CoachingOutcome.unavailable(request.triggerId(), reason), selectedTipType, transcript, topic);
     }
 
     /**
@@ -339,20 +359,24 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             CoachingTipRequest request,
             CoachingOutcome outcome,
             CoachingTipType selectedTipType,
-            CoachingTranscript transcript) {
+            CoachingTranscript transcript,
+            String topic) {
         try {
             storeCoachingHistoryUseCase.store(new CoachingHistory(
                     request.sessionId(),
                     request.triggerId(),
                     request.triggeredAt(),
-                    request.studentsCounted(),
-                    request.significantRatio(),
-                    request.confusedRatio(),
-                    request.missedRatio(),
-                    request.nonResponseRatio(),
-                    request.unmeasurableRatio(),
+                    clock.instant(),
+                    new CoachingResponseCounts(
+                            request.studentsCounted(),
+                            request.significantCount(),
+                            request.confusedCount(),
+                            request.missedCount(),
+                            request.nonResponseCount(),
+                            request.unmeasurableCount()),
                     selectedTipType,
                     transcript,
+                    topic,
                     outcome.tip(),
                     outcome.unavailableReason()));
         } catch (RuntimeException exception) {
@@ -375,7 +399,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
     }
 
     private CoachingTranscript transcribed(CaptureAudioClipResult captured) {
-        return CoachingTranscript.transcribed(captured.transcript(), captured.fromEpochMs(), captured.toEpochMs());
+        return CoachingTranscript.transcribed(captured.fromEpochMs(), captured.toEpochMs());
     }
 
     private long elapsedMs(long startedAtNanos) {

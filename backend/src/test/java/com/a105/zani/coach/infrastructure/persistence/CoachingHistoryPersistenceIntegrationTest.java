@@ -14,6 +14,7 @@ import com.a105.zani.attention.application.port.CoachingTip;
 import com.a105.zani.attention.application.port.CoachingTipType;
 import com.a105.zani.attention.application.port.CoachingTipUnavailableReason;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
+import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
 import com.a105.zani.coach.application.storehistory.CoachingTranscript;
 import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.common.persistence.TsidGenerator;
@@ -57,28 +58,61 @@ class CoachingHistoryPersistenceIntegrationTest {
         storeCoachingHistoryUseCase.store(second);
 
         List<String> triggerIds = jdbcTemplate.queryForList(
-                "SELECT trigger_id FROM group_alerts WHERE session_id = ? ORDER BY triggered_at",
+                "SELECT trigger_id FROM coaching_histories WHERE session_id = ? ORDER BY triggered_at",
                 String.class,
                 sessionId);
         assertThat(triggerIds).containsExactly("trigger-1", "trigger-2", "trigger-3");
 
         Integer responseRows = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM group_alert_response_counts c"
-                        + " JOIN group_alerts a ON a.id = c.group_alert_id WHERE a.session_id = ?",
+                "SELECT COUNT(*) FROM coaching_history_response_counts c"
+                        + " JOIN coaching_histories h ON h.id = c.coaching_history_id WHERE h.session_id = ?",
                 Integer.class,
                 sessionId);
-        assertThat(responseRows).isEqualTo(12);
+        assertThat(responseRows).isEqualTo(15);
 
         String unavailableReason = jdbcTemplate.queryForObject(
-                "SELECT unavailable_reason FROM group_alerts WHERE trigger_id = ?", String.class, "trigger-2");
+                "SELECT unavailable_reason FROM coaching_histories WHERE session_id = ? AND trigger_id = ?",
+                String.class,
+                sessionId,
+                "trigger-2");
         assertThat(unavailableReason).isEqualTo(CoachingTipUnavailableReason.LOW_CONFIDENCE.name());
+
+        Integer confusedCount = jdbcTemplate.queryForObject(
+                "SELECT c.response_count FROM coaching_history_response_counts c"
+                        + " JOIN coaching_histories h ON h.id = c.coaching_history_id"
+                        + " WHERE h.session_id = ? AND h.trigger_id = ? AND c.response_type = 'CONFUSED'",
+                Integer.class,
+                sessionId,
+                "trigger-1");
+        assertThat(confusedCount).isEqualTo(3);
 
         List<String> privateColumns = jdbcTemplate.queryForList(
                 "SELECT column_name FROM information_schema.columns"
-                        + " WHERE table_schema = DATABASE() AND table_name IN ('group_alerts', 'group_alert_response_counts')"
+                        + " WHERE table_schema = DATABASE()"
+                        + " AND table_name IN ('coaching_histories', 'coaching_history_response_counts')"
                         + " AND (column_name LIKE '%student%' OR column_name LIKE '%participant%')",
                 String.class);
         assertThat(privateColumns).isEmpty();
+
+        List<String> transcriptTextColumns = jdbcTemplate.queryForList(
+                "SELECT column_name FROM information_schema.columns"
+                        + " WHERE table_schema = DATABASE() AND table_name = 'coaching_histories'"
+                        + " AND column_name = 'transcript_text'",
+                String.class);
+        assertThat(transcriptTextColumns).isEmpty();
+    }
+
+    @Test
+    void permitsTheSameTriggerIdInDifferentSessions() {
+        long firstSessionId = createSession();
+        long secondSessionId = createSession();
+
+        storeCoachingHistoryUseCase.store(completed(firstSessionId, "same-trigger", 1));
+        storeCoachingHistoryUseCase.store(completed(secondSessionId, "same-trigger", 1));
+
+        Integer stored = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coaching_histories WHERE trigger_id = 'same-trigger'", Integer.class);
+        assertThat(stored).isEqualTo(2);
     }
 
     private long createSession() {
@@ -109,10 +143,7 @@ class CoachingHistoryPersistenceIntegrationTest {
                 sessionId,
                 triggerId,
                 triggeredAt,
-                CoachingTranscript.transcribed(
-                        "anonymous instructor transcript " + minute,
-                        triggeredAt.minusSeconds(30).toEpochMilli(),
-                        triggeredAt.toEpochMilli()),
+                CoachingTranscript.transcribed(triggeredAt.minusSeconds(30).toEpochMilli(), triggeredAt.toEpochMilli()),
                 new CoachingTip(CoachingTipType.CONFUSED, "title", "message", "concept"),
                 null);
     }
@@ -123,7 +154,6 @@ class CoachingHistoryPersistenceIntegrationTest {
                 triggerId,
                 SESSION_STARTED_AT.plusSeconds(minute * 60),
                 CoachingTranscript.transcribed(
-                        "anonymous instructor transcript " + minute,
                         SESSION_STARTED_AT.plusSeconds(minute * 60 - 30).toEpochMilli(),
                         SESSION_STARTED_AT.plusSeconds(minute * 60).toEpochMilli()),
                 null,
@@ -141,14 +171,11 @@ class CoachingHistoryPersistenceIntegrationTest {
                 sessionId,
                 triggerId,
                 triggeredAt,
-                10,
-                0.4,
-                0.3,
-                0.1,
-                0.0,
-                0.0,
+                triggeredAt.plusSeconds(1),
+                new CoachingResponseCounts(10, 4, 3, 1, 0, 0),
                 CoachingTipType.CONFUSED,
                 transcript,
+                "concept",
                 tip,
                 unavailableReason);
     }

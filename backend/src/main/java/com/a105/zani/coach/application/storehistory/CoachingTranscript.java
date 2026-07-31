@@ -2,16 +2,16 @@ package com.a105.zani.coach.application.storehistory;
 
 import java.time.Instant;
 
-/** Anonymous instructor transcript metadata retained for a coaching-history row. */
-public record CoachingTranscript(CoachingTranscriptStatus status, String text, Instant startedAt, Instant endedAt) {
+/** Instructor transcript status and exact audio interval retained without duplicating transcript text. */
+public record CoachingTranscript(CoachingTranscriptStatus status, Instant startedAt, Instant endedAt) {
 
     public CoachingTranscript {
         if (status == null) {
             throw new IllegalArgumentException("transcript status is required");
         }
         if (status == CoachingTranscriptStatus.TRANSCRIBED) {
-            if (text == null || text.isBlank() || startedAt == null || endedAt == null) {
-                throw new IllegalArgumentException("a transcribed interval requires text and exact timestamps");
+            if (startedAt == null || endedAt == null) {
+                throw new IllegalArgumentException("a transcribed interval requires exact timestamps");
             }
         }
         if (startedAt != null && endedAt != null && endedAt.isBefore(startedAt)) {
@@ -19,17 +19,16 @@ public record CoachingTranscript(CoachingTranscriptStatus status, String text, I
         }
     }
 
-    public static CoachingTranscript transcribed(String text, long fromEpochMs, long toEpochMs) {
+    public static CoachingTranscript transcribed(long fromEpochMs, long toEpochMs) {
         return new CoachingTranscript(
                 CoachingTranscriptStatus.TRANSCRIBED,
-                text,
                 Instant.ofEpochMilli(fromEpochMs),
                 Instant.ofEpochMilli(toEpochMs));
     }
 
     public static CoachingTranscript noTranscript(Long fromEpochMs, Long toEpochMs) {
         return new CoachingTranscript(
-                CoachingTranscriptStatus.NO_TRANSCRIPT, null, instantOf(fromEpochMs), instantOf(toEpochMs));
+                CoachingTranscriptStatus.NO_TRANSCRIPT, instantOf(fromEpochMs), instantOf(toEpochMs));
     }
 
     public static CoachingTranscript skippedNotRequired() {
@@ -45,7 +44,7 @@ public record CoachingTranscript(CoachingTranscriptStatus status, String text, I
     }
 
     private static CoachingTranscript statusOnly(CoachingTranscriptStatus status) {
-        return new CoachingTranscript(status, null, null, null);
+        return new CoachingTranscript(status, null, null);
     }
 
     private static Instant instantOf(Long epochMs) {

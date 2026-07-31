@@ -114,10 +114,10 @@ class CoachingTipPollingIntegrationTest {
         clearState();
         instructorAudioBuffer.release(SESSION_ID);
         jdbcTemplate.update(
-                "DELETE FROM group_alert_response_counts WHERE group_alert_id IN"
-                        + " (SELECT id FROM group_alerts WHERE session_id = ?)",
+                "DELETE FROM coaching_history_response_counts WHERE coaching_history_id IN"
+                        + " (SELECT id FROM coaching_histories WHERE session_id = ?)",
                 SESSION_ID);
-        jdbcTemplate.update("DELETE FROM group_alerts WHERE session_id = ?", SESSION_ID);
+        jdbcTemplate.update("DELETE FROM coaching_histories WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE id IN (?, ?)", PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);

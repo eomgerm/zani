@@ -113,12 +113,12 @@ class GenerateCoachingTipServiceTest {
 
     /** 개념이 필요 없는 유형: 무응답이 지배적. */
     private CoachingTipRequest fixedTipRequest() {
-        return new CoachingTipRequest(SESSION_ID, "trigger-1", TRIGGERED_AT, 10, 0.4, 0, 0, 0.4, 0, null);
+        return new CoachingTipRequest(SESSION_ID, "trigger-1", TRIGGERED_AT, 10, 4, 0, 0, 4, 0, null);
     }
 
     /** 개념이 필요한 유형: 헷갈림이 지배적. */
     private CoachingTipRequest conceptTipRequest() {
-        return new CoachingTipRequest(SESSION_ID, "trigger-2", TRIGGERED_AT, 10, 0.3, 0.3, 0, 0, 0, null);
+        return new CoachingTipRequest(SESSION_ID, "trigger-2", TRIGGERED_AT, 10, 3, 3, 0, 0, 0, null);
     }
 
     private CoachingOutcome onlyStored() {
@@ -183,6 +183,8 @@ class GenerateCoachingTipServiceTest {
             assertThat(history.transcript().status()).isEqualTo(CoachingTranscriptStatus.TRANSCRIBED);
             assertThat(history.transcript().startedAt()).isEqualTo(Instant.ofEpochMilli(1_000_000));
             assertThat(history.transcript().endedAt()).isEqualTo(Instant.ofEpochMilli(1_300_000));
+            assertThat(history.topic()).isEqualTo(outcome.tip().targetConcept());
+            assertThat(history.responseCounts().confused()).isEqualTo(3);
         });
     }
 
