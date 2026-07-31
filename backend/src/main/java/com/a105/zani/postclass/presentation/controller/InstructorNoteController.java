@@ -76,9 +76,8 @@ public class InstructorNoteController {
                 responseCode = "403",
                 description = "해당 세션의 멤버가 아니거나 수업을 진행한 강사가 아님"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "세션을 찾을 수 없음"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "409",
-                description = "아직 진행 중인 수업, 또는 다른 요청이 같은 세션의 메모를 먼저 열었음")
+        // 확정은 멱등이라 이미 확정된 메모도 200 이고, 초안 저장과 달리 메모 행을 열지 않으므로 열기 경합 409 도 없다.
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "아직 진행 중인 수업")
     })
     @PostMapping("/{sessionId}/notes/finalize")
     public ApiResponse<InstructorNoteResponse> finalizeNote(
