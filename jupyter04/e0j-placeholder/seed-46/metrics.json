@@ -1,0 +1,309 @@
+{
+  "schema": "mediapipe_98_placeholder_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 5,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.65,
+    "macro_f1": 0.5704897417203855,
+    "within_one_accuracy": 0.9612244897959183,
+    "quadratic_weighted_kappa": 0.6908248725026902,
+    "confusion_matrix": [
+      [
+        43,
+        18,
+        7,
+        3
+      ],
+      [
+        1,
+        32,
+        41,
+        19
+      ],
+      [
+        1,
+        22,
+        91,
+        152
+      ],
+      [
+        0,
+        8,
+        71,
+        471
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.9555555555555556,
+        "recall": 0.6056338028169014,
+        "f1-score": 0.7413793103448276,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.4,
+        "recall": 0.34408602150537637,
+        "f1-score": 0.3699421965317919,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.43333333333333335,
+        "recall": 0.34210526315789475,
+        "f1-score": 0.38235294117647056,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7302325581395349,
+        "recall": 0.8563636363636363,
+        "f1-score": 0.7882845188284519,
+        "support": 550.0
+      },
+      "accuracy": 0.65,
+      "macro avg": {
+        "precision": 0.6297803617571059,
+        "recall": 0.5370471809609522,
+        "f1-score": 0.5704897417203855,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6346316511100565,
+        "recall": 0.65,
+        "f1-score": 0.6350050234903358,
+        "support": 980.0
+      }
+    }
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5372834435624297,
+      "quadratic_weighted_kappa": 0.6548426037700807
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5354590778965411,
+      "quadratic_weighted_kappa": 0.6551229312159188
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.5327592298050308,
+      "quadratic_weighted_kappa": 0.630881378396289
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.5347711594961637,
+      "quadratic_weighted_kappa": 0.6379604781654062
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5414947235395093,
+      "quadratic_weighted_kappa": 0.6603574173712529
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5704897417203855,
+      "quadratic_weighted_kappa": 0.6908248725026902
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5326234548932542,
+      "quadratic_weighted_kappa": 0.653219654476105
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.5527051282051282,
+      "quadratic_weighted_kappa": 0.6622399291722001
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5344524370758637,
+      "quadratic_weighted_kappa": 0.6512762229483354
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5562690249286579,
+      "quadratic_weighted_kappa": 0.6827745664739884
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.5274887960483435,
+      "quadratic_weighted_kappa": 0.6736673573177623
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.5618246553595865,
+      "quadratic_weighted_kappa": 0.6989247311827957
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.5458144949502816,
+      "quadratic_weighted_kappa": 0.6808650065530799
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5418227123860224,
+      "quadratic_weighted_kappa": 0.6632411786104038
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5605783959630114,
+      "quadratic_weighted_kappa": 0.6852033974072418
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5173589539900939,
+      "quadratic_weighted_kappa": 0.6446924357647482
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5068889380412518,
+      "quadratic_weighted_kappa": 0.6333796690731357
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5181871273979731,
+      "quadratic_weighted_kappa": 0.6457708730807667
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.4960142061548495,
+      "quadratic_weighted_kappa": 0.6223648907627444
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.49285936268575564,
+      "quadratic_weighted_kappa": 0.6264219839895135
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5273593411349229,
+      "quadratic_weighted_kappa": 0.6372823740180992
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.5128428457004947,
+      "quadratic_weighted_kappa": 0.6638002012624645
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.525539710678269,
+      "quadratic_weighted_kappa": 0.6540290679585758
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.5127622641008573,
+      "quadratic_weighted_kappa": 0.6400821904716395
+    },
+    {
+      "epoch": 24,
+      "macro_f1": 0.5157988467163264,
+      "quadratic_weighted_kappa": 0.6331660523160278
+    },
+    {
+      "epoch": 25,
+      "macro_f1": 0.527823223524007,
+      "quadratic_weighted_kappa": 0.6568721242767983
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet/e0j-placeholder",
+    "output_dir": "artifacts/engagement/e0j-placeholder/seed-46",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 46,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "curriculum": "none",
+    "reliability_manifest": null,
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-J protocol."
+  },
+  "experiment": {
+    "protocol": "E0-J",
+    "seed": 46,
+    "feature_manifest_sha256": "b542a52e2e0146b1681c20ce46125aa377b4681d9a000cdc244f09b837da8e14",
+    "configuration": {
+      "feature_schema": "mediapipe_98_placeholder_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0
+    },
+    "configuration_sha256": "1a01ec49bfeddb104a528f0133161b61373fe1cab8cd1962f6adcb3a9dd0b00c",
+    "inputs": {}
+  }
+}
