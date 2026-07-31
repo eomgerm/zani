@@ -105,6 +105,14 @@ class InstructorNoteApiTest {
     }
 
     @Test
+    void acceptsContentThatOnlyExceedsTheMaximumBeforeTrimming() throws Exception {
+        // 길이는 다듬은 뒤로 잰다. 요청 쪽에서 원본 길이로 먼저 자르면 이 입력이 잘못 거절된다.
+        saveDraft(INSTRUCTOR_ID, "가".repeat(5_000) + "   ").andExpect(status().isOk());
+
+        assertEquals(5_000, contentOf().length());
+    }
+
+    @Test
     void rejectsAStudentOnBothEndpoints() throws Exception {
         saveDraft(STUDENT_ID, "학생 요청").andExpect(status().isForbidden());
         finalizeNote(STUDENT_ID).andExpect(status().isForbidden());
