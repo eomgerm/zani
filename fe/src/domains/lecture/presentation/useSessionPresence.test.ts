@@ -139,6 +139,8 @@ describe("useSessionPresence", () => {
 
     expect(result.current.error).not.toBeNull();
     expect(report).toHaveBeenCalledTimes(1);
+    // 멤버십 거절은 방이 끝난 것이 아니다 — 종료 신호로 오해해 내보내면 안 된다.
+    expect(result.current.sessionEnded).toBe(false);
   });
 
   it("stops reporting when the room is already closed", async () => {
@@ -148,6 +150,8 @@ describe("useSessionPresence", () => {
     await act(async () => vi.advanceTimersByTime(0));
 
     expect(result.current.error).not.toBeNull();
+    // 409 는 이미 종료된 방 — 화면이 남은 참가자를 내보낼 수 있게 종료 신호로도 올린다.
+    expect(result.current.sessionEnded).toBe(true);
   });
 
   it("retries after a transient failure", async () => {
