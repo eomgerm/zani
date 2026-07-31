@@ -1,5 +1,8 @@
 package com.a105.zani.coach.infrastructure.persistence;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import lombok.RequiredArgsConstructor;
@@ -45,16 +48,16 @@ public class CoachingHistoryPersistenceAdapter implements StoreCoachingHistoryPo
                 historyId,
                 history.sessionId(),
                 history.triggerId(),
-                history.triggeredAt(),
-                history.completedAt(),
+                utc(history.triggeredAt()),
+                utc(history.completedAt()),
                 history.responseCounts().denominator(),
                 history.selectedTipType() == null
                         ? null
                         : history.selectedTipType().name(),
                 tip == null ? "TIP_UNAVAILABLE" : "TIP_DELIVERED",
                 history.transcript().status().name(),
-                history.transcript().startedAt(),
-                history.transcript().endedAt(),
+                utc(history.transcript().startedAt()),
+                utc(history.transcript().endedAt()),
                 history.topic(),
                 tip == null ? null : tip.tipType().name(),
                 tip == null ? null : tip.title(),
@@ -74,6 +77,19 @@ public class CoachingHistoryPersistenceAdapter implements StoreCoachingHistoryPo
                                 new Object[] {TsidGenerator.generate(), historyId, response.type(), response.count()})
                         .toList());
         return true;
+    }
+
+    /**
+     * {@code Instant} 를 UTC 벽시계로 바꿔 바인딩한다.
+     *
+     * <p>대상 컬럼은 모두 {@code DATETIME(6)} 이라 시간대를 담지 않고, 스키마 주석이 UTC 로 못박고 있다. 그런데 Connector/J 는 {@code Instant} 를 받으면 세션
+     * 시간대로 옮겨 넣는다. JVM 이 Asia/Seoul 이면 9시간 밀린 값이 저장되고, 배포 장비 시간대에 따라 값이 달라진다.
+     *
+     * <p>{@code LocalDateTime} 으로 넘기면 드라이버가 변환하지 않고 그대로 넣는다. {@code created_at} 이 {@code UTC_TIMESTAMP(6)} 인 것과 같은 기준을
+     * 맞춘다.
+     */
+    private static LocalDateTime utc(Instant instant) {
+        return instant == null ? null : LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
     private List<ResponseCount> responseCounts(CoachingResponseCounts counts) {

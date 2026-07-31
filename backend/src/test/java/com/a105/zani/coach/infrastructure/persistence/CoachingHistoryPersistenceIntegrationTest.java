@@ -2,6 +2,7 @@ package com.a105.zani.coach.infrastructure.persistence;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,21 @@ class CoachingHistoryPersistenceIntegrationTest {
                 Integer.class,
                 sessionId);
         assertThat(responseRows).isEqualTo(15);
+
+        // 컬럼은 DATETIME 이라 시간대를 담지 않는다. 문자열로 읽어 UTC 그대로 들어갔는지 본다.
+        // ORDER BY 만 보면 일괄 시프트를 잡지 못한다 — 모두 같은 만큼 밀려도 순서는 그대로다.
+        Map<String, Object> storedTimes = jdbcTemplate.queryForMap("""
+                SELECT DATE_FORMAT(triggered_at, '%Y-%m-%dT%H:%i:%s') AS triggered,
+                       DATE_FORMAT(completed_at, '%Y-%m-%dT%H:%i:%s') AS completed,
+                       DATE_FORMAT(transcript_started_at, '%Y-%m-%dT%H:%i:%s') AS transcriptStarted,
+                       DATE_FORMAT(transcript_ended_at, '%Y-%m-%dT%H:%i:%s') AS transcriptEnded
+                  FROM coaching_histories WHERE trigger_id = ?
+                """, "trigger-1");
+        assertThat(storedTimes)
+                .containsEntry("triggered", "2026-07-30T01:01:00")
+                .containsEntry("completed", "2026-07-30T01:01:01")
+                .containsEntry("transcriptStarted", "2026-07-30T01:00:30")
+                .containsEntry("transcriptEnded", "2026-07-30T01:01:00");
 
         String unavailableReason = jdbcTemplate.queryForObject(
                 "SELECT unavailable_reason FROM coaching_histories WHERE session_id = ? AND trigger_id = ?",
