@@ -32,7 +32,7 @@ FFmpeg → 로컬 스토리지 : 종료 후 최종 MP4 합성
 - 프론트엔드는 Room 이름, participant identity, 역할, grant를 결정하지 않는다.
 - Spring Boot는 미디어를 중계하지 않는다.
 - LiveKit DataPacket은 MVP에서 사용하지 않는다. `canPublishData=false`를 명시한다.
-- 업무 이벤트는 Spring Boot WebSocket과 Redis를 통해 전달하고 필요한 항목은 DB에 저장한다.
+- 업무 이벤트는 Spring WebSocket **STOMP**와 Redis를 통해 전달하고 필요한 항목은 DB에 저장한다(§10).
 - LiveKit Cloud, S3, MinIO는 운영에서 사용하지 않는다.
 - 녹화 파일은 `/srv/zani/recordings`에 저장한다.
 
@@ -239,17 +239,34 @@ ParticipantPermissionsChanged
 MediaDevicesChanged
 ```
 
-Spring Boot WebSocket은 업무 이벤트를 처리한다.
+업무 이벤트는 Spring WebSocket **STOMP**가 처리한다. LiveKit DataPacket은 쓰지 않는다(§2).
+
+목적지는 세션당 주제 하나다. 종류별로 나누면 구독·재연결·순서 보장이 종류 수만큼 늘어나는데, 어차피 같은 수업 화면이 전부 소비한다. 종류는 봉투의 `type`으로 구분한다.
 
 ```text
-SESSION_ENDING
-INSTRUCTOR_DISCONNECTED / INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_STARTED / SCREEN_SHARE_STOPPED
-CHAT_MESSAGE
-HAND_RAISED / HAND_LOWERED
-REACTION
-PARTICIPANT_KICKED
+핸드셰이크  /ws                              CONNECT 프레임 헤더로 인증한다
+구독        /topic/sessions/{sessionId}      SUBSCRIBE 시점에 세션 멤버십을 확인한다
+발행        /app/sessions/{sessionId}/{종류}
+거절 통지    /user/queue/errors               보낸 사람에게만 간다
+스냅샷      GET /api/v1/sessions/{id}/live-state
 ```
+
+브라우저 WebSocket은 핸드셰이크에 `Authorization` 헤더를 붙일 수 없고, 흔한 우회책인 쿼리 파라미터는 액세스 토큰을 프록시·액세스 로그에 남긴다. STOMP는 핸드셰이크와 별개로 CONNECT 프레임에 헤더를 실을 수 있어 토큰이 URL에 노출되지 않는다.
+
+봉투와 스냅샷의 필드 규격은 **스토리 14의 `[API 계약]`이 기준**이다.
+
+```text
+CHAT_MESSAGE                        63
+HAND_RAISED / HAND_LOWERED          64
+REACTION                            64
+SCREEN_SHARE_STARTED / STOPPED      65
+FORCE_MUTED                         66
+```
+
+- 강제 퇴장(`PARTICIPANT_KICKED`)은 범위에서 제외됐다. 강사 제어는 강제 음소거만 제공한다(2026-07-30 확정).
+- `SESSION_ENDING`·`INSTRUCTOR_DISCONNECTED`·`INSTRUCTOR_RECONNECTED`는 **구현되어 있지 않다.** presence는 REST heartbeat(FRD §10.6)로 처리하고 있어 이 채널을 쓰지 않는다. 필요해지면 담당 티켓을 먼저 정한다.
+- 내장 브로커(`enableSimpleBroker`)는 구독 정보를 프로세스 메모리에 둔다. 인스턴스를 늘리면 각 인스턴스에 붙은 클라이언트끼리 메시지가 오가지 않으므로 외부 브로커로 바꿔야 한다.
+- 배포에서 같은 도메인을 쓰려면 Nginx에 `/ws` location이 필요하다. `Upgrade`·`Connection` 헤더를 넘기고 `proxy_read_timeout`을 길게 잡는다 — 기본값 60초면 조용한 수업에서 1분마다 끊긴다.
 
 프론트 이벤트는 화면 표현용이며 서버의 입장·권한·녹화 사실을 확정하는 근거로 사용하지 않는다.
 

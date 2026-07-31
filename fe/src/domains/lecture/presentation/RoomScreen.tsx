@@ -16,7 +16,7 @@ import {
   type DetectorOutput,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
-import { publicMessages } from "./fixtures";
+import { SessionChannelProvider, useSessionChat } from "@/domains/interaction";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { RoomRoster } from "./components/room/RoomRoster";
 import { useRoomParticipants } from "./useRoomParticipants";
@@ -123,11 +123,15 @@ function PanelToggle({
 export function RoomScreen({ sessionId, roomTitle, expiresAt }: RoomScreenProps) {
   return (
     <RoomProvider sessionId={sessionId}>
-      <RoomScreenContent
-        sessionId={sessionId}
-        roomTitle={roomTitle}
-        expiresAt={expiresAt}
-      />
+      {/* 업무 이벤트(채팅·손들기·반응)는 LiveKit 이 아니라 STOMP 채널로 오간다. 미디어와 수명이
+          달라 별도 Provider 로 둔다 — 한쪽이 끊겨도 다른 쪽은 이어진다. */}
+      <SessionChannelProvider sessionId={sessionId}>
+        <RoomScreenContent
+          sessionId={sessionId}
+          roomTitle={roomTitle}
+          expiresAt={expiresAt}
+        />
+      </SessionChannelProvider>
     </RoomProvider>
   );
 }
@@ -184,6 +188,16 @@ function RoomScreenContent({
   // 잠깐 강사 전용 엔드포인트를 두드리고 강사용 배지를 보게 된다. 학생 판정은 !isInstructor
   // 라 기본값이 안전한 쪽이지만 강사 기능은 반대라, connected 를 함께 본다.
   const isConfirmedInstructor = connected && isInstructor;
+  // 채팅 발신자 표시는 LiveKit 이 알려주는 내 identity·이름을 그대로 쓴다. 봉투의 sender.identity 가
+  // participant.identity 와 같은 값이라(63 계약) 내 메시지 판정이 이 한 값으로 끝난다.
+  //
+  // 강사 배지에 isInstructor 가 아니라 isConfirmedInstructor 를 쓰는 이유: 역할 확정 전에는
+  // isInstructor 가 true 라, 학생이 보낸 첫 메시지에 강사 배지가 붙는다.
+  const chat = useSessionChat({
+    myIdentity: localParticipantId,
+    myDisplayName: tileParticipants.find((p) => p.id === localParticipantId)?.name ?? "나",
+    amInstructor: isConfirmedInstructor,
+  });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
   const coachTip = useCoachTipCard();
@@ -644,9 +658,12 @@ function RoomScreenContent({
           <RoomSidePanel
             panel={panel}
             participants={list}
-            messages={publicMessages}
+            messages={chat.messages}
             meId={meId ?? ""}
             isInstructor={isInstructor}
+            canSendChat={chat.canSend}
+            onSendChat={chat.send}
+            onRetryChat={chat.retry}
           />
         )}
       </div>

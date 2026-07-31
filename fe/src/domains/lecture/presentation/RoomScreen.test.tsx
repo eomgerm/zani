@@ -20,6 +20,20 @@ vi.mock("@/domains/auth", () => ({
   useAuth: () => ({ accessToken: "test-access-token" }),
 }));
 
+// 업무 이벤트 채널도 대체한다. 진짜를 쓰면 이 테스트가 실제 WebSocket 접속을 시도한다.
+// 채팅 동작 자체는 interaction 도메인 테스트가 검증한다.
+const chat = vi.hoisted(() => ({
+  messages: [] as unknown[],
+  canSend: true,
+  send: vi.fn(),
+  retry: vi.fn(),
+}));
+
+vi.mock("@/domains/interaction", () => ({
+  SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useSessionChat: () => chat,
+}));
+
 // 실제 LiveKit publish 상태 대신 테스트가 제어하는 값을 쓴다(미디어 훅 자체는 useRoomMediaControls.test 가 검증).
 const media = vi.hoisted(() => ({
   microphoneEnabled: true,
