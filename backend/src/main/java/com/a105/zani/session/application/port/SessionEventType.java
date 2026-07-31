@@ -6,5 +6,8 @@ package com.a105.zani.session.application.port;
  * <p>손들기·반응(64), 화면 공유 상태(65), 강제 음소거(66)가 각자의 값을 여기에 추가한다.
  */
 public enum SessionEventType {
-    CHAT_MESSAGE
+    CHAT_MESSAGE,
+    HAND_RAISED,
+    HAND_LOWERED,
+    REACTION
 }
