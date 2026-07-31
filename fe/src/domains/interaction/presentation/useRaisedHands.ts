@@ -48,6 +48,13 @@ export function useRaisedHands(options: UseRaisedHandsOptions): UseRaisedHandsRe
   const { state, snapshot, publishHand, addEventListener } = useSessionChannel();
   const [handsState, dispatch] = useReducer(raisedHandsReducer, initialRaisedHandsState);
 
+  // 스냅샷 효과보다 **먼저** 둔다. 이미 붙어 있는 채널에 늦게 마운트되면 두 효과가 같은 커밋에서
+  // 도는데, 순서가 반대면 방금 적용한 스냅샷을 곧바로 "기다리는 중"으로 되돌려 버린다.
+  useEffect(() => {
+    if (state !== "connected") return;
+    dispatch({ type: "connected" });
+  }, [state]);
+
   useEffect(() => {
     if (snapshot === null) return;
     dispatch({ type: "snapshot", identities: snapshot.raisedHandIdentities });

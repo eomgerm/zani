@@ -73,6 +73,31 @@ const connect = async () => {
   });
 };
 
+const disconnect = async () => {
+  await act(async () => {
+    channel.handlers?.onStateChange("connecting");
+  });
+};
+
+/**
+ * 스냅샷 응답을 붙잡아 둔다. 구독은 이미 살아 있으므로, 붙잡아 둔 사이에 도착한 실시간 이벤트가
+ * 스냅샷보다 먼저 처리되는 실제 순서를 그대로 만든다.
+ */
+const holdSnapshot = () => {
+  let release!: (snapshot: LiveStateSnapshot) => void;
+  loadLiveState.mockImplementationOnce(
+    () =>
+      new Promise<LiveStateSnapshot>((resolve) => {
+        release = resolve;
+      }),
+  );
+  return async (raisedHandIdentities: readonly string[]) => {
+    await act(async () => {
+      release({ ...emptySnapshot, raisedHandIdentities: [...raisedHandIdentities] });
+    });
+  };
+};
+
 const receive = async (type: SessionEventType, identity: string) => {
   const event: SessionEventEnvelope = {
     eventId: `e-${identity}-${type}`,
@@ -164,5 +189,50 @@ describe("useRaisedHands", () => {
     expect(result.current.canToggle).toBe(false);
     act(() => result.current.toggle());
     expect(channel.hands).toEqual([]);
+  });
+
+  /**
+   * 채널은 구독을 끝낸 뒤 스냅샷을 REST 로 받는다. 그 왕복 동안 손들기가 도착하면, 서버가 그보다
+   * 먼저 만든 스냅샷이 뒤늦게 와서 목록을 덮는다. 강사가 새로고침한 직후 학생이 손을 들면 그 강사
+   * 화면에서만 손이 안 보이는 상황이 이것이다.
+   */
+  it("스냅샷 응답이 늦어도 그 사이 받은 손들기가 살아남는다", async () => {
+    const releaseSnapshot = holdSnapshot();
+    const { result } = renderHands();
+    await connect();
+
+    await receive("HAND_RAISED", OTHER);
+    expect(result.current.raisedIdentities).toEqual([OTHER]);
+
+    // 이 손들기 이전에 만들어진 스냅샷이 뒤늦게 도착한다.
+    await releaseSnapshot([]);
+
+    expect(result.current.raisedIdentities).toEqual([OTHER]);
+  });
+
+  it("스냅샷 응답이 늦는 사이 내려간 손도 그대로 반영된다", async () => {
+    const releaseSnapshot = holdSnapshot();
+    const { result } = renderHands();
+    await connect();
+
+    await receive("HAND_LOWERED", ME);
+    await releaseSnapshot([ME, OTHER]);
+
+    expect(result.current.raisedIdentities).toEqual([OTHER]);
+    expect(result.current.myHandRaised).toBe(false);
+  });
+
+  /** 복구 로직이 이 성질을 깨면 끊긴 사이 내려간 손이 화면에 영원히 남는다. */
+  it("재연결 스냅샷은 여전히 끊긴 사이 내려간 손을 지운다", async () => {
+    const { result } = renderHands();
+    await connect();
+    await receive("HAND_RAISED", OTHER);
+    await waitFor(() => expect(result.current.raisedIdentities).toEqual([OTHER]));
+
+    snapshots = [{ ...emptySnapshot, raisedHandIdentities: [] }];
+    await disconnect();
+    await connect();
+
+    await waitFor(() => expect(result.current.raisedIdentities).toEqual([]));
   });
 });
