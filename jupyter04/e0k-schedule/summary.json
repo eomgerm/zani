@@ -126,25 +126,77 @@
           "size_bytes": 305
         }
       }
+    },
+    {
+      "seed": 43,
+      "status": "complete",
+      "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+      "configuration_sha256": "2bdd0769df956cff3f2787e8b5ab5735a48897dda8683f1f625f415b3be8673b",
+      "inputs": {},
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 4,
+      "validation": {
+        "accuracy": 0.6377551020408163,
+        "macro_f1": 0.540049791706187,
+        "within_one_accuracy": 0.9530612244897959,
+        "quadratic_weighted_kappa": 0.6544385598367426
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-43/best.pt",
+          "sha256": "b07b7ac29855446899ec242c3e4c39834993726364addde36a9d4ede6ef19688",
+          "size_bytes": 12912507
+        },
+        "metrics": {
+          "path": "seed-43/metrics.json",
+          "sha256": "e41c5aeea7c77c6055803741a528bf352cbe954aff413de10b6fe584a23cd524",
+          "size_bytes": 41641
+        },
+        "onnx_model": {
+          "path": "seed-43/onnx/engagement.onnx",
+          "sha256": "7164d0df947d2893f38541545ecec383ce72577048d011a8891702723976030e",
+          "size_bytes": 13187455
+        },
+        "onnx_metadata": {
+          "path": "seed-43/onnx/engagement.metadata.json",
+          "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+          "size_bytes": 305
+        }
+      }
     }
   ],
   "aggregate": {
-    "completed_seed_count": 1,
+    "completed_seed_count": 2,
     "validation_accuracy": {
-      "mean": 0.6663265306122449,
-      "sample_standard_deviation": null
+      "mean": 0.6520408163265305,
+      "sample_standard_deviation": 0.02020305089104422
     },
     "validation_macro_f1": {
-      "mean": 0.5732157982933086,
-      "sample_standard_deviation": null
+      "mean": 0.5566327949997478,
+      "sample_standard_deviation": 0.023451908162631346
     },
     "validation_within_one_accuracy": {
-      "mean": 0.9520408163265306,
-      "sample_standard_deviation": null
+      "mean": 0.9525510204081633,
+      "sample_standard_deviation": 0.0007215375318230164
     },
     "validation_quadratic_weighted_kappa": {
-      "mean": 0.6943841680409686,
-      "sample_standard_deviation": null
+      "mean": 0.6744113639388556,
+      "sample_standard_deviation": 0.028245810439829187
     }
   }
 }
