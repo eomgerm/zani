@@ -54,12 +54,13 @@ here:
 | Module | Where the rules live |
 | --- | --- |
 | `backend` | [`.agents/ddd-development-guide.md`](.agents/ddd-development-guide.md), plus [`.agents/flyway-migration-guide.md`](.agents/flyway-migration-guide.md) for migrations |
-| `fe` | **No dedicated frontend architecture guide exists yet.** Use [`.agents/attention-coaching-context.md`](.agents/attention-coaching-context.md) for attention and coaching features and [`.agents/livekit-frontend-guide.md`](.agents/livekit-frontend-guide.md) for real-time media. For anything else, follow the existing layer structure under `fe/src` in the affected domain. |
+| `fe` | Layer rules are enforced by `code-review/config/ddd-rules.json`, which the review bot checks on every merge request — `fe/src/domains/*` splits into `domain` / `application` / `infrastructure` / `presentation`, and `domain` may not import React, Next, Axios, TanStack Query, Zustand, or touch browser storage. **No prose guide explains the reasoning yet**, so for judgement calls the rules do not cover — such as when something belongs in `features/` or `shared/` rather than a domain — follow the existing structure in the affected domain and say that is what you did. Feature-specific guides: [`.agents/attention-coaching-context.md`](.agents/attention-coaching-context.md) for attention and coaching, [`.agents/livekit-frontend-guide.md`](.agents/livekit-frontend-guide.md) for real-time media. |
 | `ai` | [`.agents/ai-remote-l40s-guide.md`](.agents/ai-remote-l40s-guide.md) and [`.agents/ai-experiment-results-guide.md`](.agents/ai-experiment-results-guide.md) |
 
-The `fe` gap is real, not an oversight in this table. Writing that guide is
-separate work; until it exists, infer frontend layering from neighbouring files
-and say so when you do.
+The `fe` prose gap is real, not an oversight in this table. Writing that guide is
+separate work. The machine-checked layer rules already hold in the meantime —
+read `code-review/config/ddd-rules.json` before assuming the frontend has no
+structural constraints.
 
 ## Repository Context
 
