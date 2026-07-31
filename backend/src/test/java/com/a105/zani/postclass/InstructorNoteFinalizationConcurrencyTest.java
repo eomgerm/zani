@@ -5,9 +5,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -17,6 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.a105.zani.postclass.application.finalizenote.FinalizeInactiveNoteUseCase;
 import com.a105.zani.postclass.application.finalizenote.FinalizeNoteCommand;
@@ -25,8 +29,10 @@ import com.a105.zani.postclass.application.savenotedraft.SaveNoteDraftCommand;
 import com.a105.zani.postclass.application.savenotedraft.SaveNoteDraftUseCase;
 import com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException;
 import com.a105.zani.postclass.domain.model.InstructorNote;
+import com.a105.zani.postclass.domain.repository.InstructorNoteRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,6 +58,12 @@ class InstructorNoteFinalizationConcurrencyTest {
 
     @Autowired
     private FinalizeInactiveNoteUseCase finalizeInactiveNoteUseCase;
+
+    @Autowired
+    private InstructorNoteRepository instructorNoteRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -178,6 +190,31 @@ class InstructorNoteFinalizationConcurrencyTest {
     }
 
     @Test
+    void readsTheCommittedFinalizationFromInsideAnOlderTransaction() {
+        givenDraft();
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            // 이 트랜잭션의 읽기 시점을 잡는다.
+            instructorNoteRepository.findBySessionId(SESSION_ID).orElseThrow();
+
+            // 그 뒤 다른 트랜잭션이 확정하고 커밋한다.
+            Instant finalizedByWinner = finalizeInAnotherThread();
+
+            // 일반 조회는 잡아 둔 시점을 계속 보므로 방금 커밋된 확정이 보이지 않는다 — 이 수정이 필요한 이유다.
+            assertFalse(instructorNoteRepository
+                    .findBySessionId(SESSION_ID)
+                    .orElseThrow()
+                    .isFinalized());
+
+            // 잠금 읽기는 최신 커밋본을 본다. 이 값이 응답의 확정 시각이 된다.
+            Instant committed = instructorNoteRepository
+                    .findCommittedFinalizedAt(SESSION_ID)
+                    .orElseThrow();
+            assertEquals(finalizedByWinner.truncatedTo(ChronoUnit.MILLIS), committed.truncatedTo(ChronoUnit.MILLIS));
+        });
+    }
+
+    @Test
     void refusesToEditAfterTheRaceIsSettled() {
         givenDraft();
         finalizeNoteUseCase.finalizeNote(new FinalizeNoteCommand(SESSION_ID, INSTRUCTOR_ID));
@@ -211,6 +248,24 @@ class InstructorNoteFinalizationConcurrencyTest {
 
     private interface FinalizeAttempt {
         boolean run();
+    }
+
+    /** 별도 스레드에서 확정하고 커밋한다. 커밋된 확정 시각을 돌려준다. */
+    private Instant finalizeInAnotherThread() {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            return executor.submit(() -> finalizeNoteUseCase
+                            .finalizeNote(new FinalizeNoteCommand(SESSION_ID, INSTRUCTOR_ID))
+                            .finalizedAt())
+                    .get(10, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(interrupted);
+        } catch (ExecutionException | TimeoutException exception) {
+            throw new IllegalStateException(exception);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     private void givenDraft() {
