@@ -391,9 +391,12 @@ Test 67.61%이고, 우리는 66.65%입니다.
 달리 레시피가 끝까지 돕니다.
 
 E0-K는 E0의 특징을 그대로 쓰므로 `build-features`를 다시 돌릴 필요가 없습니다.
+`--features`는 E0-clean이 쓴 것과 같은 특징 루트(`manifest.json`이 놓인 디렉터리)를
+가리켜야 합니다. 비교기가 두 manifest의 SHA-256을 대조하므로, 다른 루트를 주면
+비교가 무효로 표시됩니다.
 
 ```bash
-uv run python -m zani_ai engagement reproduce-e0k --features datasets/processed/engagenet/e0-clean --output artifacts/engagement/e0k-schedule --device cuda
+uv run python -m zani_ai engagement reproduce-e0k --features datasets/processed/engagenet --output artifacts/engagement/e0k-schedule --device cuda
 uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0k-schedule --split validation
 ```
 
@@ -404,7 +407,7 @@ uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-cl
 checkpoint로 Test를 한 번 평가합니다.
 
 ```bash
-uv run python -m zani_ai engagement finalize-e0k --features datasets/processed/engagenet/e0-clean --output artifacts/engagement/e0k-schedule --device cuda
+uv run python -m zani_ai engagement finalize-e0k --features datasets/processed/engagenet --output artifacts/engagement/e0k-schedule --device cuda
 uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0k-schedule
 ```
 
