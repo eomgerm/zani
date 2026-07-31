@@ -62,6 +62,7 @@ from zani_ai.engagement.segments import (
     MINIMUM_VALID_FRAME_RATIO,
     TimedFeatures,
     aggregate_segments,
+    aggregate_segments_with_zero_placeholders,
 )
 
 LANDMARK_SEQUENCE_NAME = "landmark_78_v1"
@@ -83,10 +84,15 @@ def landmark_sequence_name(step_count: int) -> str:
 class Representation(Protocol):
     """A named, fixed-shape feature tensor derivable from one raw clip."""
 
-    name: str
-    output_shape: tuple[int, ...]
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def output_shape(self) -> tuple[int, ...]: ...
+
     #: npz key the built tensor is saved under (see `_save_representation_tokens`).
-    array_key: str
+    @property
+    def array_key(self) -> str: ...
 
     def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
         """Derive this representation's feature tensor for one raw clip."""
@@ -138,6 +144,36 @@ class TokenRepresentation:
             timestamp_seconds = float(raw_clip.timestamps_ms[index]) / 1000.0
             timed.append(TimedFeatures(timestamp_seconds, values))
         return aggregate_segments(
+            timed,
+            raw_feature_count=self.schema.raw_feature_count,
+            token_feature_count=self.schema.token_feature_count,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ZeroPlaceholderTokenRepresentation(TokenRepresentation):
+    """98D token representation that keeps face-detection failures as zeros."""
+
+    def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
+        frame_count = raw_clip.timestamps_ms.shape[0]
+        timed: list[TimedFeatures] = []
+        for index in range(frame_count):
+            if raw_clip.valid_mask[index]:
+                blendshapes = {
+                    blendshape_name: float(raw_clip.blendshapes[index, position])
+                    for position, blendshape_name in enumerate(BLENDSHAPE_NAMES_132)
+                }
+                values = extract_frame_features(
+                    raw_clip.landmarks[index],
+                    raw_clip.transform[index],
+                    blendshapes,
+                    schema=self.schema,
+                )
+            else:
+                values = None
+            timestamp_seconds = float(raw_clip.timestamps_ms[index]) / 1000.0
+            timed.append(TimedFeatures(timestamp_seconds, values))
+        return aggregate_segments_with_zero_placeholders(
             timed,
             raw_feature_count=self.schema.raw_feature_count,
             token_feature_count=self.schema.token_feature_count,
@@ -362,8 +398,13 @@ def build_feature_manifest(
         inspect.getsource(type(representation)).encode("utf-8")
     ).hexdigest()
     representation_dependencies_sha256 = _representation_dependencies_sha256(representation)
+    segment_aggregation = (
+        aggregate_segments_with_zero_placeholders
+        if isinstance(representation, ZeroPlaceholderTokenRepresentation)
+        else aggregate_segments
+    )
     segment_aggregation_source_sha256 = sha256(
-        inspect.getsource(aggregate_segments).encode("utf-8")
+        inspect.getsource(segment_aggregation).encode("utf-8")
     ).hexdigest()
     provenance_payload: dict[str, object] = {
         "raw_schema": RAW_SCHEMA_NAME,
@@ -474,6 +515,7 @@ __all__ = [
     "LandmarkSequenceRepresentation",
     "Representation",
     "TokenRepresentation",
+    "ZeroPlaceholderTokenRepresentation",
     "build_feature_manifest",
     "landmark_sequence_name",
     "load_raw_clip",

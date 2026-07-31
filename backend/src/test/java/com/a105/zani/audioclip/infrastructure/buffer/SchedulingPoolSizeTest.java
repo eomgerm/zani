@@ -20,8 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SchedulingPoolSizeTest {
 
-    /** 무음 패딩·outbox 릴레이·세션 만료. 작업이 늘면 이 값과 설정을 함께 올려야 한다. */
-    private static final int SCHEDULED_TASK_COUNT = 3;
+    /** 무음 패딩·outbox 릴레이·세션 만료·메모 비활성 확정. 작업이 늘면 이 값과 설정을 함께 올려야 한다. */
+    private static final int SCHEDULED_TASK_COUNT = 4;
 
     @Test
     @DisplayName("스케줄러 풀이 스케줄 작업 수 이상이라 무음 패딩이 블로킹 작업에 밀리지 않는다")
