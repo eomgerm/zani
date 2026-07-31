@@ -25,6 +25,9 @@ export interface SessionChannelHandlers {
 
 export interface SessionChannel {
   publishChat: (clientEventId: string, content: string) => void;
+  /** 원하는 상태를 보낸다. "뒤집어라"로 두면 프레임이 한 번 더 도착했을 때 의도와 반대가 된다. */
+  publishHand: (clientEventId: string, raised: boolean) => void;
+  publishReaction: (clientEventId: string, reaction: string) => void;
   deactivate: () => void;
 }
 
@@ -49,6 +52,8 @@ const RECONNECT_DELAY_MS = 3_000;
 
 const sessionTopic = (sessionId: string) => `/topic/sessions/${sessionId}`;
 const chatDestination = (sessionId: string) => `/app/sessions/${sessionId}/chat`;
+const handDestination = (sessionId: string) => `/app/sessions/${sessionId}/hand`;
+const reactionDestination = (sessionId: string) => `/app/sessions/${sessionId}/reaction`;
 
 /**
  * 개발 서버에서 붙을 백엔드 오리진. `next.config.ts` 의 rewrite destination 과 같은 포트다.
@@ -135,6 +140,18 @@ export const createSessionChannel: SessionChannelFactory = ({
       client.publish({
         destination: chatDestination(sessionId),
         body: JSON.stringify({ clientEventId, content }),
+      });
+    },
+    publishHand: (clientEventId, raised) => {
+      client.publish({
+        destination: handDestination(sessionId),
+        body: JSON.stringify({ clientEventId, raised }),
+      });
+    },
+    publishReaction: (clientEventId, reaction) => {
+      client.publish({
+        destination: reactionDestination(sessionId),
+        body: JSON.stringify({ clientEventId, reaction }),
       });
     },
     deactivate: () => {

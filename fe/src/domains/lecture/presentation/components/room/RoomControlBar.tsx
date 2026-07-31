@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { REACTION_EMOJI, REACTION_KINDS, type ReactionKind } from "@/domains/interaction";
 import {
   CameraIcon,
   ChevronDownIcon,
@@ -11,7 +12,6 @@ import {
   Select,
   type SelectOption,
 } from "@/shared/ui";
-import { reactionEmojis } from "../../fixtures";
 
 interface MeState {
   mic: boolean;
@@ -36,12 +36,14 @@ interface RoomControlBarProps {
   /** 다른 참가자가 화면을 공유 중이라 내가 시작할 수 없는 상태(세션당 활성 공유 1명). */
   shareBlocked: boolean;
   reactMenuOpen: boolean;
+  /** 업무 채널이 끊겨 손들기·반응을 보낼 수 없는 상태. */
+  interactionDisabled: boolean;
   onToggleMic: () => void;
   onToggleCam: () => void;
   onToggleShare: () => void;
   onToggleHand: () => void;
   onToggleReactMenu: () => void;
-  onReact: (emoji: string) => void;
+  onReact: (kind: ReactionKind) => void;
   onLeave: () => void;
 }
 
@@ -139,6 +141,7 @@ export function RoomControlBar({
   sharing,
   shareBlocked,
   reactMenuOpen,
+  interactionDisabled,
   onToggleMic,
   onToggleCam,
   onToggleShare,
@@ -191,13 +194,15 @@ export function RoomControlBar({
         <ScreenShareIcon />
       </button>
 
+      {/* 손든 상태는 서버가 확정한 값이다(낙관적으로 그리지 않는다). 채널이 끊기면 바꿀 수 없다. */}
       <button
         type="button"
         onClick={onToggleHand}
-        title="손들기"
-        aria-label="손들기"
+        disabled={interactionDisabled}
+        title={interactionDisabled ? "연결 중입니다" : me.hand ? "손 내리기" : "손들기"}
+        aria-label={me.hand ? "손 내리기" : "손들기"}
         aria-pressed={me.hand}
-        className={`${circle} ${me.hand ? "bg-warn text-[#372b03]" : "bg-room-control"}`}
+        className={`${circle} ${me.hand ? "bg-warn text-[#372b03]" : "bg-room-control"} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         <HandIcon />
       </button>
@@ -206,24 +211,25 @@ export function RoomControlBar({
         <button
           type="button"
           onClick={onToggleReactMenu}
-          title="반응"
+          disabled={interactionDisabled}
+          title={interactionDisabled ? "연결 중입니다" : "반응"}
           aria-label="반응"
           aria-expanded={reactMenuOpen}
-          className={toneCls(reactMenuOpen, "bg-primary")}
+          className={`${toneCls(reactMenuOpen, "bg-primary")} disabled:cursor-not-allowed disabled:opacity-50`}
         >
           <ReactionIcon />
         </button>
         {reactMenuOpen && (
           <div className="absolute bottom-16 left-1/2 z-10 flex -translate-x-1/2 animate-[zPop_.15s] gap-1 rounded-2xl border border-room-line bg-panel px-2.5 py-2 shadow-[0_12px_32px_rgba(0,0,0,.4)]">
-            {reactionEmojis.map((e) => (
+            {REACTION_KINDS.map((kind) => (
               <button
                 type="button"
-                key={e}
-                onClick={() => onReact(e)}
-                aria-label={`${e} 반응 보내기`}
+                key={kind}
+                onClick={() => onReact(kind)}
+                aria-label={`${REACTION_EMOJI[kind]} 반응 보내기`}
                 className="size-[42px] cursor-pointer rounded-xl border-0 bg-transparent text-[22px] hover:bg-[#1e2138]"
               >
-                {e}
+                {REACTION_EMOJI[kind]}
               </button>
             ))}
           </div>

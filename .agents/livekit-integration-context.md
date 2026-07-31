@@ -264,6 +264,10 @@ FORCE_MUTED                         66
 ```
 
 - 강제 퇴장(`PARTICIPANT_KICKED`)은 범위에서 제외됐다. 강사 제어는 강제 음소거만 제공한다(2026-07-30 확정).
+- **손들기는 상태, 반응은 순간 표시라 저장 위치가 다르다(64).** 지금 손을 든 사람은 Redis Sorted Set(`session:{id}:hands`)이 들고 있고 score가 서버 수신 시각이라 자료구조가 순번을 보장한다 — 스냅샷의 `raisedHandIdentities`가 이 순서 그대로다. 반응은 현재 상태가 없어 스냅샷에 담지 않는다(표시 시간은 클라이언트 애니메이션 수명이다). 둘 다 이력은 `interaction_events`에 남아 리포트가 읽는다.
+- 손들기 프레임은 `{clientEventId, raised}`로 **원하는 상태**를 보낸다. "뒤집어라"로 두면 재시도가 한 번 더 뒤집어 의도와 반대가 된다. 채팅과 달리 멱등 키를 두지 않는다 — 상태라 두 번 처리해도 결과가 같다.
+- 반응 프레임은 `{clientEventId, reaction}`이고 `reaction`은 **이모지 문자가 아니라 종류 이름**(`LIKE`·`HEART`·`CLAP`·`CELEBRATE`·`WOW`·`CHEER`)이다. 서버가 받은 문자열이 전 참가자 화면에 그대로 뜨므로 임의 문자열을 허용할 수 없고, 같은 하트라도 변이 선택자(U+FE0F) 유무로 리포트 집계가 갈린다. 어떤 그림으로 보일지는 클라이언트가 정한다.
+- 반응은 참가자별 1.5초 간격을 서버가 강제한다(Redis `SET NX PX`). 한 건이 참가자 수만큼 증폭되므로 클라이언트 제한만으로는 부족하다.
 - `SESSION_ENDING`·`INSTRUCTOR_DISCONNECTED`·`INSTRUCTOR_RECONNECTED`는 **구현되어 있지 않다.** presence는 REST heartbeat(FRD §10.6)로 처리하고 있어 이 채널을 쓰지 않는다. 필요해지면 담당 티켓을 먼저 정한다.
 - 내장 브로커(`enableSimpleBroker`)는 구독 정보를 프로세스 메모리에 둔다. 인스턴스를 늘리면 각 인스턴스에 붙은 클라이언트끼리 메시지가 오가지 않으므로 외부 브로커로 바꿔야 한다.
 - 배포에서 같은 도메인을 쓰려면 Nginx에 `/ws` location이 필요하다. `Upgrade`·`Connection` 헤더를 넘기고 `proxy_read_timeout`을 길게 잡는다 — 기본값 60초면 조용한 수업에서 1분마다 끊긴다.

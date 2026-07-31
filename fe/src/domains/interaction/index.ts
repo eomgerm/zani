@@ -13,5 +13,18 @@ export type {
   UseSessionChatResult,
 } from "./presentation/useSessionChat";
 export type { ChatEntryStatus, ChatMessageView } from "./presentation/chatMessages";
+export { useRaisedHands } from "./presentation/useRaisedHands";
+export type {
+  UseRaisedHandsOptions,
+  UseRaisedHandsResult,
+} from "./presentation/useRaisedHands";
+export { REACTION_FLOAT_MS, useSessionReactions } from "./presentation/useSessionReactions";
+export type {
+  FloatingReaction,
+  UseSessionReactionsOptions,
+  UseSessionReactionsResult,
+} from "./presentation/useSessionReactions";
+export { REACTION_EMOJI, REACTION_KINDS } from "./presentation/reactions";
+export type { ReactionKind } from "./presentation/reactions";
 export type { SessionChannelState } from "./infrastructure/sessionChannel";
 export type { LiveStateSnapshot } from "./infrastructure/liveStateApi";

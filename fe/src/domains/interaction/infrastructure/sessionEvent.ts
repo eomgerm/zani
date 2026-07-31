@@ -2,11 +2,18 @@
  * 업무 이벤트 봉투. 백엔드 `SessionEvent` 와 같은 형태다(티켓 63 계약).
  *
  * 세션 주제 하나(`/topic/sessions/{sessionId}`)로 모든 종류가 내려오고 `type` 으로 갈라 처리한다.
- * 손들기·반응(64), 화면 공유(65), 강제 음소거(66)가 같은 봉투에 종류를 추가한다.
+ * 화면 공유(65), 강제 음소거(66)가 같은 봉투에 종류를 추가한다.
  */
 
-/** 지금은 채팅뿐이다. 64~66 이 값을 추가한다. */
-export type SessionEventType = "CHAT_MESSAGE";
+/** 손들기가 값 두 개인 이유는 백엔드와 같다 — 리포트 SQL 이 payload JSON 을 파싱하지 않게 한다. */
+export type SessionEventType = "CHAT_MESSAGE" | "HAND_RAISED" | "HAND_LOWERED" | "REACTION";
+
+const SESSION_EVENT_TYPES: readonly string[] = [
+  "CHAT_MESSAGE",
+  "HAND_RAISED",
+  "HAND_LOWERED",
+  "REACTION",
+];
 
 export interface SessionEventSender {
   /**
@@ -69,7 +76,8 @@ export function parseSessionEvent(body: string): SessionEventEnvelope | null {
   const sender = parseSender(event.sender);
   if (
     !isNonBlankString(event.eventId) ||
-    event.type !== "CHAT_MESSAGE" ||
+    typeof event.type !== "string" ||
+    !SESSION_EVENT_TYPES.includes(event.type) ||
     sender === null ||
     typeof event.occurredOffsetMs !== "number"
   ) {
@@ -79,7 +87,7 @@ export function parseSessionEvent(body: string): SessionEventEnvelope | null {
   return {
     eventId: event.eventId,
     clientEventId: isNonBlankString(event.clientEventId) ? event.clientEventId : null,
-    type: event.type,
+    type: event.type as SessionEventType,
     sender,
     occurredOffsetMs: event.occurredOffsetMs,
     deliveredAt: typeof event.deliveredAt === "string" ? event.deliveredAt : "",
@@ -110,4 +118,9 @@ export function parseSessionEventRejection(body: string): SessionEventRejection 
 /** 채팅 본문. 계약상 `payload.content` 하나다. */
 export function chatContentOf(event: SessionEventEnvelope): string | null {
   return isNonBlankString(event.payload.content) ? event.payload.content : null;
+}
+
+/** 반응 종류. 서버가 허용 목록 안의 값만 내려주지만, 여기서도 문자열인지는 확인한다. */
+export function reactionOf(event: SessionEventEnvelope): string | null {
+  return isNonBlankString(event.payload.reaction) ? event.payload.reaction : null;
 }
