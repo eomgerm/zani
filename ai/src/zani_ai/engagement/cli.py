@@ -196,6 +196,7 @@ def _build_features(args: argparse.Namespace) -> int:
     from zani_ai.engagement.representations import (
         LandmarkSequenceRepresentation,
         TokenRepresentation,
+        ZeroPlaceholderTokenRepresentation,
     )
 
     contract = _load_contract(args, require_videos=False)
@@ -207,6 +208,8 @@ def _build_features(args: argparse.Namespace) -> int:
                 f"--schema {args.schema} does not match --sample-fps {args.sample_fps}, "
                 f"which produces {representation.name}"
             )
+    elif args.schema == "mediapipe_98_placeholder_v1":
+        representation = ZeroPlaceholderTokenRepresentation(get_schema(args.schema))
     else:
         representation = TokenRepresentation(get_schema(args.schema))
     manifest_path = representations.build_feature_manifest(
@@ -459,6 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--schema",
         choices=(
             "mediapipe_98_v1",
+            "mediapipe_98_placeholder_v1",
             "mediapipe_132_v1",
             "landmark_78_v1",
             "landmark_78_300_v1",
@@ -521,6 +525,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0g", "E0-G", "E0-G (aligned training schedule)"),
         ("e0h", "E0-H", "E0-H (SORD soft ordinal targets)"),
         ("e0i", "E0-I", "E0-I (label-reliability curriculum)"),
+        ("e0j", "E0-J", "E0-J (zero placeholders for missing faces)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),

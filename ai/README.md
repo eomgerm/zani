@@ -324,6 +324,37 @@ identity에는 `curriculum=label_reliability_v1`, warmup 10 epoch,
 `inputs.label_reliability`에는 manifest 경로·크기·SHA-256이 기록되며 병렬 seed record도 같은
 SHA를 검증합니다. E0-I 해시는 cpu `2b1c6bc1…`, cuda `0da85a5f…`입니다.
 
+### E0-J 결측 프레임 zero placeholder
+
+E0-J는 PriorNet(arXiv:2605.03615)의 결측 프레임 처리 결정을 E0에 적용합니다. 논문은 얼굴을
+찾지 못한 프레임을 제거하거나 coverage 비율로 요약하지 않고, 고정된 시간 슬롯의 all-zero
+RGB frame으로 남겼습니다. 이에 맞춰 E0-J도 별도 coverage 채널을 추가하지 않습니다. 각
+0.5초 세그먼트의 5개 슬롯 중 `valid_mask=false`인 슬롯을 49D zero vector로 두고, 유효 슬롯과
+함께 mean/std를 계산합니다. 출력 shape은 기존과 같은 `[20, 98]`이며 schema만
+`mediapipe_98_placeholder_v1`로 분리됩니다.
+
+브라우저와 맞춘 총 70 유효 프레임 및 세그먼트별 3 유효 프레임 gate는 그대로입니다. 따라서
+clean raw cache의 10,215개 NPZ만 사용하며 원본 영상 추출이나 MediaPipe 재실행은 필요하지
+않습니다.
+
+```bash
+uv run python -m zani_ai engagement build-features --data-root datasets/raw/engagenet --raw-root datasets/processed/engagenet/raw_frames_v1_clean/raw_frames_v1 --output datasets/processed/engagenet/e0j-placeholder --schema mediapipe_98_placeholder_v1 --sample-fps 10
+uv run python -m zani_ai engagement reproduce-e0j --features datasets/processed/engagenet/e0j-placeholder --output artifacts/engagement/e0j-placeholder --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0j-placeholder --split validation --minimum-accuracy-gain 0.02
+```
+
+5개 seed의 평균 Validation accuracy가 E0-clean보다 2.0%p 이상 높으면 성공입니다. 이 판정은
+Test를 보지 않고 내립니다. 성공 여부를 기록한 뒤 아래처럼 고정 checkpoint로 Test를 한 번만
+평가합니다.
+
+```bash
+uv run python -m zani_ai engagement finalize-e0j --features datasets/processed/engagenet/e0j-placeholder --output artifacts/engagement/e0j-placeholder --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0j-placeholder
+```
+
+feature schema가 달라도 두 manifest가 같은 raw manifest SHA와 동일한 split/clip 집합을
+가리키면 비교기는 유효한 비교로 취급합니다. raw 모집단이나 실행 환경이 다르면 경고합니다.
+
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
 학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고

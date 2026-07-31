@@ -7,6 +7,7 @@ from zani_ai.engagement.features import (
     BLENDSHAPE_NAMES,
     InvalidFrameFeaturesError,
     extract_frame_features,
+    get_schema,
 )
 
 
@@ -54,3 +55,10 @@ def test_extract_frame_features_rejects_non_finite_values() -> None:
 
     with pytest.raises(InvalidFrameFeaturesError, match="finite"):
         extract_frame_features(landmarks, np.eye(4), {})
+
+
+def test_placeholder_schema_keeps_the_existing_token_shape() -> None:
+    schema = get_schema("mediapipe_98_placeholder_v1")
+
+    assert schema.raw_feature_count == 49
+    assert schema.token_feature_count == 98
