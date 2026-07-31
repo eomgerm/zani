@@ -23,13 +23,12 @@ import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipCommand;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipResult;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipUseCase;
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
+import com.a105.zani.coach.application.port.CoachingTipSettings;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
 import com.a105.zani.coach.application.storehistory.CoachingTranscriptStatus;
-import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
-import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -89,8 +88,7 @@ class GenerateCoachingTipServiceTest {
                 conceptPort,
                 statePort(),
                 histories::add,
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, maxTriggerDelay));
+                new CoachingTipSettings(0.5, 3000, maxTriggerDelay));
     }
 
     private GenerateCoachingTipService service(CaptureAudioClipUseCase capture, TipConceptPort conceptPort) {
@@ -297,8 +295,7 @@ class GenerateCoachingTipServiceTest {
                 request -> null,
                 statePort(),
                 histories::add,
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
 
         service.start(conceptTipRequest());
 
@@ -340,8 +337,7 @@ class GenerateCoachingTipServiceTest {
                 concept(new TipConcept("제네릭", 0.9)),
                 failingStatePort(),
                 histories::add,
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
 
         service.start(conceptTipRequest());
 
@@ -362,8 +358,7 @@ class GenerateCoachingTipServiceTest {
                 history -> {
                     throw new IllegalStateException("mysql down");
                 },
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
 
         service.start(conceptTipRequest());
 

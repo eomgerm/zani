@@ -41,8 +41,8 @@ class StoreCoachingHistoryServiceTest {
     void writesAheadToTheRetryQueueEvenWhenMysqlIsAvailable() {
         CoachingHistory history = history();
         CapturingRetryQueue retries = new CapturingRetryQueue();
-        StoreCoachingHistoryService service = new StoreCoachingHistoryService(
-                ignored -> true, retries, Clock.fixed(NOW, ZoneOffset.UTC));
+        StoreCoachingHistoryService service =
+                new StoreCoachingHistoryService(ignored -> true, retries, Clock.fixed(NOW, ZoneOffset.UTC));
 
         service.store(history);
 

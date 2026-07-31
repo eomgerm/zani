@@ -21,6 +21,7 @@ import com.a105.zani.attention.application.port.CoachingTriggerStatePort;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipCommand;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipResult;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipUseCase;
+import com.a105.zani.coach.application.port.CoachingTipSettings;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
@@ -29,8 +30,6 @@ import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
 import com.a105.zani.coach.application.storehistory.CoachingTranscript;
 import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.coach.domain.model.CoachingTipRatios;
-import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
-import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextQuery;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -69,8 +68,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             TipConceptPort tipConceptPort,
             CoachingTriggerStatePort coachingTriggerStatePort,
             StoreCoachingHistoryUseCase storeCoachingHistoryUseCase,
-            CoachTipProperties tipProperties,
-            CoachPipelineProperties pipelineProperties) {
+            CoachingTipSettings settings) {
         this.executor = executor;
         this.clock = clock;
         this.getSessionCoachingContextUseCase = getSessionCoachingContextUseCase;
@@ -78,9 +76,9 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
         this.tipConceptPort = tipConceptPort;
         this.coachingTriggerStatePort = coachingTriggerStatePort;
         this.storeCoachingHistoryUseCase = storeCoachingHistoryUseCase;
-        this.minConfidence = tipProperties.minConfidence();
-        this.transcriptTailChars = tipProperties.transcriptTailChars();
-        this.maxTriggerDelay = pipelineProperties.maxTriggerDelay();
+        this.minConfidence = settings.minConfidence();
+        this.transcriptTailChars = settings.transcriptTailChars();
+        this.maxTriggerDelay = settings.maxTriggerDelay();
     }
 
     @Override
