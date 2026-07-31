@@ -359,6 +359,19 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             CoachingTipType selectedTipType,
             CoachingTranscript transcript,
             String topic) {
+        // 강사가 폴링하는 상태를 먼저 쓴다. 이력(Redis 재시도 큐 + MySQL)을 앞에 두면 수업 중 화면이 사후 리포트용
+        // 저장을 기다린다. 특히 고정 문구 팁은 executor 를 거치지 않고 폴링 요청 스레드에서 이 메서드를 타므로,
+        // MySQL 이 느려지면 팁이 뜨는 시점까지 밀린다.
+        try {
+            coachingTriggerStatePort.completeOutcome(request.sessionId(), outcome);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "팁 결과를 보관하지 못했습니다. sessionId={}, triggerId={}, stage=STORE",
+                    request.sessionId(),
+                    request.triggerId(),
+                    exception);
+        }
+
         try {
             storeCoachingHistoryUseCase.store(new CoachingHistory(
                     request.sessionId(),
@@ -380,16 +393,6 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
         } catch (RuntimeException exception) {
             log.warn(
                     "Coaching history could not be stored. sessionId={}, triggerId={}, stage=HISTORY_STORE",
-                    request.sessionId(),
-                    request.triggerId(),
-                    exception);
-        }
-
-        try {
-            coachingTriggerStatePort.completeOutcome(request.sessionId(), outcome);
-        } catch (RuntimeException exception) {
-            log.warn(
-                    "팁 결과를 보관하지 못했습니다. sessionId={}, triggerId={}, stage=STORE",
                     request.sessionId(),
                     request.triggerId(),
                     exception);

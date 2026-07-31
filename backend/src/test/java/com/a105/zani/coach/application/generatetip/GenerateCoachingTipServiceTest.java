@@ -29,6 +29,7 @@ import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
 import com.a105.zani.coach.application.storehistory.CoachingTranscriptStatus;
+import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -47,6 +48,9 @@ class GenerateCoachingTipServiceTest {
 
     private final List<CoachingOutcome> stored = new ArrayList<>();
     private final List<CoachingHistory> histories = new ArrayList<>();
+    /** 폴링 상태와 이력 저장의 호출 순서. 수업 중 화면이 사후 리포트용 저장을 기다리지 않는지 본다. */
+    private final List<String> callOrder = new ArrayList<>();
+
     private final List<TipConceptRequest> extracted = new ArrayList<>();
     private final List<CaptureAudioClipCommand> captured = new ArrayList<>();
 
@@ -64,6 +68,7 @@ class GenerateCoachingTipServiceTest {
 
             @Override
             public void completeOutcome(long sessionId, CoachingOutcome outcome) {
+                callOrder.add("OUTCOME");
                 stored.add(outcome);
             }
 
@@ -80,6 +85,18 @@ class GenerateCoachingTipServiceTest {
 
     private GenerateCoachingTipService service(
             Executor executor, CaptureAudioClipUseCase capture, TipConceptPort conceptPort, Duration maxTriggerDelay) {
+        return service(executor, capture, conceptPort, maxTriggerDelay, history -> {
+            callOrder.add("HISTORY");
+            histories.add(history);
+        });
+    }
+
+    private GenerateCoachingTipService service(
+            Executor executor,
+            CaptureAudioClipUseCase capture,
+            TipConceptPort conceptPort,
+            Duration maxTriggerDelay,
+            StoreCoachingHistoryUseCase historyStore) {
         return new GenerateCoachingTipService(
                 executor,
                 Clock.fixed(TRIGGERED_AT.plusSeconds(1), ZoneOffset.UTC),
@@ -87,7 +104,7 @@ class GenerateCoachingTipServiceTest {
                 capture,
                 conceptPort,
                 statePort(),
-                histories::add,
+                historyStore,
                 new CoachingTipSettings(0.5, 3000, maxTriggerDelay));
     }
 
@@ -162,6 +179,24 @@ class GenerateCoachingTipServiceTest {
         service.start(fixedTipRequest());
 
         assertThat(onlyStored().tip()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("폴링 상태를 이력보다 먼저 쓴다 — 수업 중 화면이 사후 저장을 기다리지 않는다")
+    void writesThePollableOutcomeBeforeTheHistory() {
+        GenerateCoachingTipService service = service(
+                DIRECT,
+                command -> {
+                    throw new AssertionError("전사를 부르지 않아야 한다");
+                },
+                request -> null,
+                Duration.ofSeconds(10));
+
+        service.start(fixedTipRequest());
+
+        // 고정 문구 팁은 executor 를 거치지 않고 폴링 요청 스레드에서 저장까지 수행한다. 이력이 앞에 오면
+        // MySQL 이 느려질 때 팁이 뜨는 시점까지 밀린다.
+        assertThat(callOrder).containsExactly("OUTCOME", "HISTORY");
     }
 
     @Test
@@ -348,17 +383,14 @@ class GenerateCoachingTipServiceTest {
     @Test
     @DisplayName("DB history failure does not block the coaching result")
     void historyFailureDoesNotBlockCoachingResult() {
-        GenerateCoachingTipService service = new GenerateCoachingTipService(
+        GenerateCoachingTipService service = service(
                 DIRECT,
-                Clock.fixed(TRIGGERED_AT.plusSeconds(1), ZoneOffset.UTC),
-                sessionContext(),
                 transcribing("concept transcript"),
                 concept(new TipConcept("concept", 0.9)),
-                statePort(),
+                Duration.ofSeconds(10),
                 history -> {
                     throw new IllegalStateException("mysql down");
-                },
-                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
+                });
 
         service.start(conceptTipRequest());
 
