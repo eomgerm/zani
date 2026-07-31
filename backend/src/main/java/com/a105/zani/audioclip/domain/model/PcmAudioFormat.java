@@ -5,8 +5,8 @@ import java.time.Duration;
 /**
  * 부호 있는 리틀엔디언 16비트 PCM(s16le)의 형식.
  *
- * <p>LiveKit Track Egress 의 WebSocket 출력이 이 형식으로 raw 프레임을 보낸다(컨테이너 없음). 컨테이너가 없다는 것은 바이트 수와 재생 시간이 정확히 비례한다는 뜻이라, 링버퍼가
- * "최근 N초"를 바이트 산술만으로 정확히 잘라낼 수 있다.
+ * <p>LiveKit Track Egress 의 2채널 WebSocket 출력을 모노로 정규화한 뒤 링버퍼가 이 형식으로 보관한다. 컨테이너가 없다는 것은 바이트 수와 재생 시간이 정확히 비례한다는 뜻이라,
+ * 링버퍼가 "최근 N초"를 바이트 산술만으로 정확히 잘라낼 수 있다.
  *
  * @param sampleRate 초당 샘플 수
  * @param channels 채널 수
@@ -28,7 +28,7 @@ public record PcmAudioFormat(int sampleRate, int channels, int bitsPerSample) {
         }
     }
 
-    /** LiveKit WebSocket egress 의 기본 출력. 샘플레이트는 들어오는 트랙을 따르며 보통 48kHz 다. */
+    /** LiveKit WebSocket egress 의 2채널 출력을 모노로 정규화한 기본 링버퍼 형식. */
     public static PcmAudioFormat liveKitDefault() {
         return new PcmAudioFormat(48_000, 1, 16);
     }
