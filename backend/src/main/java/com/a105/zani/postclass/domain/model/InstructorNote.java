@@ -1,5 +1,6 @@
 package com.a105.zani.postclass.domain.model;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import com.a105.zani.postclass.domain.exception.InvalidNoteContentException;
@@ -14,6 +15,9 @@ import com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException;
  * 확정된 메모를 수정하려는 시도만 거절한다.
  */
 public final class InstructorNote {
+
+    /** 입력이 끊긴 뒤 자동 확정까지의 시간(FRD §16 NOTE-002·NOTE-003). 입력이 감지되면 이 시간이 처음부터 다시 흐른다. */
+    public static final Duration INACTIVITY_WINDOW = Duration.ofMinutes(30);
 
     private static final int CONTENT_MAX_LENGTH = 5_000;
 

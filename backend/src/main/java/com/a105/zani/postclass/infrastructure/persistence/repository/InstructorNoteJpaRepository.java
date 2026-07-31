@@ -1,9 +1,11 @@
 package com.a105.zani.postclass.infrastructure.persistence.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -15,6 +17,13 @@ import com.a105.zani.postclass.infrastructure.persistence.entity.InstructorNoteJ
 public interface InstructorNoteJpaRepository extends JpaRepository<InstructorNoteJpaEntity, Long> {
 
     Optional<InstructorNoteJpaEntity> findBySessionId(Long sessionId);
+
+    @Query("""
+            select note.sessionId from InstructorNoteJpaEntity note
+             where note.status = 'DRAFT' and note.lastEditedAt <= :editedBefore
+             order by note.lastEditedAt asc
+            """)
+    List<Long> findDueDraftSessionIds(@Param("editedBefore") Instant editedBefore, Pageable pageable);
 
     /**
      * DRAFT 인 메모의 본문과 마지막 입력 시각만 바꾼다. 바뀐 행 수가 0 이면 그 사이에 확정된 것이다.
@@ -46,6 +55,22 @@ public interface InstructorNoteJpaRepository extends JpaRepository<InstructorNot
              where note.sessionId = :sessionId and note.status = 'DRAFT'
             """)
     int finalizeIfDraft(@Param("sessionId") Long sessionId, @Param("finalizedAt") Instant finalizedAt);
+
+    /**
+     * 마지막 입력이 여전히 기준 시각보다 이전인 초안만 FINALIZED 로 바꾼다.
+     *
+     * <p>스윕이 대상을 고른 뒤 확정하기 전에 강사가 다시 입력할 수 있다. 상태만 검사하면 방금 살아난 메모가 확정되어 "입력이 타이머를 초기화한다"(NOTE-002)가 깨진다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update InstructorNoteJpaEntity note
+               set note.status = 'FINALIZED', note.finalizedAt = :finalizedAt, note.updatedAt = :finalizedAt
+             where note.sessionId = :sessionId and note.status = 'DRAFT' and note.lastEditedAt <= :editedBefore
+            """)
+    int finalizeIfStillInactive(
+            @Param("sessionId") Long sessionId,
+            @Param("editedBefore") Instant editedBefore,
+            @Param("finalizedAt") Instant finalizedAt);
 
     /**
      * 초안 없이 확정된 메모를 넣는다. 같은 세션의 행이 이미 있으면 아무것도 바꾸지 않는다.

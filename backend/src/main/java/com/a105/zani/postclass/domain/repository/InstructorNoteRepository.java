@@ -1,6 +1,7 @@
 package com.a105.zani.postclass.domain.repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import com.a105.zani.postclass.domain.model.InstructorNote;
@@ -8,6 +9,13 @@ import com.a105.zani.postclass.domain.model.InstructorNote;
 public interface InstructorNoteRepository {
 
     Optional<InstructorNote> findBySessionId(Long sessionId);
+
+    /**
+     * 마지막 입력이 기준 시각보다 이전인 초안이 달린 세션 ID. 오래 방치된 것부터 최대 limit 건.
+     *
+     * <p>메모 전체가 아니라 세션 ID만 읽는 이유: 자동 확정에 필요한 것은 대상 식별뿐인데, 메모마다 본문까지 실어 오면 한 번의 스윕이 쓰지도 않는 5000자를 건수만큼 끌어온다.
+     */
+    List<Long> findDueDraftSessionIds(Instant editedBefore, int limit);
 
     /**
      * 메모를 저장한다. 아직 없으면 만들고, 있으면 본문과 마지막 입력 시각만 덮어쓴다.
@@ -27,6 +35,14 @@ public interface InstructorNoteRepository {
      * <p>메모 ID 가 아니라 세션 ID 로 지목하는 이유: 메모는 세션당 한 행이고 후속 작업도 세션 단위라, 두 확정 경로 모두 세션 ID 만으로 끝난다.
      */
     boolean finalizeIfDraft(Long sessionId, Instant finalizedAt);
+
+    /**
+     * 여전히 방치 상태인 초안만 FINALIZED 로 원자 전환한다. 전이가 실제로 일어났을 때만 {@code true}.
+     *
+     * <p>{@link #finalizeIfDraft} 와 달리 마지막 입력 시각까지 다시 검사한다. 스윕이 대상을 고른 뒤 확정하기 전에 강사가 다시 입력할 수 있는데, 상태만 보면 그 메모가 방금
+     * 살아났는데도 확정된다 — 입력이 타이머를 초기화한다는 규칙(NOTE-002)이 깨진다.
+     */
+    boolean finalizeIfStillInactive(Long sessionId, Instant editedBefore, Instant finalizedAt);
 
     /**
      * 초안 없이 확정된 메모를 만든다. 같은 세션의 행이 이미 있으면 아무것도 하지 않는다.
