@@ -11,16 +11,18 @@ import java.util.List;
 public interface RaisedHandQueuePort {
 
     /**
-     * 손을 든 것으로 기록한다.
+     * 손을 든 것으로 기록한다. 이미 들고 있었다면 순번은 그대로 유지한다.
      *
      * @param raisedAtMillis 순번의 기준. 서버가 받은 시각이라 클라이언트 시계와 무관하다
-     * @return 처음 든 경우 true. 이미 들고 있었으면 false 이며 순번은 그대로 유지된다
      */
-    boolean raise(long sessionId, String identity, long raisedAtMillis);
+    RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis);
 
-    /** @return 실제로 내린 경우 true. 이미 내려가 있었으면 false */
-    boolean lower(long sessionId, String identity);
+    RaisedHandChange lower(long sessionId, String identity);
 
-    /** 든 순서대로. 아무도 없으면 빈 목록. */
+    /**
+     * 든 순서대로. 아무도 없으면 빈 목록.
+     *
+     * <p>쓰기와 달리 읽기는 실패를 구분하지 않는다. 못 읽으면 목록이 비어 보일 뿐이라 화면이 사실과 다른 것을 주장하지 않는다 — 손을 들지도 않았는데 들었다고 알리는 쓰기 쪽과 다르다.
+     */
     List<String> raisedInOrder(long sessionId);
 }

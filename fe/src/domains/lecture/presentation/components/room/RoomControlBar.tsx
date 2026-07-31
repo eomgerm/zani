@@ -36,8 +36,15 @@ interface RoomControlBarProps {
   /** 다른 참가자가 화면을 공유 중이라 내가 시작할 수 없는 상태(세션당 활성 공유 1명). */
   shareBlocked: boolean;
   reactMenuOpen: boolean;
-  /** 업무 채널이 끊겨 손들기·반응을 보낼 수 없는 상태. */
-  interactionDisabled: boolean;
+  /**
+   * 손들기를 보낼 수 없는 상태.
+   *
+   * 반응과 조건이 다르다 — 손들기는 내 현재 상태를 알아야 무엇을 보낼지(올릴지 내릴지) 정할 수 있어
+   * 내 participant identity 가 필요하지만, 반응은 보낸 사람을 서버가 STOMP 주체에서 가져오므로 필요 없다.
+   */
+  handDisabled: boolean;
+  /** 반응을 보낼 수 없는 상태. 채널이 붙어 있으면 보낼 수 있다. */
+  reactionDisabled: boolean;
   onToggleMic: () => void;
   onToggleCam: () => void;
   onToggleShare: () => void;
@@ -141,7 +148,8 @@ export function RoomControlBar({
   sharing,
   shareBlocked,
   reactMenuOpen,
-  interactionDisabled,
+  handDisabled,
+  reactionDisabled,
   onToggleMic,
   onToggleCam,
   onToggleShare,
@@ -198,8 +206,8 @@ export function RoomControlBar({
       <button
         type="button"
         onClick={onToggleHand}
-        disabled={interactionDisabled}
-        title={interactionDisabled ? "연결 중입니다" : me.hand ? "손 내리기" : "손들기"}
+        disabled={handDisabled}
+        title={handDisabled ? "연결 중입니다" : me.hand ? "손 내리기" : "손들기"}
         aria-label={me.hand ? "손 내리기" : "손들기"}
         aria-pressed={me.hand}
         className={`${circle} ${me.hand ? "bg-warn text-[#372b03]" : "bg-room-control"} disabled:cursor-not-allowed disabled:opacity-50`}
@@ -211,8 +219,8 @@ export function RoomControlBar({
         <button
           type="button"
           onClick={onToggleReactMenu}
-          disabled={interactionDisabled}
-          title={interactionDisabled ? "연결 중입니다" : "반응"}
+          disabled={reactionDisabled}
+          title={reactionDisabled ? "연결 중입니다" : "반응"}
           aria-label="반응"
           aria-expanded={reactMenuOpen}
           className={`${toneCls(reactMenuOpen, "bg-primary")} disabled:cursor-not-allowed disabled:opacity-50`}

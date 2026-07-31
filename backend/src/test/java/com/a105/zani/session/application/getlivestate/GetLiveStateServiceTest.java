@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
+import com.a105.zani.session.application.port.RaisedHandChange;
 import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.application.port.SessionEventSender;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
@@ -125,12 +126,12 @@ class GetLiveStateServiceTest {
         private List<String> ordered = List.of();
 
         @Override
-        public boolean raise(long sessionId, String identity, long raisedAtMillis) {
+        public RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis) {
             throw new UnsupportedOperationException("스냅샷은 쓰지 않는다.");
         }
 
         @Override
-        public boolean lower(long sessionId, String identity) {
+        public RaisedHandChange lower(long sessionId, String identity) {
             throw new UnsupportedOperationException("스냅샷은 쓰지 않는다.");
         }
 

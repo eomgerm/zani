@@ -12,6 +12,7 @@ import com.a105.zani.common.error.BusinessException;
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.member.application.get.GetMemberDisplayNameQuery;
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
+import com.a105.zani.session.application.port.RaisedHandChange;
 import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.application.port.SessionEvent;
 import com.a105.zani.session.application.port.SessionEventPublishPort;
@@ -42,6 +43,9 @@ public class ToggleHandService implements ToggleHandUseCase {
     private static final String DEFAULT_DISPLAY_NAME = "참가자";
 
     private static final String REASON_MISSING_CLIENT_EVENT_ID = "MISSING_CLIENT_EVENT_ID";
+
+    /** 손들기 상태 저장소를 쓰지 못했다. 클라이언트는 버튼을 원래 자리에 두고 다시 누를 수 있게 한다. */
+    private static final String REASON_HAND_STATE_UNAVAILABLE = "HAND_STATE_UNAVAILABLE";
 
     private final ResolveSessionParticipantUseCase resolveSessionParticipantUseCase;
     private final GetMemberDisplayNameUseCase getMemberDisplayNameUseCase;
@@ -82,17 +86,23 @@ public class ToggleHandService implements ToggleHandUseCase {
 
         Instant now = clock.instant();
         String identity = SessionParticipantIdentity.of(participant.participantId());
-        boolean changed = command.raised()
+        RaisedHandChange change = command.raised()
                 ? raisedHandQueuePort.raise(command.sessionId(), identity, now.toEpochMilli())
                 : raisedHandQueuePort.lower(command.sessionId(), identity);
 
+        if (change == RaisedHandChange.UNAVAILABLE) {
+            // 아무것도 기록하지 못했다. 여기서 알리면 화면에는 손이 올라가 있는데 서버는 그 사실을 모르는
+            // 상태가 되고, 재연결 스냅샷에서 조용히 사라진다. 사실이 아닌 것을 알리느니 실패를 알린다.
+            return reject(command, REASON_HAND_STATE_UNAVAILABLE);
+        }
+
         long offsetMs = offsetMs(participant.sessionStartedAt(), now);
-        if (changed) {
+        if (change == RaisedHandChange.CHANGED) {
             // 실제로 바뀐 것만 남긴다. 재시도까지 쌓으면 리포트의 손들기 횟수가 부풀려진다.
             recordHistory(command, participant, offsetMs);
         }
         publish(command, participant, offsetMs, now);
-        return ToggleHandResult.applied(command.raised(), changed);
+        return ToggleHandResult.applied(command.raised(), change == RaisedHandChange.CHANGED);
     }
 
     /**

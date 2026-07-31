@@ -9,6 +9,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import com.a105.zani.session.application.port.RaisedHandChange;
 import com.a105.zani.session.application.port.RaisedHandQueuePort;
 
 /**
@@ -34,27 +35,50 @@ public class RaisedHandQueueRedisAdapter implements RaisedHandQueuePort {
     }
 
     @Override
-    public boolean raise(long sessionId, String identity, long raisedAtMillis) {
+    public RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis) {
         try {
             // ZADD 는 이미 있는 멤버의 score 를 덮어쓴다. NX 를 붙여 먼저 든 순번을 지킨다 —
             // 두 번 눌렀다고 뒤로 밀리면 안 된다.
             Boolean added = redisTemplate.opsForZSet().addIfAbsent(key(sessionId), identity, (double) raisedAtMillis);
-            redisTemplate.expire(key(sessionId), TTL);
-            return Boolean.TRUE.equals(added);
+            if (added == null) {
+                // 파이프라인·트랜잭션 모드에서만 나오는 값이라 여기서는 오지 않아야 한다. 온다면 기록 여부를 알 수 없다.
+                log.warn("손들기 기록 결과를 알 수 없습니다. sessionId={}", sessionId);
+                return RaisedHandChange.UNAVAILABLE;
+            }
+            refreshTtl(sessionId);
+            return added ? RaisedHandChange.CHANGED : RaisedHandChange.UNCHANGED;
         } catch (DataAccessException unavailable) {
             log.warn("Redis 장애로 손들기를 기록하지 못했습니다. sessionId={}", sessionId, unavailable);
-            return false;
+            return RaisedHandChange.UNAVAILABLE;
         }
     }
 
     @Override
-    public boolean lower(long sessionId, String identity) {
+    public RaisedHandChange lower(long sessionId, String identity) {
         try {
             Long removed = redisTemplate.opsForZSet().remove(key(sessionId), identity);
-            return removed != null && removed > 0;
+            if (removed == null) {
+                log.warn("손내리기 결과를 알 수 없습니다. sessionId={}", sessionId);
+                return RaisedHandChange.UNAVAILABLE;
+            }
+            return removed > 0 ? RaisedHandChange.CHANGED : RaisedHandChange.UNCHANGED;
         } catch (DataAccessException unavailable) {
             log.warn("Redis 장애로 손내리기를 기록하지 못했습니다. sessionId={}", sessionId, unavailable);
-            return false;
+            return RaisedHandChange.UNAVAILABLE;
+        }
+    }
+
+    /**
+     * 만료 갱신 실패는 기록 자체를 무르지 않는다.
+     *
+     * <p>손은 이미 큐에 들어갔다. 여기서 실패했다고 실패로 뒤집으면 저장된 상태를 알리지 않게 되어, 화면과 서버가 이번에는 반대 방향으로 어긋난다. TTL 은 수업이 끝난 뒤 청소용 안전장치라 한 번
+     * 놓쳐도 그 수업은 정상 동작한다.
+     */
+    private void refreshTtl(long sessionId) {
+        try {
+            redisTemplate.expire(key(sessionId), TTL);
+        } catch (DataAccessException unavailable) {
+            log.warn("손들기 큐의 만료 시간을 갱신하지 못했습니다. sessionId={}", sessionId, unavailable);
         }
     }
 

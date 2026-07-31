@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
+import com.a105.zani.session.application.port.RaisedHandChange;
 import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.application.port.SessionEvent;
 import com.a105.zani.session.application.port.SessionEventPublishPort;
@@ -130,6 +131,37 @@ class ToggleHandServiceTest {
         assertTrue(publisher.rejections.isEmpty());
     }
 
+    /**
+     * 저장소가 죽었을 때 "이미 같은 상태였다"와 뭉뜽그리면, 아무것도 기록하지 못한 요청을 전 참가자에게 알리게 된다. 그러면 화면에는 손이 올라가 있는데 서버는 그 사실을 모르고, 재연결 스냅샷에서 조용히
+     * 사라진다.
+     */
+    @Test
+    void 큐에_기록하지_못하면_알리지_않고_본인에게_실패를_통지한다() {
+        raisedHands.unavailable = true;
+
+        ToggleHandResult result = service().toggle(new ToggleHandCommand(SESSION_ID, USER_ID, CLIENT_EVENT_ID, true));
+
+        assertTrue(result.rejected());
+        assertEquals("HAND_STATE_UNAVAILABLE", result.rejectionReason());
+        assertTrue(publisher.events.isEmpty());
+        assertTrue(history.saved.isEmpty());
+        assertEquals(1, publisher.rejections.size());
+        assertEquals(CLIENT_EVENT_ID, publisher.rejections.getFirst().clientEventId());
+    }
+
+    /** 손 내리기도 같다. 못 내렸는데 내렸다고 알리면 남의 화면에서만 손이 사라진다. */
+    @Test
+    void 손내리기도_기록하지_못하면_알리지_않는다() {
+        raisedHands.queue.add("p-11");
+        raisedHands.unavailable = true;
+
+        ToggleHandResult result = service().toggle(new ToggleHandCommand(SESSION_ID, USER_ID, CLIENT_EVENT_ID, false));
+
+        assertTrue(result.rejected());
+        assertTrue(publisher.events.isEmpty());
+        assertEquals(List.of("p-11"), raisedHands.queue);
+    }
+
     /** 화면에는 손이 들려 있는데 요청은 실패한 상태를 만들지 않는다. 리포트 한 줄이 비는 쪽이 낫다. */
     @Test
     void 이력_저장이_실패해도_손들기는_성립한다() {
@@ -159,15 +191,27 @@ class ToggleHandServiceTest {
     /** Sorted Set 의 ZADD NX / ZREM 을 순서 있는 목록으로 흉내 낸다. */
     private static class StubRaisedHands implements RaisedHandQueuePort {
         private final List<String> queue = new ArrayList<>();
+        /** Redis 가 죽어 아무것도 기록하지 못하는 상태. */
+        private boolean unavailable;
 
         @Override
-        public boolean raise(long sessionId, String identity, long raisedAtMillis) {
-            return !queue.contains(identity) && queue.add(identity);
+        public RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis) {
+            if (unavailable) {
+                return RaisedHandChange.UNAVAILABLE;
+            }
+            if (queue.contains(identity)) {
+                return RaisedHandChange.UNCHANGED;
+            }
+            queue.add(identity);
+            return RaisedHandChange.CHANGED;
         }
 
         @Override
-        public boolean lower(long sessionId, String identity) {
-            return queue.remove(identity);
+        public RaisedHandChange lower(long sessionId, String identity) {
+            if (unavailable) {
+                return RaisedHandChange.UNAVAILABLE;
+            }
+            return queue.remove(identity) ? RaisedHandChange.CHANGED : RaisedHandChange.UNCHANGED;
         }
 
         @Override

@@ -257,7 +257,7 @@ function RoomScreenContent({
   );
   // 떠오르는 반응은 서버가 뿌린 것만 그린다. 낙관적으로 그리면 연타 제한에 걸려 남에게는
   // 안 보이는 반응이 내 화면에만 뜨고, echo 가 오면 같은 반응이 두 번 떠오른다.
-  const { reactions, react } = useSessionReactions();
+  const { reactions, canReact, react } = useSessionReactions();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // 언마운트 시 남아 있는 애니메이션/토스트 타이머를 모두 정리한다.
@@ -659,7 +659,8 @@ function RoomScreenContent({
             onToggleMic={media.toggleMicrophone}
             onToggleCam={media.toggleCamera}
             onToggleShare={toggleScreenShare}
-            interactionDisabled={!hands.canToggle}
+            handDisabled={!hands.canToggle}
+            reactionDisabled={!canReact}
             onToggleHand={hands.toggle}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
             onReact={sendReaction}
