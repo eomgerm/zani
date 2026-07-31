@@ -31,8 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 @SpringBootTest
 class StompHeartbeatSchedulerIsolationTest {
 
-    /** {@code application.yaml} 의 {@code spring.task.scheduling.pool.size} 와 같은 값. */
-    private static final int SCHEDULED_POOL_SIZE = 4;
+    /**
+     * {@code application.yaml} 의 {@code spring.task.scheduling.pool.size} 와 같은 값. 설정을 바꾸면 이 값도 함께 올린다.
+     *
+     * <p>{@code SchedulingPoolSizeTest} 가 같은 설정을 스케줄 작업 수 기준으로 따로 지킨다. 그쪽은 YAML 텍스트만 읽으므로 <b>설정이 실제로 쓰이는지</b>는 이 테스트만
+     * 안다 — {@code @Scheduled} 가 브로커 풀로 새던 동안에도 그 테스트는 초록이었다.
+     */
+    private static final int SCHEDULED_POOL_SIZE = 5;
 
     @Autowired
     private ApplicationContext context;
