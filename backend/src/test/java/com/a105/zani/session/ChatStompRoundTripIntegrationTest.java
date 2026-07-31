@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -284,6 +285,39 @@ class ChatStompRoundTripIntegrationTest {
                         .connectAsync(
                                 url(), new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {})
                         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
+    }
+
+    /**
+     * 브로커가 하트비트를 실제로 광고하는지 본다.
+     *
+     * <p>설정에서 {@code setTaskScheduler} 가 빠지면 Spring 은 조용히 {@code heart-beat:0,0} 을 보내고, STOMP 규약상 한쪽이 0 이면 그 방향이 꺼져
+     * <b>양방향 모두</b> 프레임이 멎는다. 그러면 조용한 수업의 연결이 몇 시간 동안 바이트를 하나도 보내지 않아 중간 홉이 끊는다. 오류가 나지 않고 값만 바뀌는 종류의 회귀라 여기서 잡는다.
+     */
+    @Test
+    void CONNECTED_프레임이_하트비트를_광고한다() throws Exception {
+        CompletableFuture<StompHeaders> connected = new CompletableFuture<>();
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add(
+                "Authorization",
+                "Bearer "
+                        + tokenProvider
+                                .issueAccessToken(String.valueOf(STUDENT_ID))
+                                .value());
+
+        stompClient
+                .connectAsync(url(), new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {
+                    @Override
+                    public void afterConnected(StompSession session, StompHeaders headers) {
+                        connected.complete(headers);
+                    }
+                })
+                .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+        // {서버가 보내는 주기, 클라이언트에 기대하는 주기}. 둘 다 0 보다 커야 어느 방향이든 흐른다.
+        long[] heartbeat = connected.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).getHeartbeat();
+        assertNotNull(heartbeat);
+        assertTrue(heartbeat[0] > 0, "서버 → 클라이언트 하트비트가 꺼져 있습니다.");
+        assertTrue(heartbeat[1] > 0, "클라이언트 → 서버 하트비트가 꺼져 있습니다.");
     }
 
     private String url() {
