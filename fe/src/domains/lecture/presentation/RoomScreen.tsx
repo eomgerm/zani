@@ -17,6 +17,8 @@ import {
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
 import { SessionChannelProvider, useSessionChat } from "@/domains/interaction";
+import { useAuth } from "@/domains/auth";
+import { endSession, EndSessionRequestError } from "../infrastructure/endSessionApi";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
 import { RoomRoster } from "./components/room/RoomRoster";
 import { useRoomParticipants } from "./useRoomParticipants";
@@ -26,7 +28,6 @@ import { RoomControlBar } from "./components/room/RoomControlBar";
 import { RoomSidePanel } from "./components/room/RoomSidePanel";
 import { RoomProvider, useRoomConnection } from "./RoomProvider";
 import { SessionTimeWarning } from "./components/room/SessionTimeWarning";
-import { EndSessionButton } from "./components/room/EndSessionButton";
 import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
@@ -54,6 +55,12 @@ type RoomScreenProps = {
 };
 
 type FloatingReaction = { key: number; emoji: string; left: number };
+
+/**
+ * 강사가 방을 종료했을 때(또는 미복귀 자동 종료) 학생을 바로 튕겨내지 않고, 종료 안내를
+ * 잠깐 보여준 뒤 내보내기까지의 시간(ms). 강사 본인은 사후 메모로 곧바로 이동하므로 해당 없다.
+ */
+const ENDED_KICK_DELAY_MS = 4_000;
 
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
@@ -143,6 +150,7 @@ function RoomScreenContent({
   expiresAt,
 }: RoomScreenProps) {
   const router = useRouter();
+  const { accessToken } = useAuth();
   // 종료 예정 시각은 강의실 진입 시 미디어 토큰 응답으로 받는다. prop 은 테스트·스토리북 강제 지정용이다.
   const { room, sessionExpiresAt, sessionTitle, connectionState } = useRoomConnection();
   const media = useRoomMediaControls(sessionId);
@@ -342,13 +350,73 @@ function RoomScreenContent({
     track(setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 2400));
   };
 
+  const [leaveConfirming, setLeaveConfirming] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
+  const [endSessionError, setEndSessionError] = useState<string | null>(null);
+  // 이동이 시작된 뒤의 중복 클릭·중복 이동을 막는다(라우팅 전까지 컴포넌트가 살아 있다).
+  const leaveRequested = useRef(false);
+
   /**
-   * 나가기. 강사는 수업을 종료하는 것이라 사후 메모 작성으로 넘기고(프로토타입 endRoom),
-   * 학생은 참여했던 강의 목록으로 돌아간다.
+   * 나가기. 학생은 참여했던 강의 목록으로 바로 돌아가고, 강사는 수업을 종료하는 것이라 모든
+   * 참가자에게 영향을 주므로 말풍선으로 한 번 더 확인받는다(종료 후 사후 메모 작성으로 이동).
+   *
+   * 역할이 확정되기 전(connected=false)에는 isInstructor 가 시연용 true 라 종료를 묻지 않고
+   * 기존 경로 그대로 이동만 한다(EndSessionButton 이 쓰던 판단과 같다).
    */
   const leaveRoom = () => {
+    if (leaveRequested.current) return;
+    if (isConfirmedInstructor) {
+      setEndSessionError(null);
+      setLeaveConfirming(true);
+      return;
+    }
+    leaveRequested.current = true;
     router.push(isInstructor ? `/my-lectures/${sessionId}/note` : "/my-lectures");
   };
+
+  /** 말풍선의 "종료". 세션을 즉시 ENDED 로 전환한 뒤 사후 메모 작성으로 이동한다. */
+  const confirmEndSession = async () => {
+    if (leaveRequested.current || endingSession) return;
+    if (!accessToken) {
+      setEndSessionError("로그인이 풀렸습니다. 다시 로그인한 뒤 종료해 주세요.");
+      return;
+    }
+    setEndingSession(true);
+    setEndSessionError(null);
+    try {
+      await endSession(sessionId, accessToken);
+      leaveRequested.current = true;
+      router.push(`/my-lectures/${sessionId}/note`);
+    } catch (failure) {
+      setEndingSession(false);
+      setEndSessionError(
+        failure instanceof EndSessionRequestError && failure.status === 403
+          ? "수업을 연 강사만 종료할 수 있습니다."
+          : "수업을 종료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      );
+    }
+  };
+
+  // 종료된 수업에 남아 있는 참가자를 내보낸다 — 강사 미복귀 자동 종료든, 강사가 방을 닫았든,
+  // 다른 화면에서의 종료든 presence 가 종료를 알리는 즉시. 강사는 사후 메모 작성으로 바로 이동하고,
+  // 학생은 "곧 종료" 안내(SessionPresenceNotice)를 잠깐 본 뒤 강의 목록으로 나간다.
+  //
+  // 사후 메모는 강사 전용 페이지라, 역할이 확정된(isConfirmedInstructor) 강사만 그리로 보낸다.
+  // 참가자 목록이 오기 전에는 isInstructor 가 시연용 true 라, 그것만 보면 학생이 강사 페이지로
+  // 새어 나간다. 확정 전에는 안전한 학생 경로(강의 목록)로 보낸다.
+  useEffect(() => {
+    if (!presence.sessionEnded || leaveRequested.current) return;
+    if (isConfirmedInstructor) {
+      leaveRequested.current = true;
+      router.push(`/my-lectures/${sessionId}/note`);
+      return;
+    }
+    const timer = setTimeout(() => {
+      leaveRequested.current = true;
+      router.push("/my-lectures");
+    }, ENDED_KICK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [presence.sessionEnded, isConfirmedInstructor, router, sessionId]);
 
   const answerPrompt = async (value: UnderstandingCheckResponse) => {
     const sent = await understandingCheck.respond(value);
@@ -426,14 +494,6 @@ function RoomScreenContent({
         >
           <ChatIcon />
         </PanelToggle>
-        {/*
-          강사만 수업을 끝낼 수 있다. 종료하면 모든 참가자가 나가므로 확인을 한 번 더 받는다.
-          isInstructor 는 참가자 목록이 도착하기 전(connected=false) 시연용으로 true 가 되므로,
-          되돌릴 수 없는 조작인 종료는 역할이 실제로 확정된 뒤에만 노출한다.
-        */}
-        {connected && isInstructor && (
-          <EndSessionButton sessionId={sessionId} redirectTo={`/my-lectures/${sessionId}/note`} />
-        )}
       </div>
 
       {/* 본문 */}
@@ -758,6 +818,38 @@ function RoomScreenContent({
           className="absolute bottom-24 left-1/2 z-50 -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-room-edge bg-[#1e2138] px-5 py-3 text-[13px] text-panel-soft"
         >
           {promptToast}
+        </div>
+      )}
+
+      {/* 나가기 확인 말풍선(강사 전용). 종료는 모든 참가자가 나가는 되돌릴 수 없는 조작이라 한 번 더 묻는다. */}
+      {leaveConfirming && (
+        <div
+          role="group"
+          aria-label="수업 종료 확인"
+          data-testid="leave-confirm-bubble"
+          className="absolute bottom-24 left-1/2 z-50 flex -translate-x-1/2 animate-[zPop_.18s] items-center gap-2.5 rounded-[14px] border border-danger bg-danger-softer px-4 py-2.5 shadow-pop"
+        >
+          <span className="whitespace-nowrap text-[13px] font-bold text-danger">
+            {endSessionError ?? "수업을 종료할까요? 모든 참가자가 나가게 됩니다."}
+          </span>
+          <button
+            type="button"
+            data-testid="leave-confirm-end"
+            disabled={endingSession}
+            onClick={() => void confirmEndSession()}
+            className="cursor-pointer whitespace-nowrap rounded-lg bg-danger px-3 py-1 text-[12.5px] font-bold text-surface disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {endingSession ? "종료 중" : "종료"}
+          </button>
+          <button
+            type="button"
+            data-testid="leave-confirm-cancel"
+            disabled={endingSession}
+            onClick={() => setLeaveConfirming(false)}
+            className="cursor-pointer whitespace-nowrap rounded-lg border border-line-muted bg-surface px-3 py-1 text-[12.5px] font-bold text-ink-sub disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            취소
+          </button>
         </div>
       )}
     </div>
