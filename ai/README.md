@@ -416,9 +416,18 @@ epoch부터 회복하지 못하면 초기 lr과 감쇠 시점을 조정하는데
 들어가므로 **조정한 값은 E0-K가 아니라 새 프로토콜**이 됩니다. 조정 과정과 기각된 값을
 여기에 남깁니다.
 
-epoch이 E0의 실측 116(=`best_epoch` 최대 9 + patience 20 × 5 seed 환산)에서 1500
-(300 × 5 seed)으로 늘어 학습 시간이 약 13배입니다. 5 seed를 `--seed`로 동시 실행할
-때는 GPU 메모리를 먼저 확인하십시오.
+학습 시간은 약 12배입니다. E0-clean의 `best_epoch`은 [4, 2, 3, 11, 7]이고 각 seed가
+patience 20을 더 돈 뒤 멈추므로 5 seed 합계가 약 127 epoch인데, E0-K는 300 × 5 =
+1500 epoch을 전부 돕니다.
+
+seed를 여러 개 동시에 돌리는 것은 **카드가 여러 장일 때만** 의미가 있습니다. L40S
+한 장에서 E1을 돌린 실측이 utilization 98~99% / 311W(350W 중)로 compute bound라,
+같은 카드에 seed를 쌓으면 시간만 나눠 쓰고 총 시간은 줄지 않습니다
+([../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md) 참고).
+메모리는 병목이 아닙니다 — E1 기준 5,095 / 46,068 MiB만 씁니다.
+
+이 길이면 JupyterHub idle culler(24시간)에 걸릴 수 있습니다. 완료된 seed는 재사용되므로
+같은 명령을 다시 실행하면 이어서 진행되며, 잃는 것은 많아야 seed 하나 분량입니다.
 
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
