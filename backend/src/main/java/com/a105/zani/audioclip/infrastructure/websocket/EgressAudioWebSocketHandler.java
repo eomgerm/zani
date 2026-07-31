@@ -11,6 +11,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 import com.a105.zani.audioclip.infrastructure.buffer.InstructorAudioBuffer;
+import com.a105.zani.audioclip.infrastructure.encoding.StereoPcm16leDownmixer;
 
 /**
  * LiveKit Egress 의 WebSocket track egress 를 받아 강사 오디오 링버퍼를 채운다.
@@ -25,6 +26,8 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
 
     /** 검증을 통과한 세션에만 채워지는 attribute. 없으면 그 연결의 프레임은 버린다. */
     static final String SESSION_ID_ATTRIBUTE = "audioclip.sessionId";
+
+    static final String DOWNMIXER_ATTRIBUTE = "audioclip.stereoDownmixer";
 
     private static final String SECRET_QUERY_KEY = "key=";
 
@@ -57,6 +60,7 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         session.getAttributes().put(SESSION_ID_ATTRIBUTE, sessionId);
+        session.getAttributes().put(DOWNMIXER_ATTRIBUTE, new StereoPcm16leDownmixer());
         log.info("Instructor audio stream connected for session {}", sessionId);
     }
 
@@ -67,10 +71,14 @@ public class EgressAudioWebSocketHandler extends AbstractWebSocketHandler {
             // 검증에 실패한 연결이 닫히기 전에 보낸 프레임. 버린다.
             return;
         }
+        Object downmixer = session.getAttributes().get(DOWNMIXER_ATTRIBUTE);
+        if (!(downmixer instanceof StereoPcm16leDownmixer stereoDownmixer)) {
+            return;
+        }
         ByteBuffer payload = message.getPayload();
         byte[] pcm = new byte[payload.remaining()];
         payload.get(pcm);
-        buffer.append(id, pcm);
+        buffer.append(id, stereoDownmixer.downmix(pcm));
     }
 
     /** 텍스트 등 바이너리가 아닌 메시지는 이 프로토콜에 없다. 연결을 끊지 않고 무시한다. */

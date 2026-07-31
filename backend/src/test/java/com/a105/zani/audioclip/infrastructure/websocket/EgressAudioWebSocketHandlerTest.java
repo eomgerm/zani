@@ -62,8 +62,8 @@ class EgressAudioWebSocketHandlerTest {
         FakeWebSocketSession session = authorized();
         handler.afterConnectionEstablished(session);
 
-        handler.handleMessage(session, new BinaryMessage(pcm(100, 1)));
-        handler.handleMessage(session, new BinaryMessage(pcm(150, 2)));
+        handler.handleMessage(session, new BinaryMessage(pcm(200, 1)));
+        handler.handleMessage(session, new BinaryMessage(pcm(300, 2)));
 
         assertEquals(2_500, buffer.availableMs(SESSION_ID));
         assertNull(session.closeStatus, "정상 연결은 닫히지 않아야 한다");
@@ -75,7 +75,7 @@ class EgressAudioWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
 
         for (int i = 0; i < 10; i += 1) {
-            handler.handleMessage(session, new BinaryMessage(pcm(50, i)));
+            handler.handleMessage(session, new BinaryMessage(pcm(100, i)));
         }
 
         assertEquals(5_000, buffer.availableMs(SESSION_ID));
@@ -150,7 +150,7 @@ class EgressAudioWebSocketHandlerTest {
     void 스트림이_끊겨도_버퍼는_유지한다() throws Exception {
         FakeWebSocketSession session = authorized();
         handler.afterConnectionEstablished(session);
-        handler.handleMessage(session, new BinaryMessage(pcm(300, 1)));
+        handler.handleMessage(session, new BinaryMessage(pcm(600, 1)));
 
         handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
@@ -162,12 +162,12 @@ class EgressAudioWebSocketHandlerTest {
     void 같은_세션에_재연결하면_이어서_쌓는다() throws Exception {
         FakeWebSocketSession first = authorized();
         handler.afterConnectionEstablished(first);
-        handler.handleMessage(first, new BinaryMessage(pcm(100, 1)));
+        handler.handleMessage(first, new BinaryMessage(pcm(200, 1)));
         handler.afterConnectionClosed(first, CloseStatus.NORMAL);
 
         FakeWebSocketSession second = authorized();
         handler.afterConnectionEstablished(second);
-        handler.handleMessage(second, new BinaryMessage(pcm(100, 2)));
+        handler.handleMessage(second, new BinaryMessage(pcm(200, 2)));
 
         assertEquals(2_000, buffer.availableMs(SESSION_ID));
     }
@@ -189,9 +189,9 @@ class EgressAudioWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
 
         // position/limit 이 0..capacity 가 아닌 ByteBuffer 로 온 경우.
-        ByteBuffer backing = ByteBuffer.allocate(200);
+        ByteBuffer backing = ByteBuffer.allocate(300);
         backing.position(50);
-        backing.put(pcm(100, 7));
+        backing.put(pcm(200, 7));
         backing.flip();
         backing.position(50);
 
@@ -199,6 +199,18 @@ class EgressAudioWebSocketHandlerTest {
 
         // 이 테스트의 관심사는 ByteBuffer 구간을 정확히 읽었는지다. 길이로 확인한다.
         assertEquals(1_000, buffer.availableMs(SESSION_ID));
+    }
+
+    @Test
+    void splitStereoFrameIsDownmixedAfterTheRemainingBytesArrive() throws Exception {
+        FakeWebSocketSession session = authorized();
+        handler.afterConnectionEstablished(session);
+
+        handler.handleMessage(session, new BinaryMessage(new byte[] {1, 2, 3}));
+        assertEquals(0, buffer.availableMs(SESSION_ID));
+
+        handler.handleMessage(session, new BinaryMessage(new byte[] {4}));
+        assertEquals(20, buffer.availableMs(SESSION_ID));
     }
 
     /** WebSocketSession 중 핸들러가 실제로 쓰는 부분만 구현한 페이크. */
