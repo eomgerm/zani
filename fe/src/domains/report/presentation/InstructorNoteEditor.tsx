@@ -255,14 +255,7 @@ export function InstructorNoteEditor({
         </Link>
 
         <div className="z-card-lg px-8 py-[30px]" data-testid="instructor-note-editor">
-          <div className="z-pill mb-4 bg-warn-soft px-3 py-[5px] text-[12.5px] text-warn-text">
-            사후 메모 작성
-          </div>
           <h1 className="mb-1.5 text-2xl font-extrabold tracking-[-.4px]">수업 사후 메모</h1>
-          <p className="mb-3.5 text-sm leading-[1.7] text-ink-sub">
-            수업에서 다룬 개념명, 강조한 이유, 학생이 다시 볼 포인트를 자유 형식으로 작성해
-            주세요. 메모는 수업당 하나이며 AI 분석에 참고됩니다.
-          </p>
 
           {finalized ? (
             <>
@@ -305,7 +298,7 @@ export function InstructorNoteEditor({
                 value={content}
                 onChange={handleChange}
                 disabled={finalizing}
-                placeholder="예) Context 리렌더링 파트에서 학생들이 많이 헷갈려 했다. 다음 시간에 Provider value 참조 개념을 예시로 다시 짚어주면 좋겠다."
+                placeholder="예) 수업에서 학생이 다시 볼 포인트를 자유 형식으로 작성해 주세요. 메모는 AI 분석에 참고됩니다."
                 className="z-input z-textarea min-h-[260px] rounded-[14px] bg-faint px-5 py-[18px]"
                 data-testid="note-textarea"
               />
