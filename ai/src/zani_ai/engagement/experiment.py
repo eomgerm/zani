@@ -18,7 +18,12 @@ import torch
 from torch import nn
 
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
-from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
+from zani_ai.engagement.features import (
+    SCHEMA_98,
+    SCHEMA_98_PLACEHOLDER,
+    SCHEMA_132,
+    FeatureSchema,
+)
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
 from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
@@ -242,6 +247,16 @@ E0I_SPEC = ExperimentSpec(
     needs_reliability_manifest=True,
 )
 
+# PriorNet (arXiv:2605.03615) finds its largest single-component EngageNet
+# gain by retaining failed face detections as fixed zero-frame placeholders.
+# E0-J isolates that preprocessing prior: model, objective, schedule, seeds,
+# and tensor shape stay identical to E0; only representation semantics change.
+E0J_SPEC = ExperimentSpec(
+    "E0-J",
+    SCHEMA_98_PLACEHOLDER,
+    ModelConfig(input_dim=98),
+)
+
 
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
@@ -365,6 +380,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0G_SPEC,
         E0H_SPEC,
         E0I_SPEC,
+        E0J_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -1427,6 +1443,7 @@ __all__ = [
     "E0C_SPEC",
     "E0D_SPEC",
     "E0I_SPEC",
+    "E0J_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",
