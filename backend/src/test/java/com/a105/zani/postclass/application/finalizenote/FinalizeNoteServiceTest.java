@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.a105.zani.postclass.application.InMemoryInstructorNoteRepository;
-import com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException;
 import com.a105.zani.postclass.domain.model.InstructorNote;
 import com.a105.zani.postclass.domain.model.NoteStatus;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
@@ -119,10 +118,31 @@ class FinalizeNoteServiceTest {
     }
 
     @Test
-    void surfacesAConcurrentFirstFinalizeAsAConflict() {
-        noteRepository.failSaveWithDuplicateKey = true;
+    void treatsASecondFinalizeOnADraftlessSessionAsSuccess() {
+        // 초안 없는 세션에 확정이 동시에 두 번 왔고, 다른 요청이 먼저 확정 행을 만들었다.
+        noteRepository.rowCreatedByAnotherRequestBeforeNextInsert =
+                InstructorNote.finalizedWithoutDraft(SESSION_ID, INSTRUCTOR_PARTICIPANT, EARLIER);
 
-        assertThrows(ConcurrentNoteOpenException.class, () -> service.finalizeNote(command()));
+        FinalizeNoteResult result = service.finalizeNote(command());
+
+        // 확정은 멱등이다 — 뒤에 온 쪽에 409 를 주면 이미 확정된 수업을 두고 클라이언트가 재시도를 반복한다.
+        assertEquals(NoteStatus.FINALIZED, result.status());
+        assertEquals(EARLIER, result.finalizedAt());
+        assertFalse(result.finalizedNow());
+    }
+
+    @Test
+    void finalizesTheDraftThatAnotherRequestCreatedAtTheSameMoment() {
+        // 확정을 누른 순간 첫 자동 저장이 초안 행을 만들었다. 그 행을 확정해야 한다 — 확정된 척하면 안 된다.
+        InstructorNote draft = InstructorNote.open(SESSION_ID, INSTRUCTOR_PARTICIPANT);
+        draft.saveDraft("자동 저장이 만든 초안", EARLIER);
+        noteRepository.rowCreatedByAnotherRequestBeforeNextInsert = draft;
+
+        FinalizeNoteResult result = service.finalizeNote(command());
+
+        assertEquals(NoteStatus.FINALIZED, result.status());
+        assertTrue(result.finalizedNow());
+        assertTrue(noteRepository.findBySessionId(SESSION_ID).orElseThrow().isFinalized());
     }
 
     private void givenDraft() {

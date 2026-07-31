@@ -29,6 +29,19 @@ public interface InstructorNoteRepository {
     boolean finalizeIfDraft(Long sessionId, Instant finalizedAt);
 
     /**
+     * 초안 없이 확정된 메모를 만든다. 같은 세션의 행이 이미 있으면 아무것도 하지 않는다.
+     *
+     * <p>유니크 제약 위반을 예외로 받지 않는 이유: 확정은 멱등이어야 한다(FRD §16). 위반이 한 번 나면 그 트랜잭션은 롤백 대상이 되어, 예외를 잡아 다시 읽어도 커밋할 수 없다. 그래서 애초에
+     * 위반이 나지 않는 방식으로 넣는다.
+     *
+     * @return 이번 호출로 만들었으면 그 메모 ID, 이미 있었으면 빈 값
+     */
+    Optional<Long> insertFinalizedIfAbsent(Long sessionId, Long instructorParticipantId, Instant finalizedAt);
+
+    /** <b>이미 커밋된</b> 메모 ID. {@link #findCommittedFinalizedAt} 와 같은 이유로 스냅숏 밖을 본다. */
+    Optional<Long> findCommittedNoteId(Long sessionId);
+
+    /**
      * <b>이미 커밋된</b> 확정 시각. 아직 확정되지 않았으면 빈 값.
      *
      * <p>{@link #findBySessionId} 로는 이 값을 얻을 수 없다. 같은 트랜잭션의 일반 조회는 처음 읽은 시점의 스냅숏을 계속 쓰기 때문에, 그 사이 다른 요청이 커밋한 확정이 보이지

@@ -48,6 +48,32 @@ public interface InstructorNoteJpaRepository extends JpaRepository<InstructorNot
     int finalizeIfDraft(@Param("sessionId") Long sessionId, @Param("finalizedAt") Instant finalizedAt);
 
     /**
+     * 초안 없이 확정된 메모를 넣는다. 같은 세션의 행이 이미 있으면 아무것도 바꾸지 않는다.
+     *
+     * <p>INSERT IGNORE 를 쓰지 않는 이유: 이 테이블은 session_participants 로 FK 가 걸려 있어 IGNORE 가 FK 위반까지 경고로 삼켜 버린다. ON DUPLICATE
+     * KEY UPDATE 는 중복 키만 흡수하고 FK 위반은 그대로 올린다. {@code id = id} 는 아무것도 바꾸지 않는 no-op 이다.
+     *
+     * @return 넣었으면 1, 이미 있었으면 0
+     */
+    @Modifying
+    @Query(
+            value = "INSERT INTO instructor_notes"
+                    + " (id, session_id, instructor_participant_id, status, finalized_at, created_at, updated_at)"
+                    + " VALUES (:id, :sessionId, :participantId, 'FINALIZED', :finalizedAt, :finalizedAt, :finalizedAt)"
+                    + " ON DUPLICATE KEY UPDATE id = id",
+            nativeQuery = true)
+    int insertFinalizedIfAbsent(
+            @Param("id") Long id,
+            @Param("sessionId") Long sessionId,
+            @Param("participantId") Long participantId,
+            @Param("finalizedAt") Instant finalizedAt);
+
+    /** 메모 ID 를 잠금 읽기로 가져온다. {@link #findFinalizedAtForUpdate} 와 같은 이유로 스냅숏 밖을 본다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select note.id from InstructorNoteJpaEntity note where note.sessionId = :sessionId")
+    Optional<Long> findIdForUpdate(@Param("sessionId") Long sessionId);
+
+    /**
      * 확정 시각을 잠금 읽기로 가져온다. 잠금 읽기는 스냅숏이 아니라 최신 커밋본을 보므로, 같은 트랜잭션에서 이미 한 번 읽은 뒤라도 다른 요청이 방금 커밋한 확정을 볼 수 있다.
      *
      * <p>확정 경합에서 진 경로에서만 부른다. 그 시점에는 이긴 쪽이 이미 커밋해 잠금을 놓았고, 이 트랜잭션도 곧 끝나므로 잠금이 오래 남지 않는다.

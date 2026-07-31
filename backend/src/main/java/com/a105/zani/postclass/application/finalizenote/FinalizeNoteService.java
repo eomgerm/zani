@@ -68,11 +68,24 @@ public class FinalizeNoteService implements FinalizeNoteUseCase {
     /**
      * 메모 없이 완료(FRD §16). 확정 행이 없으면 사후 파이프라인이 시작될 근거가 없으므로 빈 확정 행을 남긴다.
      *
-     * <p>자동 저장과 확정이 같은 순간에 첫 행을 만들려 하면 저장소가 ConcurrentNoteOpenException 을 던진다(409). 재시도하면 이미 만들어진 행을 보고 멱등하게 확정된다.
+     * <p>같은 순간에 확정 요청이 두 번 오면(강사의 더블 클릭·재시도) 둘 다 여기로 들어온다. 먼저 넣은 쪽만 만들고 뒤에 온 쪽은 그 행을 확정하거나 이미 확정된 것을 확인한다 — 어느 쪽도 실패로
+     * 돌려주지 않는다. 확정은 멱등이어야 한다.
      */
     private FinalizeNoteResult finalizeWithoutDraft(Long sessionId, Long participantId, Instant now) {
-        InstructorNote created =
-                instructorNoteRepository.save(InstructorNote.finalizedWithoutDraft(sessionId, participantId, now));
-        return new FinalizeNoteResult(created.id(), created.status(), created.finalizedAt(), true);
+        Optional<Long> created = instructorNoteRepository.insertFinalizedIfAbsent(sessionId, participantId, now);
+        if (created.isPresent()) {
+            return new FinalizeNoteResult(created.get(), NoteStatus.FINALIZED, now, true);
+        }
+
+        // 우리가 읽은 뒤 다른 요청이 행을 만들었다. 초안일 수도, 확정일 수도 있으니 모두와 같은 전환을 한 번 시도한다.
+        log.debug("메모 행이 같은 순간에 만들어졌습니다. sessionId={}", sessionId);
+        Long noteId = instructorNoteRepository.findCommittedNoteId(sessionId).orElse(null);
+        if (instructorNoteRepository.finalizeIfDraft(sessionId, now)) {
+            return new FinalizeNoteResult(noteId, NoteStatus.FINALIZED, now, true);
+        }
+        // 이미 확정된 행이었다. 중복 확정은 멱등 성공이다(FRD §16).
+        Instant finalizedAt =
+                instructorNoteRepository.findCommittedFinalizedAt(sessionId).orElse(now);
+        return new FinalizeNoteResult(noteId, NoteStatus.FINALIZED, finalizedAt, false);
     }
 }

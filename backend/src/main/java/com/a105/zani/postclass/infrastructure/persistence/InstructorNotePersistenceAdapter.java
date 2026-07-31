@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 
+import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.postclass.domain.exception.ConcurrentNoteOpenException;
 import com.a105.zani.postclass.domain.exception.NoteAlreadyFinalizedException;
 import com.a105.zani.postclass.domain.model.InstructorNote;
@@ -64,6 +65,20 @@ public class InstructorNotePersistenceAdapter implements InstructorNoteRepositor
     @Override
     public boolean finalizeIfDraft(Long sessionId, Instant finalizedAt) {
         return instructorNoteJpaRepository.finalizeIfDraft(sessionId, finalizedAt) == 1;
+    }
+
+    @Override
+    public Optional<Long> insertFinalizedIfAbsent(Long sessionId, Long instructorParticipantId, Instant finalizedAt) {
+        long id = TsidGenerator.generate();
+        int inserted = instructorNoteJpaRepository.insertFinalizedIfAbsent(
+                id, sessionId, instructorParticipantId, finalizedAt);
+        return inserted == 1 ? Optional.of(id) : Optional.empty();
+    }
+
+    /** 잠금 읽기로 스냅숏을 우회한다 — 일반 조회는 이 트랜잭션이 처음 읽은 시점을 계속 보므로 방금 커밋된 행을 놓친다. */
+    @Override
+    public Optional<Long> findCommittedNoteId(Long sessionId) {
+        return instructorNoteJpaRepository.findIdForUpdate(sessionId);
     }
 
     /** 잠금 읽기로 스냅숏을 우회한다 — 일반 조회는 이 트랜잭션이 처음 읽은 시점을 계속 보므로 방금 커밋된 확정을 놓친다. */

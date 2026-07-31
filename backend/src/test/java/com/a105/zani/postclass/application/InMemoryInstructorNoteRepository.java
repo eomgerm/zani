@@ -41,6 +41,13 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
      */
     public boolean stealFinalizationBeforeNextSave;
 
+    /**
+     * 다음 {@link #insertFinalizedIfAbsent} 직전에 다른 요청이 같은 세션의 행을 만든다.
+     *
+     * <p>초안 없는 세션에 확정이 동시에 두 번 오는 상황이다. 넣어 둘 행이 초안인지 확정인지에 따라 뒤에 온 쪽의 결과가 갈린다.
+     */
+    public InstructorNote rowCreatedByAnotherRequestBeforeNextInsert;
+
     private long nextId = 1L;
 
     @Override
@@ -73,6 +80,29 @@ public class InMemoryInstructorNoteRepository implements InstructorNoteRepositor
         notes.removeIf(note -> note.id().equals(instructorNote.id()));
         notes.add(instructorNote);
         return instructorNote;
+    }
+
+    @Override
+    public Optional<Long> insertFinalizedIfAbsent(Long sessionId, Long instructorParticipantId, Instant finalizedAt) {
+        if (rowCreatedByAnotherRequestBeforeNextInsert != null) {
+            InstructorNote other = rowCreatedByAnotherRequestBeforeNextInsert;
+            rowCreatedByAnotherRequestBeforeNextInsert = null;
+            notes.add(copyWithId(other, nextId++));
+            return Optional.empty();
+        }
+        if (findBySessionId(sessionId).isPresent()) {
+            return Optional.empty();
+        }
+        InstructorNote stored = copyWithId(
+                InstructorNote.finalizedWithoutDraft(sessionId, instructorParticipantId, finalizedAt), nextId++);
+        notes.add(stored);
+        return Optional.of(stored.id());
+    }
+
+    /** 실제 어댑터는 잠금 읽기로 커밋본을 읽는다. 대역은 스냅숏이 없으므로 저장된 값을 그대로 돌려준다. */
+    @Override
+    public Optional<Long> findCommittedNoteId(Long sessionId) {
+        return findBySessionId(sessionId).map(InstructorNote::id);
     }
 
     /** 실제 어댑터는 잠금 읽기로 커밋본을 읽는다. 대역은 스냅숏이 없으므로 저장된 값을 그대로 돌려준다. */
