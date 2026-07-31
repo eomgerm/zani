@@ -42,7 +42,8 @@ FFmpeg → 로컬 스토리지 : 종료 후 최종 MP4 합성
 > `livekit-frontend-guide.md`, `livekit-backend-guide.md`는 상태를 자체 서술하지 않고
 > 이 절을 가리킨다. 상태가 바뀌면 여기만 고친다.
 >
-> 확인 시점: 2026-07-30.
+> 확인 시점: 2026-07-31, `dev` 기준. **작업 전에 이 절이 최신인지 먼저 확인한다** — `dev`가
+> 하루에도 여러 번 움직여 이 절이 금방 낡는다. 어긋난 것을 발견하면 여기를 고치고 넘어간다.
 
 이 문서의 §4 이후는 **목표 계약**이다. 목표와 현재 구현이 다른 지점을 아래에 모았다. 이미 있는 것을 다시 만들지 않도록 작업 시작 전에 이 절을 먼저 읽는다.
 
@@ -58,9 +59,12 @@ FFmpeg → 로컬 스토리지 : 종료 후 최종 MP4 합성
 
 fixture와 로컬 상태로만 동작한다는 과거 서술은 더 이상 맞지 않는다.
 
+- 업무 WebSocket 토대와 공개 채팅: `domains/interaction`의 `sessionChannel`, `sessionEvent`, `useSessionChat`, `chatMessages`(티켓 63).
+
 ### 프론트엔드 — 없음
 
-- 업무 WebSocket(§10의 이벤트 9종). STOMP·SockJS 클라이언트가 없고 이벤트 문자열도 저장소에 없다. 채팅·손들기·반응 UI도 없다.
+- 손들기·반응 UI(티켓 64, 브랜치 진행 중), 화면 공유 상태 표시(65), 강제 음소거(66).
+- 학생 화면의 강사 유예 안내. `SessionPresenceNotice`에 문구는 있으나 학생이 그 상태를 받지 못한다(§9 구현 격차 참고).
 
 ### 백엔드 — 구현됨
 
@@ -70,27 +74,33 @@ fixture와 로컬 상태로만 동작한다는 과거 서술은 더 이상 맞�
 - Track Egress 시작. `LiveKitTrackEgressAdapter`, 허용 정책 `RecordingTrackPolicy`, 출력 경로 `{basePath}/{sessionId}/raw/instructor|participants/{alias}/`.
 - 녹화 outbox와 릴레이. `RecordingOutbox*`, `RecordingOrchestrator`, `RecordingOutboxRelayScheduler`(Flyway V2).
 - 강사 `SessionParticipant`를 세션 생성과 **같은 트랜잭션**에서 만든다(`NewSessionSaver`). 이 행이 없으면 강사가 자기가 만든 방에서 403을 받아 카메라·마이크를 켤 수 없다.
-- Flyway V1~V5.
+- 업무 WebSocket 토대. `StompConfig`(`@EnableWebSocketMessageBroker`, 내장 `SimpleBroker`), `SimpSessionEventPublisher`, `SessionEventType`, `SendChatMessageService`, `ChatStompRoundTripIntegrationTest`(티켓 63). 봉투 계약은 §10.1 참고.
+- 강사 메모 확정과 사후 처리 파이프라인. `SessionAnalysisStatus`(`NOT_STARTED`·`WAITING_FOR_NOTE`·`PROCESSING`·`COMPLETED`·`FAILED`), 30분 비활성 자동 확정, 사후 처리 작업 outbox(티켓 88·90·91·92, Flyway V6).
+- Flyway V1~V6.
 
 LiveKit 코드가 아예 없다는 과거 서술은 더 이상 맞지 않는다.
 
 ### 백엔드 — 없음
 
-- **`RoomServiceClient`를 쓰지 않는다.** `LiveKitMediaRoomAdapter`는 room 이름 계산과 자격증명 노출만 한다. 그래서 `CreateRoom`, `DeleteRoom`, `UpdateParticipant`, 트랙 mute가 전부 없다. §6의 `maxParticipants=30`, §8·§9의 진행 중 공유 강제 중지, §9 종료 절차의 Room 종료가 여기에 걸린다.
+- **`RoomServiceClient`를 쓰지 않는다.** `LiveKitMediaRoomAdapter`는 room 이름 계산과 자격증명 노출만 한다. 그래서 `CreateRoom`, `DeleteRoom`, `UpdateParticipant`, 트랙 mute가 전부 없다. §8·§9의 진행 중 공유 강제 중지와 §9 종료 절차의 Room 종료가 여기에 걸린다.
 - `POST /{sessionId}/start`. §5가 필수 단계로 서술하지만 매핑이 없다. FE에는 `startSessionApi`가 이미 있어 호출하면 404다.
-- 정원 30명 검사. `SESSION_CAPACITY_REACHED`가 저장소에 없다. §6의 API 차단과 LiveKit 최종 방어 모두 미구현이다.
-- 업무 WebSocket(§10). STOMP broker가 없다. 저장소의 유일한 WebSocket은 `audioclip`의 `EgressAudioWebSocketHandler`이며, 이건 Egress가 코칭용 오디오를 밀어넣는 **수신** 소켓이라 업무 이벤트와 무관하다.
-- 화면 공유 단일 활성 강제(§8·§9). `track_published` 수신은 하지만 단일성 검사가 없다.
+- 업무 이벤트 종류(§10). 토대는 있으나 `SessionEventType`에 `CHAT_MESSAGE` 하나뿐이다. 손들기·반응(64), 화면 공유 상태(65), 강제 음소거(66)가 값을 추가한다. `FORCE_MUTED`는 `RoomServiceClient`가 선행이다.
+- 종료 트리거. 종료는 `SessionPresenceService.record()` 안에서만 호출되므로 **heartbeat가 도착해야** 일어난다. 그리고 유예 시작은 강사 role 참가자가 `connected == false`로 보고할 때만 열린다. FE에는 `beforeunload`·`pagehide`·`sendBeacon`이 없어 **창을 그냥 닫으면 유예가 시작조차 않고**, 전원이 이탈하면 종료를 트리거할 heartbeat도 없다. 남는 수단은 3시간 만료 스케줄러(`fixedDelay PT1M`)뿐이라 1시간에 끝난 수업이 2시간을 더 `LIVE`로 남는다. FRD `LIVE-009`·`LIVE-010`이 이걸 금지한다.
+- 강사 유예 상태를 학생에게 전달하는 경로. §9 구현 격차 참고.
+- 화면 공유 단일 활성 강제(§8·§9). 트랙 발행 통지는 받지만 단일성 검사가 없다.
 - 세션 상태. `SessionStatus`는 `LIVE`, `ENDED` 두 값뿐이다. §9의 `ENDING`·`NOTE_PENDING`·`PROCESSING`과 내부 `PREPARING`이 없다. 세션 생성이 즉시 `LIVE`이고 `startedAt`을 즉시 기록하며, `expiresAt`은 `startedAt + 3시간`으로 계산한다.
-- Webhook 처리 이벤트가 4종뿐이다. `RecordingWebhookEventType`은 `TRACK_PUBLISHED`, `EGRESS_STARTED`, `EGRESS_UPDATED`, `EGRESS_ENDED`만 처리하고 나머지는 무시한다. §11이 나열한 `room_started`, `room_finished`, `participant_joined`, `participant_left`, `participant_connection_aborted`, `track_unpublished`는 처리하지 않는다. 따라서 §5의 "`participant_joined` Webhook에서 `firstJoinedAt` 확정"도 미구현이며, 실제로는 `POST /sessions/join` 시점에 즉시 기록한다.
-- 초대 코드의 `LIVE` 상태 검사. `SessionJoinService`가 상태를 보지 않아 종료된 세션 코드로도 참가 행이 생긴다. 실제 차단은 `/media-token`이 `ENDED`를 거부하는 지점에서 일어난다.
+- Webhook 처리 범위가 녹화 관련(트랙 발행·Egress 진행) 몇 종에 한정돼 있다. **참가자 입·퇴장과 room 시작·종료를 알려주는 이벤트를 받지 않는다.** 그래서 사후 자료 접근 자격이 실제 연결 성공을 근거로 판정되지 않는다 — `SessionJoinService`가 `POST /sessions/join` 시점에 곧바로 기록하므로, 초대 코드로 API만 호출한 사람도 참가자 행을 얻는다. FRD `ACCESS-002`가 이걸 금지한다. 다만 `firstJoinedAt`을 읽는 프로덕션 코드가 아직 없어 실제 피해는 나지 않았다.
+- 초대 코드 관련 세 가지.
+  - **상태 검사가 없다.** `SessionJoinService`가 세션 상태를 보지 않아 종료된 세션 코드로도 참가 행이 생긴다. 실제 차단은 `/media-token`이 `ENDED`를 거부하는 지점에서 일어난다. 준비 상태를 도입하면(§5) 준비 중에도 학생 join이 통과하므로 함께 막아야 한다.
+  - **모호한 문자를 제외하지 않는다.** `InviteCodeGenerator.ALPHABET`이 `A-Z0-9` 36자 전체여서 `I`·`O`·`0`·`1`이 섞여 나온다. 강사가 코드를 구두나 화면으로 전달할 때 오입력을 만든다. 제외해도 기존 발급 코드와 호환된다 — 검증이 문자 집합이 아니라 DB 조회이기 때문이다.
+  - **서버 정규화가 없다.** `JoinSessionRequest`가 `@Size(min=8,max=8)`만 걸어 표시형 9글자(`A7KM-2PQR`)를 받을 수 없다. 지금은 FE(`domain/inviteCode.ts`)가 하이픈·공백 제거와 링크 파싱까지 하고 있어 실사용에는 문제가 없다.
 - `recording_files.storage_key`의 V1 COMMENT가 여전히 "비공개 S3 객체 키"다. 로컬 상대 경로 정책에 맞춘 후속 migration이 필요하다.
 
 ### 이 문서의 목표 계약에 없는 구현
 
 문서보다 코드가 앞서 있는 부분이다. 관련 작업을 할 때 이 사실을 모르면 중복 구현이 된다.
 
-- **presence heartbeat.** 강사 5분 유예의 트리거가 문서(§9·§12)의 `participant_left`/`participant_joined` Webhook이 아니라 **heartbeat**다. `SessionPresenceService`가 Redis TTL로 관리하며, presence TTL은 30초, 강사 유예는 5분이다. 별도 스케줄러가 없고 **유예 만료 뒤 도착한 heartbeat가 종료를 트리거**한다. 참가자에게는 `ReconnectStatus`(`CONNECTED`, `RECONNECTED`, `GRACE_PERIOD`, `DISCONNECTED`, `SESSION_ENDED`)를 돌려준다. 5분이라는 값만 문서와 같고 메커니즘이 다르다.
+- **presence heartbeat.** 강사 5분 유예의 트리거가 §9가 서술한 Webhook 기반 이탈 감지가 아니라 **heartbeat**다. `SessionPresenceService`가 Redis TTL로 관리하며, presence TTL은 30초, 강사 유예는 5분이다. 별도 스케줄러가 없고 **유예 만료 뒤 도착한 heartbeat가 종료를 트리거**한다. 참가자에게는 `ReconnectStatus`(`CONNECTED`, `RECONNECTED`, `GRACE_PERIOD`, `DISCONNECTED`, `SESSION_ENDED`)를 돌려준다. 5분이라는 값만 문서와 같고 메커니즘이 다르다.
 - **코칭용 오디오 Egress.** 강사 마이크 하나에 아카이브용 파일 Egress와 코칭용 WebSocket Egress **두 개**를 시작한다. 파일 출력과 WebSocket 출력은 proto 상 `oneof`라 한 Egress가 둘 다 낼 수 없기 때문이다. 수신 주소는 자격증명을 포함하므로 `audioclip`의 `AudioStreamEndpointPort`가 소유하고 로그에 남기지 않는다. 관련 코드는 `RedisAudioStreamEgressRegistry`, `AudioStreamEgressRequest`다.
 - **Egress 호출 타임아웃 불변식.** `LiveKitTrackEgressAdapter.CALL_TIMEOUT`(60초)은 `RecordingOrchestrator.CLAIM_LEASE`(2분)보다 **반드시 작아야 한다.** 호출이 lease보다 오래 매달리면 진행 중인 작업이 만료 처리되어 다른 인스턴스가 같은 트랙에 Egress를 중복 시작한다. 두 값 중 하나를 바꿀 때 이 관계를 먼저 확인한다.
 - `Session.limitedMode`, `SessionAnalysisStatus`, `SessionExpiryScheduler`.
@@ -156,7 +166,7 @@ recordingAlias : instructor | student-001 | student-002 | ...
 3. 테스트 실패 시 입장을 차단한다.
 4. `POST /api/v1/sessions/join`으로 참가 관계를 생성하거나 재사용한다.
 5. `/media-token`으로 학생 토큰을 발급받는다.
-6. LiveKit 연결 성공 Webhook에서 `firstJoinedAt`과 사후 자료 접근 자격을 확정한다.
+6. **실제 미디어 연결이 성공한 사실을 서버가 확인한 시점에** `firstJoinedAt`과 사후 자료 접근 자격을 확정한다. 클라이언트가 스스로 "연결됐다"고 알리는 것을 근거로 삼지 않는다 — 그게 자격 부여 조건이므로 위조할 동기가 정확히 거기 있다.
 
 API만 호출하고 실제 미디어 연결에 성공하지 않은 사용자는 사후 자료 접근 자격을 얻지 않는다.
 
@@ -164,17 +174,14 @@ API만 호출하고 실제 미디어 연결에 성공하지 않은 사용자는 
 
 - 정규화된 초대 코드는 모호한 문자를 제외한 대문자 영문·숫자 8자리다.
 - 저장 예: `A7KM2PQR`, 표시 예: `A7KM-2PQR`.
-- **현재 `InviteCodeGenerator.ALPHABET`은 `A-Z0-9` 36자 전체이며 모호한 문자를 제외하지 않는다.** `I`·`O`·`0`·`1`이 함께 나올 수 있다. 제외 규칙은 미구현이다.
 - 로그인 사용자만 사용할 수 있다.
 - `LIVE` 상태에서만 유효하며 종료 즉시 만료한다.
 - 학생은 강사 승인 없이 입장한다.
-- 강제 퇴장은 현재 연결만 끊으며 재입장과 사후 접근 자격을 취소하지 않는다.
 - 같은 `(sessionId, userId)` 참가 관계는 하나만 존재한다.
-- 강사를 포함한 일반 참가자 하드 캡은 30명이다.
-- 초과 입장은 `409 SESSION_CAPACITY_REACHED`로 차단한다.
-- LiveKit Room의 `max_participants`도 30으로 설정한다.
+- 동시 30명까지가 성능 보장 대상이다(FRD §8.3 · `NFR-PERF-001`).
+- **입장 인원 하드 캡을 두지 않는다.** 정원 초과를 API에서 차단하지 않고 LiveKit Room의 `max_participants`도 설정하지 않는다. 31명 이상은 동작을 보장하지 않을 뿐 막지 않는다.
 
-이 정원 정책은 FRD의 “31명 이상 베스트 에포트”를 폐기한 최신 결정이다.
+한때 하드 캡 30명과 `409 SESSION_CAPACITY_REACHED` 차단으로 정해졌다가 되돌린 결정이다(2026-07-31). 그 오류 코드는 만들지 않으므로 응답 계약에 넣지 않는다.
 
 ## 7. 미디어 토큰
 
@@ -229,7 +236,9 @@ canPublishData=false
 - `SCREEN_SHARE`와 `SCREEN_SHARE_AUDIO`는 항상 함께 부여한다.
 - 학생 화면 공유에 강사 승인을 요구하지 않는다. 요청·승인·거절·회수 플로우는 두지 않는다.
 - **한 번에 하나의 화면만 활성화한다. 이 제약은 토큰이 아니라 서버의 활성 공유 상태로 강제한다.** 토큰 단계에서 역할이나 권한을 갈라놓으면 학생이 공유를 시작할 수 없어 구현이 불가능하다.
-- 발급된 JWT는 폐기할 수 없다. 진행 중인 공유를 멈추려면 연결된 참가자를 `UpdateParticipant`로 낮추거나 `RoomService`로 트랙을 mute·제거해야 한다. 토큰 TTL(10분) 안에는 재연결로 권한이 되살아나므로 `participant_joined` 시점에도 제약을 다시 적용해야 한다.
+- **선착순이다.** 이미 공유 중인 사람이 있으면 나중에 시작하려는 쪽을 거부한다. 나중 쪽이 기존 공유를 밀어내지 않는다. 충돌이 감지되면 **나중에 들어온 트랙**을 정리한다.
+- 강사만은 예외로 진행 중인 학생 공유를 **중지**시킬 수 있다(FRD §10.2·§10.5). 중지는 자기 공유를 시작하는 것과 별개 동작이며, 강사도 학생 공유가 살아 있는 동안에는 바로 공유를 시작할 수 없다.
+- 발급된 JWT는 폐기할 수 없다. 진행 중인 공유를 멈추려면 연결된 참가자를 `UpdateParticipant`로 낮추거나 `RoomService`로 트랙을 mute·제거해야 한다. 토큰 TTL(10분) 안에는 재연결로 권한이 되살아나므로 참가자가 다시 연결되는 시점에도 제약을 다시 적용해야 한다.
 - 향후 DataPacket 또는 공유 정책을 변경하려면 프론트 UI와 백엔드 grant를 함께 변경한다.
 
 ## 9. 장치, 연결, 종료
@@ -248,8 +257,12 @@ canPublishData=false
 - 최종 실패 후에만 새 `/media-token`으로 전체 재입장을 최대 3회 시도한다.
 - 재시도 간격은 1초, 2초, 4초다.
 - 학생은 실패 시 재입장 화면으로 이동한다.
-- 강사 이탈 Webhook부터 5분 타이머를 시작하고 같은 identity가 복귀하면 취소한다.
+- 강사 이탈부터 5분 타이머를 시작하고 같은 identity가 복귀하면 취소한다. 이탈 감지는 presence가 담당한다.
 - 재연결 구간의 학생 분석 상태는 `측정 불가`다.
+
+**강사 유예와 종료 안내는 presence 응답이 참가자 전원에게 전달한다.** 학생도 강사 유예가 진행 중임을 알아야 하므로(FRD §10.6), heartbeat 응답의 재연결 상태는 자기 연결 상태만이 아니라 **해당 시점의 강사 유예 여부**를 담는다.
+
+> ⚠️ **구현 격차(2026-07-31).** 현재 `SessionPresenceService.applyPresence`는 유예 상태를 `role == INSTRUCTOR` 조건 안에서만 돌려준다. 그래서 유예 상태값은 **강사 본인에게만** 가고 학생은 받지 못한다. `SessionPresenceNotice`가 가진 "강사 연결이 끊겼습니다" 문구는 학생에게 보여줄 말인데 학생이 그 상태를 받을 수 없어 영원히 그려지지 않는다. 역할 조건을 풀어 학생 응답에도 유예 여부를 담는 후속 작업이 필요하다.
 
 ### 종료
 
@@ -287,32 +300,60 @@ MediaDevicesChanged
 Spring Boot WebSocket은 업무 이벤트를 처리한다.
 
 ```text
-SESSION_ENDING
-INSTRUCTOR_DISCONNECTED / INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_STARTED / SCREEN_SHARE_STOPPED
 CHAT_MESSAGE
 HAND_RAISED / HAND_LOWERED
 REACTION
-PARTICIPANT_KICKED
+SCREEN_SHARE_STARTED / SCREEN_SHARE_STOPPED
+FORCE_MUTED
 ```
+
+**강사 이탈·복귀와 세션 종료 안내는 WebSocket이 아니라 presence 응답이 담당한다.** heartbeat 응답의 재연결 상태에 실려 나가므로 같은 정보를 두 경로로 보내지 않는다. 자세한 것은 §9 재연결을 본다.
+
+**강제 퇴장 기능은 없다**(FRD §10.5). 그에 해당하는 이벤트도 두지 않는다.
 
 프론트 이벤트는 화면 표현용이며 서버의 입장·권한·녹화 사실을 확정하는 근거로 사용하지 않는다.
 
-## 11. 서버 Webhook
+### 10.1 이벤트 봉투
 
-```http
-POST /api/v1/internal/recordings/webhook
-Content-Type: application/webhook+json
-Authorization: Bearer {LIVEKIT_SIGNED_JWT}
+티켓 63이 확정한 계약이다. 새 이벤트 종류를 더할 때 이 구조를 바꾸지 않는다.
+
+```text
+핸드셰이크        /ws
+세션 주제         /topic/sessions/{sessionId}   주제 하나로 전부 내려오고 type 으로 갈라 처리한다
+클라이언트 → 서버  /app
+전송 거절 통지     /user/queue/errors            보낸 사람에게만
 ```
 
-- Java SDK `WebhookReceiver`에 원본 body와 Authorization 헤더를 전달해 서명과 body hash를 검증한다. LiveKit 설정에 따라 헤더가 `Bearer <token>` 형태로 올 수 있어 접두어를 허용한다.
-- 이벤트 ID를 고유 키로 저장해 멱등 처리한다.
-- 수신·검증·내구성 있는 저장 후 빠르게 2xx를 반환하고 실제 처리는 비동기로 수행한다. 처리 준비가 안 됐으면(예: `recordings` 행 미커밋) 5xx로 응답해 LiveKit 재전송에서 재처리한다.
-- 목표 처리 이벤트: `room_started`, `room_finished`, `participant_joined`, `participant_left`, `participant_connection_aborted`, `track_published`, `track_unpublished`, `egress_started`, `egress_updated`, `egress_ended`. **현재 구현은 이 중 4종만 처리한다(§3 참고).** 나머지는 무시하고 2xx만 반환한다.
-- 시스템/Egress 참가자는 인원과 출석에서 제외한다.
-- 종료된 세션의 `room_started` 또는 `participant_joined`는 즉시 제거·종료한다.
-- Webhook 누락에 대비해 주기적으로 RoomService와 DB를 대조한다.
+```text
+eventId           서버 부여. 중복 제거 기준이며 값 자체가 발생 순서를 담는다
+clientEventId     내가 보낸 것이면 내가 만든 값이 그대로 돌아온다
+type              위 목록 중 하나
+sender            identity · displayName · role
+occurredOffsetMs  수업 시작 기준 발생 시각(ms)
+deliveredAt
+payload           종류별 내용
+```
+
+- `sender.identity`는 **LiveKit participant identity와 같은 값**(`p-{sessionParticipantId}`)이다. 참가자 목록과 업무 이벤트를 잇는 키를 하나로 유지한다. 이메일 등 개인 식별 정보는 담지 않는다.
+- `occurredOffsetMs`는 **리포트 타임라인과 같은 축**이다. 손들기·질문을 사후 집중 흐름에 겹쳐 놓을 수 있어야 하므로 벽시계 시각이 아니라 수업 시작 기준 오프셋을 쓴다.
+- 브로커는 내장 `SimpleBroker`다. 구독 정보를 프로세스 메모리에 두므로 **인스턴스를 늘리면 인스턴스 간 메시지가 오가지 않는다.** 다중화 시 외부 브로커가 필요하다.
+
+## 11. 서버 Webhook
+
+LiveKit 은 room·참가자·트랙·Egress 사건을 서버로 알린다. 백엔드는 그것을 받아 상태를 갱신한다.
+
+**어떤 이벤트를 어디까지 처리할지는 이 문서가 정하지 않는다.** 목록을 여기 적으면 LiveKit 이 보내는
+종류가 바뀌거나 처리 범위가 늘 때마다 낡는다. 처리 범위는 코드가, 무엇을 보장해야 하는지는 FRD 가
+정본이다.
+
+문서가 요구하는 것은 결과뿐이다.
+
+- 서명 검증 전에 업무 처리를 하지 않는다. 검증 실패는 거부하고 상태를 반영하지 않는다(FRD `NFR-SEC-008`).
+- 같은 이벤트를 두 번 반영하지 않는다(FRD `RECORD-008`).
+- Egress·Ingress·Agent 같은 시스템 참가자는 인원과 출석 집계에서 제외한다.
+- Webhook 은 전달이 보장되지 않는다. 누락을 전제로 상태를 보정할 경로가 있어야 한다.
+
+무엇을 근거로 사후 자료 접근 자격을 주는지는 §5 를, 세션이 제때 종료되어야 한다는 요구는 §9 를 본다.
 
 ## 12. 녹화와 로컬 저장
 
@@ -347,12 +388,13 @@ RoomComposite Egress를 기본 녹화기로 사용하지 않는다. 허용된 Tr
 
 ## 13. FRD에서 변경된 정책
 
-FRD 자체를 변경해야 하는 최종 결정은 두 개다.
+FRD 자체를 변경해야 하는 최종 결정은 하나다.
 
-1. 인원 무제한 및 31명 이상 베스트 에포트 폐기 → 강사 포함 30명 하드 캡.
-2. Amazon S3 저장 폐기 → EC2 `/srv/zani/recordings` 로컬 저장.
+1. Amazon S3 저장 폐기 → EC2 `/srv/zani/recordings` 로컬 저장.
 
-내부 `PREPARING`, Track Egress 후 FFmpeg, Spring WebSocket, 익명 alias는 FRD 결과를 달성하기 위한 구현 구체화이며 제품 기능 충돌이 아니다.
+정원은 이 목록에서 빠졌다. 한때 "31명 이상 베스트 에포트 폐기 → 하드 캡 30명"으로 정했다가 되돌렸고, FRD §8.3의 "하드 캡을 두지 않는다"가 그대로 유효하다(§6 참고).
+
+Track Egress 후 FFmpeg, Spring WebSocket, 익명 alias는 FRD 결과를 달성하기 위한 구현 구체화이며 제품 기능 충돌이 아니다. 준비 상태(내부 `PREPARING`)는 FRD §8.1에 요구사항으로 들어갔으므로 더 이상 구현 구체화가 아니다.
 
 ## 14. 구현 시 주의
 

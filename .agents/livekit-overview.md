@@ -117,13 +117,13 @@ sequenceDiagram
     FE->>BE: POST /sessions/{id}/media-token
     BE-->>FE: URL·Room·학생 Token
     FE->>LK: connect
-    LK-->>BE: participant_joined Webhook
+    LK-->>BE: 연결 성공 통지
     BE->>BE: firstJoinedAt·사후 접근 자격 확정
 ```
 
 - 학생은 카메라와 마이크 테스트를 모두 통과해야 한다.
 - API 입장만 하고 LiveKit 연결에 성공하지 않으면 사후 자료 접근 자격을 얻지 않는다.
-- 강제 퇴장은 현재 연결만 끊으며 동일 코드로 다시 입장할 수 있다.
+- 강제 퇴장 기능은 없다(FRD §10.5). 강사가 할 수 있는 것은 음소거와 화면 공유 중지다.
 
 ## 8. 미디어 권한
 
@@ -136,7 +136,7 @@ sequenceDiagram
 | Track 구독 | 허용 | 허용 |
 | LiveKit Data 전송 | 차단 | 차단 |
 
-화면 공유에 역할 제한을 두지 않는다(2026-07-30 확정). 승인 플로우 없이 누구든 공유를 시작할 수 있고, **한 세션에 활성 공유 하나**라는 제약만 서버의 활성 공유 상태로 강제한다. 기준은 [`livekit-integration-context.md`](./livekit-integration-context.md) §8이 소유한다.
+화면 공유에 역할 제한을 두지 않는다(2026-07-30 확정). 승인 플로우 없이 누구든 공유를 시작할 수 있고, **한 세션에 활성 공유 하나**라는 제약만 서버의 활성 공유 상태로 강제한다. **선착순이라 이미 공유 중인 사람이 있으면 나중 요청이 거부되며, 기존 공유를 밀어내지 못한다.** 강사만은 학생 공유를 중지시킬 수 있다. 기준은 [`livekit-integration-context.md`](./livekit-integration-context.md) §8이 소유한다.
 
 채팅, 손들기, 이모지, 공유 상태와 종료 안내는 LiveKit DataPacket이 아니라 Spring Boot WebSocket을 사용한다.
 
@@ -173,7 +173,8 @@ sequenceDiagram
     participant DB as MySQL
 
     BE->>DB: ENDING·신규 입장 차단
-    BE->>FE: SESSION_ENDING
+    FE->>BE: presence heartbeat
+    BE-->>FE: 종료됨 (재연결 상태)
     BE->>EG: 녹화 종료 요청
     BE->>LK: DeleteRoom
     BE->>DB: NOTE_PENDING·30분 타이머
@@ -183,7 +184,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    T["LiveKit Track"] --> W["track_published Webhook"]
+    T["LiveKit Track"] --> W["트랙 발행 통지"]
     W --> P["백엔드 허용 정책"]
     P -->|"허용"| E["Track Egress"]
     E --> R["익명 원본 Track"]
@@ -220,11 +221,11 @@ flowchart LR
 
 ## 13. 확정된 예외 정책
 
-- 강사를 포함한 일반 참가자는 최대 30명이며 31번째는 `409 SESSION_CAPACITY_REACHED`로 차단한다.
+- 동시 30명까지가 성능 보장 대상이다. 입장 인원 하드 캡은 두지 않으며 31명 이상은 동작을 보장하지 않을 뿐 막지 않는다.
 - 초대 코드는 정규화된 8자리이며 표시할 때 `A7KM-2PQR`처럼 하이픈을 넣을 수 있다.
 - 미디어 토큰 TTL은 10분이며 브라우저 메모리에만 둔다.
 - 종료된 세션에는 새 토큰을 발급하지 않는다.
-- 자체 구축 LiveKit에서 남은 토큰으로 종료된 Room이 다시 시작되면 Webhook이 즉시 제거·종료한다.
+- 종료된 세션의 Room이 남은 토큰으로 다시 열리면 즉시 제거·종료한다. 미디어 토큰은 발급 후 폐기할 수 없으므로 TTL이 남은 토큰으로 재입장이 시도될 수 있다.
 
 ## 14. 현재 코드와의 차이
 
