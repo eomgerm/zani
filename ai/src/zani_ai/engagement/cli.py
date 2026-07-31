@@ -526,6 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0h", "E0-H", "E0-H (SORD soft ordinal targets)"),
         ("e0i", "E0-I", "E0-I (label-reliability curriculum)"),
         ("e0j", "E0-J", "E0-J (zero placeholders for missing faces)"),
+        ("e0k", "E0-K", "E0-K (lr 1e-3, step decay, 300 epochs)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),

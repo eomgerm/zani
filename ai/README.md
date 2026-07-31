@@ -355,6 +355,68 @@ uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-cl
 feature schema가 달라도 두 manifest가 같은 raw manifest SHA와 동일한 split/clip 집합을
 가리키면 비교기는 유효한 비교로 취급합니다. raw 모집단이나 실행 환경이 다르면 경고합니다.
 
+### E0-K 학습 일정 정정
+
+E0-K는 학습 일정에 대한 두 번째 시도이며, E0-G가 갔어야 할 방향으로 학습률을 옮깁니다.
+문제는 E0-C 이래 그대로입니다. patience 20 아래에서 이 계열의 `best_epoch`은 0~11에
+머물러, **어떤 프로토콜도 사실상 학습된 적이 없습니다** — 손실·샘플러·타깃 변경은 전부
+결정 경계를 재형성하기 전에 멈춘 모델 위에서 측정됐습니다. E0-G가 이 문제를 겨냥했지만
+lr을 1e-5로 **10배 더 낮춰** 방향이 반대였고, Validation 66.93%(E0 66.65%)는 세 지표
+모두 통계적으로 구분되지 않았습니다. lr 축의 **위쪽 절반은 아직 검정되지 않았습니다.**
+
+여기서 되돌릴 Transformer 계열의 문헌 일정은 존재하지 않습니다. E0이 적응한 EngageNet
+논문(arXiv:2302.00431)은 Table 2에 레이어·유닛·활성함수·드롭아웃만 싣고 optimizer,
+학습률, batch size, epoch 수를 **논문 어디에도 적지 않았습니다.** 대신 그 논문이 주는
+것은 목표치입니다 — Table 4의 Gaze + Head Pose + AU Transformer가 Validation 69.10% /
+Test 67.61%이고, 우리는 66.65%입니다.
+
+따라서 lr 1e-3 / 300 epoch / 100마다 ×0.1은 arXiv:2403.17175, 즉 **E1이 재현하는 ST-GCN
+논문에서 빌려온 값**이며 아키텍처 가족이 다릅니다. 재현이 아니라 실측된 병리에 대한
+처방으로 들어옵니다. `batch_size`가 그 논문의 16이 아니라 **E0의 32로 남는 이유도
+같습니다.** 그래프 합성곱을 위해 고른 batch는 이 Transformer에 대해 아무것도 말해주지
+않고, 32로 고정해 두면 E0(1e-4)·E0-G(1e-5)·E0-K(1e-3)가 하나의 lr 축 위에 놓여 셋이
+직접 비교됩니다.
+
+| | E0 | E0-G | E0-K |
+| --- | --- | --- | --- |
+| `learning_rate` | 1e-4 | 1e-5 | **1e-3** |
+| `maximum_epochs` | 200 | 200 | **300** |
+| `patience` | 20 | 200 (해제) | **300 (해제)** |
+| `lr_step` | 없음 | 100 (1회 감쇠) | **100 (100·200 2회)** |
+| `batch_size` | 32 | 32 | 32 |
+| schema·model·손실·seed | — | E0와 동일 | E0와 동일 |
+
+`patience == max_epochs`가 조기 종료를 끕니다(E1-A 선례). `lr_step` 100에 300 epoch이므로
+감쇠가 100과 200에서 두 번 발생합니다. 200 epoch 예산이라 감쇠 여지가 한 번뿐이던 E0-G와
+달리 레시피가 끝까지 돕니다.
+
+E0-K는 E0의 특징을 그대로 쓰므로 `build-features`를 다시 돌릴 필요가 없습니다.
+
+```bash
+uv run python -m zani_ai engagement reproduce-e0k --features datasets/processed/engagenet/e0-clean --output artifacts/engagement/e0k-schedule --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0k-schedule --split validation
+```
+
+판정은 두 가지를 함께 봅니다. 첫째, `summary.json`의 seed별 `best_epoch`이 조기 종료
+한계에 걸리지 않아야 합니다 — 조기 종료를 껐으므로 관심사는 반대쪽이며, `best_epoch`이
+299에 붙어 있으면 300 epoch도 부족했다는 뜻이라 예산을 늘려 재실행합니다. 둘째, E0-clean
+대비 Validation 비교표입니다. 이 판정은 Test를 보지 않고 내리며, 기록한 뒤에만 고정
+checkpoint로 Test를 한 번 평가합니다.
+
+```bash
+uv run python -m zani_ai engagement finalize-e0k --features datasets/processed/engagenet/e0-clean --output artifacts/engagement/e0k-schedule --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0k-schedule
+```
+
+lr을 10배 올렸으므로 발산할 수 있습니다. 손실이 NaN이 되거나 Validation Macro-F1이 초기
+epoch부터 회복하지 못하면 초기 lr과 감쇠 시점을 조정하는데, 이 둘은 재현성 identity에
+들어가므로 **조정한 값은 E0-K가 아니라 새 프로토콜**이 됩니다. 조정 과정과 기각된 값을
+여기에 남깁니다.
+
+epoch이 E0의 실측 116(=`best_epoch` 최대 9 + patience 20 × 5 seed 환산)에서 1500
+(300 × 5 seed)으로 늘어 학습 시간이 약 13배입니다. 5 seed를 `--seed`로 동시 실행할
+때는 GPU 메모리를 먼저 확인하십시오.
+
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서
 학습률을 0.1배로 감쇠합니다. E1은 처리량을 위해 batch 32 / lr 2e-3을 쓰고
