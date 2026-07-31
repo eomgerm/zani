@@ -194,10 +194,13 @@ multiple sharers or manual layout switching become necessary, add
 Missing optional audio *entries* do not affect the exit code; a run can warn and
 still exit `0`.
 
-## 9. Open item
+## 9. Why a student camera track does not fail the merge
 
-`livekit-backend-guide.md` §15 requires the merge to **fail with a security
-error** when a student camera file appears in the manifest. This worker
-**excludes it with a warning and continues**. The stricter posture has not been
-agreed, so the worker's behaviour above is what ships today. Resolve this before
-relying on either rule, and update both documents together.
+A student `CAMERA` track in the manifest means an upstream policy was bypassed —
+`RecordingTrackPolicy` forbids requesting Egress for it, so a normal run cannot
+produce one. The worker still **excludes it with a warning and finishes** rather
+than failing (decided 2026-07-31).
+
+Failing would cost a whole three-hour merge over one track. The point of the rule
+is that the warning is not swallowed, so treat that log line as a policy breach
+worth investigating — not as routine noise.

@@ -431,12 +431,9 @@ Egress 종료
 [`media-finalize-recording-guide.md`](./media-finalize-recording-guide.md)가 정본이다.
 이 문서는 그 Worker를 언제 호출하고 결과 상태를 어디에 남기는지만 다룬다.
 
-manifest에 학생 카메라 트랙이 들어 있을 때의 처리는 두 문서가 어긋나 있다. 이 문서는 원래
-후처리를 실패시키라고 규정했지만, 현재 Worker는 **해당 트랙을 제외하고 경고만 남기며 계속
-진행**한다. 더 강한 쪽으로 합의된 바가 없으므로 지금 동작은 Worker 쪽이며, 결정 전까지 어느
-규칙도 근거로 삼지 않는다. `media-finalize-recording-guide.md` §9에 같은 미결 사항이 있다.
+manifest에 학생 카메라 트랙이 들어 있으면 **그 트랙만 제외하고 경고를 남기며 병합을 계속한다**(2026-07-31 확정). 후처리를 실패시키지 않는다.
 
-애초에 학생 카메라는 Egress 요청 자체를 만들지 않으므로(§13) 정상 경로에서는 manifest에 들어올 수 없다.
+3시간 강의 병합을 트랙 하나 때문에 전부 실패시키는 비용이 크고, 애초에 학생 카메라는 Egress 요청 자체를 만들지 않으므로(§13) 정상 경로에서는 manifest에 들어올 수 없다. 들어왔다면 상류 정책이 뚫린 것이므로 **경고를 놓치지 않게 남기는 것**이 이 규칙의 전부다. 계약은 [`media-finalize-recording-guide.md`](./media-finalize-recording-guide.md) §3이 소유한다.
 
 녹화 실행 상태(`RecordingStatus`, V1 스키마의 `status` 컬럼 값과 일치):
 
