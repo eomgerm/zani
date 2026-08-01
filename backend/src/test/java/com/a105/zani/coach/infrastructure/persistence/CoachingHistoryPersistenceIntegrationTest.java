@@ -19,12 +19,6 @@ import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
 import com.a105.zani.coach.application.storehistory.CoachingTranscript;
 import com.a105.zani.coach.application.storehistory.PersistCoachingHistoryUseCase;
 import com.a105.zani.common.persistence.TsidGenerator;
-import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
-import com.a105.zani.member.infrastructure.persistence.repository.MemberJpaRepository;
-import com.a105.zani.session.domain.model.SessionAnalysisStatus;
-import com.a105.zani.session.domain.model.SessionStatus;
-import com.a105.zani.session.infrastructure.persistence.entity.SessionJpaEntity;
-import com.a105.zani.session.infrastructure.persistence.repository.SessionJpaRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,12 +30,6 @@ class CoachingHistoryPersistenceIntegrationTest {
 
     @Autowired
     private PersistCoachingHistoryUseCase persistCoachingHistoryUseCase;
-
-    @Autowired
-    private MemberJpaRepository memberJpaRepository;
-
-    @Autowired
-    private SessionJpaRepository sessionJpaRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -135,21 +123,25 @@ class CoachingHistoryPersistenceIntegrationTest {
         long memberId = TsidGenerator.generate();
         long sessionId = TsidGenerator.generate();
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-        memberJpaRepository.saveAndFlush(MemberJpaEntity.builder()
-                .id(memberId)
-                .googleSubject("coach-history-" + suffix)
-                .email("coach-history-" + suffix + "@example.com")
-                .displayName("coach history test")
-                .build());
-        sessionJpaRepository.saveAndFlush(SessionJpaEntity.builder()
-                .id(sessionId)
-                .hostMemberId(memberId)
-                .title("coaching history")
-                .inviteCode(suffix)
-                .status(SessionStatus.LIVE)
-                .analysisStatus(SessionAnalysisStatus.NOT_STARTED)
-                .startedAt(SESSION_STARTED_AT)
-                .build());
+        jdbcTemplate.update(
+                "INSERT INTO members (id, google_subject, email, display_name, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                memberId,
+                "coach-history-" + suffix,
+                "coach-history-" + suffix + "@example.com",
+                "coach history test",
+                java.sql.Timestamp.from(SESSION_STARTED_AT),
+                java.sql.Timestamp.from(SESSION_STARTED_AT));
+        jdbcTemplate.update(
+                "INSERT INTO sessions (id, host_member_id, title, invite_code, status, analysis_status, started_at,"
+                        + " created_at, updated_at) VALUES (?, ?, ?, ?, 'LIVE', 'NOT_STARTED', ?, ?, ?)",
+                sessionId,
+                memberId,
+                "coaching history",
+                suffix,
+                java.sql.Timestamp.from(SESSION_STARTED_AT),
+                java.sql.Timestamp.from(SESSION_STARTED_AT),
+                java.sql.Timestamp.from(SESSION_STARTED_AT));
         return sessionId;
     }
 
