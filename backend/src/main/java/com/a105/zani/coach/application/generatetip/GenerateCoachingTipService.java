@@ -21,12 +21,15 @@ import com.a105.zani.attention.application.port.CoachingTriggerStatePort;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipCommand;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipResult;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipUseCase;
+import com.a105.zani.coach.application.port.CoachingTipSettings;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
+import com.a105.zani.coach.application.storehistory.CoachingHistory;
+import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
+import com.a105.zani.coach.application.storehistory.CoachingTranscript;
+import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.coach.domain.model.CoachingTipRatios;
-import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
-import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextQuery;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -52,6 +55,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
     private final CaptureAudioClipUseCase captureAudioClipUseCase;
     private final TipConceptPort tipConceptPort;
     private final CoachingTriggerStatePort coachingTriggerStatePort;
+    private final StoreCoachingHistoryUseCase storeCoachingHistoryUseCase;
     private final double minConfidence;
     private final int transcriptTailChars;
     private final Duration maxTriggerDelay;
@@ -63,17 +67,18 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             CaptureAudioClipUseCase captureAudioClipUseCase,
             TipConceptPort tipConceptPort,
             CoachingTriggerStatePort coachingTriggerStatePort,
-            CoachTipProperties tipProperties,
-            CoachPipelineProperties pipelineProperties) {
+            StoreCoachingHistoryUseCase storeCoachingHistoryUseCase,
+            CoachingTipSettings settings) {
         this.executor = executor;
         this.clock = clock;
         this.getSessionCoachingContextUseCase = getSessionCoachingContextUseCase;
         this.captureAudioClipUseCase = captureAudioClipUseCase;
         this.tipConceptPort = tipConceptPort;
         this.coachingTriggerStatePort = coachingTriggerStatePort;
-        this.minConfidence = tipProperties.minConfidence();
-        this.transcriptTailChars = tipProperties.transcriptTailChars();
-        this.maxTriggerDelay = pipelineProperties.maxTriggerDelay();
+        this.storeCoachingHistoryUseCase = storeCoachingHistoryUseCase;
+        this.minConfidence = settings.minConfidence();
+        this.transcriptTailChars = settings.transcriptTailChars();
+        this.maxTriggerDelay = settings.maxTriggerDelay();
     }
 
     @Override
@@ -86,14 +91,28 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                     "팁 유형을 고를 수 없어 트리거를 비웁니다. sessionId={}, triggerId={}, stage=SELECT",
                     request.sessionId(),
                     request.triggerId());
-            complete(request, CoachingTipUnavailableReason.TIP_GENERATION_FAILED, "SELECT", 0);
+            completeFailure(
+                    request,
+                    null,
+                    CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    CoachingTranscript.notAttempted(),
+                    "SELECT",
+                    0,
+                    0,
+                    null);
             return;
         }
 
         CoachingTipType tipType = selected.get();
         if (!CoachingTipComposer.requiresConcept(tipType)) {
             // 고정 문구는 executor 를 거치지 않는다. 큐 포화·GMS 장애와 무관하게 떠야 한다.
-            complete(request, CoachingTipComposer.compose(tipType, ratios, null), "FIXED", 0);
+            completeSuccess(
+                    request,
+                    CoachingTipComposer.compose(tipType, ratios, null),
+                    CoachingTranscript.skippedNotRequired(),
+                    "FIXED",
+                    0,
+                    0);
             return;
         }
 
@@ -106,7 +125,15 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                     request.sessionId(),
                     request.triggerId(),
                     CoachingTipUnavailableReason.TIP_GENERATION_FAILED);
-            complete(request, CoachingTipUnavailableReason.TIP_GENERATION_FAILED, "QUEUE", 0);
+            completeFailure(
+                    request,
+                    tipType,
+                    CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    CoachingTranscript.notAttempted(),
+                    "QUEUE",
+                    0,
+                    0,
+                    exception);
         }
     }
 
@@ -123,7 +150,15 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                     request.triggerId(),
                     CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
                     triggerDelayMs);
-            complete(request, CoachingTipUnavailableReason.TIP_GENERATION_FAILED, "QUEUE", triggerDelayMs);
+            completeFailure(
+                    request,
+                    tipType,
+                    CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    CoachingTranscript.notAttempted(),
+                    "QUEUE",
+                    triggerDelayMs,
+                    elapsedMs(startedAt),
+                    null);
             return;
         }
 
@@ -132,9 +167,11 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             context = getSessionCoachingContextUseCase.get(new GetSessionCoachingContextQuery(request.sessionId()));
         } catch (RuntimeException exception) {
             // 세션 조회 실패는 전사 실패가 아니다. 같은 사유로 묶으면 로그에서 "GMS 가 느리다" 로 읽혀 엉뚱한 곳을 본다.
-            complete(
+            completeFailure(
                     request,
+                    tipType,
                     CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    CoachingTranscript.notAttempted(),
                     "CONTEXT",
                     triggerDelayMs,
                     elapsedMs(startedAt),
@@ -147,9 +184,11 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             captured = captureAudioClipUseCase.capture(new CaptureAudioClipCommand(request.sessionId()));
         } catch (RuntimeException exception) {
             // AudioClipTranscriptionFailedException 과 버퍼 조회 실패가 여기로 온다.
-            complete(
+            completeFailure(
                     request,
+                    tipType,
                     CoachingTipUnavailableReason.TRANSCRIPTION_FAILED,
+                    CoachingTranscript.failed(),
                     "TRANSCRIBE",
                     triggerDelayMs,
                     elapsedMs(startedAt),
@@ -161,43 +200,55 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             if (!captured.transcribed()
                     || captured.transcript() == null
                     || captured.transcript().isBlank()) {
-                complete(
+                completeFailure(
                         request,
+                        tipType,
                         CoachingTipUnavailableReason.NO_TRANSCRIPT,
+                        CoachingTranscript.noTranscript(captured.fromEpochMs(), captured.toEpochMs()),
                         "TRANSCRIBE",
                         triggerDelayMs,
-                        elapsedMs(startedAt));
+                        elapsedMs(startedAt),
+                        null);
                 return;
             }
 
             Optional<TipConcept> concept = tipConceptPort.extract(new TipConceptRequest(
                     tipType, tailOf(captured.transcript()), context.title(), elapsedMinutes(request, context)));
             if (concept.isEmpty()) {
-                complete(
+                completeFailure(
                         request,
+                        tipType,
                         CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                        transcribed(captured),
                         "EXTRACT",
                         triggerDelayMs,
-                        elapsedMs(startedAt));
+                        elapsedMs(startedAt),
+                        null);
                 return;
             }
             if (!concept.get().isUsable() || concept.get().confidence() < minConfidence) {
-                complete(
+                completeFailure(
                         request,
+                        tipType,
                         CoachingTipUnavailableReason.LOW_CONFIDENCE,
+                        transcribed(captured),
                         "EXTRACT",
                         triggerDelayMs,
-                        elapsedMs(startedAt));
+                        elapsedMs(startedAt),
+                        concept.get().concept(),
+                        null);
                 return;
             }
 
             CoachingTip tip =
                     CoachingTipComposer.compose(tipType, ratios, concept.get().concept());
-            complete(request, tip, "COMPOSE", triggerDelayMs, elapsedMs(startedAt));
+            completeSuccess(request, tip, transcribed(captured), "COMPOSE", triggerDelayMs, elapsedMs(startedAt));
         } catch (RuntimeException exception) {
-            complete(
+            completeFailure(
                     request,
+                    tipType,
                     CoachingTipUnavailableReason.TIP_GENERATION_FAILED,
+                    transcribed(captured),
                     "UNEXPECTED",
                     triggerDelayMs,
                     elapsedMs(startedAt),
@@ -239,12 +290,13 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                 : transcript.substring(transcript.length() - transcriptTailChars);
     }
 
-    private void complete(CoachingTipRequest request, CoachingTip tip, String stage, long triggerDelayMs) {
-        complete(request, tip, stage, triggerDelayMs, 0);
-    }
-
-    private void complete(
-            CoachingTipRequest request, CoachingTip tip, String stage, long triggerDelayMs, long elapsedMs) {
+    private void completeSuccess(
+            CoachingTipRequest request,
+            CoachingTip tip,
+            CoachingTranscript transcript,
+            String stage,
+            long triggerDelayMs,
+            long elapsedMs) {
         // 문구·개념은 남기지 않는다. 강사 발화에서 온 값이라 로그에 쌓을 이유가 없다.
         log.info(
                 "팁을 생성했습니다. sessionId={}, triggerId={}, stage={}, result=SUCCESS, tipType={},"
@@ -255,29 +307,35 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                 tip.tipType(),
                 triggerDelayMs,
                 elapsedMs);
-        store(request, CoachingOutcome.completed(request.triggerId(), tip));
+        store(
+                request,
+                CoachingOutcome.completed(request.triggerId(), tip),
+                tip.tipType(),
+                transcript,
+                tip.targetConcept());
     }
 
-    private void complete(
-            CoachingTipRequest request, CoachingTipUnavailableReason reason, String stage, long triggerDelayMs) {
-        complete(request, reason, stage, triggerDelayMs, 0, null);
-    }
-
-    private void complete(
+    private void completeFailure(
             CoachingTipRequest request,
+            CoachingTipType selectedTipType,
             CoachingTipUnavailableReason reason,
-            String stage,
-            long triggerDelayMs,
-            long elapsedMs) {
-        complete(request, reason, stage, triggerDelayMs, elapsedMs, null);
-    }
-
-    private void complete(
-            CoachingTipRequest request,
-            CoachingTipUnavailableReason reason,
+            CoachingTranscript transcript,
             String stage,
             long triggerDelayMs,
             long elapsedMs,
+            RuntimeException cause) {
+        completeFailure(request, selectedTipType, reason, transcript, stage, triggerDelayMs, elapsedMs, null, cause);
+    }
+
+    private void completeFailure(
+            CoachingTipRequest request,
+            CoachingTipType selectedTipType,
+            CoachingTipUnavailableReason reason,
+            CoachingTranscript transcript,
+            String stage,
+            long triggerDelayMs,
+            long elapsedMs,
+            String topic,
             RuntimeException cause) {
         String message =
                 "팁을 만들지 못했습니다. sessionId={}, triggerId={}, stage={}, result={}," + " triggerDelayMs={}, elapsedMs={}";
@@ -287,7 +345,7 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             log.warn(
                     message, request.sessionId(), request.triggerId(), stage, reason, triggerDelayMs, elapsedMs, cause);
         }
-        store(request, CoachingOutcome.unavailable(request.triggerId(), reason));
+        store(request, CoachingOutcome.unavailable(request.triggerId(), reason), selectedTipType, transcript, topic);
     }
 
     /**
@@ -295,7 +353,15 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
      *
      * <p>비동기 작업이라 되돌릴 경로가 없다. Redis 장애로 실패하면 로그만 남기고 끝낸다 — 여기서 다시 시도하면 늦은 팁이 되살아나거나 강사 폴링이 막힌다.
      */
-    private void store(CoachingTipRequest request, CoachingOutcome outcome) {
+    private void store(
+            CoachingTipRequest request,
+            CoachingOutcome outcome,
+            CoachingTipType selectedTipType,
+            CoachingTranscript transcript,
+            String topic) {
+        // 강사가 폴링하는 상태를 먼저 쓴다. 이력은 Redis durable queue에 인계하고 MySQL 반영은 스케줄러가
+        // 수행한다. 특히 고정 문구 팁은 executor를 거치지 않고 폴링 요청 스레드에서 이 메서드를 타므로,
+        // 실시간 경로에서 MySQL을 호출하면 팁 응답까지 데이터베이스 지연에 묶인다.
         try {
             coachingTriggerStatePort.completeOutcome(request.sessionId(), outcome);
         } catch (RuntimeException exception) {
@@ -305,6 +371,36 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
                     request.triggerId(),
                     exception);
         }
+
+        try {
+            storeCoachingHistoryUseCase.store(new CoachingHistory(
+                    request.sessionId(),
+                    request.triggerId(),
+                    request.triggeredAt(),
+                    clock.instant(),
+                    new CoachingResponseCounts(
+                            request.studentsCounted(),
+                            request.significantCount(),
+                            request.confusedCount(),
+                            request.missedCount(),
+                            request.nonResponseCount(),
+                            request.unmeasurableCount()),
+                    selectedTipType,
+                    transcript,
+                    topic,
+                    outcome.tip(),
+                    outcome.unavailableReason()));
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "Coaching history could not be stored. sessionId={}, triggerId={}, stage=HISTORY_STORE",
+                    request.sessionId(),
+                    request.triggerId(),
+                    exception);
+        }
+    }
+
+    private CoachingTranscript transcribed(CaptureAudioClipResult captured) {
+        return CoachingTranscript.transcribed(captured.fromEpochMs(), captured.toEpochMs());
     }
 
     private long elapsedMs(long startedAtNanos) {
