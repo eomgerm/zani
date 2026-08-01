@@ -17,7 +17,7 @@ import com.a105.zani.attention.application.port.CoachingTipUnavailableReason;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
 import com.a105.zani.coach.application.storehistory.CoachingResponseCounts;
 import com.a105.zani.coach.application.storehistory.CoachingTranscript;
-import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
+import com.a105.zani.coach.application.storehistory.PersistCoachingHistoryUseCase;
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
 import com.a105.zani.member.infrastructure.persistence.repository.MemberJpaRepository;
@@ -35,7 +35,7 @@ class CoachingHistoryPersistenceIntegrationTest {
     private static final Instant SESSION_STARTED_AT = Instant.parse("2026-07-30T01:00:00Z");
 
     @Autowired
-    private StoreCoachingHistoryUseCase storeCoachingHistoryUseCase;
+    private PersistCoachingHistoryUseCase persistCoachingHistoryUseCase;
 
     @Autowired
     private MemberJpaRepository memberJpaRepository;
@@ -53,10 +53,10 @@ class CoachingHistoryPersistenceIntegrationTest {
         CoachingHistory second = unavailable(sessionId, "trigger-2", 2);
         CoachingHistory third = completed(sessionId, "trigger-3", 3);
 
-        storeCoachingHistoryUseCase.store(first);
-        storeCoachingHistoryUseCase.store(second);
-        storeCoachingHistoryUseCase.store(third);
-        storeCoachingHistoryUseCase.store(second);
+        persistCoachingHistoryUseCase.persist(first);
+        persistCoachingHistoryUseCase.persist(second);
+        persistCoachingHistoryUseCase.persist(third);
+        persistCoachingHistoryUseCase.persist(second);
 
         List<String> triggerIds = jdbcTemplate.queryForList(
                 "SELECT trigger_id FROM coaching_histories WHERE session_id = ? ORDER BY triggered_at",
@@ -123,8 +123,8 @@ class CoachingHistoryPersistenceIntegrationTest {
         long firstSessionId = createSession();
         long secondSessionId = createSession();
 
-        storeCoachingHistoryUseCase.store(completed(firstSessionId, "same-trigger", 1));
-        storeCoachingHistoryUseCase.store(completed(secondSessionId, "same-trigger", 1));
+        persistCoachingHistoryUseCase.persist(completed(firstSessionId, "same-trigger", 1));
+        persistCoachingHistoryUseCase.persist(completed(secondSessionId, "same-trigger", 1));
 
         Integer stored = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM coaching_histories WHERE trigger_id = 'same-trigger'", Integer.class);

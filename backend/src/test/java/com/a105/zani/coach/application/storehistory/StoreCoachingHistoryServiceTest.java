@@ -15,21 +15,18 @@ import com.a105.zani.coach.application.port.CoachingHistoryRetryQueuePort;
 import com.a105.zani.coach.application.retryhistory.PendingCoachingHistoryRetry;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StoreCoachingHistoryServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-31T01:00:00Z");
 
     @Test
-    void queuesTheCompleteSessionOwnedResultWhenMysqlIsUnavailable() {
+    void handsOffTheCompleteSessionOwnedResultForAsynchronousPersistence() {
         CoachingHistory history = history();
         CapturingRetryQueue retries = new CapturingRetryQueue();
-        StoreCoachingHistoryService service = new StoreCoachingHistoryService(
-                ignored -> {
-                    throw new IllegalStateException("mysql down");
-                },
-                retries,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        StoreCoachingHistoryService service =
+                new StoreCoachingHistoryService(retries, Clock.fixed(NOW, ZoneOffset.UTC));
 
         service.store(history);
 
@@ -38,15 +35,20 @@ class StoreCoachingHistoryServiceTest {
     }
 
     @Test
-    void writesAheadToTheRetryQueueEvenWhenMysqlIsAvailable() {
+    void propagatesAQueueFailureSoTheCallerCanReportThatTheHistoryWasNotHandedOff() {
         CoachingHistory history = history();
-        CapturingRetryQueue retries = new CapturingRetryQueue();
+        CoachingHistoryRetryQueuePort unavailableQueue = new CapturingRetryQueue() {
+            @Override
+            public void enqueue(CoachingHistory ignored, Instant dueAt) {
+                throw new IllegalStateException("redis down");
+            }
+        };
         StoreCoachingHistoryService service =
-                new StoreCoachingHistoryService(ignored -> true, retries, Clock.fixed(NOW, ZoneOffset.UTC));
+                new StoreCoachingHistoryService(unavailableQueue, Clock.fixed(NOW, ZoneOffset.UTC));
 
-        service.store(history);
-
-        assertThat(retries.histories).containsExactly(history);
+        assertThatThrownBy(() -> service.store(history))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("redis down");
     }
 
     private CoachingHistory history() {
@@ -63,7 +65,7 @@ class StoreCoachingHistoryServiceTest {
                 null);
     }
 
-    private static final class CapturingRetryQueue implements CoachingHistoryRetryQueuePort {
+    private static class CapturingRetryQueue implements CoachingHistoryRetryQueuePort {
 
         private final List<CoachingHistory> histories = new ArrayList<>();
         private final List<Instant> dueTimes = new ArrayList<>();

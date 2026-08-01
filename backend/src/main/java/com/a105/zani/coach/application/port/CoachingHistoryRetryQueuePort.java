@@ -7,7 +7,7 @@ import java.util.List;
 import com.a105.zani.coach.application.retryhistory.PendingCoachingHistoryRetry;
 import com.a105.zani.coach.application.storehistory.CoachingHistory;
 
-/** Durable retry boundary used when MySQL cannot store a completed coaching result immediately. */
+/** Durable handoff boundary between the real-time coaching path and eventual MySQL persistence. */
 public interface CoachingHistoryRetryQueuePort {
 
     void enqueue(CoachingHistory history, Instant dueAt);

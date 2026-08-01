@@ -359,9 +359,9 @@ public class GenerateCoachingTipService implements CoachingTipPipelinePort {
             CoachingTipType selectedTipType,
             CoachingTranscript transcript,
             String topic) {
-        // 강사가 폴링하는 상태를 먼저 쓴다. 이력(Redis 재시도 큐 + MySQL)을 앞에 두면 수업 중 화면이 사후 리포트용
-        // 저장을 기다린다. 특히 고정 문구 팁은 executor 를 거치지 않고 폴링 요청 스레드에서 이 메서드를 타므로,
-        // MySQL 이 느려지면 팁이 뜨는 시점까지 밀린다.
+        // 강사가 폴링하는 상태를 먼저 쓴다. 이력은 Redis durable queue에 인계하고 MySQL 반영은 스케줄러가
+        // 수행한다. 특히 고정 문구 팁은 executor를 거치지 않고 폴링 요청 스레드에서 이 메서드를 타므로,
+        // 실시간 경로에서 MySQL을 호출하면 팁 응답까지 데이터베이스 지연에 묶인다.
         try {
             coachingTriggerStatePort.completeOutcome(request.sessionId(), outcome);
         } catch (RuntimeException exception) {

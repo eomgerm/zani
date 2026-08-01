@@ -47,8 +47,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>임계값 경계(29%/30%, 59초/60초, 분모 0)는 {@code CoachingTriggerPolicyTest} 가 전수로 다룬다. 여기서는 폴링 계약과 권한, 그리고 실제 Redis·오디오 버퍼를
  * 거친 트리거 한 바퀴만 본다.
  */
-@SpringBootTest
+@SpringBootTest(properties = "coach.history-retry-delay=PT1H")
 class CoachingTipPollingIntegrationTest {
+
+    private static final String COACHING_HISTORY_RETRY_KEY = "coach:history:retries";
 
     private static final long INSTRUCTOR_ID = 9_200_910L;
     private static final long STUDENT_ID = 9_200_911L;
@@ -310,6 +312,7 @@ class CoachingTipPollingIntegrationTest {
         redisTemplate.delete(OPEN_KEY);
         redisTemplate.delete(LAST_TIP_KEY);
         redisTemplate.delete(PRESENCE_KEY);
+        redisTemplate.delete(COACHING_HISTORY_RETRY_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete("attention:" + SESSION_ID + ":significant:" + state.name() + ":" + PARTICIPANT_ID);
         }
