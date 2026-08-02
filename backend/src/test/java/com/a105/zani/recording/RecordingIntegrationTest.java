@@ -44,10 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 그대로 구동하고, LiveKit 경계(Egress 시작·webhook 서명 검증)만 fixture로 대체한다. S3/LocalStack은 팀 결정에 따라 쓰지 않으므로(EC2 로컬 저장) 파일은 경로 문자열로만
  * 검증한다.
  *
- * <p>검증 시나리오: 시작 중복, callback 순서 역전, 일부 실패, 전체 실패. 시간 의존 로직(재시도 백오프)은 고정 시계를 주입해 제어하고, 릴레이 스케줄러는 간격을 늘려 테스트가 명시적으로만
- * 릴레이를 돌리게 한다. 로컬 MySQL/Redis가 떠 있어야 통과한다.
+ * <p>검증 시나리오: 시작 중복, callback 순서 역전, 일부 실패, 전체 실패. 시간 의존 로직(재시도 백오프)은 고정 시계를 주입해 제어하고, 백그라운드 릴레이 스케줄러는 비활성화해 테스트가
+ * 명시적으로만 릴레이를 돌리게 한다. 로컬 MySQL/Redis가 떠 있어야 통과한다.
  */
-@SpringBootTest(properties = "recording.outbox-relay-delay=PT1H")
+@SpringBootTest(properties = "recording.outbox-relay-enabled=false")
 @Import(RecordingIntegrationTest.LiveKitFixtureConfig.class)
 class RecordingIntegrationTest {
 
