@@ -36,6 +36,13 @@ public class CoachingHistoryPersistenceAdapter implements StoreCoachingHistoryPo
             VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6))
             """;
 
+    private static final String SELECT_HISTORY_ID = """
+            SELECT id
+              FROM coaching_histories
+             WHERE session_id = ?
+               AND trigger_id = ?
+            """;
+
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -43,7 +50,7 @@ public class CoachingHistoryPersistenceAdapter implements StoreCoachingHistoryPo
         long historyId = TsidGenerator.generate();
         CoachingTip tip = history.tip();
 
-        int inserted = jdbcTemplate.update(
+        jdbcTemplate.update(
                 INSERT_HISTORY,
                 historyId,
                 history.sessionId(),
@@ -66,7 +73,9 @@ public class CoachingHistoryPersistenceAdapter implements StoreCoachingHistoryPo
                         ? null
                         : history.unavailableReason().name());
 
-        if (inserted != 1) {
+        Long storedHistoryId =
+                jdbcTemplate.queryForObject(SELECT_HISTORY_ID, Long.class, history.sessionId(), history.triggerId());
+        if (storedHistoryId == null || storedHistoryId.longValue() != historyId) {
             return false;
         }
 
