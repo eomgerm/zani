@@ -66,8 +66,7 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
     @Override
     @Transactional
     public RequestTrackEgressResult request(RequestTrackEgressCommand command) {
-        TrackRecordingDecision decision =
-                RecordingTrackPolicy.decide(command.role(), command.source(), command.studentScreenShareApproved());
+        TrackRecordingDecision decision = RecordingTrackPolicy.decide(command.role(), command.source());
         if (decision == TrackRecordingDecision.FORBIDDEN) {
             // 학생 카메라는 Egress 요청 생성 자체가 금지된다(가이드 §13). 보안 위반으로 기록하고 거부한다.
             log.warn(
@@ -75,9 +74,6 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                     command.sessionId(),
                     command.trackSid());
             throw new ForbiddenStudentCameraTrackException();
-        }
-        if (decision == TrackRecordingDecision.SKIP) {
-            return new RequestTrackEgressResult(decision, false);
         }
         // alias·trackSid는 Egress 출력 파일 경로에 들어간다. 익명 별칭 형식과 SID 형식을 등록 시점에 강제해
         // 경로 탈출·실명 유입을 원천 차단한다(가이드 §18).
