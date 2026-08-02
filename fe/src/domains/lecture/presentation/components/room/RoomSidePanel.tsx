@@ -16,7 +16,7 @@ interface RoomSidePanelProps {
   onRetryChat: (clientEventId: string) => void;
   /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
   onMute?: (identity: string) => void;
-  /** 지금 음소거 요청이 진행 중인 대상. 그 행의 버튼만 잠근다. */
+  /** 지금 음소거 요청이 진행 중인 대상. 요청은 한 번에 하나뿐이라 그동안 모든 행의 버튼이 잠긴다. */
   mutingIdentity?: string | null;
 }
 
@@ -210,8 +210,16 @@ export function RoomSidePanel({
                   <button
                     type="button"
                     onClick={onMute === undefined ? undefined : () => onMute(p.id)}
-                    disabled={!p.mic || mutingIdentity === p.id}
-                    title={!p.mic ? "이미 음소거됨" : mutingIdentity === p.id ? "음소거하는 중" : "음소거"}
+                    disabled={!p.mic || mutingIdentity !== null}
+                    title={
+                      !p.mic
+                        ? "이미 음소거됨"
+                        : mutingIdentity === p.id
+                          ? "음소거하는 중"
+                          : mutingIdentity !== null
+                            ? "처리 중"
+                            : "음소거"
+                    }
                     aria-label={`${p.name} 음소거`}
                     className={rowBtnCls}
                   >

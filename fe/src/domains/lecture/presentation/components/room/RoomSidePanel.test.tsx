@@ -129,7 +129,11 @@ describe("RoomSidePanel 참가자 제어", () => {
     expect(onMute).not.toHaveBeenCalled();
   });
 
-  it("요청 중인 대상만 잠근다", () => {
+  /**
+   * 훅은 요청을 한 번에 하나만 보낸다. 그동안 다른 버튼이 눌리는 것처럼 보이면 강사는 껐다고 믿는데 소리는
+   * 계속 나간다. 눌러 봐야 소용없다는 것을 버튼이 직접 말해야 한다.
+   */
+  it("요청 중에는 다른 대상의 버튼도 잠기고 처리 중이라고 알린다", () => {
     render(
       peoplePanel(
         [instructor, student(), student({ id: "p-33", name: "최유진" })],
@@ -138,7 +142,21 @@ describe("RoomSidePanel 참가자 제어", () => {
       ),
     );
 
-    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeDisabled();
+    const target = screen.getByRole("button", { name: "이지은 음소거" });
+    expect(target).toBeDisabled();
+    expect(target).toHaveAttribute("title", "음소거하는 중");
+
+    const other = screen.getByRole("button", { name: "최유진 음소거" });
+    expect(other).toBeDisabled();
+    expect(other).toHaveAttribute("title", "처리 중");
+  });
+
+  it("요청이 없으면 모든 버튼이 열려 있다", () => {
+    render(
+      peoplePanel([instructor, student(), student({ id: "p-33", name: "최유진" })], true),
+    );
+
+    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "최유진 음소거" })).toBeEnabled();
   });
 

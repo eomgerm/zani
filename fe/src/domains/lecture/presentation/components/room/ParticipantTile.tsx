@@ -32,6 +32,13 @@ type ParticipantTileProps = {
   onMute?: () => void;
   /** 이 참가자에 대한 음소거 요청이 진행 중인지. 중복 클릭을 막는다. */
   muting?: boolean;
+  /**
+   * 다른 참가자에 대한 요청이 진행 중인지.
+   *
+   * 훅은 요청을 한 번에 하나만 보내므로, 그동안 다른 버튼을 눌러도 아무 일도 일어나지 않는다. 눌리는 것처럼
+   * 보이면 강사는 껐다고 믿는데 소리는 계속 나간다. 눌러 봐야 소용없다는 것을 버튼이 직접 말해야 한다.
+   */
+  busy?: boolean;
 };
 
 const statusLabel = ({
@@ -54,6 +61,7 @@ export function ParticipantTile({
   canControl = false,
   onMute,
   muting = false,
+  busy = false,
   videoRef,
   mirrored = false,
   fit,
@@ -134,9 +142,17 @@ export function ParticipantTile({
           <button
             type="button"
             onClick={onMute}
-            disabled={!microphoneEnabled || muting}
+            disabled={!microphoneEnabled || muting || busy}
             aria-label={`${name} 음소거`}
-            title={!microphoneEnabled ? "이미 음소거됨" : muting ? "음소거하는 중" : "음소거"}
+            title={
+              !microphoneEnabled
+                ? "이미 음소거됨"
+                : muting
+                  ? "음소거하는 중"
+                  : busy
+                    ? "처리 중"
+                    : "음소거"
+            }
             className="cursor-pointer rounded-lg border-0 bg-black/70 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-[4px] transition-[filter] hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45"
           >
             음소거

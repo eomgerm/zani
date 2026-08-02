@@ -42,7 +42,7 @@ type ParticipantGridProps = {
   videoRefFor?: (identity: string) => React.Ref<HTMLVideoElement>;
   /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
   onMute?: (identity: string) => void;
-  /** 지금 음소거 요청이 진행 중인 대상. 그 타일의 버튼만 잠근다. */
+  /** 지금 음소거 요청이 진행 중인 대상. 요청은 한 번에 하나뿐이라 그동안 모든 버튼이 잠긴다. */
   mutingIdentity?: string | null;
 };
 
@@ -105,6 +105,7 @@ export function ParticipantGrid({
               mirrored={participant.id === currentParticipantId}
               onMute={onMute === undefined ? undefined : () => onMute(participant.id)}
               muting={mutingIdentity === participant.id}
+              busy={mutingIdentity !== null && mutingIdentity !== participant.id}
             />
           </div>
         ))}

@@ -211,7 +211,21 @@ describe("ParticipantTile", () => {
   it("요청 중에는 다시 누를 수 없다", () => {
     render(<ParticipantTile participant={student()} canControl muting />);
 
-    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeDisabled();
+    const button = screen.getByRole("button", { name: "이지은 음소거" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "음소거하는 중");
+  });
+
+  /** 다른 참가자를 처리하는 동안 눌러도 요청이 나가지 않는다. 버튼이 그 사실을 보여야 한다. */
+  it("다른 대상을 처리하는 중이면 잠기고 처리 중이라고 알린다", () => {
+    const onMute = vi.fn();
+    render(<ParticipantTile participant={student()} canControl busy onMute={onMute} />);
+
+    const button = screen.getByRole("button", { name: "이지은 음소거" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "처리 중");
+    fireEvent.click(button);
+    expect(onMute).not.toHaveBeenCalled();
   });
 
   /** 학생 화면에는 제어 버튼이 없어야 한다. 권한은 서버가 최종 판단하지만 화면에 보일 이유가 없다. */
