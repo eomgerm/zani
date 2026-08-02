@@ -32,6 +32,7 @@ export {
   MicIcon,
   MicOffIcon,
   CameraIcon,
+  CameraOffIcon,
   ScreenShareIcon,
   HandIcon,
   ReactionIcon,

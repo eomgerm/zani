@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Avatar, HandIcon, KickIcon } from "@/shared/ui";
+import {
+  Avatar,
+  CameraIcon,
+  CameraOffIcon,
+  HandIcon,
+  KickIcon,
+  MicIcon,
+  MicOffIcon,
+} from "@/shared/ui";
 import type { ChatMessageView } from "@/domains/interaction";
 import type { Participant } from "../../fixtures";
 
@@ -191,9 +199,22 @@ export function RoomSidePanel({
                 <Avatar initial={p.name.charAt(0)} size={34} bg={avatarBg(p.color)} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-bold text-panel-text">{nameTag}</div>
-                  <div className="text-[11px] text-room-status">
-                    {p.cam ? "카메라 켜짐" : "카메라 꺼짐"}
-                    {p.mic ? "" : " · 음소거"}
+                  {/* 타일과 같은 표현: 꺼짐 = 빨간 슬래시 아이콘. 색·사선에만 의존하지 않도록 상태를 라벨로도 알린다. */}
+                  <div className="mt-0.5 flex items-center gap-1.5 text-room-status">
+                    <span
+                      role="img"
+                      aria-label={p.mic ? "마이크 켜짐" : "마이크 꺼짐"}
+                      className="inline-flex"
+                    >
+                      {p.mic ? <MicIcon size={13} /> : <MicOffIcon size={13} />}
+                    </span>
+                    <span
+                      role="img"
+                      aria-label={p.cam ? "카메라 켜짐" : "카메라 꺼짐"}
+                      className="inline-flex"
+                    >
+                      {p.cam ? <CameraIcon size={13} /> : <CameraOffIcon size={13} />}
+                    </span>
                   </div>
                 </div>
                 {canControl && (

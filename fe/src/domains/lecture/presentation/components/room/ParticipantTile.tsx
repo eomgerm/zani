@@ -1,4 +1,4 @@
-import { HandIcon, KickIcon, MicOffIcon } from "@/shared/ui";
+import { CameraOffIcon, HandIcon, KickIcon, MicOffIcon } from "@/shared/ui";
 
 export type ParticipantTileData = {
   id: string;
@@ -102,7 +102,17 @@ export function ParticipantTile({
           </div>
         )}
         <div className="absolute bottom-[9px] left-[9px] inline-flex max-w-[calc(100%-18px)] items-center gap-1.5 rounded-[9px] bg-black/70 px-2.5 py-[5px] backdrop-blur-[4px]">
-          {!microphoneEnabled && <MicOffIcon className="shrink-0 text-[#ff5a6e]" />}
+          {/* 꺼짐 상태만 아이콘으로 알린다. 몸통은 흰색, 슬래시가 빨간색이라 색약에서도 사선으로 구분된다. */}
+          {!microphoneEnabled && (
+            <span data-testid="tile-mic-off" className="inline-flex shrink-0 text-white">
+              <MicOffIcon />
+            </span>
+          )}
+          {!cameraEnabled && (
+            <span data-testid="tile-camera-off" className="inline-flex shrink-0 text-white">
+              <CameraOffIcon />
+            </span>
+          )}
           <span className="truncate text-[11.5px] font-bold text-white">{name}</span>
         </div>
       </div>

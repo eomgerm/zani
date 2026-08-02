@@ -50,6 +50,44 @@ describe("ParticipantTile", () => {
     ).toBeVisible();
   });
 
+  it("shows red-slash icons only for the media that is turned off", () => {
+    render(
+      <ParticipantTile
+        participant={{
+          id: "student-1",
+          name: "이지은",
+          color: "#f4c325",
+          role: "student",
+          cameraEnabled: false,
+          microphoneEnabled: false,
+          handRaised: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("tile-mic-off")).toBeInTheDocument();
+    expect(screen.getByTestId("tile-camera-off")).toBeInTheDocument();
+  });
+
+  it("hides the off icons while the media is on", () => {
+    render(
+      <ParticipantTile
+        participant={{
+          id: "student-1",
+          name: "이지은",
+          color: "#f4c325",
+          role: "student",
+          cameraEnabled: true,
+          microphoneEnabled: true,
+          handRaised: false,
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("tile-mic-off")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("tile-camera-off")).not.toBeInTheDocument();
+  });
+
   it("keeps instructor-only participant controls for a student tile", () => {
     render(
       <ParticipantTile
