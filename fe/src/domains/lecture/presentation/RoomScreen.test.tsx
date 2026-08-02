@@ -36,6 +36,9 @@ const chat = vi.hoisted(() => ({
   retry: vi.fn(),
 }));
 
+/** 읽지 않은 채팅 여부. 판정 규칙은 useChatUnread.test 가 검증하고, 여기서는 버튼 전달만 본다. */
+const chatUnread = vi.hoisted(() => ({ value: false }));
+
 const hands = vi.hoisted(() => ({
   raisedIdentities: [] as string[],
   myHandRaised: false,
@@ -52,6 +55,7 @@ const sessionReactions = vi.hoisted(() => ({
 vi.mock("@/domains/interaction", () => ({
   SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionChat: () => chat,
+  useChatUnread: () => chatUnread.value,
   useRaisedHands: () => hands,
   useSessionReactions: () => sessionReactions,
   REACTION_KINDS: ["LIKE", "HEART", "CLAP", "CELEBRATE", "WOW", "CHEER"],
@@ -200,6 +204,7 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   endSessionRequest.mockReset();
+  chatUnread.value = false;
   presence.reconnectStatus = null;
   presence.sessionEnded = false;
   presence.error = null;
@@ -223,6 +228,25 @@ afterEach(() => {
   screenShare.activeIdentity = null;
   screenShare.toggle.mockClear();
   vi.useRealTimers();
+});
+
+describe("RoomScreen chat unread dot", () => {
+  it("passes the unread state to the chat toggle as a dot and an accessible label", () => {
+    asStudent();
+    chatUnread.value = true;
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("button", { name: "새 채팅 메시지 있음, 채팅 열기" })).toBeVisible();
+    expect(screen.getByTestId("panel-toggle-dot")).toBeInTheDocument();
+  });
+
+  it("shows the plain chat label without a dot when nothing is unread", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("button", { name: "채팅 열기" })).toBeVisible();
+    expect(screen.queryByTestId("panel-toggle-dot")).not.toBeInTheDocument();
+  });
 });
 
 describe("RoomScreen side panel", () => {
@@ -256,10 +280,10 @@ describe("RoomScreen side panel", () => {
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
-    fireEvent.click(screen.getByRole("button", { name: "채팅" }));
+    fireEvent.click(screen.getByRole("button", { name: "채팅 열기" }));
 
     expect(screen.getByPlaceholderText("전체에게 메시지 보내기")).toBeVisible();
-    expect(screen.getByRole("button", { name: "채팅" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "채팅 열기" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "참여자" })).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -270,7 +294,7 @@ describe("RoomScreen side panel", () => {
     asStudent();
     render(<RoomScreen sessionId="123" />);
 
-    const chat = screen.getByRole("button", { name: "채팅" });
+    const chat = screen.getByRole("button", { name: "채팅 열기" });
     fireEvent.click(chat);
     fireEvent.click(chat);
 
@@ -283,7 +307,7 @@ describe("RoomScreen side panel", () => {
 
     // 기본은 갤러리 보기(토글 라벨이 "발표자 보기")인 상태에서 패널이 열린다.
     expect(screen.getByRole("button", { name: /발표자 보기/ })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "채팅" }));
+    fireEvent.click(screen.getByRole("button", { name: "채팅 열기" }));
 
     expect(screen.getByPlaceholderText("전체에게 메시지 보내기")).toBeVisible();
   });

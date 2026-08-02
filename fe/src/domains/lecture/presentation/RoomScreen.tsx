@@ -18,6 +18,7 @@ import {
 } from "@/domains/attention";
 import {
   SessionChannelProvider,
+  useChatUnread,
   useRaisedHands,
   useSessionChat,
   useSessionReactions,
@@ -108,11 +109,14 @@ function PanelToggle({
   active,
   label,
   onClick,
+  dot = false,
   children,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  /** 우상단 빨간 점(새 소식). 시각 전용이라 상태는 label 문구에도 함께 실어야 한다. */
+  dot?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -122,13 +126,20 @@ function PanelToggle({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
+      className={`relative inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
         active
           ? "border-primary bg-[#0e2a20] text-[#2fbf88]"
           : "border-room-line bg-panel text-panel-soft"
       }`}
     >
       {children}
+      {dot && (
+        <span
+          data-testid="panel-toggle-dot"
+          aria-hidden="true"
+          className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger"
+        />
+      )}
     </button>
   );
 }
@@ -215,6 +226,11 @@ function RoomScreenContent({
     myIdentity: localParticipantId,
     myDisplayName: tileParticipants.find((p) => p.id === localParticipantId)?.name ?? "나",
     amInstructor: isConfirmedInstructor,
+  });
+  // 채팅이 보이지 않는 동안(패널 닫힘 또는 참여자 탭) 남이 보낸 메시지가 있으면 채팅 토글에 빨간 점을 띄운다.
+  const chatUnread = useChatUnread({
+    myIdentity: localParticipantId,
+    chatVisible: panelOpen && panel === "chat",
   });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
@@ -502,8 +518,9 @@ function RoomScreenContent({
         </PanelToggle>
         <PanelToggle
           active={panelOpen && panel === "chat"}
-          label="채팅"
+          label={chatUnread ? "새 채팅 메시지 있음, 채팅 열기" : "채팅 열기"}
           onClick={() => togglePanel("chat")}
+          dot={chatUnread}
         >
           <ChatIcon />
         </PanelToggle>
