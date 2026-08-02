@@ -304,6 +304,35 @@ describe("RoomScreen speaker view stage", () => {
     expect(screen.getByText("발표: 김도현")).toBeVisible();
   });
 
+  it("does not steal the stage while the current speaker is still talking", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    // 배열 순서상 앞선(로컬) 강사가 동시에 말해도, 말하는 중인 스테이지는 뺏기지 않는다(!126 봇 리뷰).
+    roomParticipants.participants = roomParticipants.participants.map((p) =>
+      p.id === "host" ? { ...p, speaking: true } : p,
+    );
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("hands the stage over once the current speaker goes silent", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    roomParticipants.participants = roomParticipants.participants.map((p) =>
+      p.id === "host" ? { ...p, speaking: true } : { ...p, speaking: false },
+    );
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+  });
+
   it("shows the instructor on stage while nobody has spoken yet", () => {
     withSpeakingStudent(false);
     render(<RoomScreen sessionId="123" />);

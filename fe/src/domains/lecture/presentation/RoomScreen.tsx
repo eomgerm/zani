@@ -377,7 +377,12 @@ function RoomScreenContent({
   // 강사로 되돌리면 화면이 널뛴다. 아직 아무도 말하지 않았으면 강사를 보여준다(피드백 반영).
   const speakingNow = tileParticipants.find((participant) => participant.speaking);
   const [stageParticipantId, setStageParticipantId] = useState<string | null>(null);
-  if (speakingNow !== undefined && speakingNow.id !== stageParticipantId) {
+  // 스테이지 주인이 아직 말하는 중이면 유지한다. find 는 배열 순서(로컬 우선)라, 이 가드가 없으면
+  // 동시 발화 때 순서상 앞선 참가자가 말하던 사람의 화면을 뺏는다(!126 봇 리뷰 지적).
+  const stageStillSpeaking = tileParticipants.some(
+    (participant) => participant.id === stageParticipantId && participant.speaking,
+  );
+  if (!stageStillSpeaking && speakingNow !== undefined && speakingNow.id !== stageParticipantId) {
     setStageParticipantId(speakingNow.id);
   }
   const stageParticipant =
