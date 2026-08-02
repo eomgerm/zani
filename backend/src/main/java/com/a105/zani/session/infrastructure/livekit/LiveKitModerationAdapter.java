@@ -1,0 +1,90 @@
+package com.a105.zani.session.infrastructure.livekit;
+
+import java.io.IOException;
+import java.util.List;
+
+import io.livekit.server.RoomServiceClient;
+import livekit.LivekitModels;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import retrofit2.Response;
+
+import com.a105.zani.session.application.port.MediaModerationPort;
+import com.a105.zani.session.application.port.MediaMuteChange;
+import com.a105.zani.session.application.port.MediaRoomPort;
+
+/**
+ * LiveKit RoomService 로 참가자의 마이크 트랙을 끈다.
+ *
+ * <p><b>참가자 단위가 아니라 트랙 단위로 끈다.</b> LiveKit 이 제공하는 것이 {@code mutePublishedTrack} 뿐이라, 먼저 참가자의 트랙 목록에서 마이크를 찾아야 한다. 화면 공유
+ * 오디오({@code SCREEN_SHARE_AUDIO})는 건드리지 않는다 — 발표 중인 학생의 화면 소리까지 끄는 것은 "강제 음소거" 가 약속한 범위를 넘는다.
+ *
+ * <p><b>실패는 감추지 않는다.</b> 못 껐는데 성공으로 돌려주면 호출한 쪽이 전 참가자에게 음소거됐다고 알리고, 화면에는 음소거인데 실제로는 소리가 나가는 상태가 된다. 소리는 손들기와 달리 어긋난 것을
+ * 눈으로 확인할 수도 없다.
+ */
+@Slf4j
+@Component
+public class LiveKitModerationAdapter implements MediaModerationPort {
+
+    private final RoomServiceClient roomServiceClient;
+    private final MediaRoomPort mediaRoomPort;
+
+    public LiveKitModerationAdapter(RoomServiceClient roomServiceClient, MediaRoomPort mediaRoomPort) {
+        this.roomServiceClient = roomServiceClient;
+        this.mediaRoomPort = mediaRoomPort;
+    }
+
+    @Override
+    public MediaMuteChange muteMicrophone(long sessionId, String identity) {
+        String roomName = mediaRoomPort.roomName(sessionId);
+        try {
+            LivekitModels.ParticipantInfo participant = fetchParticipant(roomName, identity);
+            if (participant == null) {
+                // 방에 없는 참가자다. 소리가 나갈 수 없으므로 끌 것도 없다.
+                return MediaMuteChange.NO_ACTIVE_TRACK;
+            }
+
+            LivekitModels.TrackInfo microphone = microphoneTrackOf(participant);
+            if (microphone == null) {
+                return MediaMuteChange.NO_ACTIVE_TRACK;
+            }
+            if (microphone.getMuted()) {
+                return MediaMuteChange.UNCHANGED;
+            }
+
+            Response<LivekitModels.TrackInfo> muted = roomServiceClient
+                    .mutePublishedTrack(roomName, identity, microphone.getSid(), true)
+                    .execute();
+            if (!muted.isSuccessful()) {
+                log.warn("LiveKit 이 음소거를 거절했습니다. sessionId={} code={}", sessionId, muted.code());
+                return MediaMuteChange.UNAVAILABLE;
+            }
+            return MediaMuteChange.CHANGED;
+        } catch (IOException | RuntimeException unavailable) {
+            log.warn("LiveKit 을 쓰지 못해 음소거하지 못했습니다. sessionId={}", sessionId, unavailable);
+            return MediaMuteChange.UNAVAILABLE;
+        }
+    }
+
+    /** 대상이 방에 없으면 404 가 오므로 예외가 아니라 null 로 다룬다. */
+    private LivekitModels.ParticipantInfo fetchParticipant(String roomName, String identity) throws IOException {
+        Response<LivekitModels.ParticipantInfo> response =
+                roomServiceClient.getParticipant(roomName, identity).execute();
+        return response.isSuccessful() ? response.body() : null;
+    }
+
+    /**
+     * 마이크 트랙 하나. 카메라·화면 공유는 대상이 아니다.
+     *
+     * <p>{@code SCREEN_SHARE_AUDIO} 를 제외하는 것이 중요하다 — 그것까지 끄면 화면을 공유 중인 학생의 발표 소리가 함께 사라진다.
+     */
+    private static LivekitModels.TrackInfo microphoneTrackOf(LivekitModels.ParticipantInfo participant) {
+        List<LivekitModels.TrackInfo> tracks = participant.getTracksList();
+        for (LivekitModels.TrackInfo track : tracks) {
+            if (track.getSource() == LivekitModels.TrackSource.MICROPHONE) {
+                return track;
+            }
+        }
+        return null;
+    }
+}
