@@ -67,6 +67,31 @@ const peoplePanel = (list: Participant[], isInstructor = false) => (
 
 afterEach(cleanup);
 
+describe("RoomSidePanel 참가자 제어", () => {
+  it("강사에게 음소거 버튼만 보이고 퇴장 버튼은 없다", () => {
+    render(
+      peoplePanel(
+        [
+          {
+            id: "p-11",
+            name: "박서준",
+            color: "#10b981",
+            host: true,
+            cam: true,
+            mic: true,
+            hand: false,
+          },
+          { id: "p-22", name: "이지은", color: "#c9a24b", cam: true, mic: true, hand: false },
+        ],
+        true,
+      ),
+    );
+
+    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "이지은 퇴장" })).not.toBeInTheDocument();
+  });
+});
+
 describe("RoomSidePanel 참가자 상태 아이콘", () => {
   it("마이크·카메라 켜짐과 꺼짐을 아이콘 라벨로 구분해 알린다", () => {
     render(

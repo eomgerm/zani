@@ -238,16 +238,6 @@ export function CloseIcon({ size = 22, className }: IconProps) {
   );
 }
 
-/** 참가자 퇴장(문 밖으로 나가는 화살표) */
-export function KickIcon({ size = 13, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 2, className)}>
-      <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8" />
-      <path d="M14 12h7M18 8l4 4-4 4" />
-    </svg>
-  );
-}
-
 /** 화면 공유 오버레이의 모니터 일러스트 */
 export function MonitorIcon({ size = 60, className }: IconProps) {
   return (

@@ -130,7 +130,8 @@ describe("ParticipantGrid", () => {
     );
 
     expect(screen.getAllByRole("button", { name: "참가자 1 음소거" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "참가자 1 퇴장" })).toHaveLength(1);
+    // 퇴장 버튼은 어디에도 없어야 한다(티켓 246).
+    expect(screen.queryByRole("button", { name: "참가자 1 퇴장" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "참가자 0 음소거" })).not.toBeInTheDocument();
   });
 });

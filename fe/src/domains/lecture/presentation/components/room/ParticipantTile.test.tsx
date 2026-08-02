@@ -152,7 +152,8 @@ describe("ParticipantTile", () => {
       />,
     );
 
+    // 퇴장은 기능 자체가 범위 밖이라 버튼을 두지 않는다(티켓 246). 음소거만 남는다.
     expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "이지은 퇴장" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "이지은 퇴장" })).not.toBeInTheDocument();
   });
 });

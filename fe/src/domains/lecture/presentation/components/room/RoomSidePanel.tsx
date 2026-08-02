@@ -4,7 +4,6 @@ import {
   CameraIcon,
   CameraOffIcon,
   HandIcon,
-  KickIcon,
   MicIcon,
   MicOffIcon,
 } from "@/shared/ui";
@@ -217,25 +216,16 @@ export function RoomSidePanel({
                     </span>
                   </div>
                 </div>
+                {/* 퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖). 음소거 동작 연결은 별도 티켓(66) 소관이라 아직 시각 스텁이다. */}
                 {canControl && (
-                  <>
-                    <button
-                      type="button"
-                      title="음소거"
-                      aria-label={`${p.name} 음소거`}
-                      className={rowBtnCls}
-                    >
-                      🔇
-                    </button>
-                    <button
-                      type="button"
-                      title="퇴장"
-                      aria-label={`${p.name} 퇴장`}
-                      className={rowBtnCls}
-                    >
-                      <KickIcon size={14} />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    title="음소거"
+                    aria-label={`${p.name} 음소거`}
+                    className={rowBtnCls}
+                  >
+                    🔇
+                  </button>
                 )}
               </div>
             );

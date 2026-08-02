@@ -37,6 +37,5 @@ export {
   HandIcon,
   ReactionIcon,
   CloseIcon,
-  KickIcon,
   MonitorIcon,
 } from "./icons";

@@ -1,4 +1,4 @@
-import { CameraOffIcon, HandIcon, KickIcon, MicOffIcon } from "@/shared/ui";
+import { CameraOffIcon, HandIcon, MicOffIcon } from "@/shared/ui";
 
 export type ParticipantTileData = {
   id: string;
@@ -121,6 +121,7 @@ export function ParticipantTile({
         </div>
       </div>
 
+      {/* 퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖). 음소거 동작 연결은 별도 티켓(66) 소관이라 아직 시각 스텁이다. */}
       {canControl && (
         <div className="absolute right-1.5 top-1.5 flex gap-1">
           <button
@@ -130,14 +131,6 @@ export function ParticipantTile({
             className="size-[26px] cursor-pointer rounded-lg border-0 bg-black/70 text-[11px] text-white backdrop-blur-[4px]"
           >
             🔇
-          </button>
-          <button
-            type="button"
-            aria-label={`${name} 퇴장`}
-            title="퇴장"
-            className="flex size-[26px] cursor-pointer items-center justify-center rounded-lg border-0 bg-black/70 text-white backdrop-blur-[4px]"
-          >
-            <KickIcon />
           </button>
         </div>
       )}
