@@ -46,6 +46,12 @@ const hands = vi.hoisted(() => ({
   toggle: vi.fn(),
 }));
 
+const moderation = vi.hoisted(() => ({
+  mutingIdentity: null as string | null,
+  muteError: null as string | null,
+  mute: vi.fn(),
+}));
+
 const sessionReactions = vi.hoisted(() => ({
   reactions: [] as { key: string; emoji: string; left: number }[],
   canReact: true,
@@ -58,6 +64,7 @@ vi.mock("@/domains/interaction", () => ({
   useChatUnread: () => chatUnread.value,
   useRaisedHands: () => hands,
   useSessionReactions: () => sessionReactions,
+  useModeration: () => moderation,
   REACTION_KINDS: ["LIKE", "HEART", "CLAP", "CELEBRATE", "WOW", "CHEER"],
   REACTION_EMOJI: {
     LIKE: "👍",

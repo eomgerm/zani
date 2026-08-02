@@ -28,6 +28,10 @@ type ParticipantTileProps = {
   mirrored?: boolean;
   /** 칸 안에서 비율을 지키며 차지할 크기. 그리드가 정해 내려준다. */
   fit?: React.CSSProperties;
+  /** 강사가 이 참가자를 음소거한다. 없으면 버튼이 아무 일도 하지 않는다(스토리북·테스트). */
+  onMute?: () => void;
+  /** 이 참가자에 대한 음소거 요청이 진행 중인지. 중복 클릭을 막는다. */
+  muting?: boolean;
 };
 
 const statusLabel = ({
@@ -48,6 +52,8 @@ const statusLabel = ({
 export function ParticipantTile({
   participant,
   canControl = false,
+  onMute,
+  muting = false,
   videoRef,
   mirrored = false,
   fit,
@@ -113,16 +119,27 @@ export function ParticipantTile({
         </div>
       </div>
 
-      {/* 퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖). 음소거 동작 연결은 별도 티켓(66) 소관이라 아직 시각 스텁이다. */}
+      {/*
+        퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖).
+
+        아이콘이 아니라 글자를 쓴다. 이름칩의 MicOffIcon 이 "지금 음소거 상태"를 뜻하는데, 같은 그림을
+        버튼에 쓰면 상태와 동작이 한 그림에 겹쳐 무엇을 하는 버튼인지 읽히지 않는다. 강제 해제가 없어
+        되돌릴 수 없는 동작이라 더 분명해야 한다.
+
+        이미 음소거면 누를 이유가 없어 비활성화한다. 숨기지 않는 이유는 자리가 들쭉날쭉해지지 않게
+        하려는 것이고, title 로 왜 못 누르는지 알린다.
+      */}
       {canControl && (
         <div className="absolute right-1.5 top-1.5 flex gap-1">
           <button
             type="button"
+            onClick={onMute}
+            disabled={!microphoneEnabled || muting}
             aria-label={`${name} 음소거`}
-            title="음소거"
-            className="flex size-[26px] cursor-pointer items-center justify-center rounded-lg border-0 bg-black/70 text-white backdrop-blur-[4px]"
+            title={!microphoneEnabled ? "이미 음소거됨" : muting ? "음소거하는 중" : "음소거"}
+            className="cursor-pointer rounded-lg border-0 bg-black/70 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-[4px] transition-[filter] hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            <MicOffIcon size={13} />
+            음소거
           </button>
         </div>
       )}

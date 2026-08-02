@@ -41,7 +41,7 @@ describe("parseSessionEvent", () => {
     expect(parse(malformed)).toBeNull();
   });
 
-  /** 65~66 이 배포되는 사이 이 화면이 먼저 떠 있을 수 있다. 오류로 다루지 않고 조용히 버린다. */
+  /** 아직 없는 종류가 먼저 배포될 수 있다. 오류로 다루지 않고 조용히 버린다. */
   it("모르는 종류는 null 을 준다", () => {
     expect(parse({ ...validEvent, type: "FORCE_MUTED" })).toBeNull();
   });

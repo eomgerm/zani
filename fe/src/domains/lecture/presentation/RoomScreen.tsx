@@ -30,6 +30,7 @@ import {
   useChatUnread,
   useRaisedHands,
   useSessionChat,
+  useModeration,
   useSessionReactions,
   type ReactionKind,
 } from "@/domains/interaction";
@@ -198,6 +199,9 @@ function RoomScreenContent({
   // 손들기 현재 상태는 서버가 들고 있다. 여기서 로컬로 뒤집으면 서버가 거절했을 때(비멤버·저장소
   // 장애) 내 화면만 손이 올라간 채로 남는다. 아래에서 집합 포함 여부로만 쓰고 순서는 보지 않는다.
   const hands = useRaisedHands({ myIdentity: localParticipantId });
+  // 강사 강제 음소거. 마이크 상태는 LiveKit 이 전파하므로(RoomEvent.TrackMuted) 여기서 다시 바꾸지
+  // 않는다 — 이 훅이 하는 일은 요청을 보내고 실패를 강사에게 알리는 것뿐이다.
+  const moderation = useModeration({ sessionId });
   // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기도 이제 서버 확정 값이다.
   const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: hands.myHandRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
@@ -675,6 +679,8 @@ function RoomScreenContent({
                 videoRefFor={participantVideos.refFor}
                 isInstructor={isInstructor}
                 narrow={panelOpen}
+                onMute={isConfirmedInstructor ? moderation.mute : undefined}
+                mutingIdentity={moderation.mutingIdentity}
               />
             ) : (
               <>
@@ -881,6 +887,21 @@ function RoomScreenContent({
           {promptToast}
         </div>
       )}
+
+      {/*
+        음소거 실패는 반드시 보여야 한다. 삼키면 강사는 껐다고 믿는데 학생 소리는 계속 나가고,
+        조용해진 줄 알고 수업을 이어가므로 알아챌 방법이 없다.
+      */}
+      {moderation.muteError !== null && (
+        <div
+          role="alert"
+          data-testid="mute-error"
+          className="absolute bottom-24 left-1/2 z-50 -translate-x-1/2 animate-[zPop_.2s] rounded-[14px] border border-danger bg-[#2a1a20] px-5 py-3 text-[13px] text-danger-light"
+        >
+          {moderation.muteError}
+        </div>
+      )}
+
 
       {/* 나가기 확인 말풍선(강사 전용). 종료는 모든 참가자가 나가는 되돌릴 수 없는 조작이라 한 번 더 묻는다. */}
       {leaveConfirming && (
