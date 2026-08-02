@@ -62,7 +62,7 @@ public class CaptureAudioClipService implements CaptureAudioClipUseCase {
                 audio.actual().toMillis(),
                 audio.audio().length,
                 audio.contentType());
-        return CaptureAudioClipResult.of(transcript, audio.actual().toMillis());
+        return CaptureAudioClipResult.of(transcript, audio.actual().toMillis(), audio.fromEpochMs(), audio.toEpochMs());
     }
 
     /** 전사 실패는 그대로 전파한다. 어느 경로로 끝나든 오디오 바이트는 이 메서드를 벗어나며 참조가 사라진다. 버퍼는 비우지 않는다 — 다음 트리거가 같은 구간을 다시 시도할 수 있어야 한다. */

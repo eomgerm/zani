@@ -23,11 +23,13 @@ import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipCommand;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipResult;
 import com.a105.zani.audioclip.application.captureclip.CaptureAudioClipUseCase;
 import com.a105.zani.audioclip.application.exception.AudioClipTranscriptionFailedException;
+import com.a105.zani.coach.application.port.CoachingTipSettings;
 import com.a105.zani.coach.application.port.TipConcept;
 import com.a105.zani.coach.application.port.TipConceptPort;
 import com.a105.zani.coach.application.port.TipConceptRequest;
-import com.a105.zani.coach.infrastructure.config.CoachPipelineProperties;
-import com.a105.zani.coach.infrastructure.config.CoachTipProperties;
+import com.a105.zani.coach.application.storehistory.CoachingHistory;
+import com.a105.zani.coach.application.storehistory.CoachingTranscriptStatus;
+import com.a105.zani.coach.application.storehistory.StoreCoachingHistoryUseCase;
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextResult;
 import com.a105.zani.session.application.getcoachingcontext.GetSessionCoachingContextUseCase;
@@ -45,6 +47,10 @@ class GenerateCoachingTipServiceTest {
     private static final Executor DIRECT = Runnable::run;
 
     private final List<CoachingOutcome> stored = new ArrayList<>();
+    private final List<CoachingHistory> histories = new ArrayList<>();
+    /** 폴링 상태와 이력 저장의 호출 순서. 수업 중 화면이 사후 리포트용 저장을 기다리지 않는지 본다. */
+    private final List<String> callOrder = new ArrayList<>();
+
     private final List<TipConceptRequest> extracted = new ArrayList<>();
     private final List<CaptureAudioClipCommand> captured = new ArrayList<>();
 
@@ -62,6 +68,7 @@ class GenerateCoachingTipServiceTest {
 
             @Override
             public void completeOutcome(long sessionId, CoachingOutcome outcome) {
+                callOrder.add("OUTCOME");
                 stored.add(outcome);
             }
 
@@ -78,6 +85,18 @@ class GenerateCoachingTipServiceTest {
 
     private GenerateCoachingTipService service(
             Executor executor, CaptureAudioClipUseCase capture, TipConceptPort conceptPort, Duration maxTriggerDelay) {
+        return service(executor, capture, conceptPort, maxTriggerDelay, history -> {
+            callOrder.add("HISTORY");
+            histories.add(history);
+        });
+    }
+
+    private GenerateCoachingTipService service(
+            Executor executor,
+            CaptureAudioClipUseCase capture,
+            TipConceptPort conceptPort,
+            Duration maxTriggerDelay,
+            StoreCoachingHistoryUseCase historyStore) {
         return new GenerateCoachingTipService(
                 executor,
                 Clock.fixed(TRIGGERED_AT.plusSeconds(1), ZoneOffset.UTC),
@@ -85,8 +104,8 @@ class GenerateCoachingTipServiceTest {
                 capture,
                 conceptPort,
                 statePort(),
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, maxTriggerDelay));
+                historyStore,
+                new CoachingTipSettings(0.5, 3000, maxTriggerDelay));
     }
 
     private GenerateCoachingTipService service(CaptureAudioClipUseCase capture, TipConceptPort conceptPort) {
@@ -96,7 +115,7 @@ class GenerateCoachingTipServiceTest {
     private CaptureAudioClipUseCase transcribing(String transcript) {
         return command -> {
             captured.add(command);
-            return new CaptureAudioClipResult(true, transcript, 300_000);
+            return new CaptureAudioClipResult(true, transcript, 300_000, 1_000_000L, 1_300_000L);
         };
     }
 
@@ -109,12 +128,12 @@ class GenerateCoachingTipServiceTest {
 
     /** 개념이 필요 없는 유형: 무응답이 지배적. */
     private CoachingTipRequest fixedTipRequest() {
-        return new CoachingTipRequest(SESSION_ID, "trigger-1", TRIGGERED_AT, 10, 0.4, 0, 0, 0.4, 0, null);
+        return new CoachingTipRequest(SESSION_ID, "trigger-1", TRIGGERED_AT, 10, 4, 0, 0, 4, 0, null);
     }
 
     /** 개념이 필요한 유형: 헷갈림이 지배적. */
     private CoachingTipRequest conceptTipRequest() {
-        return new CoachingTipRequest(SESSION_ID, "trigger-2", TRIGGERED_AT, 10, 0.3, 0.3, 0, 0, 0, null);
+        return new CoachingTipRequest(SESSION_ID, "trigger-2", TRIGGERED_AT, 10, 3, 3, 0, 0, 0, null);
     }
 
     private CoachingOutcome onlyStored() {
@@ -140,6 +159,10 @@ class GenerateCoachingTipServiceTest {
         assertThat(outcome.tip().tipType()).isEqualTo(CoachingTipType.NON_RESPONSE);
         assertThat(outcome.tip().message()).contains("전체 학생의 40%가 질문에 응답하지 않았어요.");
         assertThat(outcome.tip().targetConcept()).isNull();
+        assertThat(histories).singleElement().satisfies(history -> {
+            assertThat(history.transcript().status()).isEqualTo(CoachingTranscriptStatus.SKIPPED_NOT_REQUIRED);
+            assertThat(history.tip()).isEqualTo(outcome.tip());
+        });
     }
 
     @Test
@@ -159,6 +182,24 @@ class GenerateCoachingTipServiceTest {
     }
 
     @Test
+    @DisplayName("폴링 상태를 이력보다 먼저 쓴다 — 수업 중 화면이 사후 저장을 기다리지 않는다")
+    void writesThePollableOutcomeBeforeTheHistory() {
+        GenerateCoachingTipService service = service(
+                DIRECT,
+                command -> {
+                    throw new AssertionError("전사를 부르지 않아야 한다");
+                },
+                request -> null,
+                Duration.ofSeconds(10));
+
+        service.start(fixedTipRequest());
+
+        // 고정 문구 팁은 executor 를 거치지 않고 폴링 요청 스레드에서 저장까지 수행한다. 이력이 앞에 오면
+        // MySQL 이 느려질 때 팁이 뜨는 시점까지 밀린다.
+        assertThat(callOrder).containsExactly("OUTCOME", "HISTORY");
+    }
+
+    @Test
     @DisplayName("개념이 필요한 유형은 전사 뒤 GMS 개념으로 문구를 완성한다")
     void completesConceptTip() {
         GenerateCoachingTipService service =
@@ -171,6 +212,13 @@ class GenerateCoachingTipServiceTest {
         assertThat(outcome.tip().message()).contains("제네릭 와일드카드를 다른 예시로 다시 설명해 주세요.");
         assertThat(outcome.tip().targetConcept()).isEqualTo("제네릭 와일드카드");
         assertThat(captured).containsExactly(new CaptureAudioClipCommand(SESSION_ID));
+        assertThat(histories).singleElement().satisfies(history -> {
+            assertThat(history.transcript().status()).isEqualTo(CoachingTranscriptStatus.TRANSCRIBED);
+            assertThat(history.transcript().startedAt()).isEqualTo(Instant.ofEpochMilli(1_000_000));
+            assertThat(history.transcript().endedAt()).isEqualTo(Instant.ofEpochMilli(1_300_000));
+            assertThat(history.topic()).isEqualTo(outcome.tip().targetConcept());
+            assertThat(history.responseCounts().confused()).isEqualTo(3);
+        });
     }
 
     @Test
@@ -232,7 +280,7 @@ class GenerateCoachingTipServiceTest {
     @DisplayName("전사를 건너뛴 트리거는 NO_TRANSCRIPT 다")
     void reportsNoTranscriptWhenNothingWasSaid() {
         GenerateCoachingTipService service =
-                service(command -> new CaptureAudioClipResult(false, null, 30_000), request -> {
+                service(command -> new CaptureAudioClipResult(false, null, 30_000, null, null), request -> {
                     throw new AssertionError("전사가 없으면 GMS 를 부르지 않아야 한다");
                 });
 
@@ -281,8 +329,8 @@ class GenerateCoachingTipServiceTest {
                 },
                 request -> null,
                 statePort(),
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+                histories::add,
+                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
 
         service.start(conceptTipRequest());
 
@@ -323,12 +371,30 @@ class GenerateCoachingTipServiceTest {
                 transcribing("제네릭 와일드카드"),
                 concept(new TipConcept("제네릭", 0.9)),
                 failingStatePort(),
-                new CoachTipProperties(0.5, 100, 3000),
-                new CoachPipelineProperties(2, 6, Duration.ofSeconds(10)));
+                histories::add,
+                new CoachingTipSettings(0.5, 3000, Duration.ofSeconds(10)));
 
         service.start(conceptTipRequest());
 
         assertThat(stored).isEmpty();
+        assertThat(histories).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("DB history failure does not block the coaching result")
+    void historyFailureDoesNotBlockCoachingResult() {
+        GenerateCoachingTipService service = service(
+                DIRECT,
+                transcribing("concept transcript"),
+                concept(new TipConcept("concept", 0.9)),
+                Duration.ofSeconds(10),
+                history -> {
+                    throw new IllegalStateException("mysql down");
+                });
+
+        service.start(conceptTipRequest());
+
+        assertThat(stored).hasSize(1);
     }
 
     private Executor rejectingExecutor() {
