@@ -35,7 +35,7 @@ class CoachingHistoryPersistenceIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void storesThreeAnonymousTimelineRowsAndIgnoresADuplicateTrigger() {
+    void storesThreeAnonymousTimelineRows() {
         long sessionId = createSession();
         CoachingHistory first = completed(sessionId, "trigger-1", 1);
         CoachingHistory second = unavailable(sessionId, "trigger-2", 2);
@@ -44,7 +44,6 @@ class CoachingHistoryPersistenceIntegrationTest {
         persistCoachingHistoryUseCase.persist(first);
         persistCoachingHistoryUseCase.persist(second);
         persistCoachingHistoryUseCase.persist(third);
-        persistCoachingHistoryUseCase.persist(second);
 
         List<String> triggerIds = jdbcTemplate.queryForList(
                 "SELECT trigger_id FROM coaching_histories WHERE session_id = ? ORDER BY triggered_at",
@@ -104,6 +103,34 @@ class CoachingHistoryPersistenceIntegrationTest {
                         + " AND column_name = 'transcript_text'",
                 String.class);
         assertThat(transcriptTextColumns).isEmpty();
+    }
+
+    @Test
+    void returnsFalseAndKeepsFiveResponseCountsWhenSameTriggerIsRetried() {
+        long sessionId = createSession();
+        CoachingHistory history = completed(sessionId, "duplicate-trigger", 1);
+
+        boolean firstStored = persistCoachingHistoryUseCase.persist(history);
+        boolean duplicateStored = persistCoachingHistoryUseCase.persist(history);
+
+        assertThat(firstStored).isTrue();
+        assertThat(duplicateStored).isFalse();
+
+        Integer historyRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coaching_histories WHERE session_id = ? AND trigger_id = ?",
+                Integer.class,
+                sessionId,
+                history.triggerId());
+        assertThat(historyRows).isEqualTo(1);
+
+        Integer responseRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM coaching_history_response_counts c"
+                        + " JOIN coaching_histories h ON h.id = c.coaching_history_id"
+                        + " WHERE h.session_id = ? AND h.trigger_id = ?",
+                Integer.class,
+                sessionId,
+                history.triggerId());
+        assertThat(responseRows).isEqualTo(5);
     }
 
     @Test
