@@ -69,9 +69,15 @@ bisecting request sizes against the live gateway.
 | 102,400 B | accepted |
 | 102,401 B | rejected |
 
-The limit is exactly 100 KiB and applies to **both** LLM upstreams. Measured
-byte-exact on `POST {openai}/v1/chat/completions`; confirmed on the Google path
-as well (90,434 B accepted, 102,846 B rejected).
+The table above is the OpenAI path, bisected to the byte on
+`POST {openai}/v1/chat/completions`: 102,400 B accepted, 102,401 B rejected —
+exactly 100 KiB.
+
+The Google path was **not** bisected to the byte. It was bracketed only:
+90,434 B accepted, 102,846 B rejected. That bracket contains 102,400 B and the
+failure looks the same, so the same limit almost certainly applies to both
+upstreams — but treat 100 KiB as measured for OpenAI and inferred for Google
+until someone narrows it.
 
 **The failure mode is silent truncation, not an error about size.** The gateway
 forwards a request whose body has been cut, so the upstream reports a missing
@@ -98,8 +104,8 @@ larger-context model does not change it.
 | 26,624,000 B (26 MB) | `413: Maximum content size limit (26214400) exceeded` |
 
 Exactly 25 MiB, and unlike §4.1 this one returns an honest `413`. Multipart is
-**270 times more permissive than JSON**, so audio belongs in multipart and never
-base64-encoded into a JSON body.
+**256 times more permissive than JSON** (26,214,400 / 102,400), so audio belongs
+in multipart and never base64-encoded into a JSON body.
 
 ## 5. Rate limits
 
@@ -213,8 +219,9 @@ see images; the gateway cannot carry video:
 
 - the File API is unreachable (§2), so large media cannot be uploaded and
   referenced;
-- inline media must fit the 100 KiB JSON body (§4.1), leaving roughly 72 KB
-  after base64 expansion — less than a single high-quality video frame.
+- inline media must fit the 100 KiB JSON body (§4.1). Base64 costs a third, so
+  the payload itself gets roughly 75 KB — less than a single high-quality video
+  frame, before counting the prompt that has to travel with it.
 
 Ten-to-fifteen-minute video chunks are therefore not deliverable to GMS by any
 available route. Non-verbal signals such as pointing or gesture emphasis cannot
