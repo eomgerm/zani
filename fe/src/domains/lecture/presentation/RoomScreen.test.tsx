@@ -436,6 +436,7 @@ describe("RoomScreen view toggle", () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     }));
     roomParticipants.localParticipantId = "p0";
   };
@@ -569,6 +570,7 @@ describe("RoomScreen controls", () => {
         cameraEnabled: true,
         microphoneEnabled: true,
         handRaised: false,
+        speaking: false,
       },
     ];
     roomParticipants.localParticipantId = "me";
@@ -930,6 +932,7 @@ describe("RoomScreen attention wiring", () => {
         cameraEnabled: true,
         microphoneEnabled: true,
         handRaised: false,
+        speaking: false,
       },
     ];
     roomParticipants.localParticipantId = "host-1";
