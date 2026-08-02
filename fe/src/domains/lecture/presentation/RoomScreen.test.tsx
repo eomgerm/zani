@@ -36,6 +36,9 @@ const chat = vi.hoisted(() => ({
   retry: vi.fn(),
 }));
 
+/** 읽지 않은 채팅 여부. 판정 규칙은 useChatUnread.test 가 검증하고, 여기서는 버튼 전달만 본다. */
+const chatUnread = vi.hoisted(() => ({ value: false }));
+
 const hands = vi.hoisted(() => ({
   raisedIdentities: [] as string[],
   myHandRaised: false,
@@ -52,6 +55,7 @@ const sessionReactions = vi.hoisted(() => ({
 vi.mock("@/domains/interaction", () => ({
   SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionChat: () => chat,
+  useChatUnread: () => chatUnread.value,
   useRaisedHands: () => hands,
   useSessionReactions: () => sessionReactions,
   REACTION_KINDS: ["LIKE", "HEART", "CLAP", "CELEBRATE", "WOW", "CHEER"],
@@ -114,6 +118,7 @@ const roomParticipants = vi.hoisted(() => ({
     cameraEnabled: boolean;
     microphoneEnabled: boolean;
     handRaised: boolean;
+    speaking: boolean;
   }[],
   localParticipantId: null as string | null,
 }));
@@ -176,6 +181,7 @@ const asStudent = () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     },
   ];
   roomParticipants.localParticipantId = "me";
@@ -191,6 +197,7 @@ const asInstructor = () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     },
   ];
   roomParticipants.localParticipantId = "me";
@@ -200,6 +207,7 @@ afterEach(() => {
   cleanup();
   push.mockClear();
   endSessionRequest.mockReset();
+  chatUnread.value = false;
   presence.reconnectStatus = null;
   presence.sessionEnded = false;
   presence.error = null;
@@ -223,6 +231,135 @@ afterEach(() => {
   screenShare.activeIdentity = null;
   screenShare.toggle.mockClear();
   vi.useRealTimers();
+});
+
+describe("RoomScreen active speaker", () => {
+  it("passes the speaking state through to the participant tile border", () => {
+    roomParticipants.participants = [
+      {
+        id: "me",
+        name: "김도현",
+        color: "#2aa584",
+        role: "student",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: true,
+      },
+    ];
+    roomParticipants.localParticipantId = "me";
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("group", { name: /김도현/ }).className).toContain("border-[#2fbf88]");
+  });
+});
+
+describe("RoomScreen speaker view stage", () => {
+  const withSpeakingStudent = (studentSpeaking: boolean) => {
+    roomParticipants.participants = [
+      {
+        id: "host",
+        name: "박서준",
+        color: "#10b981",
+        role: "instructor",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: false,
+      },
+      {
+        id: "s1",
+        name: "김도현",
+        color: "#2aa584",
+        role: "student",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: studentSpeaking,
+      },
+    ];
+    roomParticipants.localParticipantId = "host";
+  };
+
+  it("puts the active speaker on the stage in speaker view", () => {
+    withSpeakingStudent(true);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    // 학생이 스테이지에 오르면 "강의: ... 선생님" 대신 "발표: 이름"으로 표기한다.
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("keeps the last speaker on stage after the speech ends", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    // 침묵할 때마다 강사로 되돌리면 화면이 널뛴다 — 새 발화자가 나올 때까지 유지한다.
+    withSpeakingStudent(false);
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("does not steal the stage while the current speaker is still talking", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    // 배열 순서상 앞선(로컬) 강사가 동시에 말해도, 말하는 중인 스테이지는 뺏기지 않는다(!126 봇 리뷰).
+    roomParticipants.participants = roomParticipants.participants.map((p) =>
+      p.id === "host" ? { ...p, speaking: true } : p,
+    );
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("hands the stage over once the current speaker goes silent", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    roomParticipants.participants = roomParticipants.participants.map((p) =>
+      p.id === "host" ? { ...p, speaking: true } : { ...p, speaking: false },
+    );
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+  });
+
+  it("shows the instructor on stage while nobody has spoken yet", () => {
+    withSpeakingStudent(false);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+  });
+});
+
+describe("RoomScreen chat unread dot", () => {
+  it("passes the unread state to the chat toggle as a dot and an accessible label", () => {
+    asStudent();
+    chatUnread.value = true;
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("button", { name: "새 채팅 메시지 있음, 채팅 열기" })).toBeVisible();
+    expect(screen.getByTestId("panel-toggle-dot")).toBeInTheDocument();
+  });
+
+  it("shows the plain chat label without a dot when nothing is unread", () => {
+    asStudent();
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("button", { name: "채팅 열기" })).toBeVisible();
+    expect(screen.queryByTestId("panel-toggle-dot")).not.toBeInTheDocument();
+  });
 });
 
 describe("RoomScreen side panel", () => {
@@ -256,10 +393,10 @@ describe("RoomScreen side panel", () => {
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
-    fireEvent.click(screen.getByRole("button", { name: "채팅" }));
+    fireEvent.click(screen.getByRole("button", { name: "채팅 열기" }));
 
     expect(screen.getByPlaceholderText("전체에게 메시지 보내기")).toBeVisible();
-    expect(screen.getByRole("button", { name: "채팅" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "채팅 열기" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "참여자" })).toHaveAttribute(
       "aria-pressed",
       "false",
@@ -270,7 +407,7 @@ describe("RoomScreen side panel", () => {
     asStudent();
     render(<RoomScreen sessionId="123" />);
 
-    const chat = screen.getByRole("button", { name: "채팅" });
+    const chat = screen.getByRole("button", { name: "채팅 열기" });
     fireEvent.click(chat);
     fireEvent.click(chat);
 
@@ -283,7 +420,7 @@ describe("RoomScreen side panel", () => {
 
     // 기본은 갤러리 보기(토글 라벨이 "발표자 보기")인 상태에서 패널이 열린다.
     expect(screen.getByRole("button", { name: /발표자 보기/ })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "채팅" }));
+    fireEvent.click(screen.getByRole("button", { name: "채팅 열기" }));
 
     expect(screen.getByPlaceholderText("전체에게 메시지 보내기")).toBeVisible();
   });
@@ -299,6 +436,7 @@ describe("RoomScreen view toggle", () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     }));
     roomParticipants.localParticipantId = "p0";
   };
@@ -432,6 +570,7 @@ describe("RoomScreen controls", () => {
         cameraEnabled: true,
         microphoneEnabled: true,
         handRaised: false,
+        speaking: false,
       },
     ];
     roomParticipants.localParticipantId = "me";
@@ -793,6 +932,7 @@ describe("RoomScreen attention wiring", () => {
         cameraEnabled: true,
         microphoneEnabled: true,
         handRaised: false,
+        speaking: false,
       },
     ];
     roomParticipants.localParticipantId = "host-1";

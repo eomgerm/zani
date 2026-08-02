@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Avatar, HandIcon, KickIcon } from "@/shared/ui";
+import { Avatar, HandIcon, MicOffIcon } from "@/shared/ui";
 import type { ChatMessageView } from "@/domains/interaction";
 import type { Participant } from "../../fixtures";
 
@@ -189,32 +189,20 @@ export function RoomSidePanel({
             return (
               <div key={p.id} className="flex items-center gap-2.5 px-1.5 py-2">
                 <Avatar initial={p.name.charAt(0)} size={34} bg={avatarBg(p.color)} />
+                {/* 마이크·카메라 상태는 타일이 이미 보여준다 — 목록에는 이름만 남긴다(피드백 반영). */}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-bold text-panel-text">{nameTag}</div>
-                  <div className="text-[11px] text-room-status">
-                    {p.cam ? "카메라 켜짐" : "카메라 꺼짐"}
-                    {p.mic ? "" : " · 음소거"}
-                  </div>
                 </div>
+                {/* 퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖). 음소거 동작 연결은 별도 티켓(66) 소관이라 아직 시각 스텁이다. */}
                 {canControl && (
-                  <>
-                    <button
-                      type="button"
-                      title="음소거"
-                      aria-label={`${p.name} 음소거`}
-                      className={rowBtnCls}
-                    >
-                      🔇
-                    </button>
-                    <button
-                      type="button"
-                      title="퇴장"
-                      aria-label={`${p.name} 퇴장`}
-                      className={rowBtnCls}
-                    >
-                      <KickIcon size={14} />
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    title="음소거"
+                    aria-label={`${p.name} 음소거`}
+                    className={rowBtnCls}
+                  >
+                    <MicOffIcon size={13} />
+                  </button>
                 )}
               </div>
             );

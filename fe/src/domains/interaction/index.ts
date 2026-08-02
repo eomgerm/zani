@@ -13,6 +13,8 @@ export type {
   UseSessionChatResult,
 } from "./presentation/useSessionChat";
 export type { ChatEntryStatus, ChatMessageView } from "./presentation/chatMessages";
+export { useChatUnread } from "./presentation/useChatUnread";
+export type { UseChatUnreadOptions } from "./presentation/useChatUnread";
 export { useRaisedHands } from "./presentation/useRaisedHands";
 export type {
   UseRaisedHandsOptions,

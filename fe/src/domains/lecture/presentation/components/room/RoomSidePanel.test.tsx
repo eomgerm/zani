@@ -52,7 +52,45 @@ const panelWith = ({
   />
 );
 
+const peoplePanel = (list: Participant[], isInstructor = false) => (
+  <RoomSidePanel
+    panel="people"
+    participants={list}
+    messages={[]}
+    meId="p-11"
+    isInstructor={isInstructor}
+    canSendChat
+    onSendChat={vi.fn()}
+    onRetryChat={vi.fn()}
+  />
+);
+
 afterEach(cleanup);
+
+describe("RoomSidePanel 참가자 제어", () => {
+  it("강사에게 음소거 버튼만 보이고 퇴장 버튼은 없다", () => {
+    render(
+      peoplePanel(
+        [
+          {
+            id: "p-11",
+            name: "박서준",
+            color: "#10b981",
+            host: true,
+            cam: true,
+            mic: true,
+            hand: false,
+          },
+          { id: "p-22", name: "이지은", color: "#c9a24b", cam: true, mic: true, hand: false },
+        ],
+        true,
+      ),
+    );
+
+    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "이지은 퇴장" })).not.toBeInTheDocument();
+  });
+});
 
 describe("RoomSidePanel 채팅 자동 스크롤", () => {
   /** 없으면 목록이 패널을 넘긴 뒤부터 새 메시지가 화면 밖에 쌓인다. */

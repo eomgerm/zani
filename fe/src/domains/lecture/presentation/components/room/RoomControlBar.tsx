@@ -3,10 +3,12 @@ import type { ReactNode } from "react";
 import { REACTION_EMOJI, REACTION_KINDS, type ReactionKind } from "@/domains/interaction";
 import {
   CameraIcon,
+  CameraOffIcon,
   ChevronDownIcon,
   CloseIcon,
   HandIcon,
   MicIcon,
+  MicOffIcon,
   ReactionIcon,
   ScreenShareIcon,
   Select,
@@ -168,7 +170,8 @@ export function RoomControlBar({
         disabled={mediaDisabled || microphoneBlocked}
         onToggle={onToggleMic}
         title={me.mic ? "마이크 끄기" : "마이크 켜기"}
-        icon={<MicIcon />}
+        // 끔 상태는 붉은 배경 + 흰 슬래시 아이콘. 배경색만으로는 켬/끔이 한눈에 안 갈린다(피드백 반영).
+        icon={me.mic ? <MicIcon /> : <MicOffIcon size={22} />}
         options={microphones}
         value={activeMicrophoneId}
         onChange={onSelectMicrophone}
@@ -182,7 +185,7 @@ export function RoomControlBar({
         disabled={mediaDisabled || cameraBlocked}
         onToggle={onToggleCam}
         title={me.cam ? "카메라 끄기" : "카메라 켜기"}
-        icon={<CameraIcon />}
+        icon={me.cam ? <CameraIcon /> : <CameraOffIcon size={22} />}
         options={cameras}
         value={activeCameraId}
         onChange={onSelectCamera}

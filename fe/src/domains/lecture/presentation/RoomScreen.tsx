@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { CameraIcon, ChatIcon, CloseIcon, MicIcon, PeopleIcon, ScreenShareIcon } from "@/shared/ui";
+import {
+  CameraIcon,
+  CameraOffIcon,
+  ChatIcon,
+  CloseIcon,
+  MicIcon,
+  MicOffIcon,
+  PeopleIcon,
+  ScreenShareIcon,
+} from "@/shared/ui";
 import {
   CoachingPromptPanel,
   INITIAL_ATTENTION_COACHING_STATE,
@@ -18,6 +27,7 @@ import {
 } from "@/domains/attention";
 import {
   SessionChannelProvider,
+  useChatUnread,
   useRaisedHands,
   useSessionChat,
   useSessionReactions,
@@ -108,11 +118,14 @@ function PanelToggle({
   active,
   label,
   onClick,
+  dot = false,
   children,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  /** 우상단 빨간 점(새 소식). 시각 전용이라 상태는 label 문구에도 함께 실어야 한다. */
+  dot?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -122,13 +135,20 @@ function PanelToggle({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
+      className={`relative inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
         active
           ? "border-primary bg-[#0e2a20] text-[#2fbf88]"
           : "border-room-line bg-panel text-panel-soft"
       }`}
     >
       {children}
+      {dot && (
+        <span
+          data-testid="panel-toggle-dot"
+          aria-hidden="true"
+          className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger"
+        />
+      )}
     </button>
   );
 }
@@ -215,6 +235,11 @@ function RoomScreenContent({
     myIdentity: localParticipantId,
     myDisplayName: tileParticipants.find((p) => p.id === localParticipantId)?.name ?? "나",
     amInstructor: isConfirmedInstructor,
+  });
+  // 채팅이 보이지 않는 동안(패널 닫힘 또는 참여자 탭) 남이 보낸 메시지가 있으면 채팅 토글에 빨간 점을 띄운다.
+  const chatUnread = useChatUnread({
+    myIdentity: localParticipantId,
+    chatVisible: panelOpen && panel === "chat",
   });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
@@ -348,6 +373,21 @@ function RoomScreenContent({
   const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
   const host = tileParticipants.find((participant) => participant.role === "instructor");
   const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
+  // 발표자 보기 스테이지. 마지막 발화자를 유지하다가 새 발화자가 나오면 교체한다 — 침묵할 때마다
+  // 강사로 되돌리면 화면이 널뛴다. 아직 아무도 말하지 않았으면 강사를 보여준다(피드백 반영).
+  const speakingNow = tileParticipants.find((participant) => participant.speaking);
+  const [stageParticipantId, setStageParticipantId] = useState<string | null>(null);
+  // 스테이지 주인이 아직 말하는 중이면 유지한다. find 는 배열 순서(로컬 우선)라, 이 가드가 없으면
+  // 동시 발화 때 순서상 앞선 참가자가 말하던 사람의 화면을 뺏는다(!126 봇 리뷰 지적).
+  const stageStillSpeaking = tileParticipants.some(
+    (participant) => participant.id === stageParticipantId && participant.speaking,
+  );
+  if (!stageStillSpeaking && speakingNow !== undefined && speakingNow.id !== stageParticipantId) {
+    setStageParticipantId(speakingNow.id);
+  }
+  const stageParticipant =
+    tileParticipants.find((participant) => participant.id === stageParticipantId) ?? host;
+  const stageName = stageParticipant?.name ?? hostName;
   // 공유 중인 참가자의 표시 이름. LiveKit 참가자 목록에서 identity 로 찾는다(내 공유면 오버레이가 "내 화면"으로 덮는다).
   const activeSharerName =
     tileParticipants.find((participant) => participant.id === shareActiveIdentity)?.name ?? "참가자";
@@ -502,8 +542,9 @@ function RoomScreenContent({
         </PanelToggle>
         <PanelToggle
           active={panelOpen && panel === "chat"}
-          label="채팅"
+          label={chatUnread ? "새 채팅 메시지 있음, 채팅 열기" : "채팅 열기"}
           onClick={() => togglePanel("chat")}
+          dot={chatUnread}
         >
           <ChatIcon />
         </PanelToggle>
@@ -578,7 +619,8 @@ function RoomScreenContent({
                           aria-label={media.microphoneEnabled ? "마이크 끄기" : "마이크 켜기"}
                           className={`${pipBtn} ${media.microphoneEnabled ? "bg-room-control" : "bg-danger"}`}
                         >
-                          <MicIcon />
+                          {/* 메인 컨트롤바와 같은 규칙: 끔 = 붉은 배경 + 흰 슬래시 */}
+                          {media.microphoneEnabled ? <MicIcon /> : <MicOffIcon size={22} />}
                         </button>
                         <button
                           type="button"
@@ -588,7 +630,7 @@ function RoomScreenContent({
                           aria-label={media.cameraEnabled ? "카메라 끄기" : "카메라 켜기"}
                           className={`${pipBtn} ${media.cameraEnabled ? "bg-room-control" : "bg-danger"}`}
                         >
-                          <CameraIcon />
+                          {media.cameraEnabled ? <CameraIcon /> : <CameraOffIcon size={22} />}
                         </button>
                         {isSharing && (
                           <button
@@ -638,39 +680,43 @@ function RoomScreenContent({
               <>
                 <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
                   <div className="flex size-[150px] items-center justify-center rounded-full bg-[linear-gradient(145deg,#12b585,#0b8a63)] text-[54px] font-extrabold text-[#eafff6] shadow-[0_0_0_12px_#10b98112,0_24px_60px_#10b98130]">
-                    {hostName.charAt(0)}
+                    {stageName.charAt(0)}
                   </div>
                 </div>
                 {/*
-                  강사 카메라. 아바타 뒤에 두어 영상이 위에 그려지고, 카메라가 꺼져 있으면 감춰 아바타가 보이게 한다.
-                  요소를 항상 마운트해 둬야 트랙 부착 훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유).
-                  내 화면일 때만 거울처럼 뒤집는다.
+                  스테이지(마지막 발화자, 없으면 강사) 카메라. 아바타 뒤에 두어 영상이 위에 그려지고,
+                  카메라가 꺼져 있으면 감춰 아바타가 보이게 한다. 요소를 항상 마운트해 둬야 트랙 부착
+                  훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유). 내 화면일 때만 거울처럼 뒤집는다.
                 */}
-                {host !== undefined && (
+                {stageParticipant !== undefined && (
                   <video
-                    ref={participantVideos.refFor(host.id)}
+                    key={stageParticipant.id}
+                    ref={participantVideos.refFor(stageParticipant.id)}
                     autoPlay
                     muted
                     playsInline
                     data-testid="speaker-video"
                     className={`absolute inset-0 size-full object-contain ${
-                      host.id === localParticipantId ? "scale-x-[-1]" : ""
-                    } ${host.cameraEnabled ? "" : "invisible"}`}
+                      stageParticipant.id === localParticipantId ? "scale-x-[-1]" : ""
+                    } ${stageParticipant.cameraEnabled ? "" : "invisible"}`}
                   />
                 )}
-                {/* 강사 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
+                {/* 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
                 <div className="pointer-events-none absolute inset-0">
-                  {hostName === "" ? (
+                  {stageName === "" ? (
                     <div className="z-stage-chip absolute left-4 top-4 font-bold">
                       강의자를 기다리고 있어요
                     </div>
                   ) : (
                     <>
                       <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                        강의: {hostName} 선생님
+                        {stageParticipant?.role === "instructor"
+                          ? `강의: ${stageName} 선생님`
+                          : `발표: ${stageName}`}
                       </div>
                       <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                        📶 {hostName} 선생님
+                        📶 {stageName}
+                        {stageParticipant?.role === "instructor" ? " 선생님" : ""}
                       </div>
                     </>
                   )}
