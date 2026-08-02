@@ -40,6 +40,10 @@ type ParticipantGridProps = {
   narrow?: boolean;
   /** 참가자별 카메라 video ref 를 만들어 주는 함수. 없으면 화면 없이 아바타만 보여준다. */
   videoRefFor?: (identity: string) => React.Ref<HTMLVideoElement>;
+  /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
+  onMute?: (identity: string) => void;
+  /** 지금 음소거 요청이 진행 중인 대상. 요청은 한 번에 하나뿐이라 그동안 모든 버튼이 잠긴다. */
+  mutingIdentity?: string | null;
 };
 
 const pagerBtn = "flex size-[34px] items-center justify-center rounded-full border-0";
@@ -57,6 +61,8 @@ export function ParticipantGrid({
   isInstructor = false,
   narrow = false,
   videoRefFor,
+  onMute,
+  mutingIdentity = null,
 }: ParticipantGridProps) {
   const [page, setPage] = useState(0);
 
@@ -97,6 +103,9 @@ export function ParticipantGrid({
               }
               videoRef={videoRefFor?.(participant.id)}
               mirrored={participant.id === currentParticipantId}
+              onMute={onMute === undefined ? undefined : () => onMute(participant.id)}
+              muting={mutingIdentity === participant.id}
+              busy={mutingIdentity !== null && mutingIdentity !== participant.id}
             />
           </div>
         ))}

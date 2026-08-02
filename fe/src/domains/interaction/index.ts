@@ -26,6 +26,13 @@ export type {
   UseSessionReactionsOptions,
   UseSessionReactionsResult,
 } from "./presentation/useSessionReactions";
+export { useModeration } from "./presentation/useModeration";
+export type {
+  UseModerationOptions,
+  UseModerationResult,
+} from "./presentation/useModeration";
+export { ModerationRequestError } from "./infrastructure/moderationApi";
+export type { MuteResult, ParticipantMuter } from "./infrastructure/moderationApi";
 export { REACTION_EMOJI, REACTION_KINDS } from "./presentation/reactions";
 export type { ReactionKind } from "./presentation/reactions";
 export type { SessionChannelState } from "./infrastructure/sessionChannel";
