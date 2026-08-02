@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { CameraIcon, ChatIcon, CloseIcon, MicIcon, PeopleIcon, ScreenShareIcon } from "@/shared/ui";
+import {
+  CameraIcon,
+  CameraOffIcon,
+  ChatIcon,
+  CloseIcon,
+  MicIcon,
+  MicOffIcon,
+  PeopleIcon,
+  ScreenShareIcon,
+} from "@/shared/ui";
 import {
   CoachingPromptPanel,
   INITIAL_ATTENTION_COACHING_STATE,
@@ -595,7 +604,8 @@ function RoomScreenContent({
                           aria-label={media.microphoneEnabled ? "마이크 끄기" : "마이크 켜기"}
                           className={`${pipBtn} ${media.microphoneEnabled ? "bg-room-control" : "bg-danger"}`}
                         >
-                          <MicIcon />
+                          {/* 메인 컨트롤바와 같은 규칙: 끔 = 붉은 배경 + 흰 슬래시 */}
+                          {media.microphoneEnabled ? <MicIcon /> : <MicOffIcon size={22} />}
                         </button>
                         <button
                           type="button"
@@ -605,7 +615,7 @@ function RoomScreenContent({
                           aria-label={media.cameraEnabled ? "카메라 끄기" : "카메라 켜기"}
                           className={`${pipBtn} ${media.cameraEnabled ? "bg-room-control" : "bg-danger"}`}
                         >
-                          <CameraIcon />
+                          {media.cameraEnabled ? <CameraIcon /> : <CameraOffIcon size={22} />}
                         </button>
                         {isSharing && (
                           <button

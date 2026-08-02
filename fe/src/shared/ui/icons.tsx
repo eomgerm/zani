@@ -171,15 +171,15 @@ export function MicIcon({ size = 22, className }: IconProps) {
 }
 
 /**
- * 마이크 꺼짐. 아이콘 몸통은 호출부 색을 따르고 대각선 슬래시만 빨간색으로 고정한다 —
- * 몸통 전체를 빨갛게 칠하면 켜짐/꺼짐이 색으로만 구분되어 OFF 상태가 흐려진다(티켓 246).
+ * 마이크 꺼짐(대각선 슬래시). 색은 다른 아이콘처럼 호출부가 정한다 —
+ * 타일 이름칩은 빨간색으로, 붉은 배경의 컨트롤 버튼은 흰색으로 쓴다(티켓 246).
  */
 export function MicOffIcon({ size = 11, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2.4, className)}>
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
-      <path d="M4 3l16 18" className="text-danger" />
+      <path d="M4 3l16 18" />
     </svg>
   );
 }
@@ -192,12 +192,12 @@ export function CameraIcon({ size = 22, className }: IconProps) {
   );
 }
 
-/** 카메라 꺼짐. MicOffIcon과 같은 규칙 — 몸통은 호출부 색, 슬래시만 빨간색. */
+/** 카메라 꺼짐(대각선 슬래시). MicOffIcon과 같은 규칙 — 색은 호출부가 정한다. */
 export function CameraOffIcon({ size = 11, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2, className)}>
       <path d="M15 10l6-3.5v11L15 14M3 6.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
-      <path d="M4 3l16 18" className="text-danger" />
+      <path d="M4 3l16 18" />
     </svg>
   );
 }

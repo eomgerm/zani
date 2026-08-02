@@ -1,4 +1,4 @@
-import { CameraOffIcon, HandIcon, MicOffIcon } from "@/shared/ui";
+import { HandIcon, MicOffIcon } from "@/shared/ui";
 
 export type ParticipantTileData = {
   id: string;
@@ -60,12 +60,9 @@ export function ParticipantTile({
       aria-label={statusLabel(participant)}
       style={fit}
       className={`relative min-h-0 w-full max-w-full overflow-hidden rounded-2xl bg-panel shadow-[0_8px_24px_#00000040] ${
-        // 발화 초록이 항상 이긴다 — 강사도 말할 때는 초록 테두리다(티켓 246).
-        speaking
-          ? SPEAKING_BORDER
-          : role === "instructor"
-            ? "border-[1.5px] border-primary"
-            : "border-[1.5px] border-white/[.06]"
+        // 테두리는 발화 표시 전용이다. 강사 상시 테두리(primary=초록 계열)를 두면 발화 초록과
+        // 구분되지 않아 강사가 항상 말하는 것처럼 보인다(피드백 반영). 역할은 statusLabel이 알린다.
+        speaking ? SPEAKING_BORDER : "border-[1.5px] border-white/[.06]"
       }`}
     >
       <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
@@ -106,15 +103,10 @@ export function ParticipantTile({
           </div>
         )}
         <div className="absolute bottom-[9px] left-[9px] inline-flex max-w-[calc(100%-18px)] items-center gap-1.5 rounded-[9px] bg-black/70 px-2.5 py-[5px] backdrop-blur-[4px]">
-          {/* 꺼짐 상태만 아이콘으로 알린다. 몸통은 흰색, 슬래시가 빨간색이라 색약에서도 사선으로 구분된다. */}
+          {/* 이름칩에는 음소거만 알린다 — 카메라 꺼짐은 아바타가 보이는 것으로 이미 드러난다(피드백 반영). */}
           {!microphoneEnabled && (
-            <span data-testid="tile-mic-off" className="inline-flex shrink-0 text-white">
+            <span data-testid="tile-mic-off" className="inline-flex shrink-0 text-danger">
               <MicOffIcon />
-            </span>
-          )}
-          {!cameraEnabled && (
-            <span data-testid="tile-camera-off" className="inline-flex shrink-0 text-white">
-              <CameraOffIcon />
             </span>
           )}
           <span className="truncate text-[11.5px] font-bold text-white">{name}</span>
@@ -128,9 +120,9 @@ export function ParticipantTile({
             type="button"
             aria-label={`${name} 음소거`}
             title="음소거"
-            className="size-[26px] cursor-pointer rounded-lg border-0 bg-black/70 text-[11px] text-white backdrop-blur-[4px]"
+            className="flex size-[26px] cursor-pointer items-center justify-center rounded-lg border-0 bg-black/70 text-white backdrop-blur-[4px]"
           >
-            🔇
+            <MicOffIcon size={13} />
           </button>
         </div>
       )}

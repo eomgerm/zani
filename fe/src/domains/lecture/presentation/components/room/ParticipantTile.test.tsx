@@ -50,7 +50,7 @@ describe("ParticipantTile", () => {
     expect(tile.className).not.toContain("border-primary");
   });
 
-  it("returns to the instructor border when the speech ends", () => {
+  it("drops back to the plain border when the speech ends — even for the instructor", () => {
     render(
       <ParticipantTile
         participant={{
@@ -66,9 +66,10 @@ describe("ParticipantTile", () => {
       />,
     );
 
+    // 강사 상시 테두리를 두면 발화 초록과 구분되지 않는다(피드백 반영). 테두리는 발화 표시 전용이다.
     const tile = screen.getByRole("group", { name: /박서준/ });
-    expect(tile.className).toContain("border-primary");
     expect(tile.className).not.toContain("border-[#2fbf88]");
+    expect(tile.className).not.toContain("border-primary");
   });
 
   it("announces a student's disabled media and raised hand status", () => {
@@ -95,7 +96,7 @@ describe("ParticipantTile", () => {
     ).toBeVisible();
   });
 
-  it("shows red-slash icons only for the media that is turned off", () => {
+  it("shows only the mic-off icon in the name chip when media is off", () => {
     render(
       <ParticipantTile
         participant={{
@@ -112,7 +113,8 @@ describe("ParticipantTile", () => {
     );
 
     expect(screen.getByTestId("tile-mic-off")).toBeInTheDocument();
-    expect(screen.getByTestId("tile-camera-off")).toBeInTheDocument();
+    // 카메라 꺼짐은 아바타가 보이는 것으로 이미 드러나 칩에 아이콘을 두지 않는다(피드백 반영).
+    expect(screen.queryByTestId("tile-camera-off")).not.toBeInTheDocument();
   });
 
   it("hides the off icons while the media is on", () => {

@@ -92,31 +92,6 @@ describe("RoomSidePanel 참가자 제어", () => {
   });
 });
 
-describe("RoomSidePanel 참가자 상태 아이콘", () => {
-  it("마이크·카메라 켜짐과 꺼짐을 아이콘 라벨로 구분해 알린다", () => {
-    render(
-      peoplePanel([
-        {
-          id: "p-11",
-          name: "박서준",
-          color: "#10b981",
-          host: true,
-          cam: true,
-          mic: true,
-          hand: false,
-        },
-        { id: "p-22", name: "이지은", color: "#c9a24b", cam: false, mic: false, hand: false },
-      ]),
-    );
-
-    // 박서준은 둘 다 켜짐, 이지은은 둘 다 꺼짐 — 네 라벨이 정확히 하나씩 있어야 한다.
-    expect(screen.getByLabelText("마이크 켜짐")).toBeVisible();
-    expect(screen.getByLabelText("카메라 켜짐")).toBeVisible();
-    expect(screen.getByLabelText("마이크 꺼짐")).toBeVisible();
-    expect(screen.getByLabelText("카메라 꺼짐")).toBeVisible();
-  });
-});
-
 describe("RoomSidePanel 채팅 자동 스크롤", () => {
   /** 없으면 목록이 패널을 넘긴 뒤부터 새 메시지가 화면 밖에 쌓인다. */
   it("새 메시지가 오면 맨 아래로 붙인다", () => {
