@@ -254,6 +254,66 @@ describe("RoomScreen active speaker", () => {
   });
 });
 
+describe("RoomScreen speaker view stage", () => {
+  const withSpeakingStudent = (studentSpeaking: boolean) => {
+    roomParticipants.participants = [
+      {
+        id: "host",
+        name: "박서준",
+        color: "#10b981",
+        role: "instructor",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: false,
+      },
+      {
+        id: "s1",
+        name: "김도현",
+        color: "#2aa584",
+        role: "student",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: studentSpeaking,
+      },
+    ];
+    roomParticipants.localParticipantId = "host";
+  };
+
+  it("puts the active speaker on the stage in speaker view", () => {
+    withSpeakingStudent(true);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    // 학생이 스테이지에 오르면 "강의: ... 선생님" 대신 "발표: 이름"으로 표기한다.
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("keeps the last speaker on stage after the speech ends", () => {
+    withSpeakingStudent(true);
+    const view = render(<RoomScreen sessionId="123" />);
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+
+    // 침묵할 때마다 강사로 되돌리면 화면이 널뛴다 — 새 발화자가 나올 때까지 유지한다.
+    withSpeakingStudent(false);
+    view.rerender(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByText("발표: 김도현")).toBeVisible();
+  });
+
+  it("shows the instructor on stage while nobody has spoken yet", () => {
+    withSpeakingStudent(false);
+    render(<RoomScreen sessionId="123" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
+
+    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+  });
+});
+
 describe("RoomScreen chat unread dot", () => {
   it("passes the unread state to the chat toggle as a dot and an accessible label", () => {
     asStudent();
