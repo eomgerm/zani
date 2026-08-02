@@ -40,12 +40,19 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
         try {
             LivekitModels.ParticipantInfo participant = fetchParticipant(roomName, identity);
             if (participant == null) {
-                // 방에 없는 참가자다. 소리가 나갈 수 없으므로 끌 것도 없다.
+                // 방에 없는 참가자다. 소리가 나갈 수 없으므로 끌 것도 없고, 호출한 쪽에는 성립으로 돌려준다.
+                //
+                // 다만 남긴다. 이 자리는 두 가지가 겹치는데 LiveKit 의 404 만으로는 가릴 수 없다 —
+                // 학생이 방금 나간 것(정상)과, identity 규약이 어긋나 우리가 엉뚱한 사람을 찾는 것(심각).
+                // 뒤쪽이면 강사 화면에는 아무 오류 없이 성공이 뜨는데 소리는 계속 나간다. 사실만 남기고
+                // 해석은 사람이 하도록 둔다.
+                log.warn("LiveKit 방에 대상 참가자가 없어 음소거할 것이 없습니다. room={} identity={}", roomName, identity);
                 return MediaMuteChange.NO_ACTIVE_TRACK;
             }
 
             LivekitModels.TrackInfo microphone = microphoneTrackOf(participant);
             if (microphone == null) {
+                // 이쪽은 위와 달리 분명하다 — 참가자는 있는데 마이크를 켠 적이 없다.
                 return MediaMuteChange.NO_ACTIVE_TRACK;
             }
             if (microphone.getMuted()) {
