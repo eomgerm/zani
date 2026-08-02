@@ -78,6 +78,15 @@ export function useRaisedHands(options: UseRaisedHandsOptions): UseRaisedHandsRe
   );
 
   // identity 를 모르면 내 상태를 판정할 수 없어, 눌러도 무엇을 보낼지 정할 수 없다.
+  //
+  // **`awaitingSnapshot` 은 일부러 보지 않는다.** 스냅샷을 기다리는 동안 `myHandRaised` 가 잠깐
+  // 낡을 수 있지만, 내 손 상태를 바꿀 수 있는 건 나뿐이라(강사 손 내리기는 범위 밖) 끊긴 사이
+  // 서버 쪽이 달라질 일이 없다. 확정을 놓친 경우에도 화면을 보고 누른 값이 그대로 나가고 서버가
+  // 멱등 처리하므로 결과는 누른 의도대로 수렴한다.
+  //
+  // 반대로 조건에 넣으면 **매 연결마다 스냅샷 왕복 동안 버튼이 죽는다.** 입장 직후가 정확히 그
+  // 구간이다. 게다가 SessionChannelProvider 가 스냅샷 실패를 삼키므로, 한 번 실패하면
+  // `awaitingSnapshot` 이 재연결 전까지 true 로 남아 버튼이 영영 눌리지 않는다.
   const canToggle = state === "connected" && myIdentity !== null;
 
   const toggle = useCallback(() => {
