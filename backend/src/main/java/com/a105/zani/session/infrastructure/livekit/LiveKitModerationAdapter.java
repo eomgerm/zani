@@ -26,6 +26,13 @@ import com.a105.zani.session.application.port.MediaRoomPort;
 @Component
 public class LiveKitModerationAdapter implements MediaModerationPort {
 
+    /**
+     * LiveKit 이 "그런 참가자는 방에 없다" 를 알리는 유일한 코드.
+     *
+     * <p>이것만이 <b>끌 것이 없음</b>이고, 나머지 실패 코드는 전부 <b>끄지 못함</b>이다. 둘을 가르는 기준이 이 상수 하나뿐이라 이름을 붙여 둔다.
+     */
+    private static final int HTTP_NOT_FOUND = 404;
+
     private final RoomServiceClient roomServiceClient;
     private final MediaRoomPort mediaRoomPort;
 
@@ -38,8 +45,16 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
     public MediaMuteChange muteMicrophone(long sessionId, String identity) {
         String roomName = mediaRoomPort.roomName(sessionId);
         try {
-            LivekitModels.ParticipantInfo participant = fetchParticipant(roomName, identity);
-            if (participant == null) {
+            Response<LivekitModels.ParticipantInfo> found =
+                    roomServiceClient.getParticipant(roomName, identity).execute();
+            if (!found.isSuccessful()) {
+                if (found.code() != HTTP_NOT_FOUND) {
+                    // 조회가 막힌 것이지 대상이 없는 것이 아니다. 자격증명이 틀렸거나(401·403) LiveKit 이
+                    // 앓는 중이다(5xx). 이것을 "끌 것이 없음"과 뭉치면 강사 화면에는 성공이 뜨고 학생
+                    // 소리는 계속 나간다 — 오설정 중 가장 흔한 쪽이 하필 조용히 성공하게 된다.
+                    log.warn("LiveKit 이 참가자 조회를 거절했습니다. sessionId={} code={}", sessionId, found.code());
+                    return MediaMuteChange.UNAVAILABLE;
+                }
                 // 방에 없는 참가자다. 소리가 나갈 수 없으므로 끌 것도 없고, 호출한 쪽에는 성립으로 돌려준다.
                 //
                 // 다만 남긴다. 이 자리는 두 가지가 겹치는데 LiveKit 의 404 만으로는 가릴 수 없다 —
@@ -48,6 +63,13 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
                 // 해석은 사람이 하도록 둔다.
                 log.warn("LiveKit 방에 대상 참가자가 없어 음소거할 것이 없습니다. room={} identity={}", roomName, identity);
                 return MediaMuteChange.NO_ACTIVE_TRACK;
+            }
+
+            LivekitModels.ParticipantInfo participant = found.body();
+            if (participant == null) {
+                // 2xx 인데 본문이 없다. 마이크가 켜져 있는지조차 확인하지 못했으므로 성공으로 볼 수 없다.
+                log.warn("LiveKit 참가자 조회 응답이 비어 있습니다. sessionId={}", sessionId);
+                return MediaMuteChange.UNAVAILABLE;
             }
 
             LivekitModels.TrackInfo microphone = microphoneTrackOf(participant);
@@ -71,13 +93,6 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
             log.warn("LiveKit 을 쓰지 못해 음소거하지 못했습니다. sessionId={}", sessionId, unavailable);
             return MediaMuteChange.UNAVAILABLE;
         }
-    }
-
-    /** 대상이 방에 없으면 404 가 오므로 예외가 아니라 null 로 다룬다. */
-    private LivekitModels.ParticipantInfo fetchParticipant(String roomName, String identity) throws IOException {
-        Response<LivekitModels.ParticipantInfo> response =
-                roomServiceClient.getParticipant(roomName, identity).execute();
-        return response.isSuccessful() ? response.body() : null;
     }
 
     /**
