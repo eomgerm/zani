@@ -52,7 +52,7 @@ export function ParticipantTile({
   mirrored = false,
   fit,
 }: ParticipantTileProps) {
-  const { name, color, role, cameraEnabled, microphoneEnabled, handRaised, speaking } = participant;
+  const { name, color, cameraEnabled, microphoneEnabled, handRaised, speaking } = participant;
 
   return (
     <div
