@@ -46,11 +46,11 @@ export function useChatUnread(options: UseChatUnreadOptions): boolean {
     [addEventListener],
   );
 
-  useEffect(() => {
-    if (chatVisible) {
-      setUnread(false);
-    }
-  }, [chatVisible]);
+  // 채팅이 보이는 순간 읽은 것이다. 이펙트로 지우면 점이 한 프레임 남았다 사라지므로
+  // 렌더 중에 바로 보정한다(React의 "props 변화에 따른 상태 조정" 패턴).
+  if (chatVisible && unread) {
+    setUnread(false);
+  }
 
-  return unread;
+  return unread && !chatVisible;
 }
