@@ -8,7 +8,12 @@ export type ParticipantTileData = {
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   handRaised: boolean;
+  /** 지금 말하고 있는지(LiveKit ActiveSpeaker). 타일 테두리 하이라이트에만 쓴다. */
+  speaking: boolean;
 };
+
+/** 발화 중 테두리. 상단 패널 토글의 활성 초록과 같은 값이라 방 UI 팔레트 안에 머문다. */
+const SPEAKING_BORDER = "border-[1.5px] border-[#2fbf88]";
 
 type ParticipantTileProps = {
   participant: ParticipantTileData;
@@ -47,7 +52,7 @@ export function ParticipantTile({
   mirrored = false,
   fit,
 }: ParticipantTileProps) {
-  const { name, color, role, cameraEnabled, microphoneEnabled, handRaised } = participant;
+  const { name, color, role, cameraEnabled, microphoneEnabled, handRaised, speaking } = participant;
 
   return (
     <div
@@ -55,9 +60,12 @@ export function ParticipantTile({
       aria-label={statusLabel(participant)}
       style={fit}
       className={`relative min-h-0 w-full max-w-full overflow-hidden rounded-2xl bg-panel shadow-[0_8px_24px_#00000040] ${
-        role === "instructor"
-          ? "border-[1.5px] border-primary"
-          : "border-[1.5px] border-white/[.06]"
+        // 발화 초록이 항상 이긴다 — 강사도 말할 때는 초록 테두리다(티켓 246).
+        speaking
+          ? SPEAKING_BORDER
+          : role === "instructor"
+            ? "border-[1.5px] border-primary"
+            : "border-[1.5px] border-white/[.06]"
       }`}
     >
       <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
@@ -90,12 +98,8 @@ export function ParticipantTile({
         )}
       </div>
 
+      {/* 강사 배지는 제거했다(티켓 246). 역할 구분은 statusLabel(스크린리더)과 비발화 시 테두리 색이 담당한다. */}
       <div className="pointer-events-none absolute inset-0">
-        {role === "instructor" && (
-          <span className="absolute right-2 top-2 rounded-[7px] bg-primary px-2 py-[3px] text-[10px] font-extrabold text-white">
-            강사
-          </span>
-        )}
         {handRaised && (
           <div className="absolute left-2 top-2 flex size-7 items-center justify-center rounded-[9px] bg-warn text-[#3a2d05] shadow-[0_4px_12px_#f4c32550]">
             <HandIcon size={16} />

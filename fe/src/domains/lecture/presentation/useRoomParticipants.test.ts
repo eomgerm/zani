@@ -10,6 +10,7 @@ type FakeParticipant = {
   metadata?: string;
   isCameraEnabled: boolean;
   isMicrophoneEnabled: boolean;
+  isSpeaking: boolean;
 };
 
 const participant = (
@@ -20,6 +21,7 @@ const participant = (
   name: identity,
   isCameraEnabled: true,
   isMicrophoneEnabled: true,
+  isSpeaking: false,
   ...overrides,
 });
 
@@ -134,6 +136,29 @@ describe("useRoomParticipants", () => {
       room.emit(RoomEvent.TrackMuted);
     });
     expect(result.current.participants.find((p) => p.id === "s1")?.cameraEnabled).toBe(false);
+  });
+
+  it("refreshes the speaking flag on ActiveSpeakersChanged", () => {
+    const remote = participant("s1");
+    const room = new FakeRoom(participant("host"));
+    room.remoteParticipants.set("s1", remote);
+    hoisted.room = room;
+    const { result } = renderHook(() => useRoomParticipants());
+    act(() => vi.advanceTimersByTime(0));
+    expect(result.current.participants.find((p) => p.id === "s1")?.speaking).toBe(false);
+
+    act(() => {
+      remote.isSpeaking = true;
+      room.emit(RoomEvent.ActiveSpeakersChanged);
+    });
+    expect(result.current.participants.find((p) => p.id === "s1")?.speaking).toBe(true);
+
+    // 발화 종료도 같은 이벤트 하나로 온다 — 해제 이벤트가 따로 없다.
+    act(() => {
+      remote.isSpeaking = false;
+      room.emit(RoomEvent.ActiveSpeakersChanged);
+    });
+    expect(result.current.participants.find((p) => p.id === "s1")?.speaking).toBe(false);
   });
 
   it("detaches every room listener on unmount", () => {

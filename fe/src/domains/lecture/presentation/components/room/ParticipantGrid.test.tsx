@@ -11,6 +11,7 @@ const participant = (id: number) => ({
   cameraEnabled: true,
   microphoneEnabled: true,
   handRaised: false,
+  speaking: false,
 });
 
 const many = (count: number) => Array.from({ length: count }, (_, index) => participant(index));

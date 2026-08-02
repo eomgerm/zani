@@ -15,16 +15,60 @@ describe("ParticipantTile", () => {
           cameraEnabled: true,
           microphoneEnabled: true,
           handRaised: false,
+          speaking: false,
         }}
       />,
     );
 
+    // 시각 배지는 없어도(티켓 246) 스크린리더용 역할 문구는 남아야 한다.
     expect(
       screen.getByRole("group", {
         name: "강사 박서준, 카메라 켜짐, 마이크 켜짐, 손 들지 않음",
       }),
     ).toBeVisible();
-    expect(screen.getByText("강사")).toBeVisible();
+    expect(screen.queryByText("강사")).not.toBeInTheDocument();
+  });
+
+  it("wins the speaking green border over the instructor border while talking", () => {
+    render(
+      <ParticipantTile
+        participant={{
+          id: "instructor-1",
+          name: "박서준",
+          color: "#1cdd93",
+          role: "instructor",
+          cameraEnabled: true,
+          microphoneEnabled: true,
+          handRaised: false,
+          speaking: true,
+        }}
+      />,
+    );
+
+    const tile = screen.getByRole("group", { name: /박서준/ });
+    expect(tile.className).toContain("border-[#2fbf88]");
+    expect(tile.className).not.toContain("border-primary");
+  });
+
+  it("returns to the instructor border when the speech ends", () => {
+    render(
+      <ParticipantTile
+        participant={{
+          id: "instructor-1",
+          name: "박서준",
+          color: "#1cdd93",
+          role: "instructor",
+          cameraEnabled: true,
+          microphoneEnabled: true,
+          handRaised: false,
+          speaking: false,
+        }}
+      />,
+    );
+
+    const tile = screen.getByRole("group", { name: /박서준/ });
+    expect(tile.className).toContain("border-primary");
+    expect(tile.className).not.toContain("border-[#2fbf88]");
   });
 
   it("announces a student's disabled media and raised hand status", () => {
@@ -37,6 +81,7 @@ describe("ParticipantTile", () => {
           role: "student",
           cameraEnabled: false,
           microphoneEnabled: false,
+          speaking: false,
           handRaised: true,
         }}
       />,
@@ -60,6 +105,7 @@ describe("ParticipantTile", () => {
           role: "student",
           cameraEnabled: false,
           microphoneEnabled: false,
+          speaking: false,
           handRaised: false,
         }}
       />,
@@ -79,6 +125,7 @@ describe("ParticipantTile", () => {
           role: "student",
           cameraEnabled: true,
           microphoneEnabled: true,
+          speaking: false,
           handRaised: false,
         }}
       />,
@@ -98,6 +145,7 @@ describe("ParticipantTile", () => {
           role: "student",
           cameraEnabled: true,
           microphoneEnabled: true,
+          speaking: false,
           handRaised: false,
         }}
         canControl

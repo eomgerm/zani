@@ -62,6 +62,7 @@ function toTileData(participant: Participant): ParticipantTileData {
     cameraEnabled: participant.isCameraEnabled,
     microphoneEnabled: participant.isMicrophoneEnabled,
     handRaised: false,
+    speaking: participant.isSpeaking,
   };
 }
 
@@ -88,6 +89,8 @@ const PARTICIPANT_EVENTS: RoomEvent[] = [
   RoomEvent.LocalTrackUnpublished,
   // 역할은 metadata에서 읽으므로 metadata 변경을 구독한다.
   RoomEvent.ParticipantMetadataChanged,
+  // 발화자 하이라이트. 시작·종료가 모두 이 이벤트 하나로 오므로 별도 해제 이벤트가 없다.
+  RoomEvent.ActiveSpeakersChanged,
 ];
 
 export type UseRoomParticipantsResult = {

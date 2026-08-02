@@ -118,6 +118,7 @@ const roomParticipants = vi.hoisted(() => ({
     cameraEnabled: boolean;
     microphoneEnabled: boolean;
     handRaised: boolean;
+    speaking: boolean;
   }[],
   localParticipantId: null as string | null,
 }));
@@ -180,6 +181,7 @@ const asStudent = () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     },
   ];
   roomParticipants.localParticipantId = "me";
@@ -195,6 +197,7 @@ const asInstructor = () => {
       cameraEnabled: true,
       microphoneEnabled: true,
       handRaised: false,
+      speaking: false,
     },
   ];
   roomParticipants.localParticipantId = "me";
@@ -228,6 +231,27 @@ afterEach(() => {
   screenShare.activeIdentity = null;
   screenShare.toggle.mockClear();
   vi.useRealTimers();
+});
+
+describe("RoomScreen active speaker", () => {
+  it("passes the speaking state through to the participant tile border", () => {
+    roomParticipants.participants = [
+      {
+        id: "me",
+        name: "김도현",
+        color: "#2aa584",
+        role: "student",
+        cameraEnabled: true,
+        microphoneEnabled: true,
+        handRaised: false,
+        speaking: true,
+      },
+    ];
+    roomParticipants.localParticipantId = "me";
+    render(<RoomScreen sessionId="123" />);
+
+    expect(screen.getByRole("group", { name: /김도현/ }).className).toContain("border-[#2fbf88]");
+  });
 });
 
 describe("RoomScreen chat unread dot", () => {
