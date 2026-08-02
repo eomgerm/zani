@@ -373,6 +373,16 @@ function RoomScreenContent({
   const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
   const host = tileParticipants.find((participant) => participant.role === "instructor");
   const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
+  // 발표자 보기 스테이지. 마지막 발화자를 유지하다가 새 발화자가 나오면 교체한다 — 침묵할 때마다
+  // 강사로 되돌리면 화면이 널뛴다. 아직 아무도 말하지 않았으면 강사를 보여준다(피드백 반영).
+  const speakingNow = tileParticipants.find((participant) => participant.speaking);
+  const [stageParticipantId, setStageParticipantId] = useState<string | null>(null);
+  if (speakingNow !== undefined && speakingNow.id !== stageParticipantId) {
+    setStageParticipantId(speakingNow.id);
+  }
+  const stageParticipant =
+    tileParticipants.find((participant) => participant.id === stageParticipantId) ?? host;
+  const stageName = stageParticipant?.name ?? hostName;
   // 공유 중인 참가자의 표시 이름. LiveKit 참가자 목록에서 identity 로 찾는다(내 공유면 오버레이가 "내 화면"으로 덮는다).
   const activeSharerName =
     tileParticipants.find((participant) => participant.id === shareActiveIdentity)?.name ?? "참가자";
@@ -665,39 +675,43 @@ function RoomScreenContent({
               <>
                 <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
                   <div className="flex size-[150px] items-center justify-center rounded-full bg-[linear-gradient(145deg,#12b585,#0b8a63)] text-[54px] font-extrabold text-[#eafff6] shadow-[0_0_0_12px_#10b98112,0_24px_60px_#10b98130]">
-                    {hostName.charAt(0)}
+                    {stageName.charAt(0)}
                   </div>
                 </div>
                 {/*
-                  강사 카메라. 아바타 뒤에 두어 영상이 위에 그려지고, 카메라가 꺼져 있으면 감춰 아바타가 보이게 한다.
-                  요소를 항상 마운트해 둬야 트랙 부착 훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유).
-                  내 화면일 때만 거울처럼 뒤집는다.
+                  스테이지(마지막 발화자, 없으면 강사) 카메라. 아바타 뒤에 두어 영상이 위에 그려지고,
+                  카메라가 꺼져 있으면 감춰 아바타가 보이게 한다. 요소를 항상 마운트해 둬야 트랙 부착
+                  훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유). 내 화면일 때만 거울처럼 뒤집는다.
                 */}
-                {host !== undefined && (
+                {stageParticipant !== undefined && (
                   <video
-                    ref={participantVideos.refFor(host.id)}
+                    key={stageParticipant.id}
+                    ref={participantVideos.refFor(stageParticipant.id)}
                     autoPlay
                     muted
                     playsInline
                     data-testid="speaker-video"
                     className={`absolute inset-0 size-full object-contain ${
-                      host.id === localParticipantId ? "scale-x-[-1]" : ""
-                    } ${host.cameraEnabled ? "" : "invisible"}`}
+                      stageParticipant.id === localParticipantId ? "scale-x-[-1]" : ""
+                    } ${stageParticipant.cameraEnabled ? "" : "invisible"}`}
                   />
                 )}
-                {/* 강사 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
+                {/* 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
                 <div className="pointer-events-none absolute inset-0">
-                  {hostName === "" ? (
+                  {stageName === "" ? (
                     <div className="z-stage-chip absolute left-4 top-4 font-bold">
                       강의자를 기다리고 있어요
                     </div>
                   ) : (
                     <>
                       <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                        강의: {hostName} 선생님
+                        {stageParticipant?.role === "instructor"
+                          ? `강의: ${stageName} 선생님`
+                          : `발표: ${stageName}`}
                       </div>
                       <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                        📶 {hostName} 선생님
+                        📶 {stageName}
+                        {stageParticipant?.role === "instructor" ? " 선생님" : ""}
                       </div>
                     </>
                   )}
