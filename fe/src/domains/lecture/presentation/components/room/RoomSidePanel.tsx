@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Avatar, HandIcon, MicOffIcon } from "@/shared/ui";
+import { Avatar, HandIcon } from "@/shared/ui";
 import type { ChatMessageView } from "@/domains/interaction";
 import type { Participant } from "../../fixtures";
 
@@ -14,10 +14,15 @@ interface RoomSidePanelProps {
   onSendChat: (content: string) => void;
   /** 실패한 전송을 같은 clientEventId 로 다시 보낸다(서버가 멱등 처리한다). */
   onRetryChat: (clientEventId: string) => void;
+  /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
+  onMute?: (identity: string) => void;
+  /** 지금 음소거 요청이 진행 중인 대상. 그 행의 버튼만 잠근다. */
+  mutingIdentity?: string | null;
 }
 
+/** 목록 행 끝의 제어 버튼. 아이콘이 아니라 글자를 담으므로 정사각형이 아니라 가로로 늘어난다. */
 const rowBtnCls =
-  "flex size-[30px] cursor-pointer items-center justify-center rounded-lg border-0 bg-room-line text-xs text-panel-soft";
+  "shrink-0 cursor-pointer rounded-lg border-0 bg-room-line px-2 py-1 text-[11px] font-bold text-panel-soft transition-[filter] hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45";
 
 /** 서버 `chat_messages.content` 상한과 같은 값. 넘겨 보내도 거절되므로 입력에서 막는다. */
 const CHAT_MAX_LENGTH = 1000;
@@ -45,6 +50,8 @@ export function RoomSidePanel({
   canSendChat,
   onSendChat,
   onRetryChat,
+  onMute,
+  mutingIdentity = null,
 }: RoomSidePanelProps) {
   const handQueue = participants.filter((p) => p.hand);
   const [draft, setDraft] = useState("");
@@ -193,15 +200,22 @@ export function RoomSidePanel({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13.5px] font-bold text-panel-text">{nameTag}</div>
                 </div>
-                {/* 퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖). 음소거 동작 연결은 별도 티켓(66) 소관이라 아직 시각 스텁이다. */}
+                {/*
+                  퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖).
+
+                  타일과 같은 이유로 아이콘이 아니라 글자를 쓴다. 마이크 그림 하나로는 "지금 꺼져 있다"와
+                  "꺼라"가 구분되지 않는데, 강제 해제가 없어 되돌릴 수 없는 동작이라 더 분명해야 한다.
+                */}
                 {canControl && (
                   <button
                     type="button"
-                    title="음소거"
+                    onClick={onMute === undefined ? undefined : () => onMute(p.id)}
+                    disabled={!p.mic || mutingIdentity === p.id}
+                    title={!p.mic ? "이미 음소거됨" : mutingIdentity === p.id ? "음소거하는 중" : "음소거"}
                     aria-label={`${p.name} 음소거`}
                     className={rowBtnCls}
                   >
-                    <MicOffIcon size={13} />
+                    음소거
                   </button>
                 )}
               </div>

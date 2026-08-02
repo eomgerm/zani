@@ -794,6 +794,8 @@ function RoomScreenContent({
             canSendChat={chat.canSend}
             onSendChat={chat.send}
             onRetryChat={chat.retry}
+            onMute={isConfirmedInstructor ? moderation.mute : undefined}
+            mutingIdentity={moderation.mutingIdentity}
           />
         )}
       </div>
