@@ -9,9 +9,18 @@ import org.junit.jupiter.api.Test;
 import com.a105.zani.session.application.sendchatmessage.SendChatMessageCommand;
 import com.a105.zani.session.application.sendchatmessage.SendChatMessageResult;
 import com.a105.zani.session.application.sendchatmessage.SendChatMessageUseCase;
+import com.a105.zani.session.application.sendreaction.SendReactionCommand;
+import com.a105.zani.session.application.sendreaction.SendReactionResult;
+import com.a105.zani.session.application.sendreaction.SendReactionUseCase;
+import com.a105.zani.session.application.togglehand.ToggleHandCommand;
+import com.a105.zani.session.application.togglehand.ToggleHandResult;
+import com.a105.zani.session.application.togglehand.ToggleHandUseCase;
 import com.a105.zani.session.presentation.request.ChatMessageRequest;
+import com.a105.zani.session.presentation.request.HandRequest;
+import com.a105.zani.session.presentation.request.ReactionRequest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * STOMP 진입점의 위임 경계 검증.
@@ -26,7 +35,10 @@ class SessionChannelControllerTest {
     private static final Principal PRINCIPAL = () -> MEMBER_ID;
 
     private final RecordingSendChatMessage useCase = new RecordingSendChatMessage();
-    private final SessionChannelController controller = new SessionChannelController(useCase);
+    private final RecordingToggleHand handUseCase = new RecordingToggleHand();
+    private final RecordingSendReaction reactionUseCase = new RecordingSendReaction();
+    private final SessionChannelController controller =
+            new SessionChannelController(useCase, handUseCase, reactionUseCase);
 
     private void send(String clientEventId, String content) {
         controller.chat(SESSION_ID, new ChatMessageRequest(clientEventId, content), PRINCIPAL);
@@ -51,6 +63,30 @@ class SessionChannelControllerTest {
         assertEquals("  질문 있습니다  ", useCase.commands.getFirst().content());
     }
 
+    @Test
+    void 손들기도_목적지의_세션과_인증_주체를_커맨드에_담아_넘긴다() {
+        controller.hand(SESSION_ID, new HandRequest("h-1", true), PRINCIPAL);
+
+        assertEquals(1, handUseCase.commands.size());
+        ToggleHandCommand command = handUseCase.commands.getFirst();
+        assertEquals(SESSION_ID, command.sessionId());
+        assertEquals(Long.parseLong(MEMBER_ID), command.userId());
+        assertEquals("h-1", command.clientEventId());
+        assertTrue(command.raised());
+    }
+
+    /** 종류 해석·거절은 유스케이스가 한다. 컨트롤러가 미리 걸러내면 판단이 두 곳으로 갈린다. */
+    @Test
+    void 반응_종류를_손대지_않고_그대로_넘긴다() {
+        controller.reaction(SESSION_ID, new ReactionRequest("r-1", "clap"), PRINCIPAL);
+
+        assertEquals(1, reactionUseCase.commands.size());
+        SendReactionCommand command = reactionUseCase.commands.getFirst();
+        assertEquals(SESSION_ID, command.sessionId());
+        assertEquals(Long.parseLong(MEMBER_ID), command.userId());
+        assertEquals("clap", command.reaction());
+    }
+
     private static class RecordingSendChatMessage implements SendChatMessageUseCase {
         private final List<SendChatMessageCommand> commands = new ArrayList<>();
 
@@ -58,6 +94,26 @@ class SessionChannelControllerTest {
         public SendChatMessageResult send(SendChatMessageCommand command) {
             commands.add(command);
             return SendChatMessageResult.sent("5001");
+        }
+    }
+
+    private static class RecordingToggleHand implements ToggleHandUseCase {
+        private final List<ToggleHandCommand> commands = new ArrayList<>();
+
+        @Override
+        public ToggleHandResult toggle(ToggleHandCommand command) {
+            commands.add(command);
+            return ToggleHandResult.applied(command.raised(), true);
+        }
+    }
+
+    private static class RecordingSendReaction implements SendReactionUseCase {
+        private final List<SendReactionCommand> commands = new ArrayList<>();
+
+        @Override
+        public SendReactionResult send(SendReactionCommand command) {
+            commands.add(command);
+            return SendReactionResult.sent("5002");
         }
     }
 }

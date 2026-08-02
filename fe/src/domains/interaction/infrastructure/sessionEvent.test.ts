@@ -41,9 +41,13 @@ describe("parseSessionEvent", () => {
     expect(parse(malformed)).toBeNull();
   });
 
-  /** 64~66 이 배포되는 사이 이 화면이 먼저 떠 있을 수 있다. 오류로 다루지 않고 조용히 버린다. */
+  /** 65~66 이 배포되는 사이 이 화면이 먼저 떠 있을 수 있다. 오류로 다루지 않고 조용히 버린다. */
   it("모르는 종류는 null 을 준다", () => {
-    expect(parse({ ...validEvent, type: "HAND_RAISED" })).toBeNull();
+    expect(parse({ ...validEvent, type: "FORCE_MUTED" })).toBeNull();
+  });
+
+  it.each(["HAND_RAISED", "HAND_LOWERED", "REACTION"])("%s 종류를 읽는다", (type) => {
+    expect(parse({ ...validEvent, type })?.type).toBe(type);
   });
 
   it("역할이 INSTRUCTOR 가 아니면 학생으로 본다", () => {

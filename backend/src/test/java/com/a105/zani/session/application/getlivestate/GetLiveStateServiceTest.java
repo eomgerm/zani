@@ -9,6 +9,8 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
+import com.a105.zani.session.application.port.RaisedHandChange;
+import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.application.port.SessionEventSender;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantResult;
@@ -39,12 +41,13 @@ class GetLiveStateServiceTest {
     private static final Map<Long, String> NAMES = Map.of(VIEWER_USER, "박강사", 8L, "김민수");
 
     private final StubResolveSessionParticipant resolveParticipant = new StubResolveSessionParticipant();
+    private final StubRaisedHands raisedHands = new StubRaisedHands();
 
     private GetLiveStateService service() {
         SessionParticipantRepository participants = new StubParticipants();
         ChatMessageRepository messages = new StubChatMessages();
         GetMemberDisplayNameUseCase displayName = query -> Optional.ofNullable(NAMES.get(query.memberId()));
-        return new GetLiveStateService(resolveParticipant, participants, messages, displayName);
+        return new GetLiveStateService(resolveParticipant, participants, messages, displayName, raisedHands);
     }
 
     @Test
@@ -87,9 +90,18 @@ class GetLiveStateServiceTest {
         assertEquals("먼저 보낸 메시지", first.content());
     }
 
-    /** 손들기(64)가 채울 자리를 미리 둔다. 규격이 나중에 바뀌면 붙어 있는 클라이언트를 다 고쳐야 한다. */
+    /** 순번이 목록의 인덱스라, 큐가 준 순서를 그대로 지나보내야 한다. 재정렬하면 늦게 든 사람이 앞설 수 있다. */
     @Test
-    void 손들기_현황은_아직_비어_있다() {
+    void 손든_참가자는_손든_순서대로_담긴다() {
+        raisedHands.ordered = List.of("p-22", "p-11");
+
+        assertEquals(
+                List.of("p-22", "p-11"),
+                service().get(new GetLiveStateQuery(SESSION_ID, VIEWER_USER)).raisedHandIdentities());
+    }
+
+    @Test
+    void 손든_사람이_없으면_빈_목록이다() {
         assertTrue(service()
                 .get(new GetLiveStateQuery(SESSION_ID, VIEWER_USER))
                 .raisedHandIdentities()
@@ -107,6 +119,26 @@ class GetLiveStateServiceTest {
             assertEquals(SESSION_ID, query.sessionId());
             return new ResolveSessionParticipantResult(
                     11L, SessionParticipantRole.INSTRUCTOR, JOINED_AT, JOINED_AT.plusSeconds(10_800));
+        }
+    }
+
+    private static class StubRaisedHands implements RaisedHandQueuePort {
+        private List<String> ordered = List.of();
+
+        @Override
+        public RaisedHandChange raise(long sessionId, String identity, long raisedAtMillis) {
+            throw new UnsupportedOperationException("스냅샷은 쓰지 않는다.");
+        }
+
+        @Override
+        public RaisedHandChange lower(long sessionId, String identity) {
+            throw new UnsupportedOperationException("스냅샷은 쓰지 않는다.");
+        }
+
+        @Override
+        public List<String> raisedInOrder(long sessionId) {
+            assertEquals(SESSION_ID, sessionId);
+            return ordered;
         }
     }
 

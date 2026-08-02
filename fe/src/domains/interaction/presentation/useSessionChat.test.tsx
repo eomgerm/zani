@@ -34,6 +34,8 @@ const channelFactory: SessionChannelFactory = ({ handlers }) => {
   channel.handlers = handlers;
   return {
     publishChat: (clientEventId, content) => channel.published.push({ clientEventId, content }),
+    publishHand: () => {},
+    publishReaction: () => {},
     deactivate: () => {
       channel.deactivated += 1;
     },

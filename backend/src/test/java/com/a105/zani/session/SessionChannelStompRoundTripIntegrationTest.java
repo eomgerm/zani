@@ -5,9 +5,11 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +28,8 @@ import org.springframework.messaging.converter.SimpleMessageConverter;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
 import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
+import org.springframework.messaging.simp.user.SimpUser;
+import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.web.socket.WebSocketHttpHeaders;
@@ -33,6 +37,10 @@ import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 import com.a105.zani.auth.application.port.TokenProvider;
+import com.a105.zani.session.application.getlivestate.GetLiveStateQuery;
+import com.a105.zani.session.application.getlivestate.GetLiveStateUseCase;
+import com.a105.zani.session.application.getlivestate.LiveStateResult;
+import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.infrastructure.websocket.SessionChannelDestinations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -42,15 +50,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 공개 채팅의 전 구간 검증. 실제 WebSocket 으로 STOMP 프레임을 주고받는다. 로컬 MySQL/Redis 가 떠 있어야 통과한다.
+ * 세션 채널(채팅·손들기·반응)의 전 구간 검증. 실제 WebSocket 으로 STOMP 프레임을 주고받는다. 로컬 MySQL/Redis 가 떠 있어야 통과한다.
  *
- * <p>목·페이크로는 잡히지 않는 것들을 여기서 본다 — 핸드셰이크가 실제로 열리는지, CONNECT 프레임 헤더 인증이 통하는지, 브로커가 세션 주제로 실제 브로드캐스트를 하는지, 그리고 저장과 브로드캐스트가
- * 같은 식별자를 쓰는지.
+ * <p>목·페이크로는 잡히지 않는 것들을 여기서 본다 — 핸드셰이크가 실제로 열리는지, CONNECT 프레임 헤더 인증이 통하는지, {@code @MessageMapping} 목적지가 실제로 걸리는지, 본문이
+ * 요청 record 로 제대로 역직렬화되는지, 브로커가 세션 주제로 실제 브로드캐스트를 하는지, 거절 통지가 보낸 사람에게만 닿는지, 그리고 저장과 브로드캐스트가 같은 식별자를 쓰는지.
  *
- * <p>단위 테스트({@code SendChatMessageServiceTest} 등)가 판단 규칙을 다루므로, 여기서는 한 바퀴가 실제로 도는지와 계약만 확인한다.
+ * <p><b>목적지와 역직렬화는 여기서만 걸린다.</b> 컨트롤러 단위 테스트는 메서드를 직접 부르므로 경로 오타를 못 잡고, {@code HandRequest.raised} 같은 원시 boolean 은 필드가
+ * 빠져도 조용히 {@code false} 가 된다.
+ *
+ * <p>단위 테스트({@code SendChatMessageServiceTest}·{@code ToggleHandServiceTest} 등)가 판단 규칙을 다루므로, 여기서는 한 바퀴가 실제로 도는지와 계약만
+ * 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class ChatStompRoundTripIntegrationTest {
+class SessionChannelStompRoundTripIntegrationTest {
 
     private static final long INSTRUCTOR_ID = 9_300_910L;
     private static final long STUDENT_ID = 9_300_911L;
@@ -75,6 +87,15 @@ class ChatStompRoundTripIntegrationTest {
 
     @Autowired
     private StringRedisTemplate redisTemplate;
+
+    @Autowired
+    private RaisedHandQueuePort raisedHandQueuePort;
+
+    @Autowired
+    private GetLiveStateUseCase getLiveStateUseCase;
+
+    @Autowired
+    private SimpUserRegistry simpUserRegistry;
 
     private WebSocketStompClient stompClient;
     private ThreadPoolTaskScheduler taskScheduler;
@@ -107,7 +128,9 @@ class ChatStompRoundTripIntegrationTest {
         insertParticipant(STUDENT_PARTICIPANT_ID, STUDENT_ID, "STUDENT");
         insertParticipant(INSTRUCTOR_PARTICIPANT_ID, INSTRUCTOR_ID, "INSTRUCTOR");
         jdbcTemplate.update("DELETE FROM chat_messages WHERE session_id = ?", SESSION_ID);
+        jdbcTemplate.update("DELETE FROM interaction_events WHERE session_id = ?", SESSION_ID);
         clearIdempotencyKeys();
+        clearInteractionKeys();
     }
 
     @AfterEach
@@ -115,12 +138,134 @@ class ChatStompRoundTripIntegrationTest {
         stompClient.stop();
         taskScheduler.shutdown();
         clearIdempotencyKeys();
+        clearInteractionKeys();
         jdbcTemplate.update("DELETE FROM chat_messages WHERE session_id = ?", SESSION_ID);
+        // 참가자를 참조하므로 참가자보다 먼저 지운다.
+        jdbcTemplate.update("DELETE FROM interaction_events WHERE session_id = ?", SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE id IN (?, ?)",
                 STUDENT_PARTICIPANT_ID,
                 INSTRUCTOR_PARTICIPANT_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
+    }
+
+    /**
+     * 손들기 한 바퀴. 목적지 라우팅·역직렬화·Redis 큐·이력이 한 번에 걸린다.
+     *
+     * <p>{@code raised} 가 원시 boolean 이라 역직렬화가 어긋나면 조용히 {@code false} 가 된다 — 손을 들었는데 내리기로 처리되는 경로다. 그래서 종류를 함께 본다.
+     */
+    @Test
+    void 손을_들면_브로드캐스트되고_큐와_이력에_남는다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+
+        sendHand(session, "h-1", true);
+
+        String event = awaitFrame(received);
+        assertEquals("HAND_RAISED", JsonPath.read(event, "$.type"));
+        assertEquals("h-1", JsonPath.read(event, "$.clientEventId"));
+        assertEquals("p-" + STUDENT_PARTICIPANT_ID, JsonPath.read(event, "$.sender.identity"));
+
+        assertEquals(List.of("p-" + STUDENT_PARTICIPANT_ID), raisedHandQueuePort.raisedInOrder(SESSION_ID));
+        awaitInteractionRow("HAND_RAISED");
+    }
+
+    @Test
+    void 손을_내리면_큐에서_빠지고_내림_이력이_남는다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+
+        sendHand(session, "h-1", true);
+        awaitFrame(received);
+
+        sendHand(session, "h-2", false);
+
+        assertEquals("HAND_LOWERED", JsonPath.read(awaitFrame(received), "$.type"));
+        assertTrue(raisedHandQueuePort.raisedInOrder(SESSION_ID).isEmpty());
+        awaitInteractionRow("HAND_LOWERED");
+    }
+
+    /** 이모지 문자가 아니라 종류 이름이 오간다는 계약을 고정한다. */
+    @Test
+    void 반응은_종류_이름으로_브로드캐스트되고_이력에_남는다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+
+        sendReaction(session, "r-1", "CLAP");
+
+        String event = awaitFrame(received);
+        assertEquals("REACTION", JsonPath.read(event, "$.type"));
+        assertEquals("CLAP", JsonPath.read(event, "$.payload.reaction"));
+        awaitInteractionRow("REACTION");
+    }
+
+    /** 재연결 화면을 되돌리는 값이라, 실제 Redis 에 든 손이 스냅샷으로 나와야 한다. */
+    @Test
+    void 스냅샷이_실제_큐의_손든_참가자를_싣는다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+        sendHand(session, "h-1", true);
+        awaitFrame(received);
+
+        LiveStateResult snapshot = getLiveStateUseCase.get(new GetLiveStateQuery(SESSION_ID, STUDENT_ID));
+
+        assertEquals(List.of("p-" + STUDENT_PARTICIPANT_ID), snapshot.raisedHandIdentities());
+    }
+
+    /**
+     * 거절 통지가 보낸 사람에게 실제로 닿는지. 채팅·손들기·반응이 모두 이 한 경로({@code publishRejection})를 쓰므로, 여기가 죽어 있으면 세 기능의 실패 표시가 함께 사라진다 —
+     * 프론트의 재시도 UI 도 영원히 뜨지 않는다.
+     *
+     * <p>빈 내용 채팅으로 확인한다. 프론트가 먼저 막지만 소켓에는 직접 넣을 수 있다.
+     */
+    /**
+     * 거절 통지가 안 닿을 때 원인을 가르는 진단.
+     *
+     * <p>사용자별 목적지는 브로커가 <b>인증 주체로 세션을 찾아</b> 옮긴다. 주체가 등록되지 않으면 보낼 곳을 못 찾아 <b>오류 없이 조용히 버려진다</b> — 그래서 증상만으로는 보내는 쪽 문제인지
+     * 주체 전파 문제인지 구분되지 않는다. 여기서 레지스트리를 직접 본다.
+     */
+    @Test
+    void CONNECT_에서_심은_주체가_세션에_등록된다() throws Exception {
+        connectAs(STUDENT_ID);
+        Thread.sleep(SUBSCRIBE_SETTLE_MS);
+
+        SimpUser user = simpUserRegistry.getUser(String.valueOf(STUDENT_ID));
+
+        assertNotNull(user, "인증 주체가 등록되지 않았습니다 — 사용자별 목적지가 해석되지 않습니다.");
+        assertTrue(user.hasSessions(), "주체는 있으나 연결된 세션이 없습니다.");
+    }
+
+    @Test
+    void 거절은_보낸_사람에게만_통지된다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+        BlockingQueue<String> errors = subscribeToErrors(session);
+
+        sendChat(session, "c-1", "   ");
+
+        String rejection = awaitFrame(errors);
+        assertEquals("c-1", JsonPath.read(rejection, "$.clientEventId"));
+        assertEquals("EMPTY_CONTENT", JsonPath.read(rejection, "$.reason"));
+        // 거절은 남에게 뿌리지 않는다.
+        assertNull(received.poll(1, TimeUnit.SECONDS));
+    }
+
+    /** 연타 제한이 실제 Redis 와 맞물려 도는지, 막힌 반응이 아무 흔적도 남기지 않는지 본다. */
+    @Test
+    void 연달아_보낸_반응은_거절되고_이력도_늘지_않는다() throws Exception {
+        StompSession session = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(session);
+        BlockingQueue<String> errors = subscribeToErrors(session);
+
+        sendReaction(session, "r-1", "CLAP");
+        awaitFrame(received);
+        sendReaction(session, "r-2", "CLAP");
+
+        String rejection = awaitFrame(errors);
+        assertEquals("r-2", JsonPath.read(rejection, "$.clientEventId"));
+        assertEquals("TOO_MANY_REACTIONS", JsonPath.read(rejection, "$.reason"));
+        assertNull(received.poll(1, TimeUnit.SECONDS));
+        assertEquals(1, interactionRowCount("REACTION"));
     }
 
     /** 구독과 무관하게 발행 경로가 도는지 먼저 본다. 브로드캐스트가 안 올 때 저장과 전달 중 어느 쪽 문제인지 가른다. */
@@ -286,6 +431,39 @@ class ChatStompRoundTripIntegrationTest {
                         .get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
     }
 
+    /**
+     * 브로커가 하트비트를 실제로 광고하는지 본다.
+     *
+     * <p>설정에서 {@code setTaskScheduler} 가 빠지면 Spring 은 조용히 {@code heart-beat:0,0} 을 보내고, STOMP 규약상 한쪽이 0 이면 그 방향이 꺼져
+     * <b>양방향 모두</b> 프레임이 멎는다. 그러면 조용한 수업의 연결이 몇 시간 동안 바이트를 하나도 보내지 않아 중간 홉이 끊는다. 오류가 나지 않고 값만 바뀌는 종류의 회귀라 여기서 잡는다.
+     */
+    @Test
+    void CONNECTED_프레임이_하트비트를_광고한다() throws Exception {
+        CompletableFuture<StompHeaders> connected = new CompletableFuture<>();
+        StompHeaders connectHeaders = new StompHeaders();
+        connectHeaders.add(
+                "Authorization",
+                "Bearer "
+                        + tokenProvider
+                                .issueAccessToken(String.valueOf(STUDENT_ID))
+                                .value());
+
+        stompClient
+                .connectAsync(url(), new WebSocketHttpHeaders(), connectHeaders, new StompSessionHandlerAdapter() {
+                    @Override
+                    public void afterConnected(StompSession session, StompHeaders headers) {
+                        connected.complete(headers);
+                    }
+                })
+                .get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+        // {서버가 보내는 주기, 클라이언트에 기대하는 주기}. 둘 다 0 보다 커야 어느 방향이든 흐른다.
+        long[] heartbeat = connected.get(TIMEOUT_SECONDS, TimeUnit.SECONDS).getHeartbeat();
+        assertNotNull(heartbeat);
+        assertTrue(heartbeat[0] > 0, "서버 → 클라이언트 하트비트가 꺼져 있습니다.");
+        assertTrue(heartbeat[1] > 0, "클라이언트 → 서버 하트비트가 꺼져 있습니다.");
+    }
+
     private String url() {
         return "ws://localhost:" + port + SessionChannelDestinations.HANDSHAKE_PATH;
     }
@@ -320,14 +498,65 @@ class ChatStompRoundTripIntegrationTest {
     }
 
     private void sendChat(StompSession session, String clientEventId, String content) {
+        sendFrame(session, "chat", "{\"clientEventId\":\"" + clientEventId + "\",\"content\":\"" + content + "\"}");
+    }
+
+    private void sendHand(StompSession session, String clientEventId, boolean raised) {
+        sendFrame(session, "hand", "{\"clientEventId\":\"" + clientEventId + "\",\"raised\":" + raised + "}");
+    }
+
+    private void sendReaction(StompSession session, String clientEventId, String reaction) {
+        sendFrame(
+                session, "reaction", "{\"clientEventId\":\"" + clientEventId + "\",\"reaction\":\"" + reaction + "\"}");
+    }
+
+    /** 목적지를 한 곳에서만 만든다 — 오타가 나면 세 종류가 함께 실패해 원인이 분명해진다. */
+    private void sendFrame(StompSession session, String kind, String body) {
         StompHeaders headers = new StompHeaders();
-        headers.setDestination("/app/sessions/" + SESSION_ID + "/chat");
-        // 서버가 본문을 ChatMessageRequest 로 읽으려면 JSON 임을 알아야 한다.
+        headers.setDestination("/app/sessions/" + SESSION_ID + "/" + kind);
+        // 서버가 본문을 요청 record 로 읽으려면 JSON 임을 알아야 한다.
         headers.setContentType(MimeTypeUtils.APPLICATION_JSON);
-        session.send(
-                headers,
-                ("{\"clientEventId\":\"" + clientEventId + "\",\"content\":\"" + content + "\"}")
-                        .getBytes(StandardCharsets.UTF_8));
+        session.send(headers, body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 거절 통지 구독. 브로커가 사용자별 목적지로 옮겨 주므로 {@code USER_PREFIX} 를 붙여 건다 — 서버가 보낼 때 쓰는 {@code ERROR_QUEUE} 를 그대로 구독하면 프레임이 오지
+     * 않는다(프론트도 {@code /user} 를 붙여 구독한다).
+     */
+    private BlockingQueue<String> subscribeToErrors(StompSession session) throws Exception {
+        BlockingQueue<String> errors = new LinkedBlockingQueue<>();
+        session.subscribe(
+                SessionChannelDestinations.USER_PREFIX + SessionChannelDestinations.ERROR_QUEUE, frameHandler(errors));
+        Thread.sleep(SUBSCRIBE_SETTLE_MS);
+        return errors;
+    }
+
+    /** 손들기 큐와 반응 연타 제한 키를 지운다. 남아 있으면 다음 실행의 첫 요청이 "이미 든 손"·"연타"로 걸러져 원인을 찾기 어려운 실패가 된다. */
+    private void clearInteractionKeys() {
+        redisTemplate.delete("session:" + SESSION_ID + ":hands");
+        Set<String> cooldowns = redisTemplate.keys("session:" + SESSION_ID + ":reaction:cooldown:*");
+        if (!cooldowns.isEmpty()) {
+            redisTemplate.delete(cooldowns);
+        }
+    }
+
+    private int interactionRowCount(String eventType) {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM interaction_events WHERE session_id = ? AND event_type = ?",
+                Integer.class,
+                SESSION_ID,
+                eventType);
+    }
+
+    /** 이력 저장은 브로드캐스트 뒤에 일어나므로 짧게 폴링한다. */
+    private void awaitInteractionRow(String eventType) throws InterruptedException {
+        for (int attempt = 0; attempt < TIMEOUT_SECONDS * 10; attempt++) {
+            if (interactionRowCount(eventType) == 1) {
+                return;
+            }
+            Thread.sleep(100);
+        }
+        assertEquals(1, interactionRowCount(eventType), eventType + " 이력이 저장되지 않았다");
     }
 
     /**

@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.member.application.get.GetMemberDisplayNameQuery;
 import com.a105.zani.member.application.get.GetMemberDisplayNameUseCase;
+import com.a105.zani.session.application.port.RaisedHandQueuePort;
 import com.a105.zani.session.application.port.SessionEventSender;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantQuery;
 import com.a105.zani.session.application.resolveparticipant.ResolveSessionParticipantUseCase;
@@ -36,16 +37,19 @@ public class GetLiveStateService implements GetLiveStateUseCase {
     private final SessionParticipantRepository participantRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final GetMemberDisplayNameUseCase getMemberDisplayNameUseCase;
+    private final RaisedHandQueuePort raisedHandQueuePort;
 
     public GetLiveStateService(
             ResolveSessionParticipantUseCase resolveSessionParticipantUseCase,
             SessionParticipantRepository participantRepository,
             ChatMessageRepository chatMessageRepository,
-            GetMemberDisplayNameUseCase getMemberDisplayNameUseCase) {
+            GetMemberDisplayNameUseCase getMemberDisplayNameUseCase,
+            RaisedHandQueuePort raisedHandQueuePort) {
         this.resolveSessionParticipantUseCase = resolveSessionParticipantUseCase;
         this.participantRepository = participantRepository;
         this.chatMessageRepository = chatMessageRepository;
         this.getMemberDisplayNameUseCase = getMemberDisplayNameUseCase;
+        this.raisedHandQueuePort = raisedHandQueuePort;
     }
 
     @Override
@@ -54,7 +58,11 @@ public class GetLiveStateService implements GetLiveStateUseCase {
         // 비멤버에게 이력을 보여주지 않는다. 구독 검사(StompAuthChannelInterceptor)와 같은 판정이다.
         resolveSessionParticipantUseCase.resolve(new ResolveSessionParticipantQuery(query.sessionId(), query.userId()));
 
-        return new LiveStateResult(directoryOf(query.sessionId()), chatHistoryOf(query.sessionId()), List.of());
+        // 큐가 준 순서 그대로 내려보낸다. 클라이언트는 포함 여부만 쓰므로 여기서 다시 정렬하지 않는다.
+        return new LiveStateResult(
+                directoryOf(query.sessionId()),
+                chatHistoryOf(query.sessionId()),
+                raisedHandQueuePort.raisedInOrder(query.sessionId()));
     }
 
     /** 참가자 디렉터리. 이름 조회 횟수가 <b>메시지 수가 아니라 참가자 수</b>로 묶인다는 점이 중요하다 — 200 건의 채팅이 있어도 한 수업의 참가자는 수십 명이다. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CameraIcon, ChatIcon, CloseIcon, MicIcon, PeopleIcon, ScreenShareIcon } from "@/shared/ui";
@@ -16,7 +16,13 @@ import {
   type DetectorOutput,
   type UnderstandingCheckResponse,
 } from "@/domains/attention";
-import { SessionChannelProvider, useSessionChat } from "@/domains/interaction";
+import {
+  SessionChannelProvider,
+  useRaisedHands,
+  useSessionChat,
+  useSessionReactions,
+  type ReactionKind,
+} from "@/domains/interaction";
 import { useAuth } from "@/domains/auth";
 import { endSession, EndSessionRequestError } from "../infrastructure/endSessionApi";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
@@ -54,13 +60,12 @@ type RoomScreenProps = {
   expiresAt?: string;
 };
 
-type FloatingReaction = { key: number; emoji: string; left: number };
-
 /**
  * 강사가 방을 종료했을 때(또는 미복귀 자동 종료) 학생을 바로 튕겨내지 않고, 종료 안내를
  * 잠깐 보여준 뒤 내보내기까지의 시간(ms). 강사 본인은 사후 메모로 곧바로 이동하므로 해당 없다.
  */
 const ENDED_KICK_DELAY_MS = 4_000;
+
 
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
@@ -170,9 +175,11 @@ function RoomScreenContent({
   const [view, setView] = useState<"gallery" | "speaker">("gallery");
   const [panel, setPanel] = useState<"people" | "chat">("people");
   const [panelOpen, setPanelOpen] = useState(false);
-  const [handRaised, setHandRaised] = useState(false);
-  // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기는 아직 fixture(WebSocket 소관).
-  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: handRaised };
+  // 손들기 현재 상태는 서버가 들고 있다. 여기서 로컬로 뒤집으면 서버가 거절했을 때(비멤버·저장소
+  // 장애) 내 화면만 손이 올라간 채로 남는다. 아래에서 집합 포함 여부로만 쓰고 순서는 보지 않는다.
+  const hands = useRaisedHands({ myIdentity: localParticipantId });
+  // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기도 이제 서버 확정 값이다.
+  const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: hands.myHandRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
   // 화면 공유는 실제 LiveKit 트랙 + 서버 활성 슬롯을 쓴다. 로컬 로 토글하던 시연 상태를 대체한다.
   const {
@@ -260,8 +267,9 @@ function RoomScreenContent({
     },
     [triggerPostureGuide, triggerUnderstandingCheck],
   );
-  const [reactions, setReactions] = useState<FloatingReaction[]>([]);
-  const reactionSeq = useRef(0);
+  // 떠오르는 반응은 서버가 뿌린 것만 그린다. 낙관적으로 그리면 연타 제한에 걸려 남에게는
+  // 안 보이는 반응이 내 화면에만 뜨고, echo 가 오면 같은 반응이 두 번 떠오른다.
+  const { reactions, canReact, react } = useSessionReactions();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // 언마운트 시 남아 있는 애니메이션/토스트 타이머를 모두 정리한다.
@@ -308,11 +316,22 @@ function RoomScreenContent({
 
   // 갤러리는 LiveKit 이 알려주는 실제 참가자만 보여준다. 아직 아무도 없으면 빈 화면이 맞다 —
   // 시연용 픽스처로 채우면 들어오지 않은 학생이 참가 중인 것처럼 보인다.
-  const galleryParticipants = tileParticipants;
+  //
+  // 손들기만 업무 채널에서 덮어쓴다. LiveKit 은 손들기를 모르므로 타일의 값은 항상 false 다.
+  const galleryParticipants = useMemo(
+    () =>
+      tileParticipants.map((participant) => ({
+        ...participant,
+        handRaised: hands.raisedIdentities.includes(participant.id),
+      })),
+    [tileParticipants, hands.raisedIdentities],
+  );
 
   // 사이드 패널 사람 목록도 갤러리와 같은 실제 참가자를 쓴다. 내 마이크·카메라는 LiveKit 반영보다
   // 로컬 토글이 먼저 움직이므로, 내 행만 로컬 상태로 덮어 즉시 반응하게 한다.
-  // 손들기는 업무 WebSocket 소관이라 아직 항상 내려간 상태다.
+  //
+  // 손들기는 업무 채널이 알려준 집합에서 읽는다. 떠난 참가자가 목록에 남아 있어도 여기서 걸러진다 —
+  // 이 목록은 지금 붙어 있는 참가자만 훑기 때문이다.
   const meId = localParticipantId;
   const list = tileParticipants.map((participant) => ({
     id: participant.id,
@@ -321,7 +340,7 @@ function RoomScreenContent({
     host: participant.role === "instructor",
     cam: participant.cameraEnabled,
     mic: participant.microphoneEnabled,
-    hand: participant.handRaised,
+    hand: hands.raisedIdentities.includes(participant.id),
     ...(participant.id === meId ? me : {}),
   }));
   // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
@@ -333,21 +352,15 @@ function RoomScreenContent({
   const activeSharerName =
     tileParticipants.find((participant) => participant.id === shareActiveIdentity)?.name ?? "참가자";
 
-  const toggleHand = () => setHandRaised((raised) => !raised);
-
   /** 같은 패널을 다시 누르면 닫고, 다른 패널이면 그쪽으로 전환한다(프로토타입 togglePeople/toggleChat). */
   const togglePanel = (next: "people" | "chat") => {
     setPanelOpen((open) => !(open && panel === next));
     setPanel(next);
   };
 
-  const addReaction = (emoji: string) => {
-    const key = reactionSeq.current;
-    reactionSeq.current += 1;
-    setReactions((prev) => [...prev, { key, emoji, left: 20 + Math.random() * 60 }]);
+  const sendReaction = (kind: ReactionKind) => {
+    react(kind);
     setReactMenuOpen(false);
-    // zFloat 애니메이션(2.4s)이 끝나면 목록에서 제거한다.
-    track(setTimeout(() => setReactions((prev) => prev.filter((r) => r.key !== key)), 2400));
   };
 
   const [leaveConfirming, setLeaveConfirming] = useState(false);
@@ -710,9 +723,11 @@ function RoomScreenContent({
             onToggleMic={media.toggleMicrophone}
             onToggleCam={media.toggleCamera}
             onToggleShare={toggleScreenShare}
-            onToggleHand={toggleHand}
+            handDisabled={!hands.canToggle}
+            reactionDisabled={!canReact}
+            onToggleHand={hands.toggle}
             onToggleReactMenu={() => setReactMenuOpen((v) => !v)}
-            onReact={addReaction}
+            onReact={sendReaction}
             onLeave={leaveRoom}
           />
         </div>

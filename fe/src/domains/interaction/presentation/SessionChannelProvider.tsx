@@ -31,7 +31,9 @@ export interface SessionChannelContextValue {
    */
   readonly snapshot: LiveStateSnapshot | null;
   publishChat: (clientEventId: string, content: string) => void;
-  /** 업무 이벤트 구독. 정리 함수를 돌려준다. 64~66 이 같은 방식으로 붙는다. */
+  publishHand: (clientEventId: string, raised: boolean) => void;
+  publishReaction: (clientEventId: string, reaction: string) => void;
+  /** 업무 이벤트 구독. 정리 함수를 돌려준다. 65~66 이 같은 방식으로 붙는다. */
   addEventListener: (listener: EventListener) => () => void;
   /** 내 전송이 거절됐다는 통지 구독. */
   addRejectionListener: (listener: RejectionListener) => () => void;
@@ -158,9 +160,33 @@ export function SessionChannelProvider({
     channelRef.current?.publishChat(clientEventId, content);
   }, []);
 
+  const publishHand = useCallback((clientEventId: string, raised: boolean) => {
+    channelRef.current?.publishHand(clientEventId, raised);
+  }, []);
+
+  const publishReaction = useCallback((clientEventId: string, reaction: string) => {
+    channelRef.current?.publishReaction(clientEventId, reaction);
+  }, []);
+
   const value = useMemo<SessionChannelContextValue>(
-    () => ({ state, snapshot, publishChat, addEventListener, addRejectionListener }),
-    [state, snapshot, publishChat, addEventListener, addRejectionListener],
+    () => ({
+      state,
+      snapshot,
+      publishChat,
+      publishHand,
+      publishReaction,
+      addEventListener,
+      addRejectionListener,
+    }),
+    [
+      state,
+      snapshot,
+      publishChat,
+      publishHand,
+      publishReaction,
+      addEventListener,
+      addRejectionListener,
+    ],
   );
 
   return <SessionChannelContext.Provider value={value}>{children}</SessionChannelContext.Provider>;

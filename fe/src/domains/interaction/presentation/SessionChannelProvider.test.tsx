@@ -25,6 +25,8 @@ const channelFactory: SessionChannelFactory = ({ getAccessToken }) => {
   channel.created += 1;
   return {
     publishChat: () => {},
+    publishHand: () => {},
+    publishReaction: () => {},
     deactivate: () => {
       channel.deactivated += 1;
     },

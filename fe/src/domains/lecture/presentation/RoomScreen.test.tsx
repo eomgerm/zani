@@ -36,9 +36,33 @@ const chat = vi.hoisted(() => ({
   retry: vi.fn(),
 }));
 
+const hands = vi.hoisted(() => ({
+  raisedIdentities: [] as string[],
+  myHandRaised: false,
+  canToggle: true,
+  toggle: vi.fn(),
+}));
+
+const sessionReactions = vi.hoisted(() => ({
+  reactions: [] as { key: string; emoji: string; left: number }[],
+  canReact: true,
+  react: vi.fn(),
+}));
+
 vi.mock("@/domains/interaction", () => ({
   SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionChat: () => chat,
+  useRaisedHands: () => hands,
+  useSessionReactions: () => sessionReactions,
+  REACTION_KINDS: ["LIKE", "HEART", "CLAP", "CELEBRATE", "WOW", "CHEER"],
+  REACTION_EMOJI: {
+    LIKE: "👍",
+    HEART: "❤️",
+    CLAP: "👏",
+    CELEBRATE: "🎉",
+    WOW: "😮",
+    CHEER: "🙌",
+  },
 }));
 
 // 실제 LiveKit publish 상태 대신 테스트가 제어하는 값을 쓴다(미디어 훅 자체는 useRoomMediaControls.test 가 검증).

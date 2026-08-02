@@ -81,8 +81,6 @@ export const participantTiles = participants.map((p) => ({
   handRaised: p.hand,
 }));
 
-export const reactionEmojis = ["👍", "❤️", "👏", "🎉", "😮", "🙌"];
-
 /** 리포트 - 수업 내용 전사 */
 export const transcript = [
   { t: "00:02", speaker: "박서준", text: "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다." },
