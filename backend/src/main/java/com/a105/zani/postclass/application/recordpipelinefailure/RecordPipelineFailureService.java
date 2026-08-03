@@ -57,7 +57,8 @@ public class RecordPipelineFailureService implements RecordPipelineFailureUseCas
             return new RecordPipelineFailureResult(job.status(), decision.nextAttemptAt(), null);
         }
 
-        // 사유를 먼저 남긴다. 전이가 실패하면 사유만이라도 남아 운영에서 원인을 찾을 수 있다.
+        // 사유 기록과 전이는 한 트랜잭션이다. 상태 머신이 전이를 거절하면(이미 공개된 작업에 늦은 실패 보고가 온 경우)
+        // 이 기록도 함께 롤백되는데, 그것이 맞다 — 공개된 결과에 실패 사유만 붙어 남으면 그쪽이 더 헷갈린다.
         pipelineJobPort.markFailed(command.sessionId(), command.reason(), now);
         advancePipelineJobUseCase.advance(new AdvancePipelineJobCommand(command.sessionId(), PipelineStatus.FAILED));
         log.error(
