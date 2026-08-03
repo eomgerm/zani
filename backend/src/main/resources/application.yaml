@@ -7,10 +7,10 @@ spring:
     scheduling:
       # 기본값 1이면 @Scheduled 작업들이 스레드 하나를 공유한다. 녹화 outbox 릴레이는 한 번에 최대 20건을
       # 처리하고 건마다 LiveKit 호출이 최대 60초 매달릴 수 있어, 100ms 주기인 강사 오디오 무음 패딩이
-      # 그동안 굶는다. 현재 스케줄 작업은 5개
-      # (무음 패딩·outbox 릴레이·코칭 이력 재시도·세션 만료·메모 비활성 확정)라 여유 1개를 더 둔다.
+      # 그동안 굶는다. 스케줄 작업은 무음 패딩·outbox 릴레이·코칭 이력 재시도·세션 만료·메모 비활성 확정에
+      # 더해, notification.email.enabled=true 일 때 알림 이메일 릴레이가 붙어 최대 6개다. 여유 1개를 더 둔다.
       pool:
-        size: 6
+        size: 7
   jpa:
     open-in-view: false
     properties:
@@ -65,6 +65,20 @@ postclass:
   # 30분 넘게 입력이 없는 강사 메모를 확정하는 주기(ISO-8601 duration).
   # 비활성 기준 30분 자체는 도메인 규칙(InstructorNote.INACTIVITY_WINDOW)이라 설정으로 열지 않는다.
   note-inactivity-sweep-delay: ${POSTCLASS_NOTE_INACTIVITY_SWEEP_DELAY:PT1M}
+
+notification:
+  email:
+    # 리포트가 준비된(session_reports.published_at 설정) 세션의 학생에게 이메일을 보내는 릴레이의 활성 여부.
+    # 켤 때는 SMTP 를 함께 설정한다: SPRING_MAIL_HOST / SPRING_MAIL_PORT / SPRING_MAIL_USERNAME /
+    # SPRING_MAIL_PASSWORD (relaxed binding). 이 값들이 없으면 JavaMailSender 빈이 없어 발송이 실패로 기록·재시도된다.
+    # 꺼져 있으면 등록·발송 스케줄러 자체가 등록되지 않는다.
+    enabled: ${NOTIFICATION_EMAIL_ENABLED:false}
+    # 등록 + 발송 릴레이 주기(ISO-8601 duration).
+    relay-delay: ${NOTIFICATION_EMAIL_RELAY_DELAY:PT10S}
+    # 학생에게 보이는 발신 주소.
+    from: ${NOTIFICATION_EMAIL_FROM:no-reply@zani.app}
+    # 이메일 로그인 링크의 앱 기본 주소. 링크는 {app-base-url}/sessions/{sessionId}/report 로 만든다.
+    app-base-url: ${NOTIFICATION_APP_BASE_URL:https://zani.app}
 
 gms:
   base-url: ${GMS_BASE_URL:https://gms.ssafy.io/gmsapi/api.openai.com}
@@ -149,6 +163,8 @@ audio-clip:
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
+  # 운영에서는 항상 활성화한다. 수동 relay를 검증하는 통합 테스트만 false로 격리한다.
+  outbox-relay-enabled: ${RECORDING_OUTBOX_RELAY_ENABLED:true}
   # outbox 릴레이 주기(ISO-8601 duration).
   outbox-relay-delay: ${RECORDING_OUTBOX_RELAY_DELAY:PT5S}
 

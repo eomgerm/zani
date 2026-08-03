@@ -21,8 +21,7 @@ class CoachingHistoryTest {
     private static final CoachingResponseCounts COUNTS = new CoachingResponseCounts(10, 4, 3, 1, 0, 0);
     private static final CoachingTranscript TRANSCRIPT =
             CoachingTranscript.transcribed(TRIGGERED_AT.minusSeconds(30).toEpochMilli(), TRIGGERED_AT.toEpochMilli());
-    private static final CoachingTip TIP =
-            new CoachingTip(CoachingTipType.CONFUSED, "title", "message", "binary tree");
+    private static final CoachingTip TIP = new CoachingTip(CoachingTipType.CONFUSED, "title", "message", "binary tree");
 
     @Test
     @DisplayName("성공과 실패 결과를 각각 하나의 완결된 이력으로 허용한다")
@@ -138,8 +137,8 @@ class CoachingHistoryTest {
         assertThatThrownBy(() -> history(null, null, CoachingTipType.CONFUSED))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exactly one");
-        assertThatThrownBy(() -> history(
-                        TIP, CoachingTipUnavailableReason.TIP_GENERATION_FAILED, CoachingTipType.CONFUSED))
+        assertThatThrownBy(() ->
+                        history(TIP, CoachingTipUnavailableReason.TIP_GENERATION_FAILED, CoachingTipType.CONFUSED))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exactly one");
     }
