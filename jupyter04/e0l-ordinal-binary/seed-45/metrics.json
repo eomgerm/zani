@@ -1,0 +1,338 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 3,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6602040816326531,
+    "macro_f1": 0.591644903624407,
+    "within_one_accuracy": 0.9683673469387755,
+    "quadratic_weighted_kappa": 0.7075272846503349,
+    "confusion_matrix": [
+      [
+        42,
+        19,
+        6,
+        4
+      ],
+      [
+        2,
+        36,
+        45,
+        10
+      ],
+      [
+        2,
+        30,
+        128,
+        106
+      ],
+      [
+        0,
+        9,
+        100,
+        441
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.9130434782608695,
+        "recall": 0.5915492957746479,
+        "f1-score": 0.717948717948718,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.3829787234042553,
+        "recall": 0.3870967741935484,
+        "f1-score": 0.3850267379679144,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.45878136200716846,
+        "recall": 0.48120300751879697,
+        "f1-score": 0.46972477064220186,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.786096256684492,
+        "recall": 0.8018181818181818,
+        "f1-score": 0.7938793879387939,
+        "support": 550.0
+      },
+      "accuracy": 0.6602040816326531,
+      "macro avg": {
+        "precision": 0.6352249550891963,
+        "recall": 0.5654168148262937,
+        "f1-score": 0.591644903624407,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6681958078607091,
+        "recall": 0.6602040816326531,
+        "f1-score": 0.6615941815944258,
+        "support": 980.0
+      }
+    },
+    "monotonicity_violation_rate": 0.04285714285714286
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5903820907151147,
+      "quadratic_weighted_kappa": 0.7149661452253093
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5876130000956468,
+      "quadratic_weighted_kappa": 0.7160493827160495
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.5854431386990365,
+      "quadratic_weighted_kappa": 0.7107865791662815
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.591644903624407,
+      "quadratic_weighted_kappa": 0.7075272846503349
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5821925669649521,
+      "quadratic_weighted_kappa": 0.7158505154639175
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5814471533445804,
+      "quadratic_weighted_kappa": 0.7152214022140222
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5850968282494529,
+      "quadratic_weighted_kappa": 0.7168232121268483
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.5864994921502884,
+      "quadratic_weighted_kappa": 0.7150143744783456
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5853782543660513,
+      "quadratic_weighted_kappa": 0.7123154533253113
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5814475596729555,
+      "quadratic_weighted_kappa": 0.7094056871596779
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.583902825997149,
+      "quadratic_weighted_kappa": 0.7186784429178934
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.5810022956191329,
+      "quadratic_weighted_kappa": 0.7204451926674149
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.5755958336922693,
+      "quadratic_weighted_kappa": 0.7143256464011181
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5789374889985122,
+      "quadratic_weighted_kappa": 0.7193982433190058
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5777545079505154,
+      "quadratic_weighted_kappa": 0.7125
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5804056939131803,
+      "quadratic_weighted_kappa": 0.7123780174627632
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5773458998191127,
+      "quadratic_weighted_kappa": 0.7119529719137818
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5813890185372959,
+      "quadratic_weighted_kappa": 0.7107438016528925
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.5873634848317293,
+      "quadratic_weighted_kappa": 0.7184488617848331
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.5822128407517402,
+      "quadratic_weighted_kappa": 0.7084831224613661
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5809920862383207,
+      "quadratic_weighted_kappa": 0.711814228883338
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.5789015534055207,
+      "quadratic_weighted_kappa": 0.7109163792299804
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.5853491001205022,
+      "quadratic_weighted_kappa": 0.7161410885307171
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.5851670014919512,
+      "quadratic_weighted_kappa": 0.7114607993315694
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0l-ordinal-binary/seed-45",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 45,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4,
+      "head": "ordinal_binary"
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "stage1_checkpoint": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-45/best.pt",
+    "curriculum": "none",
+    "reliability_manifest": null,
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-L protocol."
+  },
+  "experiment": {
+    "protocol": "E0-L",
+    "seed": 45,
+    "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "head": "ordinal_binary",
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "loss": "ordinal_binary_bce",
+      "monotonicity": "cumulative_min",
+      "decoding": "argmax_class_probability"
+    },
+    "configuration_sha256": "2c6c20aafb133ad95ae44b34f5ccbf17125bb27351009af76b2c337621b6703b",
+    "inputs": {
+      "stage1": {
+        "protocol_output": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean",
+        "seeds": {
+          "42": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-42/best.pt",
+            "sha256": "5f096ad9d3c9fcc1d6d5259ad8a1ac805f790e8d93b3c64e9f7e658b087af43d",
+            "size_bytes": 12912507
+          },
+          "43": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-43/best.pt",
+            "sha256": "3ac009dc476b88e45953bd72f3f2219066cbfdca3a09a15236147f24ae574f33",
+            "size_bytes": 12912507
+          },
+          "44": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-44/best.pt",
+            "sha256": "4a5379dc34256a6a893f1bc5d1f84484c5b849f64bb6e8b82e3c32339d7c24fa",
+            "size_bytes": 12912507
+          },
+          "45": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-45/best.pt",
+            "sha256": "c6dea498fc1c5911f7d6ca6dfc61317567f9e48cb0b2793ee22e91fdc9407f21",
+            "size_bytes": 12912507
+          },
+          "46": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-46/best.pt",
+            "sha256": "bae609df4bd4954788451f2f4e7b89fb75dc6ace3014909be4db4b154cd25f67",
+            "size_bytes": 12912507
+          }
+        },
+        "sha256": "a0339eb50c16aa8d27de3b8e9de4fede91812dca2700b3cc4b8ae1dcd6fcf7cd"
+      }
+    }
+  }
+}

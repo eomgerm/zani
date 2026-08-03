@@ -1,0 +1,413 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 18,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6704081632653062,
+    "macro_f1": 0.5697629174980331,
+    "within_one_accuracy": 0.9561224489795919,
+    "quadratic_weighted_kappa": 0.6964490789655013,
+    "confusion_matrix": [
+      [
+        40,
+        18,
+        9,
+        4
+      ],
+      [
+        5,
+        32,
+        45,
+        11
+      ],
+      [
+        6,
+        21,
+        111,
+        128
+      ],
+      [
+        0,
+        13,
+        63,
+        474
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.7843137254901961,
+        "recall": 0.5633802816901409,
+        "f1-score": 0.6557377049180327,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.38095238095238093,
+        "recall": 0.34408602150537637,
+        "f1-score": 0.3615819209039548,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.4868421052631579,
+        "recall": 0.41729323308270677,
+        "f1-score": 0.4493927125506073,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7682333873581848,
+        "recall": 0.8618181818181818,
+        "f1-score": 0.8123393316195373,
+        "support": 550.0
+      },
+      "accuracy": 0.6704081632653062,
+      "macro avg": {
+        "precision": 0.60508539976598,
+        "recall": 0.5466444295241015,
+        "f1-score": 0.5697629174980331,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6562685805973234,
+        "recall": 0.6704081632653062,
+        "f1-score": 0.6597036628800563,
+        "support": 980.0
+      }
+    },
+    "monotonicity_violation_rate": 0.009693877551020408
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5588654727576857,
+      "quadratic_weighted_kappa": 0.6725069284607074
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5684954606736145,
+      "quadratic_weighted_kappa": 0.6962693958402113
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.553938600094278,
+      "quadratic_weighted_kappa": 0.6931818181818181
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.5631294224673722,
+      "quadratic_weighted_kappa": 0.6959992397605246
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5607656760007362,
+      "quadratic_weighted_kappa": 0.6918754390072583
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5537489077056545,
+      "quadratic_weighted_kappa": 0.6929999052761202
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5638421825620308,
+      "quadratic_weighted_kappa": 0.6951501154734412
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.5618118118118118,
+      "quadratic_weighted_kappa": 0.6904128761371588
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5553891920083338,
+      "quadratic_weighted_kappa": 0.6893167053914364
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5575226137885985,
+      "quadratic_weighted_kappa": 0.6910838581372224
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.5631156173178358,
+      "quadratic_weighted_kappa": 0.6990794822671837
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.569012802734714,
+      "quadratic_weighted_kappa": 0.6996347158644287
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.5595550388677446,
+      "quadratic_weighted_kappa": 0.6875530810606776
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5620640767996044,
+      "quadratic_weighted_kappa": 0.69621782362234
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5615772364916926,
+      "quadratic_weighted_kappa": 0.6989669518066657
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5531629829298622,
+      "quadratic_weighted_kappa": 0.6944660950896338
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5653138600542504,
+      "quadratic_weighted_kappa": 0.7009926141976761
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5661732549045542,
+      "quadratic_weighted_kappa": 0.6893034368682227
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.5697629174980331,
+      "quadratic_weighted_kappa": 0.6964490789655013
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.5632374307928223,
+      "quadratic_weighted_kappa": 0.6914280444505925
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5620158786393674,
+      "quadratic_weighted_kappa": 0.6927134849983514
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.5522268825295731,
+      "quadratic_weighted_kappa": 0.6899389680044387
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.5658857482386894,
+      "quadratic_weighted_kappa": 0.6955254268659479
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.5589405856191698,
+      "quadratic_weighted_kappa": 0.6971122797306024
+    },
+    {
+      "epoch": 24,
+      "macro_f1": 0.5447133264158316,
+      "quadratic_weighted_kappa": 0.6867003446485058
+    },
+    {
+      "epoch": 25,
+      "macro_f1": 0.5589027319807816,
+      "quadratic_weighted_kappa": 0.6941079672715638
+    },
+    {
+      "epoch": 26,
+      "macro_f1": 0.5595795612969297,
+      "quadratic_weighted_kappa": 0.6921866321051657
+    },
+    {
+      "epoch": 27,
+      "macro_f1": 0.5546887800192271,
+      "quadratic_weighted_kappa": 0.6938869453139385
+    },
+    {
+      "epoch": 28,
+      "macro_f1": 0.5541767885718027,
+      "quadratic_weighted_kappa": 0.6927878931189406
+    },
+    {
+      "epoch": 29,
+      "macro_f1": 0.5488662492324221,
+      "quadratic_weighted_kappa": 0.6914671975554424
+    },
+    {
+      "epoch": 30,
+      "macro_f1": 0.5382156834714488,
+      "quadratic_weighted_kappa": 0.6864251909470035
+    },
+    {
+      "epoch": 31,
+      "macro_f1": 0.5621778738009675,
+      "quadratic_weighted_kappa": 0.6925874125874125
+    },
+    {
+      "epoch": 32,
+      "macro_f1": 0.5562124219679179,
+      "quadratic_weighted_kappa": 0.6878684160486784
+    },
+    {
+      "epoch": 33,
+      "macro_f1": 0.5457040976931475,
+      "quadratic_weighted_kappa": 0.682752832563995
+    },
+    {
+      "epoch": 34,
+      "macro_f1": 0.5433017785427423,
+      "quadratic_weighted_kappa": 0.6717285945072697
+    },
+    {
+      "epoch": 35,
+      "macro_f1": 0.5566767708716402,
+      "quadratic_weighted_kappa": 0.6798188874514877
+    },
+    {
+      "epoch": 36,
+      "macro_f1": 0.5379046173033682,
+      "quadratic_weighted_kappa": 0.6763760078296127
+    },
+    {
+      "epoch": 37,
+      "macro_f1": 0.5449124114088657,
+      "quadratic_weighted_kappa": 0.6770823703429787
+    },
+    {
+      "epoch": 38,
+      "macro_f1": 0.5385476784300611,
+      "quadratic_weighted_kappa": 0.678479381443299
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0l-ordinal-binary/seed-43",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 43,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4,
+      "head": "ordinal_binary"
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "stage1_checkpoint": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-43/best.pt",
+    "curriculum": "none",
+    "reliability_manifest": null,
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-L protocol."
+  },
+  "experiment": {
+    "protocol": "E0-L",
+    "seed": 43,
+    "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "head": "ordinal_binary",
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "loss": "ordinal_binary_bce",
+      "monotonicity": "cumulative_min",
+      "decoding": "argmax_class_probability"
+    },
+    "configuration_sha256": "2c6c20aafb133ad95ae44b34f5ccbf17125bb27351009af76b2c337621b6703b",
+    "inputs": {
+      "stage1": {
+        "protocol_output": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean",
+        "seeds": {
+          "42": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-42/best.pt",
+            "sha256": "5f096ad9d3c9fcc1d6d5259ad8a1ac805f790e8d93b3c64e9f7e658b087af43d",
+            "size_bytes": 12912507
+          },
+          "43": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-43/best.pt",
+            "sha256": "3ac009dc476b88e45953bd72f3f2219066cbfdca3a09a15236147f24ae574f33",
+            "size_bytes": 12912507
+          },
+          "44": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-44/best.pt",
+            "sha256": "4a5379dc34256a6a893f1bc5d1f84484c5b849f64bb6e8b82e3c32339d7c24fa",
+            "size_bytes": 12912507
+          },
+          "45": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-45/best.pt",
+            "sha256": "c6dea498fc1c5911f7d6ca6dfc61317567f9e48cb0b2793ee22e91fdc9407f21",
+            "size_bytes": 12912507
+          },
+          "46": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-clean/seed-46/best.pt",
+            "sha256": "bae609df4bd4954788451f2f4e7b89fb75dc6ace3014909be4db4b154cd25f67",
+            "size_bytes": 12912507
+          }
+        },
+        "sha256": "a0339eb50c16aa8d27de3b8e9de4fede91812dca2700b3cc4b8ae1dcd6fcf7cd"
+      }
+    }
+  }
+}
