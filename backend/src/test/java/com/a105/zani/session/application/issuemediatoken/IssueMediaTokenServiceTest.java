@@ -96,7 +96,7 @@ class IssueMediaTokenServiceTest {
 
     private Session sessionWith(SessionStatus status) {
         return Session.reconstitute(
-                100L, 1L, "제목", "INVITE1", false, STARTED_AT, status, SessionAnalysisStatus.NOT_STARTED);
+                100L, 1L, "제목", "INVITE1", false, STARTED_AT, null, status, SessionAnalysisStatus.NOT_STARTED);
     }
 
     @Test

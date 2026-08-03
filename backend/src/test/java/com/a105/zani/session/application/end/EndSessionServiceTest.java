@@ -1,7 +1,9 @@
 package com.a105.zani.session.application.end;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,10 +28,14 @@ class EndSessionServiceTest {
     /** sessionWith 가 만드는 세션의 강사. 잠금은 이 강사 기준으로 반납돼야 한다. */
     private static final long INSTRUCTOR_ID = 1L;
 
+    /** 종료 시각으로 찍힐 값. 서비스가 주입받은 시계를 쓰는지 보려고 실제 현재 시각과 다른 값을 둔다. */
+    private static final Instant NOW = Instant.parse("2026-07-26T01:23:45Z");
+
     private final FakeSessionRepository sessionRepository = new FakeSessionRepository();
     private final RecordingReleaseUseCase audioRelease = new RecordingReleaseUseCase();
     private final RecordingActivationLockPort activationLock = new RecordingActivationLockPort();
-    private final EndSessionService service = new EndSessionService(sessionRepository, audioRelease, activationLock);
+    private final EndSessionService service =
+            new EndSessionService(sessionRepository, audioRelease, activationLock, Clock.fixed(NOW, ZoneOffset.UTC));
 
     /**
      * 수업을 끝낸 강사는 곧바로 다음 수업을 열 수 있어야 한다.
@@ -97,6 +103,14 @@ class EndSessionServiceTest {
     }
 
     private static Session sessionWith(SessionStatus status) {
+        return sessionWith(status, null);
+    }
+
+    private static Session endedSessionAt(Instant endedAt) {
+        return sessionWith(SessionStatus.ENDED, endedAt);
+    }
+
+    private static Session sessionWith(SessionStatus status, Instant endedAt) {
         return Session.reconstitute(
                 SESSION_ID,
                 INSTRUCTOR_ID,
@@ -104,6 +118,7 @@ class EndSessionServiceTest {
                 "INVITE01",
                 false,
                 STARTED_AT,
+                endedAt,
                 status,
                 SessionAnalysisStatus.NOT_STARTED);
     }
@@ -120,6 +135,32 @@ class EndSessionServiceTest {
         assertEquals(1, sessionRepository.saveCount);
         // 코칭 오디오 버퍼(세션당 수십 MB)를 반납하지 않으면 수업이 끝나도 메모리가 남는다.
         assertEquals(java.util.List.of(SESSION_ID), audioRelease.released);
+    }
+
+    /**
+     * 종료 시각을 주입받은 시계에서 가져와 저장하는지.
+     *
+     * <p>이 값이 없으면 사후 리포트가 수업이 언제 끝났는지 알 수 없어 관측에서 길이를 추정해야 한다.
+     */
+    @Test
+    void stampsTheEndTimeFromTheInjectedClock() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+
+        service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
+
+        assertEquals(NOW, sessionRepository.session.endedAt());
+    }
+
+    /** 이미 끝난 세션은 저장 자체를 하지 않으므로 처음 종료 시각이 덮이지 않는다. */
+    @Test
+    void doesNotRestampAnAlreadyEndedSession() {
+        Instant firstEnd = STARTED_AT.plusSeconds(1800);
+        sessionRepository.session = endedSessionAt(firstEnd);
+
+        service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_ABSENT));
+
+        assertEquals(firstEnd, sessionRepository.session.endedAt());
+        assertEquals(0, sessionRepository.saveCount);
     }
 
     @Test

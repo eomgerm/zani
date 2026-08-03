@@ -57,7 +57,7 @@ class SessionPresenceServiceTest {
         if (session.isEnded()) {
             return new EndSessionResult(command.sessionId(), session.status(), false);
         }
-        session.end();
+        session.end(clock.instant());
         sessionRepository.save(session);
         return new EndSessionResult(command.sessionId(), session.status(), true);
     };
@@ -90,6 +90,7 @@ class SessionPresenceServiceTest {
                 "INVITE01",
                 false,
                 T0,
+                null,
                 SessionStatus.LIVE,
                 SessionAnalysisStatus.NOT_STARTED);
     }
@@ -105,7 +106,7 @@ class SessionPresenceServiceTest {
 
     @Test
     void throwsConflictWhenTheSessionHasAlreadyEnded() {
-        sessionRepository.session.end();
+        sessionRepository.session.end(clock.instant());
         assertThrows(SessionAlreadyEndedException.class, () -> heartbeat(STUDENT_USER, ConnectionState.CONNECTED));
     }
 

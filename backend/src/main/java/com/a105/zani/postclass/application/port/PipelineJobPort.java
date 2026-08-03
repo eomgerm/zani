@@ -1,6 +1,7 @@
 package com.a105.zani.postclass.application.port;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import com.a105.zani.postclass.application.exception.PipelineJobUnavailableException;
@@ -21,24 +22,55 @@ public interface PipelineJobPort {
     boolean enqueue(Long sessionId, Instant queuedAt);
 
     /**
-     * 세션의 작업 단계를 <b>다른 전이가 끼어들지 못하게 잡아 두고</b> 읽는다. 작업이 없으면 빈 값.
+     * 세션의 작업 상태를 <b>다른 전이가 끼어들지 못하게 잡아 두고</b> 읽는다. 작업이 없으면 빈 값.
      *
      * <p>일반 조회가 아닌 이유: 단계를 옮기는 워커는 여럿이고 서로 다른 트랜잭션에서 같은 순간에 들어온다. 읽고 나서 쓰면 둘 다 같은 단계를 읽어 둘 다 옮기므로, 같은 단계가 두 번 수행되거나 한
      * 단계가 통째로 건너뛰어진다. 잠금 읽기는 뒤에 온 쪽을 앞선 전이가 커밋할 때까지 세워 두고, 그 다음 최신 커밋본을 보여 준다 — 뒤에 온 쪽이 자기 요청을 중복 보고로 알아볼 수 있는 것은 이
      * 때문이다.
      *
-     * <p>{@link #updateStatus} 와 같은 트랜잭션에서 불러야 한다. 트랜잭션이 끊기면 잠금도 함께 풀려 아무것도 막지 못한다.
+     * <p>뒤따르는 쓰기({@link #updateStatus}·{@link #markRetry}·{@link #markFailed})와 같은 트랜잭션에서 불러야 한다. 트랜잭션이 끊기면 잠금도 함께 풀려
+     * 아무것도 막지 못한다.
      *
      * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
      */
-    Optional<PipelineStatus> findStatusForUpdate(Long sessionId);
+    Optional<PipelineJobState> findForUpdate(Long sessionId);
 
     /**
-     * 세션의 작업 단계를 바꾼다.
+     * 세션의 작업 단계를 바꾸고 <b>재시도 예산을 초기화한다</b>(시도 횟수 0, 대기 해제).
      *
-     * <p>조건 없이 덮어쓰므로, 갈 수 있는 단계인지는 {@link #findStatusForUpdate} 로 잠근 뒤 호출자가 판단한다.
+     * <p>재시도 예산을 단계마다 새로 주기 위해서다. 초기화하지 않으면 앞 단계에서 쓴 시도 횟수가 남아, 다음 단계는 첫 실패에서 곧바로 상한에 걸린다.
+     *
+     * <p>실패 사유는 지우지 않는다 — {@link #markFailed} 와 이 호출의 순서에 따라 사유가 사라지지 않게 하기 위해서다.
+     *
+     * <p>조건 없이 덮어쓰므로, 갈 수 있는 단계인지는 {@link #findForUpdate} 로 잠근 뒤 호출자가 판단한다.
      *
      * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
      */
     void updateStatus(Long sessionId, PipelineStatus status, Instant changedAt);
+
+    /**
+     * 현재 단계를 유지한 채 시도 횟수를 올리고 다음 시도 시각과 실패 사유를 남긴다.
+     *
+     * <p>단계를 되돌리지 않는 이유: 실패한 것은 현재 단계뿐이라 앞 단계까지 다시 돌 이유가 없고, 다시 돌면 8시간 예산만 줄어든다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    void markRetry(Long sessionId, String error, Instant nextAttemptAt, Instant changedAt);
+
+    /**
+     * 실패 사유를 남긴다. 단계를 FAILED 로 옮기는 것은 상태 머신을 거치는 별도 호출이다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    void markFailed(Long sessionId, String error, Instant changedAt);
+
+    /**
+     * 아직 끝나지 않았는데 마감을 넘긴 작업의 세션 ID. 오래 밀린 것부터 최대 limit 건.
+     *
+     * <p>세션 ID 만 읽는 이유: 경보에 필요한 것은 대상 식별과 건수뿐이다.
+     *
+     * @param queuedBefore 이 시각 이전에 등록된 작업이 마감을 넘긴 것이다(= now - 8시간)
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    List<Long> findOverdueSessionIds(Instant queuedBefore, int limit);
 }
