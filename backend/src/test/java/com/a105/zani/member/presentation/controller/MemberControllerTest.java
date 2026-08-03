@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -18,6 +19,7 @@ import com.a105.zani.auth.application.port.TokenProvider;
 
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -88,7 +90,8 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.isSuccess").value(true))
                 .andExpect(jsonPath("$.data.email").value(MEMBER_ID + "@example.com"))
                 .andExpect(jsonPath("$.data.displayName").value("내 정보 테스트 회원"))
-                .andExpect(jsonPath("$.data.profileImageUrl").value("https://pic.example.com/me.png"));
+                .andExpect(jsonPath("$.data.profileImageUrl").value("https://pic.example.com/me.png"))
+                .andExpect(jsonPath("$.data.reportEmailEnabled").value(true));
     }
 
     @Test
@@ -96,5 +99,32 @@ class MemberControllerTest {
         mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + tokenOf(MISSING_MEMBER_ID)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MEMBER_APP_002"));
+    }
+
+    @Test
+    void respondsUnauthorizedWhenTogglingReportEmailWithoutAuthentication() throws Exception {
+        mockMvc.perform(patch("/api/v1/members/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reportEmailEnabled\":false}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Transactional
+    void togglesReportEmailSettingAndReflectsItOnGet() throws Exception {
+        insertMember();
+        String token = tokenOf(MEMBER_ID);
+
+        mockMvc.perform(patch("/api/v1/members/me")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reportEmailEnabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isSuccess").value(true))
+                .andExpect(jsonPath("$.data.reportEmailEnabled").value(false));
+
+        mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reportEmailEnabled").value(false));
     }
 }

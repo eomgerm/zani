@@ -15,7 +15,7 @@ class GetCurrentMemberServiceTest {
 
     @Test
     void returnsTheMemberProfileWhenFound() {
-        Member member = Member.reconstitute(7L, "google-sub-1", "user@example.com", "User", "https://pic");
+        Member member = Member.reconstitute(7L, "google-sub-1", "user@example.com", "User", "https://pic", false);
         GetCurrentMemberService service = new GetCurrentMemberService(new StubMemberRepository(member));
 
         GetCurrentMemberResult result = service.getCurrentMember(new GetCurrentMemberQuery(7L));
@@ -23,6 +23,7 @@ class GetCurrentMemberServiceTest {
         assertEquals("user@example.com", result.email());
         assertEquals("User", result.displayName());
         assertEquals("https://pic", result.profileImageUrl());
+        assertEquals(false, result.reportEmailEnabled());
     }
 
     @Test
