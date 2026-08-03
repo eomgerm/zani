@@ -10,6 +10,12 @@
 /infrastructure/media/*.py text eol=lf
 /infrastructure/media/tests/*.sh text eol=lf
 /infrastructure/media/tests/*.py text eol=lf
+# spotless 의 lineEndings 기본값은 GIT_ATTRIBUTES 다. .java 에 속성이 없으면 플랫폼 기본값으로
+# 떨어져 Windows 에서 spotlessApply 가 저장본(LF)을 전부 CRLF 로 바꿔 쓴다. 훅이 포맷 후 재staging
+# 까지 하므로 820 개 파일이 줄바꿈만 바뀐 채 인덱스에 들어간다. 선언만 없었을 뿐 index·worktree 는
+# 이미 전부 LF 라 이 줄은 파일 내용을 바꾸지 않는다.
+*.java text eol=lf
+
 # 참여도 모델 산출물은 manifest 의 SHA-256 으로 빌드 게이트를 통과해야 한다. CRLF 로
 # 체크아웃되면 해시가 달라져 Windows 로컬 빌드가 깨진다.
 /fe/assets/attention-model/**/*.json text eol=lf

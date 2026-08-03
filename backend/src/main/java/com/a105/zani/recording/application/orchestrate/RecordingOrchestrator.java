@@ -83,7 +83,8 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                 || !TRACK_SID_PATTERN.matcher(command.trackSid()).matches()) {
             throw new InvalidRecordingTrackException();
         }
-        TrackEgressPayload payload = new TrackEgressPayload(command.trackSid(), alias.value(), command.source());
+        TrackEgressPayload payload = new TrackEgressPayload(
+                command.trackSid(), alias.value(), command.source(), command.sessionParticipantId());
         boolean enqueued = outboxStore.enqueue(new NewRecordingOutboxMessage(
                 trackDedupKey(command.sessionId(), command.trackSid()),
                 RecordingOutboxType.START_TRACK_EGRESS,
@@ -230,7 +231,14 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
         }
         try {
             recordingRepository.save(Recording.startTrack(
-                    TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+                    TsidGenerator.generate(),
+                    message.sessionId(),
+                    egressId,
+                    payload.sessionParticipantId(),
+                    payload.source(),
+                    payload.trackSid(),
+                    attempt,
+                    clock.instant()));
         } catch (RuntimeException persistFailure) {
             // Egress는 이미 LiveKit에서 시작됐다. 이 작업을 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로
             // 발급된 egressId를 남기고 재시도 대상에서 제외한다(대조 작업이 회수).

@@ -113,7 +113,8 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
                     event.trackSid(),
                     alias.value(),
                     participant.get().role(),
-                    event.trackSource()));
+                    event.trackSource(),
+                    participant.get().id()));
         } catch (ForbiddenStudentCameraTrackException securityViolation) {
             // 학생 카메라 발행은 저장 정책 위반이다. 보안 위반으로 기록만 하고 webhook은 정상 응답한다(재전송 불필요).
             log.warn(
@@ -172,12 +173,19 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             Long endedOffset = file.endedAtMs() > 0 ? Math.max(0, file.endedAtMs() - timelineStartMs) : null;
             // UK(recording_id, livekit_track_sid)는 한 녹화에 트랙당 한 행만 허용한다. Track Egress는 트랙당 파일 하나가
             // 정상이며, 세그먼트가 여러 개로 오면 첫 행만 trackSid를 갖고 나머지는 null로 남긴다(MySQL은 NULL을 중복으로 보지 않음).
+            // webhook 페이로드에 track 정보가 없을 수 있으므로 Egress 시작 시 적어 둔 recordings 의 값을 정본으로 쓴다.
             String trackSid = trackSidTaken ? null : event.egressTrackSid();
+            if (trackSid == null && !trackSidTaken) {
+                trackSid = recording.livekitTrackSid();
+            }
             trackSidTaken = trackSidTaken || trackSid != null;
+            // 화자·트랙 종류는 추정하지 않고 recordings 에 보관된 값을 그대로 옮긴다(S15P11A105-97).
             recordingFileRepository.save(RecordingFile.trackFile(
                     TsidGenerator.generate(),
                     recording.sessionId(),
                     recording.id(),
+                    recording.sessionParticipantId(),
+                    recording.trackSource(),
                     relativePath,
                     trackSid,
                     startedOffset,

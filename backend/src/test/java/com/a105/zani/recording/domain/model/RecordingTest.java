@@ -15,7 +15,7 @@ class RecordingTest {
     private static final Instant T1 = Instant.parse("2026-07-25T06:00:00Z");
 
     private static Recording starting() {
-        return Recording.startTrack(1L, 100L, "EG_1", 1, T0);
+        return Recording.startTrack(1L, 100L, "EG_1", 300L, TrackSource.MICROPHONE, "TR_1", 1, T0);
     }
 
     @Test

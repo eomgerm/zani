@@ -37,12 +37,15 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecordingWebhookServiceTest {
 
     private static final long SESSION_ID = 100L;
+    // Egress 시작 시 recordings 에 보관되는 화자. egress_ended 가 이 값을 recording_files 로 옮긴다(S15P11A105-97).
+    private static final long STUDENT_PARTICIPANT_ID = 300L;
     private static final Instant SESSION_START = Instant.parse("2026-07-25T05:00:00Z");
     private static final Instant NOW = Instant.parse("2026-07-25T06:00:00Z");
 
@@ -262,7 +265,17 @@ class RecordingWebhookServiceTest {
 
     @Test
     void egress_ended_COMPLETE는_상태와_상대경로_offset_trackSid_파일을_저장한다() {
-        recordingsByEgressId.put("EG_1", Recording.startTrack(10L, SESSION_ID, "EG_1", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_1",
+                Recording.startTrack(
+                        10L,
+                        SESSION_ID,
+                        "EG_1",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_1",
+                        1,
+                        SESSION_START));
         nextEvent = egressEvent(
                 "EV_4",
                 RecordingWebhookEventType.EGRESS_ENDED,
@@ -283,11 +296,92 @@ class RecordingWebhookServiceTest {
         assertEquals("TR_src", savedFiles.get(0).livekitTrackSid());
         assertEquals(10_000L, savedFiles.get(0).startedOffsetMs());
         assertEquals(70_000L, savedFiles.get(0).endedOffsetMs());
+        // 화자·트랙 종류는 recordings 에 보관된 값을 그대로 옮긴다. 경로에는 익명 별칭만 있어 역추적할 수 없다(S15P11A105-97).
+        assertEquals(STUDENT_PARTICIPANT_ID, savedFiles.get(0).sessionParticipantId());
+        assertEquals(TrackSource.MICROPHONE, savedFiles.get(0).trackSource());
+    }
+
+    @Test
+    void track_published는_검증된_참가자_id를_Egress_요청에_실어_보낸다() {
+        addParticipant(7L, SessionParticipantRole.STUDENT);
+        nextEvent = trackPublished("EV_P1", "p-7", "TR_p1", TrackSource.MICROPHONE);
+
+        service.process("{}", "ok");
+
+        assertEquals(1, egressRequests.size());
+        assertEquals(7L, egressRequests.get(0).sessionParticipantId());
+        assertEquals(TrackSource.MICROPHONE, egressRequests.get(0).source());
+    }
+
+    @Test
+    void 같은_참가자가_트랙을_재발행하면_파일은_둘이지만_화자는_같다() {
+        // 마이크 OFF·재접속으로 Track SID 가 바뀌어도 화자는 유지되어야 한다. Egress 는 SID 마다 별개 행이다.
+        recordingsByEgressId.put(
+                "EG_A",
+                Recording.startTrack(
+                        20L,
+                        SESSION_ID,
+                        "EG_A",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_first",
+                        1,
+                        SESSION_START));
+        recordingsByEgressId.put(
+                "EG_B",
+                Recording.startTrack(
+                        21L,
+                        SESSION_ID,
+                        "EG_B",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_second",
+                        1,
+                        SESSION_START));
+
+        nextEvent = egressEvent(
+                "EV_A",
+                RecordingWebhookEventType.EGRESS_ENDED,
+                "EG_A",
+                Boolean.TRUE,
+                List.of(new EgressFileResult(
+                        "/srv/zani/recordings/100/raw/participants/student-001/student-001-microphone-TR_first.ogg",
+                        SESSION_START.plusSeconds(10).toEpochMilli(),
+                        SESSION_START.plusSeconds(20).toEpochMilli(),
+                        1_000L)));
+        service.process("{}", "ok");
+
+        nextEvent = egressEvent(
+                "EV_B",
+                RecordingWebhookEventType.EGRESS_ENDED,
+                "EG_B",
+                Boolean.TRUE,
+                List.of(new EgressFileResult(
+                        "/srv/zani/recordings/100/raw/participants/student-001/student-001-microphone-TR_second.ogg",
+                        SESSION_START.plusSeconds(40).toEpochMilli(),
+                        SESSION_START.plusSeconds(50).toEpochMilli(),
+                        1_000L)));
+        service.process("{}", "ok");
+
+        assertEquals(2, savedFiles.size());
+        assertEquals(STUDENT_PARTICIPANT_ID, savedFiles.get(0).sessionParticipantId());
+        assertEquals(STUDENT_PARTICIPANT_ID, savedFiles.get(1).sessionParticipantId());
+        assertNotEquals(savedFiles.get(0).storageKey(), savedFiles.get(1).storageKey());
     }
 
     @Test
     void egress_ended가_두_번_처리돼도_파일은_한_번만_저장된다() {
-        recordingsByEgressId.put("EG_R", Recording.startTrack(15L, SESSION_ID, "EG_R", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_R",
+                Recording.startTrack(
+                        15L,
+                        SESSION_ID,
+                        "EG_R",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_R",
+                        1,
+                        SESSION_START));
         List<EgressFileResult> files = List.of(new EgressFileResult(
                 "/srv/zani/recordings/100/raw/instructor/f.mp4",
                 SESSION_START.toEpochMilli(),
@@ -305,7 +399,17 @@ class RecordingWebhookServiceTest {
 
     @Test
     void 세션_루트를_벗어난_파일_경로는_저장하지_않는다() {
-        recordingsByEgressId.put("EG_P", Recording.startTrack(16L, SESSION_ID, "EG_P", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_P",
+                Recording.startTrack(
+                        16L,
+                        SESSION_ID,
+                        "EG_P",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_P",
+                        1,
+                        SESSION_START));
         nextEvent = egressEvent(
                 "EV_P",
                 RecordingWebhookEventType.EGRESS_ENDED,
@@ -321,7 +425,17 @@ class RecordingWebhookServiceTest {
 
     @Test
     void 종결_상태가_아닌_egress_ended는_상태를_바꾸지_않는다() {
-        recordingsByEgressId.put("EG_N", Recording.startTrack(17L, SESSION_ID, "EG_N", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_N",
+                Recording.startTrack(
+                        17L,
+                        SESSION_ID,
+                        "EG_N",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_N",
+                        1,
+                        SESSION_START));
         nextEvent = egressEvent("EV_N", RecordingWebhookEventType.EGRESS_ENDED, "EG_N", null, List.of());
 
         service.process("{}", "ok");
@@ -332,7 +446,17 @@ class RecordingWebhookServiceTest {
 
     @Test
     void egress_ended_실패는_FAILED_상태를_저장한다() {
-        recordingsByEgressId.put("EG_2", Recording.startTrack(11L, SESSION_ID, "EG_2", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_2",
+                Recording.startTrack(
+                        11L,
+                        SESSION_ID,
+                        "EG_2",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_2",
+                        1,
+                        SESSION_START));
         nextEvent = egressEvent("EV_5", RecordingWebhookEventType.EGRESS_ENDED, "EG_2", Boolean.FALSE, List.of());
 
         service.process("{}", "ok");
@@ -436,7 +560,17 @@ class RecordingWebhookServiceTest {
 
     @Test
     void egress_started는_상태를_RECORDING으로_올린다() {
-        recordingsByEgressId.put("EG_3", Recording.startTrack(12L, SESSION_ID, "EG_3", 1, SESSION_START));
+        recordingsByEgressId.put(
+                "EG_3",
+                Recording.startTrack(
+                        12L,
+                        SESSION_ID,
+                        "EG_3",
+                        STUDENT_PARTICIPANT_ID,
+                        TrackSource.MICROPHONE,
+                        "TR_3",
+                        1,
+                        SESSION_START));
         nextEvent = egressEvent("EV_7", RecordingWebhookEventType.EGRESS_STARTED, "EG_3", null, List.of());
 
         service.process("{}", "ok");

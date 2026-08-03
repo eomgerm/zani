@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RecordingOrchestratorTest {
 
     private static final long SESSION_ID = 100L;
+    private static final long PARTICIPANT_ID = 300L;
     private static final Instant NOW = Instant.parse("2026-07-25T00:00:00Z");
 
     private final InMemoryOutboxStore outbox = new InMemoryOutboxStore();
@@ -47,7 +48,7 @@ class RecordingOrchestratorTest {
 
     private RequestTrackEgressCommand command(SessionParticipantRole role, TrackSource source, String trackSid) {
         String alias = role == SessionParticipantRole.INSTRUCTOR ? "instructor" : "student-001";
-        return new RequestTrackEgressCommand(SESSION_ID, trackSid, alias, role, source);
+        return new RequestTrackEgressCommand(SESSION_ID, trackSid, alias, role, source, PARTICIPANT_ID);
     }
 
     @Test
@@ -98,17 +99,32 @@ class RecordingOrchestratorTest {
         assertThrows(
                 InvalidRecordingAliasException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID, "TR_a", "김태정", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
+                        SESSION_ID,
+                        "TR_a",
+                        "김태정",
+                        SessionParticipantRole.STUDENT,
+                        TrackSource.MICROPHONE,
+                        PARTICIPANT_ID)));
         // 별칭·역할 불일치
         assertThrows(
                 InvalidRecordingTrackException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID, "TR_a", "instructor", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
+                        SESSION_ID,
+                        "TR_a",
+                        "instructor",
+                        SessionParticipantRole.STUDENT,
+                        TrackSource.MICROPHONE,
+                        PARTICIPANT_ID)));
         // trackSid 형식 위반
         assertThrows(
                 InvalidRecordingTrackException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID, "../etc", "student-001", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
+                        SESSION_ID,
+                        "../etc",
+                        "student-001",
+                        SessionParticipantRole.STUDENT,
+                        TrackSource.MICROPHONE,
+                        PARTICIPANT_ID)));
         assertEquals(0, outbox.rows.size());
     }
 

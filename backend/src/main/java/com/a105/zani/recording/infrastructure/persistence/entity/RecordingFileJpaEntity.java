@@ -56,6 +56,10 @@ public class RecordingFileJpaEntity extends BaseCreatedJpaEntity {
     @Column(name = "file_type", nullable = false, length = 30)
     private String fileType;
 
+    // 사후 전사가 마이크 트랙만 골라내는 축이다. 화면 공유 오디오는 녹화하되 MVP 전사 대상에서 제외한다(S15P11A105-97).
+    @Column(name = "track_source", length = 30)
+    private String trackSource;
+
     @Column(name = "storage_key", nullable = false, length = 500)
     private String storageKey;
 

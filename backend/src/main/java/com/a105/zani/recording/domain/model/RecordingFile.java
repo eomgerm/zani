@@ -14,6 +14,7 @@ public class RecordingFile {
     private final Long sessionId;
     private final Long recordingId;
     private final Long sessionParticipantId;
+    private final TrackSource trackSource;
     private final String fileType;
     private final String storageKey;
     private final String livekitTrackSid;
@@ -25,6 +26,7 @@ public class RecordingFile {
             Long sessionId,
             Long recordingId,
             Long sessionParticipantId,
+            TrackSource trackSource,
             String fileType,
             String storageKey,
             String livekitTrackSid,
@@ -34,6 +36,7 @@ public class RecordingFile {
         this.sessionId = sessionId;
         this.recordingId = recordingId;
         this.sessionParticipantId = sessionParticipantId;
+        this.trackSource = trackSource;
         this.fileType = fileType;
         this.storageKey = storageKey;
         this.livekitTrackSid = livekitTrackSid;
@@ -41,23 +44,33 @@ public class RecordingFile {
         this.endedOffsetMs = endedOffsetMs;
     }
 
+    /**
+     * Track Egress 산출물 한 개를 기록한다.
+     *
+     * <p>화자({@code sessionParticipantId})와 트랙 종류({@code trackSource})는 필수다(S15P11A105-97). 이전에는 화자 자리에 null 을 넣었는데, 그러면
+     * 사후 전사(S15P11A105-247)가 파일과 발화자를 연결할 수 없다. 두 값은 Egress 시작 시점에 {@link Recording} 이 보관해 둔 것을 그대로 옮겨 온다 — 파일명이나
+     * 디렉터리명을 파싱해 추정하지 않는다. 경로에는 익명 별칭만 들어 있고, 별칭 순번은 참가자 집합이 바뀌면 같은 문자열이 다른 사람을 가리킨다.
+     */
     public static RecordingFile trackFile(
             Long id,
             Long sessionId,
             Long recordingId,
+            Long sessionParticipantId,
+            TrackSource trackSource,
             String storageKey,
             String livekitTrackSid,
             Long startedOffsetMs,
             Long endedOffsetMs) {
         // storageKey는 세션 루트 기준 상대 경로여야 한다(가이드 §14·§18). 절대 경로·드라이브 문자·`..` 탈출을 생성 시점에 거부한다.
-        if (!isSafeRelativePath(storageKey)) {
+        if (!isSafeRelativePath(storageKey) || sessionParticipantId == null || trackSource == null) {
             throw new InvalidRecordingTrackException();
         }
         return new RecordingFile(
                 id,
                 sessionId,
                 recordingId,
-                null,
+                sessionParticipantId,
+                trackSource,
                 TYPE_TRACK,
                 storageKey,
                 livekitTrackSid,
@@ -91,6 +104,10 @@ public class RecordingFile {
 
     public Long sessionParticipantId() {
         return sessionParticipantId;
+    }
+
+    public TrackSource trackSource() {
+        return trackSource;
     }
 
     public String fileType() {
