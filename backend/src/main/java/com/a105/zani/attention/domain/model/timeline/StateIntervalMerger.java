@@ -23,6 +23,9 @@ public final class StateIntervalMerger {
     public static List<StateInterval> merge(ParticipantReplay replay, long durationMs, TimelinePolicy policy) {
         long step = policy.samplingInterval().toMillis();
         long stepSeconds = policy.samplingInterval().toSeconds();
+        // 격자의 마지막 표본은 세션이 끝나는 순간에 찍히므로, 거기에 격자 한 칸을 더하면 구간이 세션 밖으로
+        // 나간다. 35초 세션이 [35,40) 을 내놓으면 FE 는 축에 없는 시간을 그려야 한다.
+        long durationSeconds = durationMs / 1000L;
 
         List<StateInterval> intervals = new ArrayList<>();
         StudentTimelineState openState = null;
@@ -33,18 +36,19 @@ public final class StateIntervalMerger {
             StudentTimelineState state = stateAt(replay, at);
             if (state == openState) {
                 if (state != null) {
-                    openEnd = at / 1000L + stepSeconds;
+                    openEnd = Math.min(at / 1000L + stepSeconds, durationSeconds);
                 }
                 continue;
             }
-            if (openState != null) {
+            if (openState != null && openEnd > openStart) {
                 intervals.add(new StateInterval(openStart, openEnd, openState));
             }
             openState = state;
             openStart = at / 1000L;
-            openEnd = at / 1000L + stepSeconds;
+            openEnd = Math.min(at / 1000L + stepSeconds, durationSeconds);
         }
-        if (openState != null) {
+        // 세션이 끝나는 순간에 상태가 바뀌면 길이 0 짜리 구간이 열린다. 덮는 시간이 없으므로 버린다.
+        if (openState != null && openEnd > openStart) {
             intervals.add(new StateInterval(openStart, openEnd, openState));
         }
         return List.copyOf(intervals);
