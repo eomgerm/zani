@@ -131,34 +131,78 @@ class AttentionTimelineControllerTest {
     }
 
     @Test
+    @DisplayName("집중 흐름과 신호가 각자 격자를 갖는다")
+    void the_two_grids_serialize_separately() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.focusFlow.intervalSeconds").value(30))
+                .andExpect(jsonPath("$.data.signals.intervalSeconds").value(5))
+                // 300초 세션이면 30초 칸 10개에 5초 점 61개다. 한 배열에 섞을 수 없는 이유가 이 개수 차이다.
+                .andExpect(jsonPath("$.data.focusFlow.points.length()").value(10))
+                .andExpect(jsonPath("$.data.signals.points.length()").value(61));
+    }
+
+    @Test
     @DisplayName("모든 비율은 0.0~1.0 분수다 — 퍼센트가 아니다")
     void group_ratios_are_fractions() throws Exception {
         mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.intervalSeconds").value(5))
-                .andExpect(jsonPath("$.data.points[40].offsetSeconds").value(200))
-                .andExpect(jsonPath("$.data.points[40].connectedCount").value(STUDENT_COUNT))
-                .andExpect(jsonPath("$.data.points[40].eligibleCount").value(STUDENT_COUNT))
-                .andExpect(jsonPath("$.data.points[40].checkNeededRatio").value(0.0))
+                .andExpect(jsonPath("$.data.signals.points[40].offsetSeconds").value(200))
+                .andExpect(jsonPath("$.data.signals.points[40].connectedCount").value(STUDENT_COUNT))
+                .andExpect(jsonPath("$.data.signals.points[40].eligibleCount").value(STUDENT_COUNT))
+                .andExpect(
+                        jsonPath("$.data.signals.points[40].checkNeededRatio").value(0.0))
                 // 인원이 모자란 구간은 null 이다. 값이 있는 구간은 하나도 1.0 을 넘지 않아야 분수 계약이 지켜진다.
                 .andExpect(jsonPath(
-                        "$.data.points[*].cameraOffRatio",
+                        "$.data.signals.points[*].cameraOffRatio",
                         everyItem(anyOf(nullValue(Double.class), lessThanOrEqualTo(1.0)))));
     }
 
     @Test
-    @DisplayName("null 비율은 0 이 아니라 null 로 직렬화된다")
-    void null_ratios_stay_null() throws Exception {
-        // 세션 시작 직후는 연속 접속 1분을 못 채워 집계 대상이 0 명이다. 0% 로 채우면 안 된다.
+    @DisplayName("집단 집중 흐름은 1~4 단계 평균이다 — 비율과 척도가 다르다")
+    void the_group_focus_level_is_on_the_one_to_four_scale() throws Exception {
+        // 학생 5명 모두 3단계(ENGAGED)라 칸 평균도 3.0 이다. 퍼센트라면 100 이 나왔을 값이다.
         mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.points[0].eligibleCount").value(0))
-                .andExpect(jsonPath("$.data.points[0].checkNeededRatio").value(nullValue()))
-                .andExpect(jsonPath("$.data.points[0].cameraOffRatio").value(nullValue()))
-                .andExpect(jsonPath("$.data.points[0].confusedRatio").value(nullValue()))
-                .andExpect(jsonPath("$.data.points[0].unmeasurableRatio").value(nullValue()));
+                .andExpect(jsonPath("$.data.focusFlow.points[4].offsetSeconds").value(120))
+                .andExpect(jsonPath("$.data.focusFlow.points[4].focusLevel").value(3.0))
+                .andExpect(jsonPath("$.data.focusFlow.points[4].eligibleCount").value(STUDENT_COUNT));
+    }
+
+    @Test
+    @DisplayName("빈 값은 0 이나 1 이 아니라 null 이다")
+    void null_values_stay_null() throws Exception {
+        // 세션 시작 직후는 연속 접속 1분을 못 채워 집계 대상이 0 명이다. 0 이나 1단계로 채우면 안 된다.
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.focusFlow.points[0].eligibleCount").value(0))
+                .andExpect(jsonPath("$.data.focusFlow.points[0].focusLevel").value(nullValue()))
+                .andExpect(jsonPath("$.data.signals.points[0].eligibleCount").value(0))
+                .andExpect(jsonPath("$.data.signals.points[0].checkNeededRatio").value(nullValue()))
+                .andExpect(jsonPath("$.data.signals.points[0].cameraOffRatio").value(nullValue()))
+                .andExpect(jsonPath("$.data.signals.points[0].confusedRatio").value(nullValue()))
+                .andExpect(
+                        jsonPath("$.data.signals.points[0].unmeasurableRatio").value(nullValue()));
+    }
+
+    @Test
+    @DisplayName("내용 구간이 없으면 빈 배열로 나간다 — 248 미완 세션")
+    void empty_sections_serialize_as_an_empty_array() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections").isArray())
+                .andExpect(jsonPath("$.data.sections.length()").value(0));
+
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections").isArray())
+                .andExpect(jsonPath("$.data.sections.length()").value(0));
     }
 
     @Test
@@ -167,10 +211,11 @@ class AttentionTimelineControllerTest {
         String body = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(studentId(0))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.points[20].offsetSeconds").value(100))
-                // 이름 그대로 퍼센트다. 강사 응답의 분수와 단위가 다르다.
-                .andExpect(jsonPath("$.data.points[20].focusPercent").value(100))
-                .andExpect(jsonPath("$.data.points[20].state").value("GOOD"))
+                .andExpect(jsonPath("$.data.focusFlow.intervalSeconds").value(30))
+                .andExpect(jsonPath("$.data.focusFlow.points[4].offsetSeconds").value(120))
+                // 1.00~4.00 단계 평균이다. 강사 응답의 focusLevel 과 같은 척도다.
+                .andExpect(jsonPath("$.data.focusFlow.points[4].focusLevel").value(3.0))
+                .andExpect(jsonPath("$.data.stateIntervals[0].state").value("GOOD"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -187,12 +232,34 @@ class AttentionTimelineControllerTest {
     }
 
     @Test
-    @DisplayName("창을 못 채운 구간의 focusPercent 는 0 이 아니라 null 이다")
-    void the_first_focus_point_is_null() throws Exception {
+    @DisplayName("응답 어디에도 focusPercent 가 없다 — 옛 계약의 흔적이 남으면 실패한다")
+    void the_old_percent_field_is_gone() throws Exception {
+        String personal = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String group = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(personal).doesNotContain("focusPercent");
+        assertThat(group).doesNotContain("focusPercent");
+    }
+
+    @Test
+    @DisplayName("상태 구간은 서버가 병합해 내려준다 — 같은 상태가 연달아 오지 않는다")
+    void state_intervals_arrive_merged() throws Exception {
+        // 0~300초가 전부 3단계라 GOOD 구간 하나로 합쳐져야 한다. 5초마다 60개가 오면 병합이 빠진 것이다.
         mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(studentId(0))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.points[0].focusPercent").value(nullValue()));
+                .andExpect(jsonPath("$.data.stateIntervals.length()").value(1))
+                .andExpect(jsonPath("$.data.stateIntervals[0].startSeconds").value(0));
     }
 
     @Test
