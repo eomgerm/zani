@@ -53,6 +53,8 @@ Rules:
 
 Repeatable migrations (`R__description.sql`) are allowed only for database objects whose complete definition must be reapplied when their checksum changes, such as views or stored procedures. Do not use repeatable migrations for tables, constraints, ordinary seed data, or rollback logic.
 
+One exception exists: `src/main/resources/db/seed/R__demo_seed.sql`, the demonstration data set. It is repeatable because it declares a desired data state rather than a one-time change — editing it must reapply on the next start, which a versioned migration cannot do. It stays safe to reapply because it deletes its own ID band (`1000000000000`–`1000000999999`) in foreign-key reverse order before inserting. It also lives outside `db/migration`, and only the `local` and `dev` profiles add `classpath:db/seed` to `spring.flyway.locations`, so it never reaches production. Do not treat this exception as permission to add other seed files: any new one needs the same band isolation, the same profile scoping, and its own entry here.
+
 ## Authoring Rules
 
 - Write forward-only, deterministic SQL.
@@ -86,6 +88,8 @@ spring:
     baseline-on-migrate: false
 ```
 
+`locations` is the one value a profile may extend: `local` and `dev` append `classpath:db/seed` for the demonstration data set described above. `prod` keeps `classpath:db/migration` alone, and no other profile may add a location.
+
 `baseline-on-migrate` must remain disabled. A pre-existing non-empty database requires an environment-specific, audited onboarding plan; do not silently mark it as migrated. Flyway `clean` must remain disabled outside isolated disposable test databases.
 
 ## Development Workflow
@@ -97,6 +101,7 @@ spring:
 5. Verify Hibernate schema validation succeeds.
 6. Run the full test suite against an empty configured MySQL database.
 7. Review the SQL for locks, destructive operations, data volume, and compatibility with the current and next application releases.
+8. When your migration touches a table the demonstration seed writes to, update `db/seed/R__demo_seed.sql` in the same change. This is an obligation, not a courtesy: the seed runs as a migration on `local` and `dev`, so a seed that no longer matches the schema fails the migration and the application does not start. Renaming a column, tightening a constraint, or narrowing an enum all qualify. `backend/scripts/verify-demo-seed.sql` reports the per-table row counts to confirm the seed still applies.
 
 Use these commands from the backend directory:
 

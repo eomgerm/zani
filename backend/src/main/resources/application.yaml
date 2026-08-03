@@ -173,6 +173,9 @@ spring:
   config:
     activate:
       on-profile: local
+  flyway:
+    # 시연용 목업 데이터(db/seed/R__demo_seed.sql)를 함께 적용한다. prod 는 붙이지 않는다.
+    locations: classpath:db/migration,classpath:db/seed
   datasource:
     url: ${LOCAL_DB_URL:jdbc:mysql://localhost:3306/zani}
     username: ${LOCAL_DB_USERNAME:root}
@@ -208,6 +211,9 @@ spring:
   config:
     activate:
       on-profile: dev
+  flyway:
+    # 시연용 목업 데이터(db/seed/R__demo_seed.sql)를 함께 적용한다. prod 는 붙이지 않는다.
+    locations: classpath:db/migration,classpath:db/seed
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
