@@ -16,9 +16,6 @@ import java.util.Objects;
  */
 public final class FocusFlowCalculator {
 
-    /** 판정 한 건이 덮는 시간. 게이트를 시간으로 재기 때문에 필요하다. */
-    private static final long SLOT_MS = 10_000L;
-
     private FocusFlowCalculator() {}
 
     public static List<FocusBucket> calculate(ParticipantReplay replay, long durationMs, TimelinePolicy policy) {
@@ -36,9 +33,11 @@ public final class FocusFlowCalculator {
                     .filter(Objects::nonNull)
                     .toList();
 
-            // 게이트는 4단계 판정이 덮은 시간으로 잰다. 마지막 자투리 칸도 30초 기준으로 재므로 사실상 항상
-            // null 이다 — 짧은 칸에 맞춰 게이트를 줄이면 판정 1건짜리 구간이 만점으로 올라온다(§2.8).
-            Double level = levels.size() * SLOT_MS < requiredMs ? null : average(levels);
+            // 게이트는 4단계 판정이 덮은 시간으로 잰다. 판정 한 건이 덮는 시간은 관측 창 그 자체이므로
+            // ObservationRecord.WINDOW_MS 를 쓴다 — 상수를 따로 두면 창 길이가 바뀔 때 한쪽만 갱신된다.
+            // 마지막 자투리 칸도 30초 기준으로 재므로 사실상 항상 null 이다 — 짧은 칸에 맞춰 게이트를
+            // 줄이면 판정 1건짜리 구간이 만점으로 올라온다(§2.8).
+            Double level = levels.size() * ObservationRecord.WINDOW_MS < requiredMs ? null : average(levels);
             buckets.add(new FocusBucket(start / 1000L, level));
         }
         return List.copyOf(buckets);

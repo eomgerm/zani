@@ -21,15 +21,13 @@ class GroupFocusCalculatorTest {
      */
     private static final long DURATION_MS = 180_000L;
 
-    private static final long SLOT_MS = 10_000L;
-
     /** 값을 확인하는 칸. 이 앞에 1분이 있어 전 구간 접속 학생이 집계 대상이 되어 있다. */
     private static final long BUCKET = 120L;
 
     /** 0초부터 세션 끝까지 같은 관측을 보내는 학생. */
     private static ParticipantReplay fullSessionStudent(long id, DetectorOutcome outcome) {
         return new Observations(id, 0L)
-                .add(outcome, (int) (DURATION_MS / SLOT_MS))
+                .add(outcome, (int) (DURATION_MS / ObservationRecord.WINDOW_MS))
                 .replay();
     }
 
@@ -202,7 +200,7 @@ class GroupFocusCalculatorTest {
         private Observations add(DetectorOutcome outcome, int count) {
             for (int i = 0; i < count; i++) {
                 records.add(ObservationRecords.at(participantId, cursorMs, outcome));
-                cursorMs += SLOT_MS;
+                cursorMs += ObservationRecord.WINDOW_MS;
             }
             return this;
         }
