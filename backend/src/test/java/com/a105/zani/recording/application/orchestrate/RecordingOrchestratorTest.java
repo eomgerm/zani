@@ -215,6 +215,30 @@ class RecordingOrchestratorTest {
     }
 
     @Test
+    void 구버전_payload_라도_이미_기록된_기존_Egress는_채택해_정상_종결한다() {
+        // 배포 전에 시작돼 recordings 행까지 남긴 실행이 재소비되는 경우다. 참가자 id 검증을 채택보다 앞에 두면
+        // 이 실행은 이미 추적되고 있는데도 outbox 만 재시도를 소진하고 FAILED 로 끝난다.
+        egressPort.start(new TrackEgressRequest(SESSION_ID, "TR_legacy", "student-001", TrackSource.MICROPHONE));
+        recordings.save(Recording.startTrack(
+                1L, SESSION_ID, "EG_1", PARTICIPANT_ID, TrackSource.MICROPHONE, "TR_legacy", 1, NOW));
+        egressPort.requests.clear();
+
+        outbox.enqueue(new NewRecordingOutboxMessage(
+                "track:100:TR_legacy",
+                RecordingOutboxType.START_TRACK_EGRESS,
+                SESSION_ID,
+                new TrackEgressPayload("TR_legacy", "student-001", TrackSource.MICROPHONE, null)));
+
+        orchestrator.relayPendingOutbox(); // 첫 시도: 채택 대상이 아니라 참가자 id 가 없어 거부된다
+        outbox.makeAllDueNow();
+        orchestrator.relayPendingOutbox(); // 재시도: 기존 Egress 를 채택하고 중복 행 없이 종결한다
+
+        assertEquals(0, egressPort.requests.size(), "새 Egress 를 띄우면 같은 트랙에 두 개가 붙는다");
+        assertEquals(1, recordings.saved.size(), "녹화 행을 중복 생성하면 안 된다");
+        assertEquals("COMPLETED", outbox.statusOf("track:100:TR_legacy"));
+    }
+
+    @Test
     void 완료_표시가_실패해도_재실행_시_Egress를_다시_시작하지_않는다() {
         // markCompleted가 실패하면 행이 IN_PROGRESS로 남고 lease 만료 후 다시 소비된다.
         // 그때 handle이 기존 Egress를 채택해야 하므로 외부 시작은 한 번만 일어나야 한다.
