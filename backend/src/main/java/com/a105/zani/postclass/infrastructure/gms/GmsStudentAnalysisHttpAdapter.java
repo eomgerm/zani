@@ -62,8 +62,13 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
             [작성 규칙]
             - participationSummary 는 관측된 사실만 담는다. 성격, 태도, 성실성, 감정, 역량을 평가하지 않는다.
             - 관측이 없으면 측정된 기록이 없다는 사실을 쓴다. 추측으로 채우지 않는다.
+            - observations 의 영문 코드값(CONFUSED, MISSED, NO_RESPONSE, OK, NOT_ENGAGED, BARELY_ENGAGED,
+              ENGAGED, HIGHLY_ENGAGED, UNMEASURABLE, CAMERA_OFF)을 문장에 그대로 쓰지 않는다. 학생이 읽어
+              뜻이 통하는 한국어로 풀어 쓴다.
             - recommendations 는 0개부터 5개까지다. 근거가 없으면 넣지 않는다.
             - recommendations 의 sectionIndex 는 sections 에 있는 번호만 쓴다. 같은 구간을 두 번 넣지 않는다.
+            - recommendations 는 서로 다른 내용이어야 한다. 같은 제목이나 같은 설명을 sectionIndex 만 바꿔
+              반복하지 않는다. 5개를 채우려 하지 말고 근거가 있는 만큼만 넣는다.
             - type 은 학생이 헷갈렸으면 CONFUSED, 놓쳤으면 MISSED, 질문했으면 QUESTION, 반복 확인이 필요하면 REPEAT 다.
             - quiz 의 questions 는 3개부터 5개까지다. 문항마다 보기 4개이고 정답은 정확히 1개다.
             - 퀴즈는 sections 의 내용에서만 낸다. 수업에 없던 내용을 묻지 않는다.
