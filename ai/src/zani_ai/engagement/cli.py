@@ -182,6 +182,7 @@ def _extract_raw(args: argparse.Namespace) -> int:
         progress_every=args.progress_every,
         max_excluded_fraction=args.max_excluded_fraction,
         sample_fps=args.sample_fps,
+        require_coverage=not args.keep_low_coverage,
     )
     print(
         f"Raw features extracted | included={len(manifest.included)} "
@@ -452,6 +453,14 @@ def build_parser() -> argparse.ArgumentParser:
     extract_raw.add_argument("--sample-fps", type=_sample_fps, default=10.0)
     extract_raw.add_argument("--progress-every", type=int, default=25)
     extract_raw.add_argument("--max-excluded-fraction", type=float, default=0.05)
+    extract_raw.add_argument(
+        "--keep-low-coverage",
+        action="store_true",
+        help=(
+            "cache every decodable clip instead of dropping the ones that fail the "
+            "segment-coverage rule; the choice is stamped into the extraction fingerprint"
+        ),
+    )
     extract_raw.set_defaults(handler=_extract_raw)
 
     build_features = commands.add_parser(

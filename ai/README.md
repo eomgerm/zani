@@ -495,9 +495,26 @@ seed를 여러 개 동시에 돌리는 것은 **카드가 여러 장일 때만**
 그대로 Validation Macro-F1 최고점입니다.
 
 `reproduce-e1b`는 E1-A에 논문의 시간 해상도를 더합니다. 논문은 10초 클립의 30fps
-300프레임을 전부 쓰는데 우리는 10fps로 3프레임 중 하나만 씁니다. 논문 Table 5는
-2프레임마다로만 성겨져도 0.7124 → 0.6813으로 3.1%p 떨어진다고 보고하므로, 이것이
-남은 차이 중 가장 큽니다.
+300프레임을 전부 쓰는데 우리는 10fps로 3프레임 중 하나만 씁니다.
+
+**이전 판의 "Table 5는 2프레임마다로 0.7124 → 0.6813, 3.1%p 하락"은 틀린 비교였습니다.**
+해당 표는 Table 3이고, 0.7124는 **ordinal** 모델의 headline이며 0.6813은 **non-ordinal**
+모델을 2프레임마다로 성기게 한 값입니다. 서로 다른 모델을 비교한 숫자입니다. non-ordinal
+기준으로 다시 읽으면 이렇습니다.
+
+| 프레임 선택 | Validation accuracy |
+|---|---|
+| 전체 프레임 | 0.6937 |
+| 2프레임마다 | 0.6813 |
+| 4프레임마다 | 0.6907 |
+| 8프레임마다 | 0.6907 |
+| 16프레임마다 | 0.6841 |
+
+곡선이 단조롭지 않습니다. 4·8프레임마다가 2프레임마다보다 **높습니다.** 우리 10fps는
+3프레임마다에 해당해 0.6813~0.6907 구간에 놓이므로, 시간 해상도로 설명되는 폭은 전체
+프레임 대비 최대 1.2%p입니다. 논문 본문도 "a trade-off between accuracy and computation"
+이라고만 적습니다. **30fps 작업은 문헌을 그대로 재현하기 위한 것이고, 남은 정확도 격차의
+주원인이라는 근거는 없습니다.**
 
 `SAMPLE_FPS`가 **추출 단계에서** 프레임을 버리므로 `raw_frames_v1`로는 300스텝을 만들
 수 없습니다. 원본 영상에서 30fps로 다시 추출해야 합니다. `sample_fps`는 해시되는
@@ -505,12 +522,27 @@ extraction fingerprint에 포함되어 있어 rate가 다른 캐시가 조용히
 10fps는 `raw_frames_v1`/`landmark_78_v1` 이름을 그대로 유지하므로 기존 캐시와
 체크포인트가 살아 있습니다.
 
+`--keep-low-coverage`와 `--max-excluded-fraction 0.1`을 반드시 함께 넘깁니다. 둘 다
+실측에서 나온 값입니다. 30fps 추출은 구간 커버리지 규칙에 865클립(7.72%)이 걸리는데
+기본 임계값이 0.05라서 `exclusion_threshold_exceeded`로 죽습니다 — 같은 규칙에서
+10fps clean 캐시는 8.84%를 제외하고도 0.1 기준으로 통과했습니다. **30fps가 제외를 더
+적게 하는데 더 엄격한 기준으로 재진 것입니다.** 최소 3장이 fps와 무관한 절대값이라
+구간당 기대 프레임이 5장인 10fps에서는 60%를, 15장인 30fps에서는 20%를 요구합니다.
+
+`--keep-low-coverage`는 그 규칙 자체를 끕니다. arXiv:2403.17175 §5가 "samples with
+occluded or absent faces, i.e., no facial landmarks"를 Not-Engaged로 분류한다고 보고하므로
+논문은 규칙이 떨어뜨리는 클립들을 학습에 썼고, 그 클립은 대부분 Not-Engaged입니다 —
+문헌 대비 Train 부족분 748건 중 496건이 그 한 클래스에서 나온 이유입니다. 정책은
+extraction fingerprint에 함께 해시되므로 두 정책의 캐시가 섞이지 않습니다. 디코드 실패와
+0프레임 클립은 정책과 무관하게 계속 제외됩니다.
+
 ```bash
 uv run python -m zani_ai engagement extract-raw \
   --data-root datasets/raw/engagenet \
   --face-landmarker-model models/face_landmarker.task \
   --output datasets/processed/engagenet \
-  --sample-fps 30 --workers 64
+  --sample-fps 30 --workers 64 \
+  --keep-low-coverage --max-excluded-fraction 0.1 --progress-every 200
 
 uv run python -m zani_ai engagement build-features \
   --data-root datasets/raw/engagenet \
@@ -518,6 +550,12 @@ uv run python -m zani_ai engagement build-features \
   --output datasets/processed/engagenet/e1b \
   --schema landmark_78_300_v1 --sample-fps 30
 ```
+
+> ⚠️ **두 번째 명령은 아직 돌지 않습니다.** `build_feature_manifest`가 raw manifest의
+> schema를 `raw_frames_v1`과 정확히 비교해(`representations.py`) `raw_frames_30fps_v1`을
+> 거부하고, provenance에 `EXPECTED_FRAME_COUNT`(100)와 `MINIMUM_VALID_FRAMES`를 상수로
+> 박습니다. raw manifest의 provenance에서 읽어오도록 고쳐야 하며, 추출이 도는 동안 하면
+> 됩니다. 첫 명령은 이 제약과 무관하게 정상 동작합니다.
 
 `landmark_78_v1_graph.npz`는 재사용합니다. 노드 평균 위치는 프레임 수와 무관하게
 사실상 같고, 변수를 하나로 묶어두는 편이 비교에 유리합니다.
