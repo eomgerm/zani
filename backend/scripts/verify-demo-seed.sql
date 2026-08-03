@@ -18,13 +18,13 @@ SELECT '=== 1. 시드 대역 행 수 ===' AS `check`;
 SELECT `table_name`, `row_count`, `expected`, IF(`row_count` = `expected`, 'OK', 'MISMATCH') AS `result`
 FROM (
     SELECT 'members(가짜 학생)' AS `table_name`, COUNT(*) AS `row_count`, 20 AS `expected` FROM `members` WHERE `id` BETWEEN 1000000001005 AND 1000000001024
-    UNION ALL SELECT 'sessions', COUNT(*), 4 FROM `sessions` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'session_participants', COUNT(*), 39 FROM `session_participants` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'session_status_changes', COUNT(*), 8 FROM `session_status_changes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'sessions', COUNT(*), 3 FROM `sessions` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'session_participants', COUNT(*), 34 FROM `session_participants` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'session_status_changes', COUNT(*), 6 FROM `session_status_changes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'session_sections', COUNT(*), 7 FROM `session_sections` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'transcripts', COUNT(*), 1 FROM `transcripts` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'instructor_notes', COUNT(*), 4 FROM `instructor_notes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'pipeline_jobs', COUNT(*), 3 FROM `pipeline_jobs` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'instructor_notes', COUNT(*), 3 FROM `instructor_notes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'pipeline_jobs', COUNT(*), 2 FROM `pipeline_jobs` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'recordings', COUNT(*), 26 FROM `recordings` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'recording_files', COUNT(*), 26 FROM `recording_files` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'attention_events', COUNT(*), 10212 FROM `attention_events` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
@@ -81,7 +81,22 @@ WHERE s.`id` BETWEEN 1000000000000 AND 1000000999999
   AND m.`email` IN (@instructor_1_email, @instructor_2_email, @student_1_email, @student_2_email, @student_3_email)
 ORDER BY s.`id`, p.`role`, m.`email`;
 
-SELECT '=== 5. 참여도 이벤트 분포(구간·출력별) ===' AS `check`;
+-- sessions.host_member_id 와 role = 'INSTRUCTOR' 참가자는 같은 사람이어야 한다. 시드에서 강사를
+-- 바꿀 때 한쪽만 고치기 쉬운데, 어긋나면 메모 작성자가 호스트가 아닌 상태가 되고 화면마다 다른
+-- 사람이 강사로 보인다. FK 로는 잡히지 않아 여기서 본다.
+SELECT '=== 5. 호스트와 강사 참가자 일치 ===' AS `check`;
+
+SELECT s.`title`,
+       s.`host_member_id`,
+       p.`member_id` AS `instructor_participant_member_id`,
+       IF(p.`member_id` <=> s.`host_member_id`, 'OK', 'MISMATCH') AS `result`
+FROM `sessions` s
+LEFT JOIN `session_participants` p
+    ON p.`session_id` = s.`id` AND p.`role` = 'INSTRUCTOR'
+WHERE s.`id` BETWEEN 1000000000000 AND 1000000999999
+ORDER BY s.`id`;
+
+SELECT '=== 6. 참여도 이벤트 분포(구간·출력별) ===' AS `check`;
 
 SELECT `detector_outcome`,
        COUNT(*) AS `events`,
