@@ -16,7 +16,11 @@ public enum PostClassTranscriptionErrorCode implements ErrorCode {
     TRANSCRIPT_STORE_UNAVAILABLE(
             ErrorType.SERVICE_UNAVAILABLE, "POSTCLASS_TRANSCRIPTION_003", "Transcript store is unavailable"),
     TRANSCRIPTION_CALL_FAILED(
-            ErrorType.SERVICE_UNAVAILABLE, "POSTCLASS_TRANSCRIPTION_004", "GMS transcription call failed");
+            ErrorType.SERVICE_UNAVAILABLE, "POSTCLASS_TRANSCRIPTION_004", "GMS transcription call failed"),
+    CHUNK_BOUNDARY_MISMATCH(
+            ErrorType.CONFLICT,
+            "POSTCLASS_TRANSCRIPTION_005",
+            "Re-split chunk boundaries disagree with the recorded checkpoints");
 
     private final ErrorType type;
     private final String code;
