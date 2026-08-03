@@ -2,9 +2,11 @@
 """Compare two protocols' Validation or finalized Test results seed by seed.
 
 ``finalize-*`` writes ``test_results.json`` per protocol, but a go/no-go call
-needs the two side by side: mean +- sd per metric, the paired difference, and
-whether that difference survives a Welch t-test on 5 + 5 seeds. Doing it by hand
-per ticket is how a comparison table ends up unreproducible.
+needs the two side by side: mean +- sd per metric, the paired difference,
+whether that difference survives a Welch t-test, and -- since
+S15P11A105-238 -- the smallest difference the seed counts in hand could have
+detected at all. Doing it by hand per ticket is how a comparison table ends up
+unreproducible.
 
 The adjacent-error share is computed here rather than stored, because it is a
 view of the confusion matrix (``|i - j| == 1`` cells over all off-diagonal
@@ -14,14 +16,15 @@ cells) that every protocol since E0 has been judged on.
         --baseline artifacts/engagement/e0 \
         --variant artifacts/engagement/e0h
 
-Add ``--split validation`` before finalization to compare the five validation
-records in ``summary.json`` without reading Test.
+Add ``--split validation`` before finalization to compare the per-seed
+validation records in ``summary.json`` without reading Test.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import unicodedata
 from dataclasses import dataclass
@@ -48,6 +51,21 @@ VALIDATION_METRICS = {
     "quadratic_weighted_kappa": "QWK",
     "within_one_accuracy": "within-1",
 }
+
+#: Smallest difference this family will call a result, from S15P11A105-238.
+#:
+#: Nine of the ten protocols measured before that ticket sat inside a 1.55%p
+#: band of Validation macro-F1 while the seed standard deviation was
+#: 0.010~0.012, so their ranking was noise being read as a finding. Anything
+#: under this bar is reported as 보류 rather than 채택 or 기각, however clean the
+#: sign looks.
+DECISION_THRESHOLD = 0.01
+
+#: ``z_0.975 + z_0.80`` -- the two-sided alpha 0.05, 80% power constant. Normal
+#: approximation rather than a noncentral t, which slightly understates the
+#: requirement at these sample sizes; that direction is the safe one for a bar
+#: that exists to stop over-reading.
+_POWER_CONSTANT = float(stats.norm.isf(0.025) + stats.norm.isf(0.20))
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,9 +293,39 @@ def _welch(baseline: list[float], variant: list[float]) -> tuple[float, float] |
     return statistic, pvalue
 
 
+def _detectable_difference(baseline: list[float], variant: list[float]) -> float | None:
+    """Smallest true difference this seed count could detect, or None.
+
+    ``(z_0.975 + z_0.80) * sd_pooled * sqrt(1/n1 + 1/n2)``: the two-sample
+    80%-power minimum detectable effect, computed from the sds actually
+    observed rather than from an assumed one, so it tracks the metric in front
+    of it. A measured difference smaller than this is not evidence of no
+    difference -- it is a comparison that could not have found one.
+
+    None when it is undefined: fewer than two seeds on either side, or no
+    within-group variance at all (which is a degenerate run, not a perfect
+    measurement -- see :func:`_welch`).
+    """
+    n_baseline, n_variant = len(baseline), len(variant)
+    if n_baseline < 2 or n_variant < 2:
+        return None
+    if statistics.pstdev(baseline) == 0 and statistics.pstdev(variant) == 0:
+        return None
+    pooled_variance = (
+        (n_baseline - 1) * statistics.variance(baseline)
+        + (n_variant - 1) * statistics.variance(variant)
+    ) / (n_baseline + n_variant - 2)
+    return (
+        _POWER_CONSTANT
+        * math.sqrt(pooled_variance)
+        * math.sqrt(1 / n_baseline + 1 / n_variant)
+    )
+
+
 def _row(name: str, baseline: list[float], variant: list[float]) -> tuple[str, ...]:
     difference = statistics.fmean(variant) - statistics.fmean(baseline)
     test = _welch(baseline, variant)
+    detectable = _detectable_difference(baseline, variant)
     return (
         name,
         _mean_sd(baseline),
@@ -285,6 +333,7 @@ def _row(name: str, baseline: list[float], variant: list[float]) -> tuple[str, .
         f"{difference:+.4f} ({difference * 100:+.2f}%p)",
         "t=n/a" if test is None else f"t={test[0]:+.2f}",
         "p=n/a" if test is None else f"p={test[1]:.3f}",
+        "n/a" if detectable is None else f"{detectable * 100:.2f}%p",
     )
 
 
@@ -295,6 +344,17 @@ def _width(text: str) -> int:
 
 def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _width(text))
+
+
+def _detection_note(n_baseline: int, n_variant: int) -> str:
+    """One line telling the reader what the 검출한계 column means for these n."""
+    return (
+        f"\n검출한계 = 검정력 80%·양측 유의수준 0.05에서 "
+        f"이 seed 수({n_baseline} + {n_variant})가 "
+        f"구별할 수 있는 최소 차이입니다.\n"
+        f"차이가 검출한계보다 작으면 '차이 없음'이 아니라 '이 비교로는 알 수 없음'이며, "
+        f"{DECISION_THRESHOLD * 100:.2f}%p 미만 차이로는 채택·기각 결론을 내지 않습니다."
+    )
 
 
 def _table(header: tuple[str, ...], rows: list[tuple[str, ...]]) -> str:
@@ -311,15 +371,25 @@ def _table(header: tuple[str, ...], rows: list[tuple[str, ...]]) -> str:
 
 
 def _verdict(baseline: Protocol, variant: Protocol) -> list[str]:
-    """The ticketed bar: macro-F1 and QWK both rise, neither falls significantly."""
+    """The ticketed bar: macro-F1 and QWK both rise, neither falls significantly.
+
+    Guarded by :data:`DECISION_THRESHOLD`: a metric that moved less than 1%p
+    is reported as 구별 불가 and suspends the verdict, because the sign of a
+    sub-threshold difference in this family is a coin flip on the seed list.
+    """
     lines: list[str] = []
     risen: list[str] = []
+    inconclusive: list[str] = []
     for key in ("macro_f1", "quadratic_weighted_kappa"):
         difference = statistics.fmean(variant.metrics[key]) - statistics.fmean(
             baseline.metrics[key]
         )
         risen.append(METRICS[key] if difference > 0 else "")
-        direction = "상승" if difference > 0 else "하락"
+        if abs(difference) < DECISION_THRESHOLD:
+            inconclusive.append(METRICS[key])
+            direction = "구별 불가"
+        else:
+            direction = "상승" if difference > 0 else "하락"
         lines.append(f"  {METRICS[key]:9s} {direction} ({difference:+.4f})")
     dropped = []
     for key in METRICS:
@@ -330,7 +400,13 @@ def _verdict(baseline: Protocol, variant: Protocol) -> list[str]:
             dropped.append(METRICS[key])
     passed = all(risen)
     lines.append("")
-    lines.append(f"  판정: {'성공' if passed else '실패'} — macro-F1과 QWK 동시 상승 조건")
+    if inconclusive:
+        lines.append(
+            f"  판정: 보류 — {', '.join(inconclusive)} 차이가 판단 기준 "
+            f"{DECISION_THRESHOLD * 100:.2f}%p 미만입니다"
+        )
+    else:
+        lines.append(f"  판정: {'성공' if passed else '실패'} — macro-F1과 QWK 동시 상승 조건")
     if dropped:
         lines.append(f"  유의하게 하락한 지표(p<0.05): {', '.join(dropped)}")
     return lines
@@ -353,15 +429,22 @@ def _compare_validation(baseline_dir: Path, variant_dir: Path, minimum_gain: flo
         print(f"   {baseline.label}: {baseline.runtime}")
         print(f"   {variant.label}: {variant.runtime}\n")
 
-    header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p")
+    header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p", "검출한계")
     rows = [
         _row(label, baseline.metrics[key], variant.metrics[key])
         for key, label in VALIDATION_METRICS.items()
     ]
     print(_table(header, rows))
+    print(_detection_note(len(baseline.seeds), len(variant.seeds)))
     accuracy_gain = statistics.fmean(variant.metrics["accuracy"]) - statistics.fmean(
         baseline.metrics["accuracy"]
     )
+    if abs(accuracy_gain) < DECISION_THRESHOLD:
+        print(
+            f"\n판정: 보류 — Validation accuracy 차이 {accuracy_gain * 100:+.2f}%p가 판단 기준 "
+            f"{DECISION_THRESHOLD * 100:.2f}%p 미만입니다 (목표 {minimum_gain * 100:+.2f}%p)"
+        )
+        return 0
     passed = accuracy_gain >= minimum_gain
     print(
         f"\n판정: {'성공' if passed else '실패'} — Validation accuracy "
@@ -404,12 +487,13 @@ def main() -> int:
         if protocol.derived_ordinal:
             print(f"   note: {protocol.label}의 QWK·within-1은 confusion matrix에서 복원했습니다")
 
-    header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p")
+    header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p", "검출한계")
     rows = [
         _row(label, baseline.metrics[key], variant.metrics[key]) for key, label in METRICS.items()
     ]
     rows.append(_row("인접 오류 비중", baseline.adjacent_shares, variant.adjacent_shares))
     print(_table(header, rows))
+    print(_detection_note(len(baseline.seeds), len(variant.seeds)))
 
     print(
         f"\n오분류 총계: {baseline.label} {baseline.error_count} "

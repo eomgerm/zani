@@ -39,7 +39,32 @@ from zani_ai.engagement.training import (
     validate_manifest_completion,
 )
 
+#: The five seeds every protocol up to E0-L was measured on. Frozen: the seed
+#: list enters ``_build_configuration`` and therefore ``configuration_sha256``,
+#: so editing this tuple would give all sixteen completed protocols a new
+#: identity and discard every seed they have on disk.
 E0_SEEDS = (42, 43, 44, 45, 46)
+
+#: The default for protocols measured from S15P11A105-238 onward.
+#:
+#: Validation macro-F1 has a seed standard deviation of 0.010~0.012 across this
+#: family, and the smallest difference a two-sample comparison can detect at 80%
+#: power (two-sided alpha 0.05, normal approximation) is
+#: ``(z_0.975 + z_0.80) * sd * sqrt(1/n1 + 1/n2)``. At sd 0.011 that is 1.95%p on
+#: 5 + 5 seeds, 1.54%p on 8 + 8 and 1.38%p on 10 + 10. Nine of the ten protocols
+#: measured so far sit inside a 1.55%p band, i.e. they were ranked against each
+#: other at a resolution the measurement never had.
+#:
+#: Ten rather than eight because the ticket's range tops out there and the extra
+#: two seeds are the cheap half of the remaining gain; going below 1%p would take
+#: 23 seeds per side, which no protocol in this family is worth.
+#:
+#: It extends ``E0_SEEDS`` rather than replacing it so that a 10-seed run and the
+#: 5-seed run of the same protocol share their first five seeds -- the two are
+#: still separate identities and separate output directories, but the overlap
+#: makes the pair directly inspectable seed by seed.
+CANDIDATE_SEEDS = (42, 43, 44, 45, 46, 47, 48, 49, 50, 51)
+
 _SPLITS = {"train", "valid", "test"}
 _CUBLAS_CONFIGS = {":4096:8", ":16:8"}
 
@@ -82,7 +107,12 @@ class ExperimentSpec:
     protocol: str
     schema: FeatureSchema | None
     model_config: ModelConfig | STGCNConfig
-    seeds: tuple[int, ...] = E0_SEEDS
+    #: Defaults to the 10-seed candidate list, so a protocol added from now on
+    #: is measured at a resolution that can separate it from its baseline. Every
+    #: protocol that already has completed seeds pins ``E0_SEEDS`` explicitly --
+    #: this field is part of the identity, so inheriting the new default would
+    #: rewrite their ``configuration_sha256`` and orphan their artifacts.
+    seeds: tuple[int, ...] = CANDIDATE_SEEDS
     # E1 (non-Transformer) hooks; None/defaults reproduce the Transformer path.
     representation_name: str | None = None
     build_model: Callable[..., nn.Module] | None = None
@@ -139,9 +169,11 @@ class ExperimentSpec:
         return self.schema.name
 
 
-E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98))
-E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132))
-E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"))
+E0_SPEC = ExperimentSpec("E0", SCHEMA_98, ModelConfig(input_dim=98), seeds=E0_SEEDS)
+E0A_SPEC = ExperimentSpec("E0-A", SCHEMA_132, ModelConfig(input_dim=132), seeds=E0_SEEDS)
+E0B_SPEC = ExperimentSpec(
+    "E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="coral"), seeds=E0_SEEDS
+)
 
 # E0-C / E0-D vary only the loss weighting against E0. E0's errors are 89%
 # adjacent-class and its boundaries sit against the majority class
@@ -149,9 +181,11 @@ E0B_SPEC = ExperimentSpec("E0-B", SCHEMA_98, ModelConfig(input_dim=98, head="cor
 # is what the evidence points at. E0-D softens E0-C in case full inversion
 # overcorrects: with these counts `balanced` spans ~7.7x and
 # `sqrt_balanced` ~2.8x between the largest and smallest weight.
-E0C_SPEC = ExperimentSpec("E0-C", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="balanced")
+E0C_SPEC = ExperimentSpec(
+    "E0-C", SCHEMA_98, ModelConfig(input_dim=98), seeds=E0_SEEDS, class_weighting="balanced"
+)
 E0D_SPEC = ExperimentSpec(
-    "E0-D", SCHEMA_98, ModelConfig(input_dim=98), class_weighting="sqrt_balanced"
+    "E0-D", SCHEMA_98, ModelConfig(input_dim=98), seeds=E0_SEEDS, class_weighting="sqrt_balanced"
 )
 
 # E0-E / E0-F pick up where E0-D stopped: it beat E0 by only +0.49%p Validation
@@ -170,11 +204,14 @@ E0E_SPEC = ExperimentSpec(
     "E0-E",
     SCHEMA_98,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
     class_weighting="sqrt_balanced",
     loss="focal",
     focal_gamma=2.0,
 )
-E0F_SPEC = ExperimentSpec("E0-F", SCHEMA_98, ModelConfig(input_dim=98), sampler="balanced")
+E0F_SPEC = ExperimentSpec(
+    "E0-F", SCHEMA_98, ModelConfig(input_dim=98), seeds=E0_SEEDS, sampler="balanced"
+)
 
 # E0-G is the baseline reset after E0-C..E0-F all died of the same cause: with
 # patience 20 their best_epoch landed at 0-4, so no loss or sampler change had
@@ -190,6 +227,7 @@ E0G_SPEC = ExperimentSpec(
     "E0-G",
     SCHEMA_98,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
     learning_rate=1e-5,
     patience=200,
     lr_step=100,
@@ -238,6 +276,7 @@ E0H_SPEC = ExperimentSpec(
     "E0-H",
     SCHEMA_98,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
     target_encoding="sord",
     sord_alpha=2.0,
 )
@@ -246,6 +285,7 @@ E0I_SPEC = ExperimentSpec(
     "E0-I",
     SCHEMA_98,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
     curriculum="label_reliability_v1",
     reliable_warmup_epochs=10,
     ambiguous_target_encoding="adjacent_smoothing",
@@ -261,6 +301,7 @@ E0J_SPEC = ExperimentSpec(
     "E0-J",
     SCHEMA_98_PLACEHOLDER,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
 )
 
 # E0-K is the second attempt at the schedule, and it moves the learning rate the
@@ -294,6 +335,7 @@ E0K_SPEC = ExperimentSpec(
     "E0-K",
     SCHEMA_98,
     ModelConfig(input_dim=98),
+    seeds=E0_SEEDS,
     learning_rate=1e-3,
     max_epochs=300,
     patience=300,
@@ -329,8 +371,28 @@ E0L_SPEC = ExperimentSpec(
     "E0-L",
     SCHEMA_98,
     ModelConfig(input_dim=98, head="ordinal_binary"),
+    seeds=E0_SEEDS,
     needs_stage1_checkpoint=True,
 )
+
+
+# E0-10 is E0 measured on ten seeds instead of five. Nothing about the protocol
+# moves -- same schema, model, objective, schedule -- so it is not a variant in
+# the E0-A..E0-L sense, and it carries a count rather than the next letter.
+#
+# It exists because raising only the *candidate* to ten seeds buys almost
+# nothing. The detectable minimum difference scales with `sqrt(1/n1 + 1/n2)`:
+# 5 + 5 gives 1.95%p, 10 + 5 gives 1.69%p, and 10 + 10 gives 1.38%p. A candidate
+# compared against the 5-seed E0 therefore keeps most of the resolution problem
+# S15P11A105-238 was opened to remove, so the baseline has to move with it.
+#
+# The five extra seeds cannot be added to the existing `e0` output directory:
+# `seeds` is part of `configuration`, so this spec hashes differently and
+# `_validate_summary_identity` refuses the directory. It needs its own output
+# directory and runs all ten seeds. That is ~232 epochs against E0's measured
+# ~116, the cheapest baseline in the family to re-measure -- which is also why
+# the older protocols are left at five seeds rather than re-run.
+E0_10_SPEC = replace(E0_SPEC, protocol="E0-10", seeds=CANDIDATE_SEEDS)
 
 
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
@@ -458,6 +520,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0J_SPEC,
         E0K_SPEC,
         E0L_SPEC,
+        E0_10_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -1586,6 +1649,7 @@ def reproduce_e0(
 
 
 __all__ = [
+    "CANDIDATE_SEEDS",
     "E0A_SPEC",
     "E0B_SPEC",
     "E0C_SPEC",
@@ -1594,6 +1658,7 @@ __all__ = [
     "E0J_SPEC",
     "E0K_SPEC",
     "E0L_SPEC",
+    "E0_10_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",
