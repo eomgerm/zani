@@ -87,6 +87,8 @@ Before you start work, read the guides relevant to your task:
   [`.agents/attention-coaching-context.md`](.agents/attention-coaching-context.md).
 - Producing a recording manifest or changing the finalize-recording worker →
   [`.agents/media-finalize-recording-guide.md`](.agents/media-finalize-recording-guide.md).
+- Calling SSAFY GMS for transcription or an LLM, or deciding what may be sent to
+  it → [`.agents/gms-integration-guide.md`](.agents/gms-integration-guide.md).
 - Training on the remote L40S server →
   [`.agents/ai-remote-l40s-guide.md`](.agents/ai-remote-l40s-guide.md).
 - Reading or publishing training metrics →
@@ -113,6 +115,7 @@ implementation detail an agent should read before working).
 | [`.agents/livekit-backend-guide.md`](.agents/livekit-backend-guide.md) | Reference | Backend LiveKit implementation guide and target contracts | Backend LiveKit work |
 | [`.agents/attention-coaching-context.md`](.agents/attention-coaching-context.md) | Guidance | Normative attention and coaching contracts: detector outputs, student states, the 10-second decision, student prompts, server payloads, instructor triggers and tip wording | Before any attention, check-prompt, or coaching work |
 | [`.agents/media-finalize-recording-guide.md`](.agents/media-finalize-recording-guide.md) | Guidance | Recording finalize worker contract: manifest schema v1, layout derivation, audio mixing, output guarantees, exit codes | Before producing a recording manifest or changing the finalize worker |
+| [`.agents/gms-integration-guide.md`](.agents/gms-integration-guide.md) | Guidance | Measured SSAFY GMS gateway limits, request and error contracts, capability boundary, and normative pseudonymisation rules for anything sent to GMS | Before adding or changing any GMS transcription or LLM call |
 | [`.agents/ai-remote-l40s-guide.md`](.agents/ai-remote-l40s-guide.md) | Reference | Remote L40S training environment, run procedure, and idle-cull limits | Before training on the remote server |
 | [`.agents/ai-experiment-results-guide.md`](.agents/ai-experiment-results-guide.md) | Guidance | Where training metrics live, how to read them, and what must never enter the results branch | Before reading or publishing training metrics |
 

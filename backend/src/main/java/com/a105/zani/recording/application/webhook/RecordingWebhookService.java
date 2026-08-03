@@ -108,14 +108,12 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         }
         RecordingAlias alias = resolveAlias(participant.get());
         try {
-            // 화면 공유 승인 상태 추적은 후속 스토리 소관이라 현재는 미승인으로 간주한다(미승인 학생 화면공유는 SKIP).
             requestTrackEgressUseCase.request(new RequestTrackEgressCommand(
                     event.sessionId(),
                     event.trackSid(),
                     alias.value(),
                     participant.get().role(),
-                    event.trackSource(),
-                    false));
+                    event.trackSource()));
         } catch (ForbiddenStudentCameraTrackException securityViolation) {
             // 학생 카메라 발행은 저장 정책 위반이다. 보안 위반으로 기록만 하고 webhook은 정상 응답한다(재전송 불필요).
             log.warn(
