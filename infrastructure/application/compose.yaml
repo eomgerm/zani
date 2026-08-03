@@ -105,6 +105,17 @@ services:
       # Egress 컨테이너의 마운트 경로(/srv/zani/recordings/track-egress -> /out).
       # 기본값은 Egress 컨테이너 안에 없는 경로라 지정하지 않으면 녹화 파일이 남지 않는다.
       RECORDING_BASE_PATH: /out
+      # 사후 전사가 원본 OGG 를 읽을 루트. RECORDING_BASE_PATH 와 값이 같지만 뜻이 다르다 — 그쪽은
+      # "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 하나로 겸하면 두
+      # 마운트가 갈리는 날 조용히 깨진다(S15P11A105-95).
+      POSTCLASS_SOURCE_ROOT: /out
+    volumes:
+      # Track Egress 원본을 사후 전사가 읽는다. 쓰기는 Egress 만 하므로 read-only 로 붙인다.
+      # 호스트 track-egress 는 0771 root:root 여야 한다 — owner/group 의 rwx 는 Egress 쓰기용이고,
+      # other 의 x 는 이 컨테이너(UID 10001)가 경로를 통과하기 위한 것이다. o+r 은 주지 않는다:
+      # 파일 경로의 정본은 DB recording_files.storage_key 라 /out 을 나열할 일이 없다.
+      # 준비 절차는 infrastructure/application/README.md 의 Required host directories 를 따른다.
+      - /srv/zani/recordings/track-egress:/out:ro
     secrets:
       - mysql_app_password
       - redis_app_password
