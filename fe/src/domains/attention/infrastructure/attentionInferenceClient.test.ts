@@ -153,6 +153,26 @@ describe("createAttentionInferenceClient", () => {
     expect(worker.sent).toHaveLength(1);
   });
 
+  it("keeps sending windows while the model load is still being retried", () => {
+    const inference = client();
+    inference.submit(tokens(1));
+
+    worker.respond({
+      type: "failure",
+      requestId: 1,
+      kind: "modelLoadRetrying",
+      message: "모델 다운로드가 끊겼습니다.",
+    });
+    inference.submit(tokens(2));
+
+    expect(onFailure).toHaveBeenCalledWith({
+      kind: "modelLoadRetrying",
+      message: "모델 다운로드가 끊겼습니다.",
+    });
+    // 재시도가 남아 있는 동안에는 판정을 끄지 않는다.
+    expect(worker.sent).toHaveLength(2);
+  });
+
   it("retries the next window after a single failed inference", () => {
     const inference = client();
     inference.submit(tokens(1));

@@ -28,7 +28,8 @@ def _write_validation_run(
         encoding="utf-8",
     )
     seeds = []
-    for seed, accuracy in zip((42, 43, 44, 45, 46), accuracies, strict=True):
+    seed_ids = tuple(range(42, 42 + len(accuracies)))
+    for seed, accuracy in zip(seed_ids, accuracies, strict=True):
         seeds.append(
             {
                 "seed": seed,
@@ -62,9 +63,11 @@ def _write_validation_run(
     )
 
 
-def _write_test_results(root: Path, protocol: str, manifest_sha: str) -> None:
+def _write_test_results(
+    root: Path, protocol: str, manifest_sha: str, seed_count: int = 5
+) -> None:
     seeds = []
-    for seed in (42, 43, 44, 45, 46):
+    for seed in range(42, 42 + seed_count):
         seeds.append(
             {
                 "seed": seed,
@@ -134,6 +137,128 @@ def test_validation_comparison_uses_accuracy_target_on_the_same_raw_population(
     assert "+0.0250 (+2.50%p)" in result.stdout
     assert "판정: 성공" in result.stdout
     assert "비교는 유효하지 않습니다" not in result.stdout
+
+
+def _run_validation_comparison(
+    baseline: Path, variant: Path
+) -> subprocess.CompletedProcess[str]:
+    script = Path(__file__).parents[2] / "scripts" / "compare_protocols.py"
+    return subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--baseline",
+            str(baseline),
+            "--variant",
+            str(variant),
+            "--split",
+            "validation",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+
+
+def test_a_difference_under_one_percentage_point_is_suspended_not_decided(
+    tmp_path: Path,
+) -> None:
+    """S15P11A105-238's rule: below 1%p the comparison reports 보류.
+
+    +0.60%p with a seed sd near 0.01 is the exact shape that produced a
+    1.55%p ranking of nine indistinguishable protocols, so a sign this clean
+    must still not read as 성공 or 실패.
+    """
+    baseline = tmp_path / "baseline"
+    variant = tmp_path / "variant"
+    _write_validation_run(baseline, "E0", "mediapipe_98_v1", [0.60, 0.61, 0.62, 0.63, 0.64])
+    _write_validation_run(
+        variant, "E0-M", "mediapipe_98_v1", [0.606, 0.616, 0.626, 0.636, 0.646]
+    )
+
+    result = _run_validation_comparison(baseline, variant)
+
+    assert result.returncode == 0, result.stderr
+    assert "판정: 보류" in result.stdout
+    assert "판정: 성공" not in result.stdout
+    assert "판정: 실패" not in result.stdout
+
+
+def test_the_detectable_minimum_difference_shrinks_as_seeds_are_added(
+    tmp_path: Path,
+) -> None:
+    """The 검출한계 column is what makes the seed raise visible in the output.
+
+    Same spread on both sides, 5 + 5 against 10 + 10: the reported limit must
+    fall, and by roughly the sqrt(2) the two-sample formula predicts.
+    """
+    five = [0.60, 0.61, 0.62, 0.63, 0.64]
+    ten = [0.60, 0.61, 0.62, 0.63, 0.64, 0.60, 0.61, 0.62, 0.63, 0.64]
+
+    small = tmp_path / "small"
+    small_variant = tmp_path / "small-variant"
+    _write_validation_run(small, "E0", "mediapipe_98_v1", five)
+    _write_validation_run(small_variant, "E0-M", "mediapipe_98_v1", five)
+    large = tmp_path / "large"
+    large_variant = tmp_path / "large-variant"
+    _write_validation_run(large, "E0-10", "mediapipe_98_v1", ten)
+    _write_validation_run(large_variant, "E0-M", "mediapipe_98_v1", ten)
+
+    small_result = _run_validation_comparison(small, small_variant)
+    large_result = _run_validation_comparison(large, large_variant)
+
+    assert small_result.returncode == 0, small_result.stderr
+    assert large_result.returncode == 0, large_result.stderr
+    assert "검출한계" in small_result.stdout
+    assert "5 + 5" in small_result.stdout
+    assert "10 + 10" in large_result.stdout
+    assert _first_detection_limit(small_result.stdout) > _first_detection_limit(
+        large_result.stdout
+    )
+
+
+def _first_detection_limit(output: str) -> float:
+    """The accuracy row's 검출한계 cell, as a percentage-point float."""
+    for line in output.splitlines():
+        if line.startswith("accuracy"):
+            return float(line.split()[-1].removesuffix("%p"))
+    raise AssertionError(f"no accuracy row in:\n{output}")
+
+
+def test_pooled_error_counts_are_reported_per_seed_when_the_counts_differ(
+    tmp_path: Path,
+) -> None:
+    """A 10-seed protocol pools twice the errors of a 5-seed one at equal quality.
+
+    Both sides here have identical per-seed confusion matrices, so the honest
+    reading is "no change". The raw pooled totals say 20 → 40, which is why the
+    per-seed rate has to be on the same line.
+    """
+    baseline = tmp_path / "baseline"
+    variant = tmp_path / "variant"
+    _write_validation_run(baseline, "E0", "mediapipe_98_v1", [0.6, 0.61, 0.62, 0.63, 0.64])
+    _write_validation_run(variant, "E0-10", "mediapipe_98_v1", [0.6, 0.61, 0.62, 0.63, 0.64] * 2)
+    _write_test_results(baseline, "E0", "mediapipe_98_v1-sha")
+    _write_test_results(variant, "E0-10", "mediapipe_98_v1-sha", seed_count=10)
+    script = Path(__file__).parents[2] / "scripts" / "compare_protocols.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--baseline", str(baseline), "--variant", str(variant)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    # Three errors per seed in the fixture matrix [[8, 2], [1, 9]].
+    assert "E0 15 (5 seeds, 3.0/seed)" in result.stdout
+    assert "E0-10 30 (10 seeds, 3.0/seed)" in result.stdout
+    assert "(5 seeds 합산, 행=정답, 열=예측)" in result.stdout
+    assert "(10 seeds 합산, 행=정답, 열=예측)" in result.stdout
 
 
 def test_test_comparison_accepts_different_features_from_the_same_raw_population(
