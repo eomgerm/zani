@@ -120,6 +120,9 @@ class SessionListApiIntegrationTest {
         list(STUDENT_ID)
                 .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].title".formatted(LIVE_SESSION_ID))
                         .value("진행 중 수업"))
+                // 학생 카드는 "누구 수업인지" 를 보여준다. 주최 강사 이름이 함께 와야 한다.
+                .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].instructorName".formatted(LIVE_SESSION_ID))
+                        .value("박강사"))
                 .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].participantCount".formatted(LIVE_SESSION_ID))
                         .value(2))
                 .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].startedAt".formatted(LIVE_SESSION_ID))

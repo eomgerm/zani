@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
+import com.a105.zani.member.infrastructure.persistence.repository.MemberJpaRepository;
 import com.a105.zani.session.application.get.GetSessionListQueryPort;
 import com.a105.zani.session.application.get.SessionReportStatus;
 import com.a105.zani.session.application.get.SessionSummaryResult;
@@ -40,14 +42,17 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
 
     private final SessionJpaRepository sessionJpaRepository;
     private final SessionParticipantJpaRepository sessionParticipantJpaRepository;
+    private final MemberJpaRepository memberJpaRepository;
     private final JdbcTemplate jdbcTemplate;
 
     public SessionListQueryAdapter(
             SessionJpaRepository sessionJpaRepository,
             SessionParticipantJpaRepository sessionParticipantJpaRepository,
+            MemberJpaRepository memberJpaRepository,
             JdbcTemplate jdbcTemplate) {
         this.sessionJpaRepository = sessionJpaRepository;
         this.sessionParticipantJpaRepository = sessionParticipantJpaRepository;
+        this.memberJpaRepository = memberJpaRepository;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -86,6 +91,7 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
 
         Map<Long, Long> participantCounts = countParticipants(mySessionIds);
         Map<Long, SessionReportStatus> reportStatuses = findReportStatuses(mySessionIds);
+        Map<Long, String> instructorNames = findInstructorNames(sessions);
         // 재입장은 참가자 행이 있어야 성립한다. 주최자라도 행이 없으면 미디어 토큰이 거절되므로 버튼을 보여 주면 안 된다.
         Set<Long> sessionIdsIHaveJoined = myParticipations.stream()
                 .map(SessionParticipantJpaEntity::getSessionId)
@@ -97,6 +103,7 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
                     session.getId(),
                     session.getInviteCode(),
                     session.getTitle(),
+                    instructorNames.get(session.getHostMemberId()),
                     session.getStatus(),
                     roleBySessionId.get(session.getId()),
                     session.getStartedAt(),
@@ -106,6 +113,22 @@ public class SessionListQueryAdapter implements GetSessionListQueryPort {
                     session.getStatus() == SessionStatus.LIVE && sessionIdsIHaveJoined.contains(session.getId())));
         }
         return results;
+    }
+
+    /**
+     * 주최 강사 이름을 한 번에 가져온다.
+     *
+     * <p>{@code SessionJpaEntity.hostMember} 는 지연 로딩이라 세션마다 꺼내 쓰면 목록 길이만큼 쿼리가 나간다. 학생 카드가 "누구 수업인지"를 보여주는 데만 쓰는 값이라 이름
+     * 하나를 위해 그럴 이유가 없다.
+     */
+    private Map<Long, String> findInstructorNames(List<SessionJpaEntity> sessions) {
+        Set<Long> hostMemberIds =
+                sessions.stream().map(SessionJpaEntity::getHostMemberId).collect(Collectors.toSet());
+        if (hostMemberIds.isEmpty()) {
+            return Map.of();
+        }
+        return memberJpaRepository.findAllById(hostMemberIds).stream()
+                .collect(Collectors.toMap(MemberJpaEntity::getId, MemberJpaEntity::getDisplayName));
     }
 
     private Map<Long, Long> countParticipants(Collection<Long> sessionIds) {

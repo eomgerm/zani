@@ -328,6 +328,9 @@ components:
           type: string
         title:
           type: string
+        instructorName:
+          # 학생 카드가 "누구 수업인지" 를 보여주는 데 쓴다.
+          type: string
         status:
           $ref: "#/components/schemas/SessionStatus"
         role:

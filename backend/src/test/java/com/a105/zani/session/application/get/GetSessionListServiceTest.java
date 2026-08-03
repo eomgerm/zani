@@ -34,6 +34,7 @@ class GetSessionListServiceTest {
                 sessionId,
                 inviteCode,
                 "수업 " + sessionId,
+                "박강사",
                 SessionStatus.LIVE,
                 role,
                 Instant.parse("2026-08-03T09:00:00Z"),

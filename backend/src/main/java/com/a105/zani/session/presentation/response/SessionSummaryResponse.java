@@ -18,6 +18,10 @@ public record SessionSummaryResponse(
         String inviteCode,
 
         @Schema(description = "수업 제목", example = "자료구조 3주차") String title,
+
+        @Schema(description = "이 수업을 연 강사 이름", example = "박서준")
+        String instructorName,
+
         @Schema(description = "수업 상태") SessionStatus status,
         @Schema(description = "이 수업에서 내 역할") SessionParticipantRole role,
         @Schema(description = "수업 시작 시각") Instant startedAt,
@@ -36,6 +40,7 @@ public record SessionSummaryResponse(
                 String.valueOf(result.sessionId()),
                 result.inviteCode(),
                 result.title(),
+                result.instructorName(),
                 result.status(),
                 result.role(),
                 result.startedAt(),
