@@ -14,34 +14,37 @@ import {
 import { Card } from "@/shared/ui";
 import {
   requestStudentAttentionTimeline,
-  type StudentTimelinePoint,
+  type FocusPoint,
   type StudentTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
+import { SectionAverages } from "./SectionAverages";
 import { formatOffset, TimelineStatusBar } from "./TimelineStatusBar";
-import { mergeSegments } from "./timelineTrack";
+import type { TrackSegment } from "./timelineTrack";
 import { useAttentionTimeline } from "./useAttentionTimeline";
 
 /**
  * 학생 개인 집중 흐름 카드.
  *
- * <p>이 값은 점수가 아니라 30초 이동창으로 계산한 참고용 파생 지표다(NFR-UX-006). 전체 점수도,
- * 다른 학생과 견주는 수치도 만들지 않는다 — 만드는 순간 학생이 성적표로 읽는다.
+ * <p>이 값은 점수가 아니라 겹치지 않는 30초 구간마다 낸 4단계 판정의 단계 평균(1.00~4.00)이며
+ * 참고용 파생 지표다(NFR-UX-006, 설계 문서 §2.8). 이동창이 아니다. 전체 점수도, 다른 학생과
+ * 견주는 수치도 만들지 않는다 — 만드는 순간 학생이 성적표로 읽는다.
  *
- * <p>단계·모델 확률·세부 수치는 내려오지도, 보여주지도 않는다(REPORT-S-010).
+ * <p>모델 확률과 세부 수치는 내려오지도, 보여주지도 않는다(REPORT-S-010). 단계 값 자체는 리포트
+ * 에서 보여준다 — 단계 비노출 제한은 실시간 화면에만 적용된다.
  *
- * <p>값이 없는 구간은 0 이 아니라 공백이다. `connectNulls={false}` 로 선을 끊고 회색 밴드로
+ * <p>값이 없는 구간은 1단계가 아니라 공백이다. `connectNulls={false}` 로 선을 끊고 회색 밴드로
  * 사유를 표시한다(REPORT-S-007). `shared/ui/FocusFlowChart` 는 `connectNulls` 가 켜져 있어
  * 이 요구사항에 쓸 수 없다.
  */
 
-/** 값이 없는 구간을 찾는다. 비율을 다시 계산하는 것이 아니라 빈 자리를 짚기만 한다. */
+/** 값이 없는 구간을 찾는다. 값을 다시 계산하는 것이 아니라 빈 자리를 짚기만 한다. */
 const blankRunsOf = (
-  points: readonly StudentTimelinePoint[],
+  points: readonly FocusPoint[],
   intervalSeconds: number,
 ): { start: number; end: number }[] => {
   const runs: { start: number; end: number }[] = [];
   for (const point of points) {
-    if (point.focusPercent !== null) continue;
+    if (point.focusLevel !== null) continue;
     const last = runs[runs.length - 1];
     if (last !== undefined && last.end === point.offsetSeconds) {
       last.end = point.offsetSeconds + intervalSeconds;
@@ -110,7 +113,7 @@ export function StudentAttentionTimeline({
       );
     }
 
-    if (timeline.points.length === 0) {
+    if (timeline.focusFlow.points.length === 0) {
       return (
         <Notice
           icon="📭"
@@ -120,15 +123,23 @@ export function StudentAttentionTimeline({
       );
     }
 
-    const { points, intervalSeconds, durationSeconds } = timeline;
+    const { focusFlow, durationSeconds, stateIntervals, sections } = timeline;
+    const points = focusFlow.points;
+    const intervalSeconds = focusFlow.intervalSeconds;
     const blanks = blankRunsOf(points, intervalSeconds);
     const blankSeconds = blanks.reduce((sum, run) => sum + (run.end - run.start), 0);
     const total = durationSeconds > 0 ? durationSeconds : points.length * intervalSeconds;
-    const segments = mergeSegments(points, intervalSeconds);
+
+    // 서버가 병합해 준 구간을 그대로 넘긴다. 다시 병합하지 않는다(설계 문서 §2.13).
+    const segments: TrackSegment[] = stateIntervals.map((interval) => ({
+      startSeconds: interval.startSeconds,
+      endSeconds: interval.endSeconds,
+      state: interval.state,
+    }));
 
     // 차트 자체는 읽을 수 없는 그림이므로 요약을 이름으로 준다. 상호작용은 아래 상태 막대가 맡는다.
     const chartLabel =
-      `집중 흐름 그래프. 30초 이동창으로 계산한 참고용 파생 지표. ` +
+      `집중 흐름 그래프. 겹치지 않는 30초 구간마다 1~4 단계 평균을 낸 참고용 파생 지표. ` +
       `전체 ${formatOffset(total)} 중 ${formatOffset(blankSeconds)}는 값이 없어 비워 뒀습니다.`;
 
     return (
@@ -136,7 +147,7 @@ export function StudentAttentionTimeline({
         <div role="img" aria-label={chartLabel}>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart
-              data={points as StudentTimelinePoint[]}
+              data={points as FocusPoint[]}
               margin={{ top: 12, right: 18, left: 4, bottom: 4 }}
             >
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
@@ -145,8 +156,8 @@ export function StudentAttentionTimeline({
                   key={`blank-${run.start}`}
                   x1={run.start}
                   x2={run.end}
-                  y1={0}
-                  y2={100}
+                  y1={1}
+                  y2={4}
                   fill="#c9cdde"
                   fillOpacity={0.35}
                   stroke="none"
@@ -162,20 +173,21 @@ export function StudentAttentionTimeline({
                 axisLine={{ stroke: "#e6e8f2" }}
                 tick={{ fill: "#8a90b4", fontSize: 11 }}
               />
+              {/* 1~4 단계 척도다. 0~100 으로 환산하지 않는다. */}
               <YAxis
                 type="number"
-                domain={[0, 100]}
-                ticks={[0, 50, 100]}
-                tickFormatter={(value: number) => `${value}%`}
+                domain={[1, 4]}
+                ticks={[1, 2, 3, 4]}
+                tickFormatter={(value: number) => `${value}단계`}
                 tickLine={false}
                 axisLine={false}
-                width={40}
+                width={52}
                 tick={{ fill: "#8a90b4", fontSize: 11, fontWeight: 700 }}
               />
               {/* connectNulls 를 켜면 관측이 없던 구간이 이어져 "쭉 집중했다"로 보인다. */}
               <Line
                 type="monotone"
-                dataKey="focusPercent"
+                dataKey="focusLevel"
                 stroke="#16c582"
                 strokeWidth={2.4}
                 dot={false}
@@ -188,15 +200,21 @@ export function StudentAttentionTimeline({
         </div>
 
         <p className="mb-3.5 mt-1 text-[11.5px] font-semibold text-ink-fainter">
-          회색으로 비워 둔 구간은 값이 없는 시간이에요. 0% 가 아니라 기록이 없다는 뜻이에요.
+          회색으로 비워 둔 구간은 값이 없는 시간이에요. 1단계가 아니라 기록이 없다는 뜻이에요.
         </p>
 
-        <TimelineStatusBar
-          segments={segments}
-          selectedIndex={Math.min(selectedIndex, segments.length - 1)}
-          onSelect={setSelectedIndex}
-          label="구간별 내 상태"
-        />
+        {segments.length > 0 ? (
+          <TimelineStatusBar
+            segments={segments}
+            selectedIndex={Math.min(selectedIndex, segments.length - 1)}
+            onSelect={setSelectedIndex}
+            label="구간별 내 상태"
+          />
+        ) : (
+          <p className="text-xs font-semibold text-ink-faint">구간 정보가 없어요.</p>
+        )}
+
+        <SectionAverages sections={sections} />
       </>
     );
   };
@@ -215,8 +233,8 @@ export function StudentAttentionTimeline({
       {body()}
 
       <p className="mt-3.5 text-[11.5px] leading-[1.6] text-ink-fainter">
-        30초 이동창으로 계산한 <b className="font-extrabold text-ink-faint">참고용 파생 지표</b>
-        입니다. 점수가 아닙니다.
+        겹치지 않는 30초 구간마다 낸 <b className="font-extrabold text-ink-faint">1~4 단계 평균</b>
+        이에요. 참고용 파생 지표이며 점수가 아닙니다.
       </p>
     </Card>
   );
