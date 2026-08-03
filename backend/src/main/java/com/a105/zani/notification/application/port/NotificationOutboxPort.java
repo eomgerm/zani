@@ -10,11 +10,12 @@ import java.util.List;
 public interface NotificationOutboxPort {
 
     /**
-     * outbox 행 하나를 등록한다. 같은 dedup_key 가 이미 있으면 아무것도 하지 않고 {@code false}(중복 방지).
+     * 한 세션의 알림들을 <b>한 트랜잭션</b>에서 등록한다. 도중 실패하면 전부 롤백돼 그 세션은 다음 폴링에서 다시 발견·재시도된다 — 일부 수신자만 등록되고 나머지가 영영 누락되는 일을 막는다(발견
+     * 조건이 세션·유형 단위라 한 건이라도 남으면 재발견에서 빠지기 때문). 각 행은 dedup_key UNIQUE 로 INSERT IGNORE 되어 재실행에도 멱등이다.
      *
-     * @return 이번 호출로 행이 만들어졌으면 {@code true}
+     * @return 이번 호출로 새로 만들어진 행 수
      */
-    boolean enqueue(NewNotification notification, Instant now);
+    int enqueueAll(List<NewNotification> notifications, Instant now);
 
     /** nextAttemptAt 이 지난 PENDING 행을 오래된 순으로 가져온다(백오프 반영). */
     List<PendingNotification> fetchDue(int limit, Instant now);

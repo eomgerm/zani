@@ -29,17 +29,21 @@ public class NotificationOutboxPersistenceAdapter implements NotificationOutboxP
 
     @Override
     @Transactional
-    public boolean enqueue(NewNotification notification, Instant now) {
-        int inserted = outboxRepository.insertIgnore(
-                TsidGenerator.generate(),
-                notification.sessionId(),
-                notification.memberId(),
-                notification.email(),
-                notification.displayName(),
-                notification.type(),
-                notification.dedupKey(),
-                now);
-        return inserted == 1;
+    public int enqueueAll(List<NewNotification> notifications, Instant now) {
+        // 한 세션의 수신자 전체를 한 트랜잭션에 넣는다. 도중 실패하면 함께 롤백돼, 세션이 다음 폴링에서 다시 발견돼 재시도된다.
+        int inserted = 0;
+        for (NewNotification notification : notifications) {
+            inserted += outboxRepository.insertIgnore(
+                    TsidGenerator.generate(),
+                    notification.sessionId(),
+                    notification.memberId(),
+                    notification.email(),
+                    notification.displayName(),
+                    notification.type(),
+                    notification.dedupKey(),
+                    now);
+        }
+        return inserted;
     }
 
     @Override

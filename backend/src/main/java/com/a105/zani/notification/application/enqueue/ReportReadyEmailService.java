@@ -1,7 +1,6 @@
 package com.a105.zani.notification.application.enqueue;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 
 import lombok.RequiredArgsConstructor;
@@ -44,14 +43,12 @@ public class ReportReadyEmailService implements ReportReadyEmailUseCase {
     }
 
     private void enqueueForSession(Long sessionId) {
-        List<ReportRecipient> recipients = reportRecipientQueryPort.findRecipients(sessionId);
-        Instant now = clock.instant();
-        int enqueued = 0;
-        for (ReportRecipient recipient : recipients) {
-            if (outboxPort.enqueue(toNotification(sessionId, recipient), now)) {
-                enqueued++;
-            }
-        }
+        // 한 세션의 수신자 전체를 모아 한 번에(한 트랜잭션) 등록한다. 개별 등록 중 중단되면 일부만 남아 세션이 재발견에서 빠지고
+        // 나머지 학생이 영영 누락되므로, 원자적으로 넣어 중단 시 통째로 롤백·재발견되게 한다.
+        List<NewNotification> notifications = reportRecipientQueryPort.findRecipients(sessionId).stream()
+                .map(recipient -> toNotification(sessionId, recipient))
+                .toList();
+        int enqueued = outboxPort.enqueueAll(notifications, clock.instant());
         if (enqueued > 0) {
             log.debug("리포트 준비 알림을 등록했습니다. sessionId={}, 신규={}건", sessionId, enqueued);
         }

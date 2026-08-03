@@ -1,6 +1,9 @@
 package com.a105.zani.notification.infrastructure.mail;
 
+import java.io.UnsupportedEncodingException;
 import jakarta.mail.MessagingException;
+import jakarta.mail.internet.AddressException;
+import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 
 import lombok.RequiredArgsConstructor;
@@ -39,12 +42,21 @@ public class SmtpEmailSenderAdapter implements EmailSenderPort {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "UTF-8");
             helper.setFrom(from);
-            helper.setTo(message.to());
+            helper.setTo(toAddress(message));
             helper.setSubject(message.subject());
             helper.setText(message.bodyHtml(), true);
             mailSender.send(mimeMessage);
-        } catch (MailException | MessagingException exception) {
+        } catch (MailException | MessagingException | UnsupportedEncodingException exception) {
             throw new EmailDeliveryException("이메일 전송 실패: " + message.to(), exception);
         }
+    }
+
+    /** 수신자 표시 이름이 있으면 "이름 <이메일>" 로, 없으면 주소만. */
+    private static InternetAddress toAddress(EmailMessage message)
+            throws AddressException, UnsupportedEncodingException {
+        if (message.toName() == null || message.toName().isBlank()) {
+            return new InternetAddress(message.to());
+        }
+        return new InternetAddress(message.to(), message.toName(), "UTF-8");
     }
 }

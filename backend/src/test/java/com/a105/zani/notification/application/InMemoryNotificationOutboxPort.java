@@ -50,21 +50,25 @@ public class InMemoryNotificationOutboxPort implements NotificationOutboxPort {
     private long sequence = 1;
 
     @Override
-    public boolean enqueue(NewNotification notification, Instant now) {
-        if (rows.stream().anyMatch(row -> row.dedupKey.equals(notification.dedupKey()))) {
-            return false; // dedup_key UNIQUE 충돌: 멱등하게 무시.
+    public int enqueueAll(List<NewNotification> notifications, Instant now) {
+        int inserted = 0;
+        for (NewNotification notification : notifications) {
+            if (rows.stream().anyMatch(row -> row.dedupKey.equals(notification.dedupKey()))) {
+                continue; // dedup_key UNIQUE 충돌: 멱등하게 무시.
+            }
+            rows.add(new Row(
+                    sequence++,
+                    notification.sessionId(),
+                    notification.memberId(),
+                    notification.email(),
+                    notification.displayName(),
+                    notification.dedupKey(),
+                    "PENDING",
+                    0,
+                    now));
+            inserted++;
         }
-        rows.add(new Row(
-                sequence++,
-                notification.sessionId(),
-                notification.memberId(),
-                notification.email(),
-                notification.displayName(),
-                notification.dedupKey(),
-                "PENDING",
-                0,
-                now));
-        return true;
+        return inserted;
     }
 
     /** 테스트용: 특정 시도 횟수·상태의 행을 미리 심는다. */
