@@ -6,25 +6,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.a105.zani.report.infrastructure.persistence.entity.SessionSectionJpaEntity;
-import com.a105.zani.report.infrastructure.persistence.repository.SessionSectionJpaRepository;
-
-/** 저장된 내용 구간을 읽어 경계 값만 옮긴다. 엔티티를 밖으로 내보내지 않는다. */
+/** 저장된 내용 구간을 읽는다. 조회 수단은 {@link ListSessionSectionsQueryPort} 뒤에 있고 이 클래스는 엔티티를 알지 못한다. */
 @Service
 @RequiredArgsConstructor
 public class ListSessionSectionsService implements ListSessionSectionsUseCase {
 
-    private final SessionSectionJpaRepository repository;
+    private final ListSessionSectionsQueryPort queryPort;
 
     @Override
     @Transactional(readOnly = true)
     public List<SessionSectionView> list(ListSessionSectionsQuery query) {
-        return repository.findBySessionIdOrderByStartedOffsetMsAsc(query.sessionId()).stream()
-                .map(ListSessionSectionsService::toView)
-                .toList();
-    }
-
-    private static SessionSectionView toView(SessionSectionJpaEntity entity) {
-        return new SessionSectionView(entity.getStartedOffsetMs(), entity.getEndedOffsetMs(), entity.getTitle());
+        return queryPort.findBySessionId(query.sessionId());
     }
 }
