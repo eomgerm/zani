@@ -1,5 +1,6 @@
 package com.a105.zani.postclass.infrastructure.persistence.entity;
 
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -36,4 +37,13 @@ public class PipelineJobJpaEntity extends BaseJpaEntity {
 
     @Column(name = "status", nullable = false, length = 30)
     private String status;
+
+    @Column(name = "attempt_count", nullable = false)
+    private Integer attemptCount;
+
+    @Column(name = "next_attempt_at", columnDefinition = "DATETIME(6)")
+    private Instant nextAttemptAt;
+
+    @Column(name = "last_error", length = 500)
+    private String lastError;
 }
