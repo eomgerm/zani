@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const authState = vi.hoisted(() => ({ accessToken: "access-token" as string | null }));
@@ -74,6 +74,28 @@ describe("MyLecturesScreen", () => {
 
     await screen.findByText("진행 중 수업");
     expect(screen.queryByRole("link", { name: /강의실 입장/ })).not.toBeInTheDocument();
+  });
+
+  /** 내가 들은 수업 카드는 "누구 수업인지" 를 보여준다. 251 에서 instructorName 을 서버에 추가한 이유가 이것이다. */
+  it("참여강의 카드에는 강사 이름이 보인다", async () => {
+    render(
+      <MyLecturesScreen requestList={listing([summary({ instructorName: "최민서" })])} />,
+    );
+
+    expect(await screen.findByText("최민서")).toBeVisible();
+  });
+
+  /** 내가 연 수업은 강사가 나이므로 이름 대신 몇 명이 들었는지가 궁금하다. */
+  it("진행강의 카드에는 수강생 수가 보인다", async () => {
+    render(
+      <MyLecturesScreen
+        requestList={listing([summary({ role: "INSTRUCTOR", participantCount: 24 })])}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "진행강의" }));
+
+    expect(await screen.findByText("수강생 24명")).toBeVisible();
   });
 
   /** 리포트가 실패했다고 수업이 없었던 것은 아니다. 목록에서 지우면 강사는 자기 수업이 사라진 것으로 본다. */

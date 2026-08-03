@@ -44,6 +44,16 @@ function Body({ lecture }: { lecture: MyLecture }) {
       <div className="truncate px-1.5 pt-4 text-[17px] font-extrabold leading-[1.4]">
         {lecture.title}
       </div>
+      {/*
+        내가 들은 수업이면 "누구 수업인지", 내가 연 수업이면 "몇 명이 들었는지" 를 보여준다.
+        같은 자리에 서로 다른 값을 두는 이유는 반대쪽이 자명하기 때문이다 — 참여강의의 학생 수나
+        진행강의의 강사 이름은 카드를 보는 사람이 이미 안다.
+      */}
+      <div className="truncate px-1.5 pt-1 text-[13px] text-ink-muted">
+        {lecture.role === "student"
+          ? lecture.instructor
+          : `수강생 ${lecture.students}명`}
+      </div>
       <div className="mx-1.5 my-3.5 h-px bg-line-light" />
       <div className="flex items-center gap-3.5 px-1.5 text-[13px] text-ink-fainter">
         <span className="flex items-center gap-1.5">

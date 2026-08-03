@@ -16,15 +16,23 @@ const WEEKDAYS = [
   { label: "토", cls: "text-saturday" },
 ];
 
-/** 시연 기준 월. 실데이터가 붙으면 현재 월로 바꾼다. */
-const INITIAL = { year: 2026, month: 7 };
+/**
+ * 처음 보여줄 달. 오늘이 속한 달에서 시작한다.
+ *
+ * <p>값을 모듈 상수로 굳히지 않고 함수로 두는 이유: 자정을 넘겨 열어 둔 화면이 어제 달에 머무는 것을 막고, 테스트가 "지금"을 고정해도 같은 결과를 보게 하기 위해서다.
+ */
+function thisMonth() {
+  const today = new Date();
+  return { year: today.getFullYear(), month: today.getMonth() + 1 };
+}
 
 const navBtn =
   "flex size-8 cursor-pointer items-center justify-center rounded-[9px] border border-line-muted bg-surface text-ink-muted hover:bg-primary-softer";
 
 /** 강의 캘린더. 강의가 있는 날을 강조하고 월 단위로 이동한다. */
 export function LectureCalendar({ lectures }: { lectures: MyLecture[] }) {
-  const [{ year, month }, setYm] = useState(INITIAL);
+  // 초기값 계산을 지연시킨다. 매 렌더마다 new Date() 를 만들면 상태와 무관한 비용이 계속 든다.
+  const [{ year, month }, setYm] = useState(thisMonth);
 
   const shift = (delta: number) =>
     setYm(({ year: y, month: m }) => {

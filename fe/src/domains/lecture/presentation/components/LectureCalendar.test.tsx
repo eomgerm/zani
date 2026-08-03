@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LectureCalendar } from "./LectureCalendar";
 import type { MyLecture } from "../myLectures";
@@ -17,13 +17,31 @@ const lecture = (over: Partial<MyLecture> = {}): MyLecture => ({
   ...over,
 });
 
-afterEach(cleanup);
+/** 달력이 "오늘이 속한 달"에서 시작하므로, 시각을 고정하지 않으면 실행하는 날에 따라 결과가 달라진다. */
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(2026, 6, 15, 9, 0, 0));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 describe("LectureCalendar", () => {
-  it("starts on the seeded month", () => {
+  /** 시연용으로 굳어 있던 달을 걷어냈다. 방금 한 수업이 안 보이는 달에서 시작하면 안 된다. */
+  it("starts on the current month", () => {
     render(<LectureCalendar lectures={[lecture()]} />);
 
     expect(screen.getByText("2026년 7월")).toBeVisible();
+  });
+
+  it("follows the clock into the next month", () => {
+    vi.setSystemTime(new Date(2026, 7, 3, 9, 0, 0));
+
+    render(<LectureCalendar lectures={[]} />);
+
+    expect(screen.getByText("2026년 8월")).toBeVisible();
   });
 
   it("moves a month at a time in both directions", () => {
