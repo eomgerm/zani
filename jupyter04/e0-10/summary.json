@@ -390,25 +390,181 @@
           "size_bytes": 305
         }
       }
+    },
+    {
+      "seed": 48,
+      "status": "complete",
+      "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+      "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+      "inputs": {},
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 4,
+      "validation": {
+        "accuracy": 0.6785714285714286,
+        "macro_f1": 0.5683432977473841,
+        "within_one_accuracy": 0.9551020408163265,
+        "quadratic_weighted_kappa": 0.6957756638564536
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-48/best.pt",
+          "sha256": "96c2086d5de7ef6d7e71e279f5aea4b1e95b76a3aa09b0923bd55ce48086a125",
+          "size_bytes": 12912571
+        },
+        "metrics": {
+          "path": "seed-48/metrics.json",
+          "sha256": "c02212cc5e6814611404ce1328a3c0bbafc3ae7d43cad65818db11ebaa95e207",
+          "size_bytes": 7392
+        },
+        "onnx_model": {
+          "path": "seed-48/onnx/engagement.onnx",
+          "sha256": "e34d493443fef0b8473bc50f099cc0def3fbb79874c22b7198c29897008f0433",
+          "size_bytes": 13187633
+        },
+        "onnx_metadata": {
+          "path": "seed-48/onnx/engagement.metadata.json",
+          "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+          "size_bytes": 305
+        }
+      }
+    },
+    {
+      "seed": 49,
+      "status": "complete",
+      "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+      "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+      "inputs": {},
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 1,
+      "validation": {
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.562250333349961,
+        "within_one_accuracy": 0.9530612244897959,
+        "quadratic_weighted_kappa": 0.6861356932153393
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-49/best.pt",
+          "sha256": "b72fcd611c86ce684ae96ec9a260b6c99611f0b8b7a3450cc2a18df1167f79cc",
+          "size_bytes": 12912571
+        },
+        "metrics": {
+          "path": "seed-49/metrics.json",
+          "sha256": "5001899d2df3546a5406c804914903b50a96de6e96180bfae7b1e2f05cf1c97a",
+          "size_bytes": 7019
+        },
+        "onnx_model": {
+          "path": "seed-49/onnx/engagement.onnx",
+          "sha256": "21630699ae7ac12cb0ae25f5991afb7c8457e6302447024d0f103f0a5420bfb7",
+          "size_bytes": 13187633
+        },
+        "onnx_metadata": {
+          "path": "seed-49/onnx/engagement.metadata.json",
+          "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+          "size_bytes": 305
+        }
+      }
+    },
+    {
+      "seed": 50,
+      "status": "complete",
+      "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+      "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+      "inputs": {},
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 1,
+      "validation": {
+        "accuracy": 0.6826530612244898,
+        "macro_f1": 0.5793388391270562,
+        "within_one_accuracy": 0.9673469387755103,
+        "quadratic_weighted_kappa": 0.7141121495327103
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-50/best.pt",
+          "sha256": "e379f46fdfdacbecf2dfa060065d41f2e2d329e91cd22bb8b72c1e0bc1442ba9",
+          "size_bytes": 12912571
+        },
+        "metrics": {
+          "path": "seed-50/metrics.json",
+          "sha256": "f07ea8bb8722990d44e4d92f996bf4ac453da0824b71ec07d0f75d9d09e56004",
+          "size_bytes": 7024
+        },
+        "onnx_model": {
+          "path": "seed-50/onnx/engagement.onnx",
+          "sha256": "416f1978317e442350c412c956cca7e7cfca4e0f1c151097972082282a5b56c9",
+          "size_bytes": 13187633
+        },
+        "onnx_metadata": {
+          "path": "seed-50/onnx/engagement.metadata.json",
+          "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+          "size_bytes": 305
+        }
+      }
     }
   ],
   "aggregate": {
-    "completed_seed_count": 6,
+    "completed_seed_count": 9,
     "validation_accuracy": {
-      "mean": 0.6671768707482993,
-      "sample_standard_deviation": 0.014821113898330414
+      "mean": 0.6701814058956916,
+      "sample_standard_deviation": 0.013164627537662326
     },
     "validation_macro_f1": {
-      "mean": 0.5765592075112701,
-      "sample_standard_deviation": 0.012837918715672398
+      "mean": 0.5743653016991135,
+      "sample_standard_deviation": 0.011514736130658315
     },
     "validation_within_one_accuracy": {
-      "mean": 0.9583333333333334,
-      "sample_standard_deviation": 0.004627600709256298
+      "mean": 0.958390022675737,
+      "sample_standard_deviation": 0.005321254369783013
     },
     "validation_quadratic_weighted_kappa": {
-      "mean": 0.7045265310615355,
-      "sample_standard_deviation": 0.015372451027527363
+      "mean": 0.7025758547748573,
+      "sample_standard_deviation": 0.014378802480522092
     }
   }
 }

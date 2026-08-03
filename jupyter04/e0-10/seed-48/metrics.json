@@ -1,0 +1,311 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 4,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6785714285714286,
+    "macro_f1": 0.5683432977473841,
+    "within_one_accuracy": 0.9551020408163265,
+    "quadratic_weighted_kappa": 0.6957756638564536,
+    "confusion_matrix": [
+      [
+        43,
+        12,
+        10,
+        6
+      ],
+      [
+        7,
+        32,
+        40,
+        14
+      ],
+      [
+        3,
+        25,
+        85,
+        153
+      ],
+      [
+        1,
+        10,
+        34,
+        505
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.7962962962962963,
+        "recall": 0.6056338028169014,
+        "f1-score": 0.688,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.4050632911392405,
+        "recall": 0.34408602150537637,
+        "f1-score": 0.37209302325581395,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.5029585798816568,
+        "recall": 0.31954887218045114,
+        "f1-score": 0.39080459770114945,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7448377581120944,
+        "recall": 0.9181818181818182,
+        "f1-score": 0.8224755700325733,
+        "support": 550.0
+      },
+      "accuracy": 0.6785714285714286,
+      "macro avg": {
+        "precision": 0.612288981357322,
+        "recall": 0.5468626286711368,
+        "f1-score": 0.5683432977473841,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6506690533909786,
+        "recall": 0.6785714285714286,
+        "f1-score": 0.6528247323155222,
+        "support": 980.0
+      }
+    },
+    "monotonicity_violation_rate": null
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "macro_f1": 0.5274971676394178,
+      "quadratic_weighted_kappa": 0.6526717557251909
+    },
+    {
+      "epoch": 1,
+      "macro_f1": 0.5449343146099657,
+      "quadratic_weighted_kappa": 0.6733842287448433
+    },
+    {
+      "epoch": 2,
+      "macro_f1": 0.5431699837457107,
+      "quadratic_weighted_kappa": 0.6824951644100581
+    },
+    {
+      "epoch": 3,
+      "macro_f1": 0.55871152558604,
+      "quadratic_weighted_kappa": 0.6776959013630015
+    },
+    {
+      "epoch": 4,
+      "macro_f1": 0.5683432977473841,
+      "quadratic_weighted_kappa": 0.6957756638564536
+    },
+    {
+      "epoch": 5,
+      "macro_f1": 0.5543706359807765,
+      "quadratic_weighted_kappa": 0.6769756400585704
+    },
+    {
+      "epoch": 6,
+      "macro_f1": 0.5484926532260745,
+      "quadratic_weighted_kappa": 0.6996587030716723
+    },
+    {
+      "epoch": 7,
+      "macro_f1": 0.5218722564770746,
+      "quadratic_weighted_kappa": 0.66223440712817
+    },
+    {
+      "epoch": 8,
+      "macro_f1": 0.5536724211066317,
+      "quadratic_weighted_kappa": 0.6886821705426356
+    },
+    {
+      "epoch": 9,
+      "macro_f1": 0.5242575005502216,
+      "quadratic_weighted_kappa": 0.6428275118227827
+    },
+    {
+      "epoch": 10,
+      "macro_f1": 0.5413068222838605,
+      "quadratic_weighted_kappa": 0.6820332567256997
+    },
+    {
+      "epoch": 11,
+      "macro_f1": 0.5250903940675915,
+      "quadratic_weighted_kappa": 0.65126582278481
+    },
+    {
+      "epoch": 12,
+      "macro_f1": 0.5319823664216381,
+      "quadratic_weighted_kappa": 0.6631906884167712
+    },
+    {
+      "epoch": 13,
+      "macro_f1": 0.5281033184323167,
+      "quadratic_weighted_kappa": 0.6651673730646138
+    },
+    {
+      "epoch": 14,
+      "macro_f1": 0.5254003241815433,
+      "quadratic_weighted_kappa": 0.6558789904142116
+    },
+    {
+      "epoch": 15,
+      "macro_f1": 0.5342773700330101,
+      "quadratic_weighted_kappa": 0.6795720612092778
+    },
+    {
+      "epoch": 16,
+      "macro_f1": 0.5318281741456811,
+      "quadratic_weighted_kappa": 0.6634280807989515
+    },
+    {
+      "epoch": 17,
+      "macro_f1": 0.5514072245343402,
+      "quadratic_weighted_kappa": 0.6940288799271497
+    },
+    {
+      "epoch": 18,
+      "macro_f1": 0.5312257391518257,
+      "quadratic_weighted_kappa": 0.6533117381297417
+    },
+    {
+      "epoch": 19,
+      "macro_f1": 0.5127038645181797,
+      "quadratic_weighted_kappa": 0.6361453017111978
+    },
+    {
+      "epoch": 20,
+      "macro_f1": 0.5292506116617556,
+      "quadratic_weighted_kappa": 0.6571503404924044
+    },
+    {
+      "epoch": 21,
+      "macro_f1": 0.5164336321097446,
+      "quadratic_weighted_kappa": 0.6623774509803921
+    },
+    {
+      "epoch": 22,
+      "macro_f1": 0.5225735069513983,
+      "quadratic_weighted_kappa": 0.6815700545879906
+    },
+    {
+      "epoch": 23,
+      "macro_f1": 0.5400736409322691,
+      "quadratic_weighted_kappa": 0.6748371082842073
+    },
+    {
+      "epoch": 24,
+      "macro_f1": 0.5275323784751068,
+      "quadratic_weighted_kappa": 0.6765450748655975
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0-10/seed-48",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 48,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "stage1_checkpoint": null,
+    "curriculum": "none",
+    "reliability_manifest": null,
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-10 protocol."
+  },
+  "experiment": {
+    "protocol": "E0-10",
+    "seed": 48,
+    "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0
+    },
+    "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+    "inputs": {}
+  }
+}
