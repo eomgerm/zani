@@ -1,0 +1,52 @@
+{
+  "seed": 45,
+  "status": "complete",
+  "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+  "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+  "inputs": {},
+  "environment": {
+    "python": "3.12.6",
+    "pytorch": "2.11.0+cu128",
+    "cuda_runtime": "12.8",
+    "cuda_available": true,
+    "requested_device": "cuda",
+    "cuda_device": {
+      "index": 0,
+      "name": "NVIDIA L40S",
+      "capability": [
+        8,
+        9
+      ]
+    },
+    "cublas_workspace_config": ":4096:8"
+  },
+  "best_epoch": 11,
+  "validation": {
+    "accuracy": 0.6806122448979591,
+    "macro_f1": 0.5931183541089463,
+    "within_one_accuracy": 0.963265306122449,
+    "quadratic_weighted_kappa": 0.7083057734101861
+  },
+  "artifacts": {
+    "checkpoint": {
+      "path": "seed-45/best.pt",
+      "sha256": "cd1be8c429d9253ac4be4564a0a83f098973ac8e3764747071da5afb5baf78c2",
+      "size_bytes": 12912571
+    },
+    "metrics": {
+      "path": "seed-45/metrics.json",
+      "sha256": "c3266119276a5735d0f1317376ac3d3763897b3d4b7c4fca3868ce457a5c5a3c",
+      "size_bytes": 8261
+    },
+    "onnx_model": {
+      "path": "seed-45/onnx/engagement.onnx",
+      "sha256": "39a002d8e1f7f7a65212e23b3ce8bc6fecedb7e46049de42cc2dca14be0b2767",
+      "size_bytes": 13187633
+    },
+    "onnx_metadata": {
+      "path": "seed-45/onnx/engagement.metadata.json",
+      "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+      "size_bytes": 305
+    }
+  }
+}
