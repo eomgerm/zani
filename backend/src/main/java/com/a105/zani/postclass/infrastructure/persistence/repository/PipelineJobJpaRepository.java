@@ -53,6 +53,9 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
      *
      * <p>updated_at 을 함께 쓰는 이유: 벌크 UPDATE 는 {@code @LastModifiedDate} 리스너를 타지 않아, 명시하지 않으면 단계 변경 시각이 등록 시각에 머문다. 8시간
      * SLA(AI-006)를 재는 쪽이 이 값으로 어느 단계에서 멈췄는지 본다.
+     *
+     * <p>지금은 잠근 행을 조건 없이 바꾸므로 반환 행 수가 항상 1 이고, 호출자도 검사하지 않는다. <b>여기에 조건절을 붙인다면(예: {@code and status = :expected}) 호출자가
+     * 0 행을 반드시 확인해야 한다</b> — 그러지 않으면 전이가 일어나지 않은 요청이 조용히 성공으로 처리된다.
      */
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
