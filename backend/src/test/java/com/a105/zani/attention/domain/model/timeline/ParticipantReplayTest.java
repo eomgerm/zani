@@ -212,6 +212,43 @@ class ParticipantReplayTest {
         }
     }
 
+    @Nested
+    @DisplayName("슬롯 배정")
+    class Slots {
+
+        @Test
+        @DisplayName("시작 시각이 구간 안에 있는 슬롯만 돌려준다 — 걸친 슬롯은 자기 시작 칸에 남는다")
+        void returns_slots_by_their_start_time() {
+            ParticipantReplay replay = replay(events(0, 6, DetectorOutcome.ENGAGED), List.of());
+
+            // 0·10·20초 슬롯이 첫 칸, 30·40·50초 슬롯이 둘째 칸.
+            assertThat(replay.slotsStartingIn(0L, 30_000L))
+                    .extracting(ObservationSlot::startMs)
+                    .containsExactly(0L, 10_000L, 20_000L);
+            assertThat(replay.slotsStartingIn(30_000L, 60_000L))
+                    .extracting(ObservationSlot::startMs)
+                    .containsExactly(30_000L, 40_000L, 50_000L);
+        }
+
+        @Test
+        @DisplayName("격자에 안 맞는 시각의 슬롯도 시작 시각 기준으로 한 칸에만 들어간다")
+        void an_off_grid_slot_belongs_to_exactly_one_bucket() {
+            // 25초에 시작하는 슬롯은 [25,35) 이라 두 칸에 걸치지만 첫 칸에만 배정된다.
+            ParticipantReplay replay =
+                    replay(List.of(new ObservationRecord(PARTICIPANT, 25_000L, DetectorOutcome.ENGAGED)), List.of());
+
+            assertThat(replay.slotsStartingIn(0L, 30_000L)).hasSize(1);
+            assertThat(replay.slotsStartingIn(30_000L, 60_000L)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("관측이 없으면 빈 목록이다")
+        void no_slots_yields_an_empty_list() {
+            assertThat(replay(List.of(), List.of()).slotsStartingIn(0L, 30_000L))
+                    .isEmpty();
+        }
+    }
+
     @Test
     @DisplayName("이벤트가 순서 없이 들어와도 시간순으로 재생한다")
     void unordered_input_is_sorted() {

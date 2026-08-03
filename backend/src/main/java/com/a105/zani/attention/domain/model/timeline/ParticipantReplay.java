@@ -153,9 +153,20 @@ public final class ParticipantReplay {
         return null;
     }
 
-    /** 재생에 쓰인 슬롯 전부. 개인 집중 흐름이 창과 겹친 길이를 재는 데 쓴다. */
+    /** 재생에 쓰인 슬롯 전부. */
     public List<ObservationSlot> slots() {
         return slots;
+    }
+
+    /**
+     * 시작 시각이 {@code [fromMs, toMs)} 안에 있는 슬롯. 겹치는 슬롯이 아니라 <b>시작하는</b> 슬롯이다.
+     *
+     * <p>걸친 슬롯은 자기 시작 칸에만 든다(설계 문서 §2.8). 배정 규칙을 이 메서드 하나에 가둬 둬야 30초 칸 계산에서 걸침 처리를 다시 고민할 일이 없다.
+     */
+    public List<ObservationSlot> slotsStartingIn(long fromMs, long toMs) {
+        return slots.stream()
+                .filter(slot -> slot.startMs() >= fromMs && slot.startMs() < toMs)
+                .toList();
     }
 
     private static List<ObservationSlot> toSlots(List<ObservationRecord> events) {
