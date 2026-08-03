@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,6 +52,17 @@ class PipelineStateMachineTest {
         for (PipelineStatus target : PipelineStatus.values()) {
             assertFalse(PipelineStateMachine.canAdvance(PipelineStatus.PUBLISHED, target));
             assertFalse(PipelineStateMachine.canAdvance(PipelineStatus.FAILED, target));
+        }
+    }
+
+    @Test
+    void knowsEveryStageSoANewOneCannotSlipInUnhandled() {
+        // 단계를 더하면서 전이 규칙을 빠뜨리면 컴파일은 통과하고 그 단계를 처리할 때 NPE 가 난다.
+        // 결과 조립 단계(S15P11A105-106)처럼 뒤에 붙을 수 있는 단계를 여기서 먼저 잡는다.
+        for (PipelineStatus stage : PipelineStatus.values()) {
+            assertDoesNotThrow(
+                    () -> PipelineStateMachine.canAdvance(stage, PipelineStatus.FAILED),
+                    () -> stage + " 의 전이 규칙이 정의되지 않았습니다");
         }
     }
 
