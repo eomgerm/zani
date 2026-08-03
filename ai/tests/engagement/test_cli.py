@@ -94,6 +94,42 @@ def test_cli_registers_the_e0k_schedule_protocol() -> None:
     assert finalize_args.output == Path("artifacts")
 
 
+def test_cli_registers_the_e0l_two_stage_protocol() -> None:
+    """E0-L freezes a prior run's backbone, so `--stage1` is not optional."""
+    parser = build_parser()
+
+    reproduce_args = parser.parse_args(
+        [
+            "reproduce-e0l",
+            "--features",
+            "features",
+            "--stage1",
+            "artifacts/engagement/e0-clean",
+            "--output",
+            "artifacts/engagement/e0l",
+        ]
+    )
+    finalize_args = parser.parse_args(
+        ["finalize-e0l", "--features", "features", "--output", "artifacts/engagement/e0l"]
+    )
+
+    assert reproduce_args.stage1 == Path("artifacts/engagement/e0-clean")
+    assert finalize_args.output == Path("artifacts/engagement/e0l")
+
+
+def test_reproduce_e0l_requires_the_stage1_argument(tmp_path: Path) -> None:
+    result = _run_cli(
+        "reproduce-e0l",
+        "--features",
+        str(tmp_path / "features"),
+        "--output",
+        str(tmp_path / "e0l"),
+    )
+
+    assert result.returncode == 2
+    assert "--stage1" in result.stderr
+
+
 def test_audit_frame_gate_writes_mismatch_counts_by_split_and_label(
     tmp_path: Path,
 ) -> None:

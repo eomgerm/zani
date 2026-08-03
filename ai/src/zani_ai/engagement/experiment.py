@@ -118,6 +118,12 @@ class ExperimentSpec:
     ambiguous_neighbor_mass: float = 0.2
     needs_reliability_manifest: bool = False
     reliability_manifest: Path | None = None
+    # E0-L two-stage training. ``stage1_output`` is a completed protocol's output
+    # directory; seed ``n`` freezes the backbone of ``<dir>/seed-<n>/best.pt``.
+    # Like ``graph_path`` it is a per-machine location and must never enter
+    # ``_build_configuration`` -- the checkpoint fingerprints go in ``inputs``.
+    needs_stage1_checkpoint: bool = False
+    stage1_output: Path | None = None
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -295,6 +301,38 @@ E0K_SPEC = ExperimentSpec(
 )
 
 
+# E0-L takes the grade order apart into K-1 = 3 *independent* binary decisions,
+# which is the decomposition the literature reports as 69.37% -> 71.24% on
+# ST-GCN. Both of our earlier ordinal attempts differ from it:
+#
+# * E0-B (CORAL) lets one weight vector serve all three thresholds and varies
+#   only the bias, so its cumulative logits are monotone by construction and
+#   there is nothing for independent heads to disagree about. macro-F1 0.5185.
+# * E0-H (SORD) keeps the softmax head and spreads the *target* over the
+#   neighbouring grades instead. Validation accuracy 67.58% (our best) against
+#   macro-F1 56.80% (our worst).
+#
+# So the untested combination is independence plus a frozen backbone, and this
+# spec changes nothing else: stage 2 inherits E0's lr 1e-4 / 200 epochs /
+# patience 20, and the difference against E0 is the head and the freeze.
+#
+# Stage 1 is not retrained. `--stage1` points at E0's completed output and seed
+# n reuses seed n's checkpoint, following E0-I's precedent of fingerprinting a
+# prior protocol's artifact into `inputs`. Retraining it would burn E0's ~116
+# measured epochs to arrive at the same weights.
+#
+# `monotonicity` and `decoding` enter the identity because both change the
+# numbers a fixed set of weights produces: the running minimum decides what the
+# class probabilities are, and argmax over them decides which grade is read out
+# (CORAL's `count(p > 0.5)` would answer differently on the same vector).
+E0L_SPEC = ExperimentSpec(
+    "E0-L",
+    SCHEMA_98,
+    ModelConfig(input_dim=98, head="ordinal_binary"),
+    needs_stage1_checkpoint=True,
+)
+
+
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
 
@@ -419,6 +457,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0I_SPEC,
         E0J_SPEC,
         E0K_SPEC,
+        E0L_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -534,9 +573,17 @@ def _apply_loss_and_sampling(
     that predates them and discard its completed seeds, so a plain
     cross-entropy, one-hot, unsampled spec must produce the dict it always has.
     """
-    if getattr(spec.model_config, "head", "softmax") == "coral":
+    head = getattr(spec.model_config, "head", "softmax")
+    if head == "coral":
         # CORAL replaces the head, so its loss is fixed regardless of spec.loss.
         configuration["loss"] = "coral_bce"
+    elif head == "ordinal_binary":
+        # Same: the head fixes the objective. The two rules below decide what
+        # the K-1 head outputs mean, so they belong to the protocol rather than
+        # to the reader of its checkpoints.
+        configuration["loss"] = "ordinal_binary_bce"
+        configuration["monotonicity"] = "cumulative_min"
+        configuration["decoding"] = "argmax_class_probability"
     elif spec.loss != "cross_entropy":
         configuration["loss"] = spec.loss
         configuration["focal_gamma"] = spec.focal_gamma
@@ -711,6 +758,39 @@ def _reliability_record(
         "path": str(path),
         "sha256": validated.sha256,
         "size_bytes": size_bytes,
+    }
+
+
+def _stage1_record(
+    spec: ExperimentSpec, stage1_output: Path | None
+) -> dict[str, object] | None:
+    """Provenance for the stage-1 checkpoints whose backbone stage 2 freezes.
+
+    Every seed gets its own record, because seed ``n`` freezes seed ``n``'s
+    backbone and a mismatch there is not a shared-input error but a per-seed one.
+    The top-level ``sha256`` is a canonical hash over that map, which is what
+    lets :func:`_validate_inputs_identity` -- written against single-file inputs
+    -- reject a resume that points at a different stage 1.
+    """
+    if not spec.needs_stage1_checkpoint:
+        return None
+    if stage1_output is None:
+        raise ValueError(f"{spec.protocol} requires a stage-1 output directory")
+    root = stage1_output.resolve()
+    seeds: dict[str, object] = {}
+    for seed in spec.seeds:
+        path = root / f"seed-{seed}" / "best.pt"
+        if not path.is_file():
+            raise FileNotFoundError(f"stage-1 checkpoint not found: {path}")
+        seeds[str(seed)] = {
+            "path": str(path),
+            "sha256": _sha256(path),
+            "size_bytes": path.stat().st_size,
+        }
+    return {
+        "protocol_output": str(root),
+        "seeds": seeds,
+        "sha256": _canonical_hash(seeds),
     }
 
 
@@ -921,18 +1001,21 @@ def _seed_is_complete(
         return False, "feature manifest fingerprint does not match"
     if record.get("configuration_sha256") != _canonical_hash(configuration):
         return False, "configuration fingerprint does not match"
-    if spec.needs_reliability_manifest:
+    for needed, key in (
+        (spec.needs_reliability_manifest, "label_reliability"),
+        (spec.needs_stage1_checkpoint, "stage1"),
+    ):
+        if not needed:
+            continue
         recorded_inputs = record.get("inputs")
-        recorded_reliability = (
-            recorded_inputs.get("label_reliability") if isinstance(recorded_inputs, dict) else None
-        )
-        current_reliability = inputs.get("label_reliability")
+        recorded_input = recorded_inputs.get(key) if isinstance(recorded_inputs, dict) else None
+        current_input = inputs.get(key)
         if (
-            not isinstance(recorded_reliability, dict)
-            or not isinstance(current_reliability, dict)
-            or recorded_reliability.get("sha256") != current_reliability.get("sha256")
+            not isinstance(recorded_input, dict)
+            or not isinstance(current_input, dict)
+            or recorded_input.get("sha256") != current_input.get("sha256")
         ):
-            return False, "label_reliability input fingerprint does not match"
+            return False, f"{key} input fingerprint does not match"
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, dict):
         return False, "artifact integrity records are missing"
@@ -1103,6 +1186,7 @@ def prepare_run(
     device: str,
     graph_path: Path | None = None,
     reliability_path: Path | None = None,
+    stage1_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> RunContext:
     """Validate the inputs and pin the identity every seed of this run shares.
@@ -1126,6 +1210,11 @@ def prepare_run(
         if selected_reliability is None:
             raise ValueError(f"{spec.protocol} requires a reliability manifest")
         spec = replace(spec, reliability_manifest=selected_reliability.resolve())
+    if spec.needs_stage1_checkpoint:
+        selected_stage1 = stage1_path or spec.stage1_output
+        if selected_stage1 is None:
+            raise ValueError(f"{spec.protocol} requires a stage-1 output directory")
+        spec = replace(spec, stage1_output=selected_stage1.resolve())
     inputs: dict[str, object] = {}
     graph_record = _graph_record(spec.graph_path)
     if graph_record is not None:
@@ -1136,6 +1225,9 @@ def prepare_run(
     )
     if reliability_record is not None:
         inputs["label_reliability"] = reliability_record
+    stage1_record = _stage1_record(spec, spec.stage1_output)
+    if stage1_record is not None:
+        inputs["stage1"] = stage1_record
     configuration = _build_configuration(spec, device)
     environment = _environment(device, spec)
     _enable_strict_determinism(device)
@@ -1175,12 +1267,21 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     manifest_sha256 = context.manifest_sha256
     configuration = context.configuration
     reliability_input = context.inputs.get("label_reliability")
+    stage1_input = context.inputs.get("stage1")
 
-    def assert_reliability_unchanged(boundary: str) -> None:
+    def assert_external_inputs_unchanged(boundary: str) -> None:
         if isinstance(reliability_input, dict):
             _assert_file_record_unchanged(
                 cast(dict[str, object], reliability_input),
                 "label_reliability",
+                boundary,
+            )
+        if isinstance(stage1_input, dict):
+            # Only this seed's checkpoint: the others are not read by this run.
+            seeds = cast(dict[str, object], stage1_input["seeds"])
+            _assert_file_record_unchanged(
+                cast(dict[str, object], seeds[str(seed)]),
+                f"stage-1 checkpoint for seed {seed}",
                 boundary,
             )
 
@@ -1218,6 +1319,11 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         lr_step=spec.lr_step,
         array_key=spec.array_key,
         array_shape=spec.array_shape,
+        stage1_checkpoint=(
+            spec.stage1_output / f"seed-{seed}" / "best.pt"
+            if spec.needs_stage1_checkpoint and spec.stage1_output is not None
+            else None
+        ),
         curriculum=spec.curriculum,
         reliability_manifest=spec.reliability_manifest,
         reliable_warmup_epochs=spec.reliable_warmup_epochs,
@@ -1225,10 +1331,10 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         ambiguous_neighbor_mass=spec.ambiguous_neighbor_mass,
     )
     _assert_manifest_unchanged(manifest_path, manifest_sha256, f"before seed {seed} training", spec)
-    assert_reliability_unchanged(f"before seed {seed} training")
+    assert_external_inputs_unchanged(f"before seed {seed} training")
     result = train_model(training_config, evaluate_test=False, progress=report_progress)
     _assert_manifest_unchanged(manifest_path, manifest_sha256, f"after seed {seed} training", spec)
-    assert_reliability_unchanged(f"after seed {seed} training")
+    assert_external_inputs_unchanged(f"after seed {seed} training")
     metrics_payload = _load_summary(result.metrics_path, spec)
     metrics_payload["experiment"] = {
         "protocol": spec.protocol,
@@ -1267,7 +1373,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
     _assert_manifest_unchanged(
         manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
     )
-    assert_reliability_unchanged(f"before recording seed {seed} completion")
+    assert_external_inputs_unchanged(f"before recording seed {seed} completion")
     return {
         "seed": seed,
         "status": "complete",
@@ -1401,6 +1507,7 @@ def reproduce_experiment(
     device: str,
     graph_path: Path | None = None,
     reliability_path: Path | None = None,
+    stage1_path: Path | None = None,
     allow_environment_drift: bool = False,
     seeds: Sequence[int] | None = None,
     collect: bool = True,
@@ -1418,6 +1525,7 @@ def reproduce_experiment(
         device=device,
         graph_path=graph_path,
         reliability_path=reliability_path,
+        stage1_path=stage1_path,
         allow_environment_drift=allow_environment_drift,
     )
     for seed in context.spec.seeds if seeds is None else seeds:
@@ -1444,6 +1552,7 @@ def collect_only(
     device: str,
     graph_path: Path | None = None,
     reliability_path: Path | None = None,
+    stage1_path: Path | None = None,
     allow_environment_drift: bool = False,
 ) -> E0ExperimentResult:
     """Rebuild ``summary.json`` without training, after parallel seeds finish."""
@@ -1454,6 +1563,7 @@ def collect_only(
         device=device,
         graph_path=graph_path,
         reliability_path=reliability_path,
+        stage1_path=stage1_path,
         allow_environment_drift=allow_environment_drift,
     )
     return collect_summary(context, allow_environment_drift=allow_environment_drift)
@@ -1483,6 +1593,7 @@ __all__ = [
     "E0I_SPEC",
     "E0J_SPEC",
     "E0K_SPEC",
+    "E0L_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",
