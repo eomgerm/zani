@@ -21,7 +21,8 @@ export interface AttentionFrameSource {
 }
 
 export interface AttentionInferenceFailure {
-  readonly kind: "modelUnavailable" | "inferenceFailed";
+  /** `modelUnavailable` 만 판정을 비활성화한다. 나머지는 다음 창에서 다시 시도한다. */
+  readonly kind: "modelUnavailable" | "modelLoadRetrying" | "inferenceFailed";
   readonly message: string;
 }
 

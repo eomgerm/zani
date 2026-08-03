@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Avatar, CalendarIcon, Card, FileIcon } from "@/shared/ui";
+import { Avatar, Card, FileIcon } from "@/shared/ui";
 import { getCurrentMember, useAuth } from "@/domains/auth";
 import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
 
@@ -53,13 +53,12 @@ function NotifRow({
 /**
  * SC-07 계정 설정. 프로필 · 알림 설정 · 계정 관리(회원 탈퇴).
  * "강의 리포트 알림" 토글은 서버 설정(GET·PATCH /api/v1/members/me)에 연결돼 실제 이메일 수신 여부를 바꾼다.
- * 이름 편집·수업 일정 알림·탈퇴는 아직 시연용 로컬 상태로만 동작한다.
+ * 이름 편집·탈퇴는 아직 시연용 로컬 상태로만 동작한다.
  */
 export function SettingsScreen() {
   const router = useRouter();
   const { member, accessToken } = useAuth();
   const [name, setName] = useState<string>(member?.displayName ?? "");
-  const [notifSchedule, setNotifSchedule] = useState(true);
   const [notifReport, setNotifReport] = useState(true);
   const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -139,13 +138,6 @@ export function SettingsScreen() {
           <p className="mb-[18px] text-[13.5px] leading-[1.55] text-ink-faint">
             이메일로 알림을 받아보실 수 있습니다.
           </p>
-          <NotifRow
-            icon={<CalendarIcon size={18} className="text-primary" />}
-            title="수업 일정 알림"
-            desc="예약된 수업 일정이 시작되기 전에 알림을 받습니다."
-            on={notifSchedule}
-            onToggle={() => setNotifSchedule((v) => !v)}
-          />
           <NotifRow
             icon={<FileIcon size={18} className="text-[#15bd7d]" />}
             title="강의 리포트 알림"

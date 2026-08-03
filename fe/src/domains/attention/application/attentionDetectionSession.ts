@@ -68,11 +68,16 @@ export function startAttentionDetection(
     onFailure(failure: AttentionInferenceFailure) {
       if (stopped) return;
       if (failure.kind !== "modelUnavailable") {
-        // 세션은 살아 있으므로 다음 창에서 다시 시도한다.
-        console.warn("[attention] 참여도 추론 실패", failure.message);
+        // 재시도가 남아 있거나 이번 추론만 실패한 경우다. 다음 창에서 다시 시도한다.
+        console.warn(
+          failure.kind === "modelLoadRetrying"
+            ? "[attention] 참여도 모델 로드 재시도 대기"
+            : "[attention] 참여도 추론 실패",
+          failure.message,
+        );
         return;
       }
-      // 모델을 못 불러왔으면 판정만 비활성화하고 수업은 계속한다.
+      // 재시도까지 다 실패했으면 판정만 비활성화하고 수업은 계속한다.
       disableJudgement();
     },
   });

@@ -229,6 +229,18 @@ describe("startAttentionDetection", () => {
     expect(frames.pending).toBe(0);
   });
 
+  it("keeps judging while the model load is being retried", async () => {
+    start();
+    await run(10_000);
+
+    emitFailure({ kind: "modelLoadRetrying", message: "모델 다운로드가 끊겼습니다." });
+    await run(20_100, 10_100);
+
+    expect(statuses).not.toContain("unavailable");
+    expect(detections).not.toContainEqual({ outcome: "DETECTOR_UNAVAILABLE" });
+    expect(submit).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps judging after a single failed inference", async () => {
     start();
     await run(10_000);
