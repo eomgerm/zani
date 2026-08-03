@@ -38,6 +38,10 @@ class QuizPersistenceAdapterTest {
                 jdbcTemplate.queryForObject("SELECT id FROM quizzes WHERE student_report_id = ?", Long.class, reportId);
         assertThat(jdbcTemplate.queryForObject("SELECT published_at FROM quizzes WHERE id = ?", Instant.class, quizId))
                 .isNull();
+        // 조회 API(255)가 이 필드를 내보내므로 생성 경로에서 비어 있으면 실데이터에서만 빈칸이 된다.
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT estimated_duration_minutes FROM quizzes WHERE id = ?", Integer.class, quizId))
+                .isEqualTo(2);
         assertThat(jdbcTemplate.queryForList(
                         "SELECT question_order FROM quiz_questions WHERE quiz_id = ? ORDER BY question_order",
                         Integer.class,

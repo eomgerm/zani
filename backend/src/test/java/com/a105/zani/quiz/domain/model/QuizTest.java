@@ -44,6 +44,18 @@ class QuizTest {
     }
 
     @Test
+    void estimatesDurationFromQuestionCount() {
+        // 문항당 40초를 분으로 반올림한다. 3문항 120초, 4문항 160초, 5문항 200초.
+        assertThat(Quiz.create(STUDENT_REPORT_ID, "퀴즈", null, questions(3)).estimatedDurationMinutes())
+                .isEqualTo(2);
+        assertThat(Quiz.create(STUDENT_REPORT_ID, "퀴즈", null, questions(4)).estimatedDurationMinutes())
+                .isEqualTo(3);
+        // 올림하면 4분이 되어 실제 3분 20초보다 과하게 말한다.
+        assertThat(Quiz.create(STUDENT_REPORT_ID, "퀴즈", null, questions(5)).estimatedDurationMinutes())
+                .isEqualTo(3);
+    }
+
+    @Test
     void normalizesBlankDescriptionToNull() {
         assertThat(Quiz.create(STUDENT_REPORT_ID, "퀴즈", "   ", questions(3)).description())
                 .isNull();

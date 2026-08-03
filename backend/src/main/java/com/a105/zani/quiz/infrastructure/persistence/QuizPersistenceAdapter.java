@@ -18,15 +18,17 @@ import com.a105.zani.quiz.domain.repository.QuizRepository;
  *
  * <p>멱등은 UK_QUIZZES_STUDENT_REPORT 에 맡긴다. 넣은 뒤 저장된 ID 를 되읽어 우리 TSID 가 아니면 다른 실행의 퀴즈이므로 문항을 덧붙이지 않는다.
  *
- * <p>{@code estimated_duration_minutes} 는 채우지 않는다. 249 의 응답 스키마에 없는 값이라 추정해 넣으면 근거 없는 숫자가 남는다.
+ * <p>{@code estimated_duration_minutes} 는 모델이 답한 값이 아니라 {@link Quiz} 가 문항 수로 계산한 값이다. 조회 API(S15P11A105-255)가 이 필드를 그대로
+ * 내보내므로 비워 두면 실제 분석 결과에서만 빈칸이 된다.
  */
 @Component
 @RequiredArgsConstructor
 public class QuizPersistenceAdapter implements QuizRepository {
 
     private static final String INSERT_QUIZ = """
-            INSERT INTO quizzes (id, student_report_id, title, description, created_at, updated_at)
-            VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            INSERT INTO quizzes
+                (id, student_report_id, title, description, estimated_duration_minutes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
             ON DUPLICATE KEY UPDATE id = id
             """;
 
@@ -50,7 +52,13 @@ public class QuizPersistenceAdapter implements QuizRepository {
     @Override
     public boolean saveIfAbsent(Quiz quiz) {
         long quizId = TsidGenerator.generate();
-        jdbcTemplate.update(INSERT_QUIZ, quizId, quiz.studentReportId(), quiz.title(), quiz.description());
+        jdbcTemplate.update(
+                INSERT_QUIZ,
+                quizId,
+                quiz.studentReportId(),
+                quiz.title(),
+                quiz.description(),
+                quiz.estimatedDurationMinutes());
 
         Long storedId = jdbcTemplate.queryForObject(SELECT_QUIZ_ID, Long.class, quiz.studentReportId());
         if (storedId == null || storedId.longValue() != quizId) {
