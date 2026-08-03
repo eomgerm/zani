@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAuth } from "@/domains/auth";
 import {
   sendPromptResponse,
   type PromptAnswer,
@@ -10,8 +11,8 @@ import {
 import { isTabHidden } from "./promptVisibility";
 import { usePromptTimer } from "./usePromptTimer";
 
-/** 학생이 직접 고를 수 있는 답. 무응답은 훅이 `NO_RESPONSE` 로 대신 보낸다. */
-export type UnderstandingCheckResponse = Exclude<PromptAnswer, "NO_RESPONSE">;
+/** 학생이 직접 고를 수 있는 답. 무응답은 훅이 `NON_RESPONSE` 로 대신 보낸다. */
+export type UnderstandingCheckResponse = Exclude<PromptAnswer, "NON_RESPONSE">;
 
 /** 표시 시간(초). 실시간 코칭 기준 문서 §3 기준. */
 export const UNDERSTANDING_CHECK_SECONDS = 30;
@@ -29,7 +30,7 @@ export interface UnderstandingCheckPrompt {
 export interface UseUnderstandingCheckPromptOptions {
   readonly sessionId: string;
   sendResponse?: PromptResponseSender;
-  /** 30초 동안 응답이 없어 자동으로 닫혔을 때 호출된다. `NO_RESPONSE` 전송은 훅이 알아서 한다. */
+  /** 30초 동안 응답이 없어 자동으로 닫혔을 때 호출된다. `NON_RESPONSE` 전송은 훅이 알아서 한다. */
   onTimedOut?: () => void;
   /**
    * 어떤 이유로든 프롬프트가 닫힐 때 호출된다. 판정 파이프라인(75)이 연속 카운터를 0으로
@@ -47,7 +48,7 @@ export interface UseUnderstandingCheckPromptResult {
 }
 
 /**
- * "이해 확인" 프롬프트(3택). 30초 안에 응답하지 않으면 `NO_RESPONSE` 로 대신 보내고 닫는다 —
+ * "이해 확인" 프롬프트(3택). 30초 안에 응답하지 않으면 `NON_RESPONSE` 로 대신 보내고 닫는다 —
  * 무전송을 신호로 쓰면 서버가 학생의 무응답과 브라우저 중단을 구분할 수 없다.
  * 닫힌 시각으로부터 5분 이내에는 재트리거를 무시한다.
  * 전송 실패는 수업 진행을 막지 않도록 조용히 삼킨다.
@@ -56,6 +57,8 @@ export function useUnderstandingCheckPrompt(
   options: UseUnderstandingCheckPromptOptions,
 ): UseUnderstandingCheckPromptResult {
   const { sessionId, sendResponse = sendPromptResponse, onTimedOut, onClosed } = options;
+  // 서버는 Bearer 토큰으로 요청자가 이 세션의 학생인지 본다. 쿠키는 refresh 전용이라 헤더가 없으면 401 이다.
+  const { accessToken } = useAuth();
 
   const [promptId, setPromptId] = useState<string | null>(null);
   const answeredRef = useRef(false);
@@ -80,21 +83,26 @@ export function useUnderstandingCheckPrompt(
   const send = useCallback(
     async (targetPromptId: string, answer: PromptAnswer): Promise<boolean> => {
       const shownAt = shownAtRef.current;
-      if (shownAt === null) return false;
+      if (shownAt === null || accessToken === null) return false;
       try {
-        await sendResponse(sessionId, targetPromptId, {
-          kind: "UNDERSTANDING_CHECK",
-          answer,
-          shownAt,
-          respondedAt: new Date().toISOString(),
-        });
+        await sendResponse(
+          sessionId,
+          targetPromptId,
+          {
+            kind: "UNDERSTANDING_CHECK",
+            answer,
+            shownAt,
+            respondedAt: new Date().toISOString(),
+          },
+          accessToken,
+        );
         return true;
       } catch {
         // 전송 실패는 수업 화면을 막지 않는다 — 호출자가 조용히 넘어갈 수 있도록 false 만 반환한다.
         return false;
       }
     },
-    [sendResponse, sessionId],
+    [accessToken, sendResponse, sessionId],
   );
 
   const handleElapsed = useCallback(() => {
@@ -103,7 +111,7 @@ export function useUnderstandingCheckPrompt(
     const timedOutPromptId = promptIdRef.current;
     close();
     if (timedOutPromptId !== null) {
-      void send(timedOutPromptId, "NO_RESPONSE");
+      void send(timedOutPromptId, "NON_RESPONSE");
     }
     onTimedOut?.();
   }, [close, send, onTimedOut]);

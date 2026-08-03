@@ -55,6 +55,45 @@ def test_engagement_help_lists_pipeline_commands() -> None:
     assert "analyze-label-reliability" in result.stdout
 
 
+def test_cli_registers_placeholder_feature_and_experiment_commands() -> None:
+    parser = build_parser()
+
+    feature_args = parser.parse_args(
+        [
+            "build-features",
+            "--raw-root",
+            "raw",
+            "--output",
+            "features",
+            "--schema",
+            "mediapipe_98_placeholder_v1",
+            "--data-root",
+            "dataset",
+        ]
+    )
+    reproduce_args = parser.parse_args(
+        ["reproduce-e0j", "--features", "features", "--output", "artifacts"]
+    )
+
+    assert feature_args.schema == "mediapipe_98_placeholder_v1"
+    assert reproduce_args.features == Path("features")
+
+
+def test_cli_registers_the_e0k_schedule_protocol() -> None:
+    """E0-K reuses E0's features, so it only needs the two experiment commands."""
+    parser = build_parser()
+
+    reproduce_args = parser.parse_args(
+        ["reproduce-e0k", "--features", "features", "--output", "artifacts"]
+    )
+    finalize_args = parser.parse_args(
+        ["finalize-e0k", "--features", "features", "--output", "artifacts"]
+    )
+
+    assert reproduce_args.features == Path("features")
+    assert finalize_args.output == Path("artifacts")
+
+
 def test_audit_frame_gate_writes_mismatch_counts_by_split_and_label(
     tmp_path: Path,
 ) -> None:

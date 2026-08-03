@@ -1,4 +1,4 @@
-import { HandIcon, KickIcon, MicOffIcon } from "@/shared/ui";
+import { HandIcon, MicOffIcon } from "@/shared/ui";
 
 export type ParticipantTileData = {
   id: string;
@@ -8,7 +8,12 @@ export type ParticipantTileData = {
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   handRaised: boolean;
+  /** 지금 말하고 있는지(LiveKit ActiveSpeaker). 타일 테두리 하이라이트에만 쓴다. */
+  speaking: boolean;
 };
+
+/** 발화 중 테두리. 상단 패널 토글의 활성 초록과 같은 값이라 방 UI 팔레트 안에 머문다. */
+const SPEAKING_BORDER = "border-[1.5px] border-[#2fbf88]";
 
 type ParticipantTileProps = {
   participant: ParticipantTileData;
@@ -23,6 +28,17 @@ type ParticipantTileProps = {
   mirrored?: boolean;
   /** 칸 안에서 비율을 지키며 차지할 크기. 그리드가 정해 내려준다. */
   fit?: React.CSSProperties;
+  /** 강사가 이 참가자를 음소거한다. 없으면 버튼이 아무 일도 하지 않는다(스토리북·테스트). */
+  onMute?: () => void;
+  /** 이 참가자에 대한 음소거 요청이 진행 중인지. 중복 클릭을 막는다. */
+  muting?: boolean;
+  /**
+   * 다른 참가자에 대한 요청이 진행 중인지.
+   *
+   * 훅은 요청을 한 번에 하나만 보내므로, 그동안 다른 버튼을 눌러도 아무 일도 일어나지 않는다. 눌리는 것처럼
+   * 보이면 강사는 껐다고 믿는데 소리는 계속 나간다. 눌러 봐야 소용없다는 것을 버튼이 직접 말해야 한다.
+   */
+  busy?: boolean;
 };
 
 const statusLabel = ({
@@ -43,11 +59,14 @@ const statusLabel = ({
 export function ParticipantTile({
   participant,
   canControl = false,
+  onMute,
+  muting = false,
+  busy = false,
   videoRef,
   mirrored = false,
   fit,
 }: ParticipantTileProps) {
-  const { name, color, role, cameraEnabled, microphoneEnabled, handRaised } = participant;
+  const { name, color, cameraEnabled, microphoneEnabled, handRaised, speaking } = participant;
 
   return (
     <div
@@ -55,9 +74,9 @@ export function ParticipantTile({
       aria-label={statusLabel(participant)}
       style={fit}
       className={`relative min-h-0 w-full max-w-full overflow-hidden rounded-2xl bg-panel shadow-[0_8px_24px_#00000040] ${
-        role === "instructor"
-          ? "border-[1.5px] border-primary"
-          : "border-[1.5px] border-white/[.06]"
+        // 테두리는 발화 표시 전용이다. 강사 상시 테두리(primary=초록 계열)를 두면 발화 초록과
+        // 구분되지 않아 강사가 항상 말하는 것처럼 보인다(피드백 반영). 역할은 statusLabel이 알린다.
+        speaking ? SPEAKING_BORDER : "border-[1.5px] border-white/[.06]"
       }`}
     >
       <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
@@ -90,40 +109,53 @@ export function ParticipantTile({
         )}
       </div>
 
+      {/* 강사 배지는 제거했다(티켓 246). 역할 구분은 statusLabel(스크린리더)과 비발화 시 테두리 색이 담당한다. */}
       <div className="pointer-events-none absolute inset-0">
-        {role === "instructor" && (
-          <span className="absolute right-2 top-2 rounded-[7px] bg-primary px-2 py-[3px] text-[10px] font-extrabold text-white">
-            강사
-          </span>
-        )}
         {handRaised && (
           <div className="absolute left-2 top-2 flex size-7 items-center justify-center rounded-[9px] bg-warn text-[#3a2d05] shadow-[0_4px_12px_#f4c32550]">
             <HandIcon size={16} />
           </div>
         )}
         <div className="absolute bottom-[9px] left-[9px] inline-flex max-w-[calc(100%-18px)] items-center gap-1.5 rounded-[9px] bg-black/70 px-2.5 py-[5px] backdrop-blur-[4px]">
-          {!microphoneEnabled && <MicOffIcon className="shrink-0 text-[#ff5a6e]" />}
+          {/* 이름칩에는 음소거만 알린다 — 카메라 꺼짐은 아바타가 보이는 것으로 이미 드러난다(피드백 반영). */}
+          {!microphoneEnabled && (
+            <span data-testid="tile-mic-off" className="inline-flex shrink-0 text-danger">
+              <MicOffIcon />
+            </span>
+          )}
           <span className="truncate text-[11.5px] font-bold text-white">{name}</span>
         </div>
       </div>
 
+      {/*
+        퇴장 버튼은 제거했다(티켓 246 — 강제 퇴장 기능 자체가 범위 밖).
+
+        아이콘이 아니라 글자를 쓴다. 이름칩의 MicOffIcon 이 "지금 음소거 상태"를 뜻하는데, 같은 그림을
+        버튼에 쓰면 상태와 동작이 한 그림에 겹쳐 무엇을 하는 버튼인지 읽히지 않는다. 강제 해제가 없어
+        되돌릴 수 없는 동작이라 더 분명해야 한다.
+
+        이미 음소거면 누를 이유가 없어 비활성화한다. 숨기지 않는 이유는 자리가 들쭉날쭉해지지 않게
+        하려는 것이고, title 로 왜 못 누르는지 알린다.
+      */}
       {canControl && (
         <div className="absolute right-1.5 top-1.5 flex gap-1">
           <button
             type="button"
+            onClick={onMute}
+            disabled={!microphoneEnabled || muting || busy}
             aria-label={`${name} 음소거`}
-            title="음소거"
-            className="size-[26px] cursor-pointer rounded-lg border-0 bg-black/70 text-[11px] text-white backdrop-blur-[4px]"
+            title={
+              !microphoneEnabled
+                ? "이미 음소거됨"
+                : muting
+                  ? "음소거하는 중"
+                  : busy
+                    ? "처리 중"
+                    : "음소거"
+            }
+            className="cursor-pointer rounded-lg border-0 bg-black/70 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-[4px] transition-[filter] hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            🔇
-          </button>
-          <button
-            type="button"
-            aria-label={`${name} 퇴장`}
-            title="퇴장"
-            className="flex size-[26px] cursor-pointer items-center justify-center rounded-lg border-0 bg-black/70 text-white backdrop-blur-[4px]"
-          >
-            <KickIcon />
+            음소거
           </button>
         </div>
       )}

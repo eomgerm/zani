@@ -11,6 +11,7 @@ const participant = (id: number) => ({
   cameraEnabled: true,
   microphoneEnabled: true,
   handRaised: false,
+  speaking: false,
 });
 
 const many = (count: number) => Array.from({ length: count }, (_, index) => participant(index));
@@ -44,17 +45,19 @@ describe("columnsFor", () => {
 
 describe("ParticipantGrid", () => {
   /**
-   * 타일은 4:3 을 유지하되 칸을 넘지 않아야 한다.
+   * 타일은 16:9 를 유지하되 칸을 넘지 않아야 한다.
    *
    * <p>`aspect-ratio` 만 주면 폭을 꽉 채운 뒤 높이가 넘쳐 잘린다. 그래서 칸 높이에서 폭 상한을 거꾸로 계산한다. jsdom 은 `cqh` 를 계산하지 않으므로 값이 붙었는지까지만 확인한다.
    */
-  it("타일에 4:3 비율과 칸 높이 기준 폭 상한을 준다", () => {
+  it("타일에 16:9 비율과 칸 높이 기준 폭 상한을 준다", () => {
     render(<ParticipantGrid participants={many(1)} />);
 
     // 비율은 DOM 에 남으므로 타일에 실제로 붙었다는 증거가 된다.
-    expect(screen.getByRole("group", { name: /참가자 0,/ })).toHaveStyle({ aspectRatio: "4 / 3" });
+    expect(screen.getByRole("group", { name: /참가자 0,/ })).toHaveStyle({
+      aspectRatio: "16 / 9",
+    });
     // 폭 상한은 jsdom 이 `cqh` 를 못 읽어 style 에서 지워지므로, 내려보내는 값으로 확인한다.
-    expect(TILE_FIT.width).toBe("min(100%, calc(100cqh * 4 / 3))");
+    expect(TILE_FIT.width).toBe("min(100%, calc(100cqh * 16 / 9))");
   });
 
   /** 칸이 `cqh` 의 기준이 되어야 폭 상한이 계산된다. 이게 빠지면 상한이 무시돼 타일이 잘린다. */
@@ -127,7 +130,8 @@ describe("ParticipantGrid", () => {
     );
 
     expect(screen.getAllByRole("button", { name: "참가자 1 음소거" })).toHaveLength(1);
-    expect(screen.getAllByRole("button", { name: "참가자 1 퇴장" })).toHaveLength(1);
+    // 퇴장 버튼은 어디에도 없어야 한다(티켓 246).
+    expect(screen.queryByRole("button", { name: "참가자 1 퇴장" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "참가자 0 음소거" })).not.toBeInTheDocument();
   });
 });

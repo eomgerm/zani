@@ -54,7 +54,7 @@ flowchart TB
 | Next.js | 장치 테스트, LiveKit SDK, 레이아웃, 사용자 조작 | 역할·grant 결정, Egress 직접 호출 |
 | Spring Boot | 로그인, 세션, 참가 관계, 토큰, 권한, Webhook, 녹화 조정 | 미디어 패킷 중계 |
 | LiveKit | Room, Participant, Track, SFU, 재연결 | ZANI 회원·초대·DB 업무 규칙 |
-| Spring WebSocket | 채팅, 손들기, 반응, 화면 공유 승인, 종료 안내 | 카메라·마이크 전송 |
+| Spring WebSocket | 채팅, 손들기, 반응, 화면 공유 상태, 종료 안내 | 카메라·마이크 전송 |
 | Track Egress | 허용된 단일 원본 Track 저장 | 최종 레이아웃 결정 |
 | FFmpeg | 종료 후 영상·음성 시간축 정렬과 최종 MP4 | 실시간 통화 |
 
@@ -117,28 +117,28 @@ sequenceDiagram
     FE->>BE: POST /sessions/{id}/media-token
     BE-->>FE: URL·Room·학생 Token
     FE->>LK: connect
-    LK-->>BE: participant_joined Webhook
+    LK-->>BE: 연결 성공 통지
     BE->>BE: firstJoinedAt·사후 접근 자격 확정
 ```
 
 - 학생은 카메라와 마이크 테스트를 모두 통과해야 한다.
 - API 입장만 하고 LiveKit 연결에 성공하지 않으면 사후 자료 접근 자격을 얻지 않는다.
-- 강제 퇴장은 현재 연결만 끊으며 동일 코드로 다시 입장할 수 있다.
+- 강제 퇴장 기능은 없다(FRD §10.5). 강사가 할 수 있는 것은 음소거와 화면 공유 중지다.
 
 ## 8. 미디어 권한
 
-| 기능 | 강사 | 학생 기본 | 승인 학생 |
-| --- | ---: | ---: | ---: |
-| 카메라 | 허용 | 허용 | 허용 |
-| 마이크 | 허용 | 허용 | 허용 |
-| 화면 공유 | 허용 | 차단 | 임시 허용 |
-| 화면 공유 오디오 | 허용 | 차단 | 임시 허용 |
-| Track 구독 | 허용 | 허용 | 허용 |
-| LiveKit Data 전송 | 차단 | 차단 | 차단 |
+| 기능 | 강사 | 학생 |
+| --- | ---: | ---: |
+| 카메라 | 허용 | 허용 |
+| 마이크 | 허용 | 허용 |
+| 화면 공유 | 허용 | 허용 |
+| 화면 공유 오디오 | 허용 | 허용 |
+| Track 구독 | 허용 | 허용 |
+| LiveKit Data 전송 | 차단 | 차단 |
 
-학생 화면 공유 권한은 기본 토큰에 넣지 않는다. 강사 승인 후 백엔드가 연결된 참가자에게 임시 적용하고 공유 종료·취소·연결 종료 시 회수한다.
+화면 공유에 역할 제한을 두지 않는다(2026-07-30 확정). 승인 플로우 없이 누구든 공유를 시작할 수 있고, **한 세션에 활성 공유 하나**라는 제약만 서버의 활성 공유 상태로 강제한다. **선착순이라 이미 공유 중인 사람이 있으면 나중 요청이 거부되며, 기존 공유를 밀어내지 못한다.** 강사만은 학생 공유를 중지시킬 수 있다. 기준은 [`livekit-integration-context.md`](./livekit-integration-context.md) §8이 소유한다.
 
-채팅, 손들기, 이모지, 공유 승인과 종료 안내는 LiveKit DataPacket이 아니라 Spring Boot WebSocket을 사용한다.
+채팅, 손들기, 이모지, 공유 상태와 종료 안내는 LiveKit DataPacket이 아니라 Spring Boot WebSocket을 사용한다.
 
 ## 9. 수업 화면 규칙
 
@@ -173,7 +173,8 @@ sequenceDiagram
     participant DB as MySQL
 
     BE->>DB: ENDING·신규 입장 차단
-    BE->>FE: SESSION_ENDING
+    FE->>BE: presence heartbeat
+    BE-->>FE: 종료됨 (재연결 상태)
     BE->>EG: 녹화 종료 요청
     BE->>LK: DeleteRoom
     BE->>DB: NOTE_PENDING·30분 타이머
@@ -183,7 +184,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    T["LiveKit Track"] --> W["track_published Webhook"]
+    T["LiveKit Track"] --> W["트랙 발행 통지"]
     W --> P["백엔드 허용 정책"]
     P -->|"허용"| E["Track Egress"]
     E --> R["익명 원본 Track"]
@@ -197,7 +198,7 @@ flowchart LR
 | 강사 카메라·마이크 | 포함 | 포함 |
 | 강사 화면·화면 오디오 | 포함 | 포함 |
 | 학생 마이크 | 학생별 익명 파일 | 전체 음성에 혼합 |
-| 승인 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
+| 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
 | 학생 카메라 | 제외 | 제외 |
 
 학생 오디오는 `student-001`, `student-002`처럼 분리된 원본으로 남는다. 전체 음성 혼합은 최종 MP4 생성 시에만 수행하므로 학생별 전사와 화자 구분이 가능하다.
@@ -220,18 +221,19 @@ flowchart LR
 
 ## 13. 확정된 예외 정책
 
-- 강사를 포함한 일반 참가자는 최대 30명이며 31번째는 `409 SESSION_CAPACITY_REACHED`로 차단한다.
+- 동시 30명까지가 성능 보장 대상이다. 입장 인원 하드 캡은 두지 않으며 31명 이상은 동작을 보장하지 않을 뿐 막지 않는다.
 - 초대 코드는 정규화된 8자리이며 표시할 때 `A7KM-2PQR`처럼 하이픈을 넣을 수 있다.
 - 미디어 토큰 TTL은 10분이며 브라우저 메모리에만 둔다.
 - 종료된 세션에는 새 토큰을 발급하지 않는다.
-- 자체 구축 LiveKit에서 남은 토큰으로 종료된 Room이 다시 시작되면 Webhook이 즉시 제거·종료한다.
+- 종료된 세션의 Room이 남은 토큰으로 다시 열리면 즉시 제거·종료한다. 미디어 토큰은 발급 후 폐기할 수 없으므로 TTL이 남은 토큰으로 재입장이 시도될 수 있다.
 
 ## 14. 현재 코드와의 차이
 
-- FE에는 `/media-token` 어댑터, `RoomProvider`, `Room.connect`와 SDK 재연결 상태 처리가 구현돼 있다.
-- FE의 Track publish/subscribe, 실제 장치 점검, 참가자·미디어 UI는 아직 fixture와 로컬 상태 기반이다.
-- BE는 현재 세션 생성 즉시 `LIVE`와 초대 코드를 반환한다.
-- BE는 API 입장 시 `firstJoinedAt`을 즉시 저장한다.
-- BE의 LiveKit 토큰·Room·Webhook·Egress API는 아직 없다.
-- Flyway V1에는 세션·참가자·녹화 테이블이 있지만 목표 상태 전이, nullable 입장 시각, 로컬 저장 정책에는 후속 migration이 필요하다.
-- 구현 전 이 문서를 기준으로 OpenAPI 계약을 확정하고 공유된 V1은 수정하지 않은 채 새 Flyway migration을 추가한다.
+이 문서는 목표 구조를 서술한다. 구현 상태는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)이
+단독으로 소유하므로 여기에 중복해 적지 않는다. **작업 시작 전에 그 절을 먼저 읽는다** — 이미 구현된 것을 다시 만들지 않기 위해서다.
+
+구현할 때의 규칙은 그대로다.
+
+- 이 문서와 `livekit-integration-context.md`를 기준으로 OpenAPI 계약을 먼저 확정한다.
+- 공유된 `V1__create_initial_schema.sql`은 수정하지 않고 새 Flyway migration을 추가한다.

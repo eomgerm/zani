@@ -81,23 +81,6 @@ export const participantTiles = participants.map((p) => ({
   handRaised: p.hand,
 }));
 
-export const reactionEmojis = ["👍", "❤️", "👏", "🎉", "😮", "🙌"];
-
-export interface ChatMessage {
-  id: number;
-  author: string;
-  text: string;
-  host: boolean;
-  mine: boolean;
-}
-
-export const publicMessages: ChatMessage[] = [
-  { id: 1, author: "이지은", text: "안녕하세요!", host: false, mine: false },
-  { id: 2, author: "최민서", text: "화면 잘 보입니다 👍", host: false, mine: false },
-  { id: 3, author: "박서준", text: "네 시작할게요. 오늘 자료는 채팅에 공유했어요.", host: true, mine: false },
-  { id: 4, author: "정하윤", text: "감사합니다!", host: false, mine: false },
-];
-
 /** 리포트 - 수업 내용 전사 */
 export const transcript = [
   { t: "00:02", speaker: "박서준", text: "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다." },

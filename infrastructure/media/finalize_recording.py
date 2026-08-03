@@ -6,7 +6,7 @@ Track Egress 원본 트랙 + manifest 를 입력받아 시간축을 정렬하고
 finalize-recording.sh 래퍼가 담당한다.
 
 FFmpeg 병합 기법은 S15P11A105-54 smoke(tmp/final-events-merge.sh)에서 검증한 것을
-manifest 기반으로 일반화했다. 설계: infrastructure/media/finalize-recording-design.md
+manifest 기반으로 일반화했다. 계약: .agents/media-finalize-recording-guide.md
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ AUDIO_SOURCES = {"MICROPHONE", "SCREEN_SHARE_AUDIO"}
 SOURCES = VIDEO_SOURCES | AUDIO_SOURCES
 ROLES = {"INSTRUCTOR", "STUDENT"}
 
-# --- 종료 코드 (docs/infrastructure/finalize-recording-design.md §8) ---
+# --- 종료 코드 (.agents/media-finalize-recording-guide.md §8) ---
 EXIT_OK = 0
 EXIT_MANIFEST = 2
 EXIT_NO_VIDEO = 3

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Compare two finalized protocols' Test results seed by seed.
+"""Compare two protocols' Validation or finalized Test results seed by seed.
 
 ``finalize-*`` writes ``test_results.json`` per protocol, but a go/no-go call
 needs the two side by side: mean +- sd per metric, the paired difference, and
@@ -13,6 +13,9 @@ cells) that every protocol since E0 has been judged on.
     uv run python scripts/compare_protocols.py \
         --baseline artifacts/engagement/e0 \
         --variant artifacts/engagement/e0h
+
+Add ``--split validation`` before finalization to compare the five validation
+records in ``summary.json`` without reading Test.
 """
 
 from __future__ import annotations
@@ -39,12 +42,20 @@ METRICS = {
     "accuracy": "accuracy",
 }
 
+VALIDATION_METRICS = {
+    "accuracy": "accuracy",
+    "macro_f1": "macro-F1",
+    "quadratic_weighted_kappa": "QWK",
+    "within_one_accuracy": "within-1",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class Protocol:
     label: str
     directory: Path
     manifest_sha256: str
+    raw_population: tuple[str, tuple[tuple[str, str], ...]] | None
     seeds: tuple[int, ...]
     metrics: dict[str, list[float]]
     adjacent_shares: list[float]
@@ -57,6 +68,17 @@ class Protocol:
     @property
     def error_count(self) -> int:
         return int(self.pooled_confusion.sum() - np.trace(self.pooled_confusion))
+
+
+@dataclass(frozen=True, slots=True)
+class ValidationProtocol:
+    label: str
+    directory: Path
+    manifest_sha256: str
+    raw_population: tuple[str, tuple[tuple[str, str], ...]] | None
+    seeds: tuple[int, ...]
+    metrics: dict[str, list[float]]
+    runtime: str
 
 
 def _adjacent_share(confusion: np.ndarray) -> float:
@@ -131,11 +153,85 @@ def _load(directory: Path) -> Protocol:
         label=str(payload["protocol"]).removesuffix("-fixed-checkpoint-test"),
         directory=directory,
         manifest_sha256=str(payload.get("feature_manifest_sha256", "")),
+        raw_population=_directory_raw_population(directory),
         seeds=tuple(int(record["seed"]) for record in records),
         metrics=metrics,
         adjacent_shares=[_adjacent_share(matrix) for matrix in confusions],
         pooled_confusion=np.sum(confusions, axis=0),
         derived_ordinal=derived,
+        runtime=_runtime(directory),
+    )
+
+
+def _raw_population(summary: dict[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    feature_record = summary.get("feature_manifest")
+    if not isinstance(feature_record, dict):
+        return None
+    path_value = feature_record.get("path")
+    if not isinstance(path_value, str):
+        return None
+    path = Path(path_value)
+    if not path.is_file():
+        return None
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    provenance = manifest.get("provenance")
+    included = manifest.get("included")
+    if not isinstance(provenance, dict) or not isinstance(included, list):
+        return None
+    raw_sha = provenance.get("raw_manifest_sha256")
+    if not isinstance(raw_sha, str):
+        return None
+    clips: list[tuple[str, str]] = []
+    for item in included:
+        if not isinstance(item, dict):
+            return None
+        split, clip_id = item.get("split"), item.get("clip_id")
+        if not isinstance(split, str) or not isinstance(clip_id, str):
+            return None
+        clips.append((split, clip_id))
+    return raw_sha, tuple(sorted(clips))
+
+
+def _directory_raw_population(
+    directory: Path,
+) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    path = directory / "summary.json"
+    if not path.is_file():
+        return None
+    try:
+        summary: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return _raw_population(summary)
+
+
+def _load_validation(directory: Path) -> ValidationProtocol:
+    path = directory / "summary.json"
+    if not path.is_file():
+        raise SystemExit(f"Summary not found: {path} (run reproduce-* first)")
+    payload: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("status") != "complete":
+        raise SystemExit(f"{path} is not complete (status={payload.get('status')!r})")
+    records = payload["seeds"]
+    metrics: dict[str, list[float]] = {key: [] for key in VALIDATION_METRICS}
+    for record in records:
+        validation = record["validation"]
+        for key in VALIDATION_METRICS:
+            if key not in validation:
+                raise SystemExit(f"{path} seed {record['seed']} has no validation {key}")
+            metrics[key].append(float(validation[key]))
+    feature_record = payload.get("feature_manifest", {})
+    manifest_sha = feature_record.get("sha256", "") if isinstance(feature_record, dict) else ""
+    return ValidationProtocol(
+        label=str(payload["protocol"]),
+        directory=directory,
+        manifest_sha256=str(manifest_sha),
+        raw_population=_raw_population(payload),
+        seeds=tuple(int(record["seed"]) for record in records),
+        metrics=metrics,
         runtime=_runtime(directory),
     )
 
@@ -240,22 +336,66 @@ def _verdict(baseline: Protocol, variant: Protocol) -> list[str]:
     return lines
 
 
+def _compare_validation(baseline_dir: Path, variant_dir: Path, minimum_gain: float) -> int:
+    baseline = _load_validation(baseline_dir)
+    variant = _load_validation(variant_dir)
+    print(f"{variant.label} vs {baseline.label} (Validation, {len(variant.seeds)} seeds)\n")
+
+    manifests_differ = baseline.manifest_sha256 != variant.manifest_sha256
+    same_raw_population = (
+        baseline.raw_population is not None
+        and baseline.raw_population == variant.raw_population
+    )
+    if manifests_differ and not same_raw_population:
+        print("!! 두 프로토콜의 raw manifest·clip 집합이 다릅니다 — 이 비교는 유효하지 않습니다\n")
+    if baseline.runtime != variant.runtime:
+        print("!! 두 프로토콜의 실행 환경이 다릅니다 — 차이에 런타임이 섞입니다")
+        print(f"   {baseline.label}: {baseline.runtime}")
+        print(f"   {variant.label}: {variant.runtime}\n")
+
+    header = ("지표", baseline.label, variant.label, "차이", "Welch t", "p")
+    rows = [
+        _row(label, baseline.metrics[key], variant.metrics[key])
+        for key, label in VALIDATION_METRICS.items()
+    ]
+    print(_table(header, rows))
+    accuracy_gain = statistics.fmean(variant.metrics["accuracy"]) - statistics.fmean(
+        baseline.metrics["accuracy"]
+    )
+    passed = accuracy_gain >= minimum_gain
+    print(
+        f"\n판정: {'성공' if passed else '실패'} — Validation accuracy "
+        f"{minimum_gain * 100:+.2f}%p 목표 (실측 {accuracy_gain * 100:+.2f}%p)"
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--variant", type=Path, required=True)
+    parser.add_argument("--split", choices=("test", "validation"), default="test")
+    parser.add_argument("--minimum-accuracy-gain", type=float, default=0.02)
     arguments = parser.parse_args()
+
+    if arguments.split == "validation":
+        return _compare_validation(
+            arguments.baseline,
+            arguments.variant,
+            arguments.minimum_accuracy_gain,
+        )
 
     baseline = _load(arguments.baseline)
     variant = _load(arguments.variant)
 
     print(f"{variant.label} vs {baseline.label} (Test, {len(variant.seeds)} seeds)\n")
-    if baseline.manifest_sha256 != variant.manifest_sha256:
-        # Different features means the two runs answer different questions, so
-        # say it before the numbers rather than in a footnote.
-        print("!! 두 프로토콜의 feature manifest가 다릅니다 — 이 비교는 유효하지 않습니다")
-        print(f"   {baseline.label}: {baseline.manifest_sha256[:16]}")
-        print(f"   {variant.label}: {variant.manifest_sha256[:16]}\n")
+    manifests_differ = baseline.manifest_sha256 != variant.manifest_sha256
+    same_raw_population = (
+        baseline.raw_population is not None
+        and baseline.raw_population == variant.raw_population
+    )
+    if manifests_differ and not same_raw_population:
+        print("!! 두 프로토콜의 raw manifest·clip 집합이 다릅니다 — 이 비교는 유효하지 않습니다\n")
     if baseline.runtime != variant.runtime:
         print("!! 두 프로토콜의 실행 환경이 다릅니다 — 차이에 런타임이 섞입니다")
         print(f"   {baseline.label}: {baseline.runtime}")

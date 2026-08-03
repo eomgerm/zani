@@ -170,12 +170,16 @@ export function MicIcon({ size = 22, className }: IconProps) {
   );
 }
 
-/** 타일 이름칩에 들어가는 작은 음소거 표시(프로토타입은 stroke 2.4) */
+/**
+ * 마이크 꺼짐(대각선 슬래시). 색은 다른 아이콘처럼 호출부가 정한다 —
+ * 타일 이름칩은 빨간색으로, 붉은 배경의 컨트롤 버튼은 흰색으로 쓴다(티켓 246).
+ */
 export function MicOffIcon({ size = 11, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2.4, className)}>
       <rect x="9" y="3" width="6" height="11" rx="3" />
       <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+      <path d="M4 3l16 18" />
     </svg>
   );
 }
@@ -184,6 +188,16 @@ export function CameraIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...svgProps(size, 1.9, className)}>
       <path d="M15 10l6-3.5v11L15 14M3 6.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+/** 카메라 꺼짐(대각선 슬래시). MicOffIcon과 같은 규칙 — 색은 호출부가 정한다. */
+export function CameraOffIcon({ size = 11, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2, className)}>
+      <path d="M15 10l6-3.5v11L15 14M3 6.5h10a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Z" />
+      <path d="M4 3l16 18" />
     </svg>
   );
 }
@@ -220,16 +234,6 @@ export function CloseIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2.2, className)}>
       <path d="M6 6l12 12M18 6 6 18" />
-    </svg>
-  );
-}
-
-/** 참가자 퇴장(문 밖으로 나가는 화살표) */
-export function KickIcon({ size = 13, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 2, className)}>
-      <path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8" />
-      <path d="M14 12h7M18 8l4 4-4 4" />
     </svg>
   );
 }

@@ -32,7 +32,7 @@ FFmpeg → 로컬 스토리지 : 종료 후 최종 MP4 합성
 - 프론트엔드는 Room 이름, participant identity, 역할, grant를 결정하지 않는다.
 - Spring Boot는 미디어를 중계하지 않는다.
 - LiveKit DataPacket은 MVP에서 사용하지 않는다. `canPublishData=false`를 명시한다.
-- 업무 이벤트는 Spring Boot WebSocket과 Redis를 통해 전달하고 필요한 항목은 DB에 저장한다.
+- 업무 이벤트는 Spring WebSocket **STOMP**와 Redis를 통해 전달하고 필요한 항목은 DB에 저장한다(§10).
 - LiveKit Cloud, S3, MinIO는 운영에서 사용하지 않는다.
 - 녹화 파일은 `/srv/zani/recordings`에 저장한다.
 
@@ -170,7 +170,7 @@ Authorization: Bearer {ZANI_ACCESS_TOKEN}
 
 ## 8. 권한
 
-### 강사 토큰
+두 역할이 같은 grant를 받는다. 화면 공유에 역할 제한을 두지 않기로 확정했다(2026-07-30).
 
 ```text
 roomJoin=true
@@ -180,23 +180,12 @@ canPublishSources=[CAMERA, MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO]
 canPublishData=false
 ```
 
-### 학생 기본 토큰
-
-```text
-roomJoin=true
-canSubscribe=true
-canPublish=true
-canPublishSources=[CAMERA, MICROPHONE]
-canPublishData=false
-```
-
-- 학생 화면 공유는 강사 승인 중에만 `UpdateParticipant`로 임시 허용한다.
-- 학생 기본 토큰에는 화면 공유 권한을 넣지 않는다.
-- 승인 시 `SCREEN_SHARE`와 `SCREEN_SHARE_AUDIO`를 함께 허용한다.
-- 공유 종료·승인 취소·연결 종료 시 권한을 회수한다.
-- 한 번에 하나의 화면만 활성화한다.
-- 강사는 학생 화면 공유를 언제든 중지할 수 있다.
-- 향후 DataPacket 또는 학생 공유 정책을 변경하려면 프론트 UI와 백엔드 grant를 함께 변경한다.
+- `canPublishSources`는 문서에서 protobuf enum 이름(대문자)으로 적지만, JWT 클레임은 `TrackSource`의 **소문자** 표기를 문자열로 받는다. 서버가 그 문자열과 정확히 비교하므로 대문자로 실으면 publish가 조용히 전부 막힌다.
+- `SCREEN_SHARE`와 `SCREEN_SHARE_AUDIO`는 항상 함께 부여한다.
+- 학생 화면 공유에 강사 승인을 요구하지 않는다. 요청·승인·거절·회수 플로우는 두지 않는다.
+- **한 번에 하나의 화면만 활성화한다. 이 제약은 토큰이 아니라 서버의 활성 공유 상태로 강제한다.** 토큰 단계에서 역할이나 권한을 갈라놓으면 학생이 공유를 시작할 수 없어 구현이 불가능하다.
+- 발급된 JWT는 폐기할 수 없다. 진행 중인 공유를 멈추려면 연결된 참가자를 `UpdateParticipant`로 낮추거나 `RoomService`로 트랙을 mute·제거해야 한다. 토큰 TTL(10분) 안에는 재연결로 권한이 되살아나므로 `participant_joined` 시점에도 제약을 다시 적용해야 한다.
+- 향후 DataPacket 또는 공유 정책을 변경하려면 프론트 UI와 백엔드 grant를 함께 변경한다.
 
 ## 9. 장치, 연결, 종료
 
@@ -250,17 +239,38 @@ ParticipantPermissionsChanged
 MediaDevicesChanged
 ```
 
-Spring Boot WebSocket은 업무 이벤트를 처리한다.
+업무 이벤트는 Spring WebSocket **STOMP**가 처리한다. LiveKit DataPacket은 쓰지 않는다(§2).
+
+목적지는 세션당 주제 하나다. 종류별로 나누면 구독·재연결·순서 보장이 종류 수만큼 늘어나는데, 어차피 같은 수업 화면이 전부 소비한다. 종류는 봉투의 `type`으로 구분한다.
 
 ```text
-SESSION_ENDING
-INSTRUCTOR_DISCONNECTED / INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_REQUESTED / GRANTED / REVOKED
-CHAT_MESSAGE
-HAND_RAISED / HAND_LOWERED
-REACTION
-PARTICIPANT_KICKED
+핸드셰이크  /ws                              CONNECT 프레임 헤더로 인증한다
+구독        /topic/sessions/{sessionId}      SUBSCRIBE 시점에 세션 멤버십을 확인한다
+발행        /app/sessions/{sessionId}/{종류}
+거절 통지    /user/queue/errors               보낸 사람에게만 간다
+스냅샷      GET /api/v1/sessions/{id}/live-state
 ```
+
+브라우저 WebSocket은 핸드셰이크에 `Authorization` 헤더를 붙일 수 없고, 흔한 우회책인 쿼리 파라미터는 액세스 토큰을 프록시·액세스 로그에 남긴다. STOMP는 핸드셰이크와 별개로 CONNECT 프레임에 헤더를 실을 수 있어 토큰이 URL에 노출되지 않는다.
+
+봉투와 스냅샷의 필드 규격은 **스토리 14의 `[API 계약]`이 기준**이다.
+
+```text
+CHAT_MESSAGE                        63
+HAND_RAISED / HAND_LOWERED          64
+REACTION                            64
+SCREEN_SHARE_STARTED / STOPPED      65
+FORCE_MUTED                         66
+```
+
+- 강제 퇴장(`PARTICIPANT_KICKED`)은 범위에서 제외됐다. 강사 제어는 강제 음소거만 제공한다(2026-07-30 확정).
+- **손들기는 상태, 반응은 순간 표시라 저장 위치가 다르다(64).** 지금 손을 든 사람은 Redis Sorted Set(`session:{id}:hands`)이 들고 있고 score가 서버 수신 시각이라 자료구조가 순번을 보장한다 — 스냅샷의 `raisedHandIdentities`가 이 순서 그대로다. 반응은 현재 상태가 없어 스냅샷에 담지 않는다(표시 시간은 클라이언트 애니메이션 수명이다). 둘 다 이력은 `interaction_events`에 남아 리포트가 읽는다.
+- 손들기 프레임은 `{clientEventId, raised}`로 **원하는 상태**를 보낸다. "뒤집어라"로 두면 재시도가 한 번 더 뒤집어 의도와 반대가 된다. 채팅과 달리 멱등 키를 두지 않는다 — 상태라 두 번 처리해도 결과가 같다.
+- 반응 프레임은 `{clientEventId, reaction}`이고 `reaction`은 **이모지 문자가 아니라 종류 이름**(`LIKE`·`HEART`·`CLAP`·`CELEBRATE`·`WOW`·`CHEER`)이다. 서버가 받은 문자열이 전 참가자 화면에 그대로 뜨므로 임의 문자열을 허용할 수 없고, 같은 하트라도 변이 선택자(U+FE0F) 유무로 리포트 집계가 갈린다. 어떤 그림으로 보일지는 클라이언트가 정한다.
+- 반응은 참가자별 1.5초 간격을 서버가 강제한다(Redis `SET NX PX`). 한 건이 참가자 수만큼 증폭되므로 클라이언트 제한만으로는 부족하다.
+- `SESSION_ENDING`·`INSTRUCTOR_DISCONNECTED`·`INSTRUCTOR_RECONNECTED`는 **구현되어 있지 않다.** presence는 REST heartbeat(FRD §10.6)로 처리하고 있어 이 채널을 쓰지 않는다. 필요해지면 담당 티켓을 먼저 정한다.
+- 내장 브로커(`enableSimpleBroker`)는 구독 정보를 프로세스 메모리에 둔다. 인스턴스를 늘리면 각 인스턴스에 붙은 클라이언트끼리 메시지가 오가지 않으므로 외부 브로커로 바꿔야 한다.
+- 배포에서 같은 도메인을 쓰려면 Nginx에 `/ws` location이 필요하다. `Upgrade`·`Connection` 헤더를 넘기고 `proxy_read_timeout`을 길게 잡는다 — 기본값 60초면 조용한 수업에서 1분마다 끊긴다.
 
 프론트 이벤트는 화면 표현용이며 서버의 입장·권한·녹화 사실을 확정하는 근거로 사용하지 않는다.
 
@@ -290,7 +300,7 @@ RoomComposite Egress를 기본 녹화기로 사용하지 않는다. 허용된 Tr
 | 강사 마이크 | 포함 | 포함 |
 | 강사 화면·화면 오디오 | 포함 | 포함 |
 | 학생 마이크 | 익명 개별 저장 | 전체 음성으로 혼합 |
-| 승인 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
+| 학생 화면·화면 오디오 | 포함 | 활성 구간 포함 |
 | 학생 카메라 | 절대 저장하지 않음 | 제외 |
 
 ```text

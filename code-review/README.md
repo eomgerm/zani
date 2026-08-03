@@ -12,6 +12,32 @@ MR 변경 → code-review 실행 → Claude Code 검토 → GitLab 댓글 게시
 
 자동 머지는 이 도구의 범위가 아닙니다. 댓글과 테스트 결과를 확인한 뒤 팀원의 Approve를 받아 머지합니다.
 
+## 검토 흐름
+
+```text
+Git diff 수집
+  ├─ MR 지정 시 최신 MR head ref 가져오기
+  ├─ Git 브랜치·커밋 컨벤션 검사
+  ├─ 프론트·백엔드 DDD 규칙 검사
+  ├─ 변경 파일 전체와 재사용 후보 문맥 수집
+  └─ Claude Code 의미 검토
+       └─ 80점 이상 결과만 반영
+            └─ JSON 보고서 생성
+                 └─ 선택 시 GitLab 요약 댓글 게시
+```
+
+검사는 두 층으로 나뉩니다.
+
+**규칙 기반 차단.** 브랜치명·커밋 컨벤션과 프론트·백엔드 DDD 경계를 기계적으로 검사합니다. 규칙의 정본은 [`.gitlab/CONTRIBUTING.md`](../.gitlab/CONTRIBUTING.md)와 [`.agents/ddd-development-guide.md`](../.agents/ddd-development-guide.md)이고, 이 도구가 실행할 때 읽는 설정은 `config/ddd-rules.json`입니다. 규칙을 바꿀 때는 정본을 먼저 고치고 설정을 맞춥니다.
+
+**Claude Code 권고.** 문맥 판단이 필요한 세 가지만 봅니다.
+
+- 변경으로 새로 생긴 명백한 버그, 보안, 오류 처리 누락
+- 변경된 코드와 후보 파일을 비교해 확인 가능한 공통 컴포넌트 미사용
+- 제공된 문맥으로 증명되는 중복 구현
+
+스타일 취향, 추측성 문제, 기존 코드 문제, 린터가 확실히 잡는 항목은 댓글로 남기지 않습니다. Claude는 변경과 무관한 저장소 전체를 뒤지지 않으며, 후보에 실제 정의가 있을 때만 재사용 또는 중복 권고를 작성합니다.
+
 ## 처음 한 번 준비
 
 1. 저장소 루트에서 `npm install`을 실행합니다. PowerShell 실행 정책 때문에 `npm`이 막히면 `npm.cmd install`을 사용합니다.
@@ -81,17 +107,24 @@ npm.cmd run review:mr -- --mr https://lab.ssafy.com/group/project/-/merge_reques
 
 댓글의 자연어는 모두 한국어로 작성합니다. Claude 응답은 요약 100자, 문제 160자, 수정 제안 100자로 제한해 불필요하게 긴 댓글과 토큰 사용을 줄입니다.
 
-## 재사용·중복 코드 검토는 어떻게 동작하나요?
+## Claude는 어떤 파일을 읽나요?
 
-Claude에게 저장소 전체를 무제한으로 읽히지 않습니다. 변경된 JSX에서 `button`, `input`처럼 필요한 UI 종류를 찾고, `fe/src/shared/ui`의 관련 후보만 읽어서 검토 문맥에 넣습니다.
+**변경된 파일은 전부 읽습니다.** 파일 개수 제한과 전체 용량 제한은 없습니다. diff는 바뀐 줄만 보여주므로, 같은 파일의 전체 내용을 함께 넣어 앞뒤 문맥까지 보고 검토합니다.
 
-- 최대 12개 파일
-- 총 최대 120KB
-- 파일 하나당 최대 32KB
-- `.git`, `node_modules`, 빌드 결과물은 제외
-- 후보 파일에 실제로 확인된 경우에만 “공통 컴포넌트를 쓰세요”라는 권고를 허용
+파일 하나에만 256KB 상한이 있습니다. 이보다 큰 파일은 건너뛰지 않고 앞 256KB만 첨부하며, 잘렸다는 사실을 문맥과 리포트에 남깁니다. `package-lock.json`처럼 사람이 읽지 않는 생성 파일 하나가 Claude 컨텍스트와 메모리를 다 쓰는 것을 막기 위한 것으로, 저장소에서 손으로 쓴 가장 큰 파일이 65KB이므로 원본 코드는 잘리지 않습니다.
 
-이 제한 덕분에 토큰 사용량이 MR 크기와 함께 무제한으로 커지지 않습니다. Claude의 재사용·중복 코드 판단은 신뢰도 80점 이상인 항목만 남깁니다. Git 규칙과 DDD의 기계적으로 확실한 위반은 별도 규칙 검사로 계속 차단합니다.
+첨부하지 않고 건너뛰는 경우는 네 가지뿐이며, 이유와 함께 문맥과 리포트에 남깁니다.
+
+- MR에서 삭제되어 더 이상 읽을 수 없는 파일
+- 이미지·모델 가중치처럼 텍스트가 아닌 파일(NUL 바이트로 판별)
+- 저장소 루트 밖을 가리키는 경로
+- 저장소 안 경로지만 심볼릭 링크의 실제 파일이 저장소 밖인 경우
+
+재사용·중복 검토는 여기에 더해, 변경된 JSX에서 `button`, `input`처럼 필요한 UI 종류를 찾고 `fe/src/shared/ui`의 이름이 맞는 후보 파일을 함께 넣습니다. 후보 파일에 실제 정의가 확인된 경우에만 “공통 컴포넌트를 쓰세요”라는 권고를 허용합니다. Claude의 재사용·중복 코드 판단은 신뢰도 80점 이상인 항목만 남깁니다. Git 규칙과 DDD의 기계적으로 확실한 위반은 별도 규칙 검사로 계속 차단합니다.
+
+변경 파일 전체를 읽으면 이번 변경과 무관한 기존 결함도 눈에 들어오므로, 프롬프트에서 그런 지적은 하지 않도록 못 박아 둡니다. diff 본문에는 35만 자 상한이 따로 있습니다. 그보다 큰 diff는 잘리지만, 256KB 아래 변경 파일 내용은 잘리지 않고 그대로 들어갑니다.
+
+읽은 파일 목록과 총 용량, 잘린 파일, 건너뛴 파일은 `code-review/output/review.json`의 `metadata.repositoryContext`에서 확인할 수 있습니다.
 
 ## 자동 실행 준비
 
@@ -115,11 +148,20 @@ npm.cmd run test:code-review
 
 ## 폴더 안내
 
-- `bin/`: 실행 명령
-- `config/`: DDD 규칙과 Claude JSON 응답 형식
-- `lib/`: Git, 규칙 검사, Claude, GitLab 댓글 처리 코드
-- `test/`: 자동 테스트
-- `ci/`: Runner를 연결할 때 복사할 예시 설정
-- `.claude/agents/code-reviewer.md`: Claude Code에서 수동 리뷰할 때도 같은 기준을 쓰게 하는 역할 정의
+```text
+.claude/
+  agents/
+    code-reviewer.md        # Claude Code 수동 검토용 역할·품질 기준
 
-설계 배경은 [`docs/code-review/design.md`](../docs/code-review/design.md), 적용 순서는 [`docs/code-review/implementation-plan.md`](../docs/code-review/implementation-plan.md)에서 확인할 수 있습니다.
+code-review/
+  bin/                      # node로 실행하는 진입점
+  ci/                       # Runner를 연결할 때 복사할 예시 설정
+  config/                   # DDD 규칙과 Claude 응답 JSON 형식
+  lib/                      # Git, 규칙 검사, Claude, GitLab API, 보고서 처리
+  test/                     # 실제 Claude·GitLab 호출 없는 자동 테스트
+  README.md                 # 이 문서
+```
+
+실행 코드와 역할 문서를 나눠 둔 이유가 있습니다. Anthropic의 공식 Code Review 플러그인은 `plugins/code-review`라는 기능 이름과 `commands/` 구조를 씁니다. 다만 이 도구는 Jenkins와 GitLab CI에서도 실행되어야 하므로, Claude 전용 역할 문서만 `.claude/agents`에 두고 실행 코드는 일반적인 `code-review/`에 뒀습니다.
+
+`.claude/agents/code-reviewer.md`는 사람이 Claude Code에서 직접 리뷰할 때 자동 실행과 같은 기준을 쓰게 하는 역할 정의입니다. 읽기 전용 도구만 주어지며 파일을 고치거나 명령을 실행하지 않습니다.

@@ -205,6 +205,25 @@ def test_raw_extraction_provenance_records_runtime_frame_gate(tmp_path: Path) ->
     assert thirty_fps.expected_frame_count == 300
 
 
+def test_extraction_provenance_records_the_landmarker_scope(tmp_path: Path) -> None:
+    """A manifest has to state whether the run gave each clip its own landmarker.
+
+    The scope already enters the fingerprint, but a fingerprint only says two runs
+    differ, not how. Reading it back off the manifest is what lets someone tell an
+    order-dependent cache from a reproducible one -- the same job
+    `minimum_valid_frame_ratio` did when dating the pre-gate raw cache.
+    """
+    model = tmp_path / "face_landmarker.task"
+    model.write_bytes(b"model")
+
+    assert _build_provenance(model, workers=2, max_excluded_fraction=0.05).landmarker_scope == (
+        "per_clip"
+    )
+    assert _build_raw_provenance(
+        model, workers=2, max_excluded_fraction=0.05
+    ).landmarker_scope == ("per_clip")
+
+
 def test_raw_extraction_distinguishes_total_coverage_failure(tmp_path: Path) -> None:
     with pytest.raises(InsufficientRawCoverageError) as error:
         _process_raw_clip(

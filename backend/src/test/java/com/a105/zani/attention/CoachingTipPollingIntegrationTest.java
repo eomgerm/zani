@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import com.jayway.jsonpath.JsonPath;
 import org.hamcrest.Matchers;
@@ -12,9 +13,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -44,8 +47,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>임계값 경계(29%/30%, 59초/60초, 분모 0)는 {@code CoachingTriggerPolicyTest} 가 전수로 다룬다. 여기서는 폴링 계약과 권한, 그리고 실제 Redis·오디오 버퍼를
  * 거친 트리거 한 바퀴만 본다.
  */
-@SpringBootTest
+@SpringBootTest(properties = "coach.history-retry-delay=PT1H")
 class CoachingTipPollingIntegrationTest {
+
+    private static final String COACHING_HISTORY_RETRY_KEY = "coach:history:retries";
 
     private static final long INSTRUCTOR_ID = 9_200_910L;
     private static final long STUDENT_ID = 9_200_911L;
@@ -74,6 +79,9 @@ class CoachingTipPollingIntegrationTest {
 
     @Autowired
     private InstructorAudioBuffer instructorAudioBuffer;
+
+    @Autowired
+    @Qualifier("coachingTipExecutor") private ThreadPoolTaskExecutor coachingTipExecutor;
 
     private MockMvc mockMvc;
 
@@ -104,11 +112,29 @@ class CoachingTipPollingIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        awaitCoachingTasks();
         clearState();
         instructorAudioBuffer.release(SESSION_ID);
         jdbcTemplate.update(
+                "DELETE FROM coaching_history_response_counts WHERE coaching_history_id IN"
+                        + " (SELECT id FROM coaching_histories WHERE session_id = ?)",
+                SESSION_ID);
+        jdbcTemplate.update("DELETE FROM coaching_histories WHERE session_id = ?", SESSION_ID);
+        jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE id IN (?, ?)", PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
+    }
+
+    private void awaitCoachingTasks() {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while ((coachingTipExecutor.getActiveCount() > 0
+                        || !coachingTipExecutor
+                                .getThreadPoolExecutor()
+                                .getQueue()
+                                .isEmpty())
+                && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(Duration.ofMillis(10).toNanos());
+        }
     }
 
     @Test
@@ -286,6 +312,7 @@ class CoachingTipPollingIntegrationTest {
         redisTemplate.delete(OPEN_KEY);
         redisTemplate.delete(LAST_TIP_KEY);
         redisTemplate.delete(PRESENCE_KEY);
+        redisTemplate.delete(COACHING_HISTORY_RETRY_KEY);
         for (AttentionState state : AttentionState.values()) {
             redisTemplate.delete("attention:" + SESSION_ID + ":significant:" + state.name() + ":" + PARTICIPANT_ID);
         }

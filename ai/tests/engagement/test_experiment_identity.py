@@ -32,6 +32,8 @@ from zani_ai.engagement.experiment import (
     E0G_SPEC,
     E0H_SPEC,
     E0I_SPEC,
+    E0J_SPEC,
+    E0K_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -77,6 +79,10 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-H", "cuda"): "766e2ceb2272162a63756ecd23d3add33c20cf0a99e2a2a09228a313ce13d864",
     ("E0-I", "cpu"): "2b1c6bc1ac3225b60f3df609f00c1e6e67b79f4c2569acd0d4c499c10e337ac9",
     ("E0-I", "cuda"): "0da85a5f7b898984ae7f79bf959b0f604fba1c5177b3a6028fab0eb7b3e656f2",
+    ("E0-J", "cpu"): "9f4347ecb7e254743f0583330405bbdc3b9a544ab89c5c7c402c56b19a0e0d43",
+    ("E0-J", "cuda"): "1a01ec49bfeddb104a528f0133161b61373fe1cab8cd1962f6adcb3a9dd0b00c",
+    ("E0-K", "cpu"): "16789bf6e095421f52cf81a59c3385dfce576f7234011622e1c39290e87fa4ea",
+    ("E0-K", "cuda"): "2bdd0769df956cff3f2787e8b5ab5735a48897dda8683f1f625f415b3be8673b",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -96,6 +102,8 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0G_SPEC,
     E0H_SPEC,
     E0I_SPEC,
+    E0J_SPEC,
+    E0K_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -132,6 +140,33 @@ def test_every_protocol_is_covered() -> None:
 
 def test_spec_registry_matches_the_pinned_specs() -> None:
     assert {spec.protocol: spec for spec in SPECS_TUPLE} == SPECS
+
+
+def test_e0k_runs_its_whole_schedule_and_differs_from_e0_only_there() -> None:
+    """E0-K's point is that the schedule actually runs; a hash cannot show that.
+
+    ``BASELINE_HASHES`` pins the identity but is opaque -- re-pinning it would
+    hide a wrong learning rate or a patience that still stops early. These are
+    the four values the protocol exists to set, plus the assertion that nothing
+    else moved: with ``patience == max_epochs`` no seed can stop before the
+    ``lr_step`` decays at epoch 100 and 200.
+    """
+    assert E0K_SPEC.learning_rate == 1e-3
+    assert E0K_SPEC.max_epochs == 300
+    assert E0K_SPEC.patience == E0K_SPEC.max_epochs
+    assert E0K_SPEC.lr_step == 100
+    assert E0K_SPEC.max_epochs // E0K_SPEC.lr_step == 3
+
+    schedule_reverted = replace(
+        E0K_SPEC,
+        protocol=E0_SPEC.protocol,
+        learning_rate=E0_SPEC.learning_rate,
+        max_epochs=E0_SPEC.max_epochs,
+        patience=E0_SPEC.patience,
+        lr_step=E0_SPEC.lr_step,
+    )
+
+    assert schedule_reverted == E0_SPEC
 
 
 @pytest.mark.parametrize("spec", SPECS_TUPLE, ids=lambda spec: spec.protocol)

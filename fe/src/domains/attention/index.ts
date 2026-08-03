@@ -23,6 +23,19 @@ export type {
   AttentionCoachingState,
 } from "./domain/attentionCoachingDecision";
 export type { DetectionOutcome, DetectorOutput, DetectorReport } from "./domain/detectionOutcome";
+export {
+  ATTENTION_EVENT_RETRY_DELAY_MS,
+  useAttentionEventReporter,
+} from "./presentation/useAttentionEventReporter";
+export type {
+  AttentionEventReporter,
+  UseAttentionEventReporterOptions,
+} from "./presentation/useAttentionEventReporter";
+export { AttentionEventSendError } from "./infrastructure/attentionEventApi";
+export type {
+  AttentionEventAck,
+  AttentionEventSender,
+} from "./infrastructure/attentionEventApi";
 export { CoachingPromptPanel } from "./presentation/CoachingPromptPanel";
 export type {
   CoachingPromptOption,
