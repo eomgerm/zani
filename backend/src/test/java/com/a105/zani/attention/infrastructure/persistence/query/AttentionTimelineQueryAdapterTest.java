@@ -76,7 +76,7 @@ class AttentionTimelineQueryAdapterTest {
         insertEvent(PARTICIPANT_ID, 10_000L, null);
 
         assertThat(adapter.observations(SESSION_ID))
-                .containsExactly(new ObservationRecord(PARTICIPANT_ID, 0L, DetectorOutcome.ENGAGED));
+                .containsExactly(new ObservationRecord(PARTICIPANT_ID, 0L, null, DetectorOutcome.ENGAGED));
     }
 
     @Test
@@ -87,19 +87,30 @@ class AttentionTimelineQueryAdapterTest {
         insertEvent(PARTICIPANT_ID, 10_000L, "SOMETHING_NEW");
 
         assertThat(adapter.observations(SESSION_ID))
-                .containsExactly(new ObservationRecord(PARTICIPANT_ID, 0L, DetectorOutcome.ENGAGED));
+                .containsExactly(new ObservationRecord(PARTICIPANT_ID, 0L, null, DetectorOutcome.ENGAGED));
     }
 
     @Test
-    @DisplayName("offset 오름차순으로 돌려준다")
+    @DisplayName("관측 시각 오름차순으로 돌려준다")
     void returns_rows_in_offset_order() {
         insertEvent(PARTICIPANT_ID, 20_000L, "ENGAGED");
         insertEvent(PARTICIPANT_ID, 0L, "CAMERA_OFF");
         insertEvent(PARTICIPANT_ID, 10_000L, "UNMEASURABLE");
 
         assertThat(adapter.observations(SESSION_ID))
-                .extracting(ObservationRecord::offsetMs)
+                .extracting(ObservationRecord::occurredOffsetMs)
                 .containsExactly(0L, 10_000L, 20_000L);
+    }
+
+    @Test
+    @DisplayName("창 시작 시각도 함께 읽는다 — 이 값이 없으면 판정을 10초 뒤에 재생하게 된다")
+    void reads_the_window_start() {
+        // [10,20) 을 본 판정. 값은 20초에 정해졌다.
+        insertEvent(PARTICIPANT_ID, 20_000L, 10_000L, "ENGAGED");
+
+        assertThat(adapter.observations(SESSION_ID))
+                .containsExactly(new ObservationRecord(PARTICIPANT_ID, 20_000L, 10_000L, DetectorOutcome.ENGAGED));
+        assertThat(adapter.observations(SESSION_ID).getFirst().slotStartMs()).isEqualTo(10_000L);
     }
 
     @Test
@@ -193,15 +204,20 @@ class AttentionTimelineQueryAdapterTest {
                 utc(now));
     }
 
-    private void insertEvent(long participantId, long offsetMs, String outcome) {
+    private void insertEvent(long participantId, long occurredOffsetMs, String outcome) {
+        insertEvent(participantId, occurredOffsetMs, null, outcome);
+    }
+
+    private void insertEvent(long participantId, long occurredOffsetMs, Long windowStartedOffsetMs, String outcome) {
         jdbcTemplate.update(
                 "INSERT INTO attention_events (id, session_id, session_participant_id, detector_outcome,"
-                        + " occurred_offset_ms, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        + " occurred_offset_ms, window_started_offset_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 eventId++,
                 SESSION_ID,
                 participantId,
                 outcome,
-                offsetMs,
+                occurredOffsetMs,
+                windowStartedOffsetMs,
                 utc(now));
     }
 

@@ -20,11 +20,11 @@ class ParticipantReplayTest {
     private static final long PARTICIPANT = 1L;
     private static final TimelinePolicy POLICY = TimelinePolicy.defaults();
 
-    /** fromSeconds 부터 count 건을 10초 간격으로 만든다. */
+    /** fromSeconds 부터 count 건을 10초 간격으로 만든다. 값은 슬롯 시작 시각 기준이다. */
     private static List<ObservationRecord> events(long fromSeconds, int count, DetectorOutcome outcome) {
         List<ObservationRecord> records = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            records.add(new ObservationRecord(PARTICIPANT, (fromSeconds + i * 10L) * 1000L, outcome));
+            records.add(ObservationRecords.at(PARTICIPANT, (fromSeconds + i * 10L) * 1000L, outcome));
         }
         return records;
     }
@@ -234,8 +234,8 @@ class ParticipantReplayTest {
         @DisplayName("격자에 안 맞는 시각의 슬롯도 시작 시각 기준으로 한 칸에만 들어간다")
         void an_off_grid_slot_belongs_to_exactly_one_bucket() {
             // 25초에 시작하는 슬롯은 [25,35) 이라 두 칸에 걸치지만 첫 칸에만 배정된다.
-            ParticipantReplay replay =
-                    replay(List.of(new ObservationRecord(PARTICIPANT, 25_000L, DetectorOutcome.ENGAGED)), List.of());
+            ParticipantReplay replay = replay(
+                    List.of(new ObservationRecord(PARTICIPANT, 35_000L, 25_000L, DetectorOutcome.ENGAGED)), List.of());
 
             assertThat(replay.slotsStartingIn(0L, 30_000L)).hasSize(1);
             assertThat(replay.slotsStartingIn(30_000L, 60_000L)).isEmpty();
@@ -246,6 +246,97 @@ class ParticipantReplayTest {
         void no_slots_yields_an_empty_list() {
             assertThat(replay(List.of(), List.of()).slotsStartingIn(0L, 30_000L))
                     .isEmpty();
+        }
+    }
+
+    /**
+     * 슬롯 시작을 무엇으로 정하는지 못 박는다.
+     *
+     * <p>이 판정 하나가 어긋나면 연속 접속·측정 불가 지속·{@code UNMEASURABLE} 3연속·내용 구간 배정이 전부 함께 어긋난다. 시간축은 그 위의 모든 계산이 딛는 바닥이라 계약을 따로
+     * 고정한다(설계 문서 §2.14).
+     */
+    @Nested
+    @DisplayName("시간축")
+    class TimeAxis {
+
+        @Test
+        @DisplayName("창 시작이 있으면 그 시각에 슬롯을 놓는다 — 관측 시각은 창의 끝이다")
+        void a_recorded_window_start_becomes_the_slot_start() {
+            // [0,10) 을 본 판정. 값은 10초에 정해졌다.
+            ParticipantReplay replay = replay(
+                    List.of(new ObservationRecord(PARTICIPANT, 10_000L, 0L, DetectorOutcome.ENGAGED)), List.of());
+
+            assertThat(replay.slots()).extracting(ObservationSlot::startMs).containsExactly(0L);
+            assertThat(replay.slots()).extracting(ObservationSlot::endMs).containsExactly(10_000L);
+        }
+
+        @Test
+        @DisplayName("창 시작이 없으면 관측 시각에서 10초를 뺀다 — 계약이 창 길이를 10초로 고정한다")
+        void a_missing_window_start_is_corrected_by_ten_seconds() {
+            ParticipantReplay replay = replay(
+                    List.of(new ObservationRecord(PARTICIPANT, 30_000L, null, DetectorOutcome.BARELY_ENGAGED)),
+                    List.of());
+
+            assertThat(replay.slots()).extracting(ObservationSlot::startMs).containsExactly(20_000L);
+        }
+
+        @Test
+        @DisplayName("보정 결과가 음수면 0 으로 자른다")
+        void a_correction_below_zero_is_clamped() {
+            // 세션 시작 4초 뒤에 정해진 값. 창은 세션 이전까지 걸치지만 격자에 음수는 없다.
+            ParticipantReplay replay = replay(
+                    List.of(new ObservationRecord(PARTICIPANT, 4_000L, null, DetectorOutcome.ENGAGED)), List.of());
+
+            assertThat(replay.slots()).extracting(ObservationSlot::startMs).containsExactly(0L);
+        }
+
+        @Test
+        @DisplayName("CAMERA_OFF 는 창 없이 확정되므로 관측 시각이 곧 슬롯 시작이다")
+        void an_outcome_without_a_window_keeps_its_occurred_time() {
+            ParticipantReplay replay = replay(
+                    List.of(
+                            new ObservationRecord(PARTICIPANT, 30_000L, null, DetectorOutcome.CAMERA_OFF),
+                            new ObservationRecord(PARTICIPANT, 40_000L, null, DetectorOutcome.DETECTOR_UNAVAILABLE)),
+                    List.of());
+
+            assertThat(replay.slots()).extracting(ObservationSlot::startMs).containsExactly(30_000L, 40_000L);
+        }
+
+        @Test
+        @DisplayName("30초 경계에 걸친 판정은 창 시작이 든 칸에 들어간다 — 관측 시각을 쓰면 다음 칸으로 넘어간다")
+        void a_judgement_on_the_bucket_boundary_lands_in_its_own_bucket() {
+            // [20,30) 을 본 판정의 관측 시각은 30초다. 그 값을 슬롯 시작으로 쓰면 둘째 칸으로 밀린다.
+            ParticipantReplay replay = replay(
+                    List.of(new ObservationRecord(PARTICIPANT, 30_000L, 20_000L, DetectorOutcome.ENGAGED)), List.of());
+
+            assertThat(replay.slotsStartingIn(0L, 30_000L)).hasSize(1);
+            assertThat(replay.slotsStartingIn(30_000L, 60_000L)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("보정 뒤 순서가 뒤집혀도 슬롯 시작 기준으로 다시 정렬한다")
+        void slots_are_sorted_by_their_corrected_start() {
+            // 쿼리가 주는 순서는 관측 시각 오름차순이라 CAMERA_OFF(15초) 가 먼저다. 그런데 슬롯 시작은
+            // 10초 · 15초 순이라 보정하면 순서가 뒤집힌다. 다시 정렬하지 않으면 슬롯 끝을 다음 슬롯 시작으로
+            // 자르는 계산이 음수 길이를 만든다.
+            ParticipantReplay replay = replay(
+                    List.of(
+                            new ObservationRecord(PARTICIPANT, 15_000L, null, DetectorOutcome.CAMERA_OFF),
+                            new ObservationRecord(PARTICIPANT, 20_000L, null, DetectorOutcome.ENGAGED)),
+                    List.of());
+
+            assertThat(replay.slots()).extracting(ObservationSlot::startMs).containsExactly(10_000L, 15_000L);
+            assertThat(replay.slots())
+                    .allSatisfy(slot -> assertThat(slot.endMs()).isGreaterThan(slot.startMs()));
+        }
+
+        @Test
+        @DisplayName("판정 하나가 밀리면 연속 접속 1분도 함께 밀린다")
+        void the_connection_timer_reads_the_same_axis() {
+            // [0,10) 부터 이어진 접속이므로 60초에 1분을 채운다. 창 시작을 무시하면 70초까지 밀린다.
+            ParticipantReplay replay = replay(events(0, 12, DetectorOutcome.ENGAGED), List.of());
+
+            assertThat(replay.counted(60_000L)).isTrue();
         }
     }
 

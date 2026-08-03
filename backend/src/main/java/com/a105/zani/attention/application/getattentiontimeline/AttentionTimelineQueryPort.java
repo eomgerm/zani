@@ -12,7 +12,7 @@ import com.a105.zani.attention.domain.model.timeline.PromptRecord;
  */
 public interface AttentionTimelineQueryPort {
 
-    /** 세션 전체 학생의 검출기 관측을 offset 오름차순으로 읽는다. */
+    /** 세션 전체 학생의 검출기 관측을 관측 시각 오름차순으로 읽는다. 슬롯 시작 기준 정렬은 재생기가 다시 한다. */
     List<ObservationRecord> observations(long sessionId);
 
     /** 한 학생의 검출기 관측만 읽는다. */

@@ -23,7 +23,7 @@ class GroupSignalCalculatorTest {
     private static ParticipantReplay student(long id, DetectorOutcome outcome, int slots, List<PromptRecord> prompts) {
         List<ObservationRecord> events = new ArrayList<>();
         for (int i = 0; i < slots; i++) {
-            events.add(new ObservationRecord(id, i * 10_000L, outcome));
+            events.add(ObservationRecords.at(id, i * 10_000L, outcome));
         }
         return ParticipantReplay.of(id, events, prompts, POLICY);
     }
@@ -72,10 +72,10 @@ class GroupSignalCalculatorTest {
         List<ObservationRecord> events = new ArrayList<>();
         for (int i = 0; i < 60; i++) {
             // 300·310·320초 세 건이 UNMEASURABLE 이라 320초에 참여 상태가 확정되고 620초까지 유효하다.
-            long offsetMs = i * 10_000L;
-            boolean unmeasurable = offsetMs >= 300_000L && offsetMs <= 320_000L;
-            events.add(new ObservationRecord(
-                    5L, offsetMs, unmeasurable ? DetectorOutcome.UNMEASURABLE : DetectorOutcome.ENGAGED));
+            long slotStartMs = i * 10_000L;
+            boolean unmeasurable = slotStartMs >= 300_000L && slotStartMs <= 320_000L;
+            events.add(ObservationRecords.at(
+                    5L, slotStartMs, unmeasurable ? DetectorOutcome.UNMEASURABLE : DetectorOutcome.ENGAGED));
         }
         students.add(ParticipantReplay.of(
                 5L, events, List.of(new PromptRecord(5L, 330_000L, PromptAnswer.CONFUSED)), POLICY));

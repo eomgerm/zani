@@ -57,7 +57,8 @@ public class AttentionTimelineQueryAdapter implements AttentionTimelineQueryPort
                 log.warn("Skipping an unknown detector outcome: {}", row.detectorOutcome());
                 continue;
             }
-            records.add(new ObservationRecord(row.participantId(), row.offsetMs(), outcome));
+            records.add(new ObservationRecord(
+                    row.participantId(), row.occurredOffsetMs(), row.windowStartedOffsetMs(), outcome));
         }
         return List.copyOf(records);
     }

@@ -24,7 +24,7 @@ class FocusFlowCalculatorTest {
     private static ParticipantReplay replayOf(List<PromptRecord> prompts, DetectorOutcome... outcomes) {
         List<ObservationRecord> records = new ArrayList<>();
         for (int i = 0; i < outcomes.length; i++) {
-            records.add(new ObservationRecord(PARTICIPANT, i * 10_000L, outcomes[i]));
+            records.add(ObservationRecords.at(PARTICIPANT, i * 10_000L, outcomes[i]));
         }
         return ParticipantReplay.of(PARTICIPANT, records, prompts, POLICY);
     }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import com.a105.zani.attention.domain.model.DetectorOutcome;
 import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 import com.a105.zani.attention.domain.model.timeline.ObservationRecord;
+import com.a105.zani.attention.domain.model.timeline.ObservationRecords;
 import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
 import com.a105.zani.report.application.listsessionsections.SessionSectionView;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
@@ -37,10 +38,10 @@ class GetGroupAttentionTimelineServiceTest {
         return service.get(new GetGroupAttentionTimelineQuery(SESSION_ID, MEMBER_ID));
     }
 
-    /** 학생 한 명이 0초부터 10초 간격으로 count 건을 보낸 것으로 둔다. */
+    /** 학생 한 명이 0초부터 10초 창을 count 건 이어서 보낸 것으로 둔다. */
     private void observe(long participantId, int count) {
         for (int i = 0; i < count; i++) {
-            queryPort.observations.add(new ObservationRecord(participantId, i * 10_000L, DetectorOutcome.ENGAGED));
+            queryPort.observations.add(ObservationRecords.at(participantId, i * 10_000L, DetectorOutcome.ENGAGED));
         }
     }
 
@@ -76,7 +77,7 @@ class GetGroupAttentionTimelineServiceTest {
     @DisplayName("종료 시각이 없는 과거 세션은 마지막 관측 시각을 5초 격자로 올린다")
     void duration_comes_from_the_last_observation() {
         // 마지막 관측이 32초. 과거 세션은 ended_at 이 null 이므로 이것이 유일한 근거다.
-        queryPort.observations.add(new ObservationRecord(1L, 32_000L, DetectorOutcome.ENGAGED));
+        queryPort.observations.add(new ObservationRecord(1L, 32_000L, 22_000L, DetectorOutcome.ENGAGED));
 
         assertThat(get().durationSeconds()).isEqualTo(35L);
     }
@@ -85,7 +86,7 @@ class GetGroupAttentionTimelineServiceTest {
     @DisplayName("종료 시각이 채워져 있으면 그것을 먼저 쓴다")
     void a_recorded_end_time_wins() {
         access.endedAt = access.startedAt.plusSeconds(600);
-        queryPort.observations.add(new ObservationRecord(1L, 32_000L, DetectorOutcome.ENGAGED));
+        queryPort.observations.add(new ObservationRecord(1L, 32_000L, 22_000L, DetectorOutcome.ENGAGED));
 
         assertThat(get().durationSeconds()).isEqualTo(600L);
     }
@@ -93,7 +94,7 @@ class GetGroupAttentionTimelineServiceTest {
     @Test
     @DisplayName("망가진 오프셋이 와도 3시간을 넘기지 않는다")
     void a_broken_offset_cannot_blow_up_the_response() {
-        queryPort.observations.add(new ObservationRecord(1L, 999_999_999_999L, DetectorOutcome.ENGAGED));
+        queryPort.observations.add(new ObservationRecord(1L, 999_999_999_999L, null, DetectorOutcome.ENGAGED));
 
         assertThat(get().durationSeconds()).isEqualTo(POLICY.maxDuration().toSeconds());
     }
@@ -112,12 +113,13 @@ class GetGroupAttentionTimelineServiceTest {
     @Test
     @DisplayName("두 격자의 점 개수가 다르다 — 30초 칸이 5초 점보다 훨씬 적다")
     void the_two_grids_have_different_point_counts() {
-        observeFiveStudents(30); // 마지막 관측 290초 → 길이 290초
+        // 마지막 창이 [290,300) 이라 관측 시각은 300초다. 세션 길이는 관측이 닿은 마지막 지점인 300초다.
+        observeFiveStudents(30);
 
         GetGroupAttentionTimelineResult result = get();
 
         assertThat(result.focusBuckets()).hasSize(10); // 0·30·…·270
-        assertThat(result.signalPoints()).hasSize(59); // 0·5·…·290
+        assertThat(result.signalPoints()).hasSize(61); // 0·5·…·300
     }
 
     @Test

@@ -27,7 +27,7 @@ class StateIntervalMergerTest {
     private static ParticipantReplay replayOf(List<PromptRecord> prompts, List<DetectorOutcome> outcomes) {
         List<ObservationRecord> records = new ArrayList<>();
         for (int i = 0; i < outcomes.size(); i++) {
-            records.add(new ObservationRecord(PARTICIPANT, i * 10_000L, outcomes.get(i)));
+            records.add(ObservationRecords.at(PARTICIPANT, i * 10_000L, outcomes.get(i)));
         }
         return ParticipantReplay.of(PARTICIPANT, records, prompts, POLICY);
     }

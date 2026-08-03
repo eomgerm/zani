@@ -18,7 +18,7 @@ class GroupFocusCalculatorTest {
     private static ParticipantReplay studentAtLevel(long id, DetectorOutcome outcome, int slots) {
         List<ObservationRecord> records = new ArrayList<>();
         for (int i = 0; i < slots; i++) {
-            records.add(new ObservationRecord(id, i * 10_000L, outcome));
+            records.add(ObservationRecords.at(id, i * 10_000L, outcome));
         }
         return ParticipantReplay.of(id, records, List.of(), POLICY);
     }

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.attention.application.exception.NotSessionStudentTimelineException;
 import com.a105.zani.attention.domain.model.DetectorOutcome;
-import com.a105.zani.attention.domain.model.timeline.ObservationRecord;
+import com.a105.zani.attention.domain.model.timeline.ObservationRecords;
 import com.a105.zani.attention.domain.model.timeline.StateInterval;
 import com.a105.zani.attention.domain.model.timeline.StudentTimelineState;
 import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
@@ -43,7 +43,7 @@ class GetMyAttentionTimelineServiceTest {
 
     private void observe(long participantId, int count, DetectorOutcome outcome) {
         for (int i = 0; i < count; i++) {
-            queryPort.observations.add(new ObservationRecord(participantId, i * 10_000L, outcome));
+            queryPort.observations.add(ObservationRecords.at(participantId, i * 10_000L, outcome));
         }
     }
 
@@ -107,8 +107,8 @@ class GetMyAttentionTimelineServiceTest {
     @DisplayName("상태 구간을 함께 돌려준다")
     void returns_state_intervals() {
         observe(MY_PARTICIPANT_ID, 6, DetectorOutcome.ENGAGED); // 0~60초
-        queryPort.observations.add(new ObservationRecord(MY_PARTICIPANT_ID, 60_000L, DetectorOutcome.CAMERA_OFF));
-        queryPort.observations.add(new ObservationRecord(MY_PARTICIPANT_ID, 70_000L, DetectorOutcome.CAMERA_OFF));
+        queryPort.observations.add(ObservationRecords.at(MY_PARTICIPANT_ID, 60_000L, DetectorOutcome.CAMERA_OFF));
+        queryPort.observations.add(ObservationRecords.at(MY_PARTICIPANT_ID, 70_000L, DetectorOutcome.CAMERA_OFF));
 
         GetMyAttentionTimelineResult result = get();
 
@@ -124,7 +124,7 @@ class GetMyAttentionTimelineServiceTest {
         observe(MY_PARTICIPANT_ID, 6, DetectorOutcome.ENGAGED);
         for (int i = 6; i < 12; i++) {
             queryPort.observations.add(
-                    new ObservationRecord(MY_PARTICIPANT_ID, i * 10_000L, DetectorOutcome.HIGHLY_ENGAGED));
+                    ObservationRecords.at(MY_PARTICIPANT_ID, i * 10_000L, DetectorOutcome.HIGHLY_ENGAGED));
         }
         listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞"));
         listSessionSections.sections.add(new SessionSectionView(60_000L, 120_000L, "뒤"));

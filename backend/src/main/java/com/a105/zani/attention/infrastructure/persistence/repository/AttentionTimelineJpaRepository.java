@@ -13,13 +13,16 @@ import com.a105.zani.attention.infrastructure.persistence.query.PromptRow;
 /**
  * 리포트 타임라인이 재생할 원본 이력을 읽는다.
  *
- * <p>{@code AttentionEventJpaEntity} 를 통째로 불러오지 않고 세 컬럼만 투영한다. 30명 3시간이면 32,000 행이라 참가자 연관까지 딸려 오면 영속성 컨텍스트가 그만큼 부푼다.
+ * <p>{@code AttentionEventJpaEntity} 를 통째로 불러오지 않고 필요한 컬럼만 투영한다. 30명 3시간이면 32,000 행이라 참가자 연관까지 딸려 오면 영속성 컨텍스트가 그만큼 부푼다.
+ *
+ * <p>관측은 시각을 둘 다 읽는다. {@code occurred_offset_ms} 는 값이 정해진 시각이고 판정이 덮은 10초 창의 시작은 {@code window_started_offset_ms} 이므로,
+ * 뒤쪽이 없으면 타임라인의 시간축을 세울 수 없다. 정렬은 관측 시각으로 두고 창 시작 기준 재정렬은 재생기가 한다 — 창 시작이 빈 행의 보정 규칙이 도메인에 있어 SQL 로는 같은 순서를 만들 수 없다.
  */
 public interface AttentionTimelineJpaRepository extends JpaRepository<AttentionEventJpaEntity, Long> {
 
     @Query("""
             select new com.a105.zani.attention.infrastructure.persistence.query.ObservationRow(
-                e.sessionParticipantId, e.occurredOffsetMs, e.detectorOutcome)
+                e.sessionParticipantId, e.occurredOffsetMs, e.windowStartedOffsetMs, e.detectorOutcome)
             from AttentionEventJpaEntity e
             where e.sessionId = :sessionId and e.detectorOutcome is not null
             order by e.occurredOffsetMs asc
@@ -28,7 +31,7 @@ public interface AttentionTimelineJpaRepository extends JpaRepository<AttentionE
 
     @Query("""
             select new com.a105.zani.attention.infrastructure.persistence.query.ObservationRow(
-                e.sessionParticipantId, e.occurredOffsetMs, e.detectorOutcome)
+                e.sessionParticipantId, e.occurredOffsetMs, e.windowStartedOffsetMs, e.detectorOutcome)
             from AttentionEventJpaEntity e
             where e.sessionId = :sessionId
               and e.sessionParticipantId = :participantId

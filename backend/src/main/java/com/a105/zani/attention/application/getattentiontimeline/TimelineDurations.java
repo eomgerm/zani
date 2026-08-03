@@ -28,8 +28,10 @@ final class TimelineDurations {
         if (observations.isEmpty()) {
             return 0L;
         }
+        // 관측 시각은 판정이 정해진 시각이라 창이 있으면 그 창의 끝이다. 데이터가 닿는 마지막 지점을 재는
+        // 값으로는 창 시작보다 이쪽이 맞다.
         long lastOffsetMs = observations.stream()
-                .mapToLong(ObservationRecord::offsetMs)
+                .mapToLong(ObservationRecord::occurredOffsetMs)
                 .max()
                 .orElse(0L);
         return clampToGrid(lastOffsetMs, policy);

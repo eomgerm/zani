@@ -19,9 +19,6 @@ import com.a105.zani.attention.domain.model.DetectorOutcome;
  */
 public final class ParticipantReplay {
 
-    /** 이벤트 한 건이 덮는 시간. 브라우저가 10초 창을 분석해 10초마다 보낸다(확정 문서 §1). */
-    private static final long SLOT_MS = 10_000L;
-
     private final long participantId;
     private final List<ObservationSlot> slots;
     private final List<Window> connectedWindows;
@@ -169,15 +166,22 @@ public final class ParticipantReplay {
                 .toList();
     }
 
+    /**
+     * 관측을 슬롯으로 편다.
+     *
+     * <p>정렬 기준은 관측 시각이 아니라 슬롯 시작이다({@link ObservationRecord#slotStartMs()}). 조회는 관측 시각 오름차순으로 읽어 오지만 창 시작을 가진 행과 갖지 못한
+     * 행이 섞이면 보정 뒤 순서가 뒤집힐 수 있고, 그러면 슬롯 끝을 다음 슬롯 시작으로 자르는 아래 계산이 음수 길이를 만든다.
+     */
     private static List<ObservationSlot> toSlots(List<ObservationRecord> events) {
         List<ObservationRecord> sorted = new ArrayList<>(events);
-        sorted.sort(Comparator.comparingLong(ObservationRecord::offsetMs));
+        sorted.sort(Comparator.comparingLong(ObservationRecord::slotStartMs));
 
         List<ObservationSlot> slots = new ArrayList<>(sorted.size());
         for (int i = 0; i < sorted.size(); i++) {
-            long start = sorted.get(i).offsetMs();
+            long start = sorted.get(i).slotStartMs();
             long end = Math.min(
-                    start + SLOT_MS, i + 1 < sorted.size() ? sorted.get(i + 1).offsetMs() : Long.MAX_VALUE);
+                    start + ObservationRecord.WINDOW_MS,
+                    i + 1 < sorted.size() ? sorted.get(i + 1).slotStartMs() : Long.MAX_VALUE);
             // 같은 오프셋에 두 건이 들어오면 길이 0 슬롯이 나온다. 어떤 시각도 덮지 못하면서 연속 판정만
             // 끊으므로 버린다.
             if (end > start) {
