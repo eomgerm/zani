@@ -29,7 +29,15 @@ class ExpireDueSessionsServiceTest {
 
     private static Session liveSessionStartedAt(long id, Instant startedAt) {
         return Session.reconstitute(
-                id, 1L, "제목", "INVITE" + id, false, startedAt, SessionStatus.LIVE, SessionAnalysisStatus.NOT_STARTED);
+                id,
+                1L,
+                "제목",
+                "INVITE" + id,
+                false,
+                startedAt,
+                null,
+                SessionStatus.LIVE,
+                SessionAnalysisStatus.NOT_STARTED);
     }
 
     @Test

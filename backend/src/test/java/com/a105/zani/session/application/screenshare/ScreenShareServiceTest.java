@@ -116,6 +116,7 @@ class ScreenShareServiceTest {
                 "INVITE01",
                 false,
                 STARTED_AT,
+                null,
                 SessionStatus.LIVE,
                 SessionAnalysisStatus.NOT_STARTED);
         participant = SessionParticipant.join(
@@ -175,6 +176,7 @@ class ScreenShareServiceTest {
                 "INVITE01",
                 false,
                 STARTED_AT,
+                STARTED_AT.plusSeconds(3600),
                 SessionStatus.ENDED,
                 SessionAnalysisStatus.NOT_STARTED);
 

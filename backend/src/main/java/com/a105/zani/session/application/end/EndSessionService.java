@@ -1,5 +1,7 @@
 package com.a105.zani.session.application.end;
 
+import java.time.Clock;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,9 @@ public class EndSessionService implements EndSessionUseCase {
     private final ReleaseInstructorAudioUseCase releaseInstructorAudioUseCase;
     private final SessionActivationLockPort activationLockPort;
 
+    /** 종료 시각의 출처. 도메인이 시계를 읽지 않도록 서비스가 주입받아 넘긴다. */
+    private final Clock clock;
+
     @Override
     @Transactional
     public EndSessionResult end(EndSessionCommand command) {
@@ -28,7 +33,7 @@ public class EndSessionService implements EndSessionUseCase {
             // 이미 종료된 세션은 그대로 둔다(중복 종료 요청·재시도에 멱등).
             return new EndSessionResult(session.id(), session.status(), false);
         }
-        session.end();
+        session.end(clock.instant());
         Session ended = sessionRepository.save(session);
         // 코칭 오디오 버퍼는 세션당 수십 MB를 잡고 있어 종료 시 반납해야 한다. 메모리 조작뿐이라
         // 실패해도 종료를 되돌릴 이유가 없고, 되돌아가더라도 스트림이 다시 채운다.

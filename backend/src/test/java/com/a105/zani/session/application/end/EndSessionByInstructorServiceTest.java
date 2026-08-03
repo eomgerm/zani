@@ -38,6 +38,7 @@ class EndSessionByInstructorServiceTest {
                 "INVITE01",
                 false,
                 STARTED_AT,
+                null,
                 SessionStatus.LIVE,
                 SessionAnalysisStatus.NOT_STARTED);
     }

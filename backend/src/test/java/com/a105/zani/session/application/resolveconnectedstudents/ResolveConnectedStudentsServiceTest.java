@@ -122,6 +122,7 @@ class ResolveConnectedStudentsServiceTest {
                     "INVITE01",
                     false,
                     SESSION_STARTED_AT,
+                    null,
                     status,
                     SessionAnalysisStatus.NOT_STARTED));
         }
