@@ -45,16 +45,15 @@ class RecordingOrchestratorTest {
     private final RecordingOrchestrator orchestrator = new RecordingOrchestrator(
             outbox, egressPort, recordings, audioStreamRegistry, Clock.fixed(NOW, ZoneOffset.UTC));
 
-    private RequestTrackEgressCommand command(
-            SessionParticipantRole role, TrackSource source, boolean approved, String trackSid) {
+    private RequestTrackEgressCommand command(SessionParticipantRole role, TrackSource source, String trackSid) {
         String alias = role == SessionParticipantRole.INSTRUCTOR ? "instructor" : "student-001";
-        return new RequestTrackEgressCommand(SESSION_ID, trackSid, alias, role, source, approved);
+        return new RequestTrackEgressCommand(SESSION_ID, trackSid, alias, role, source);
     }
 
     @Test
     void 저장_대상_트랙은_outbox에_등록된다() {
         RequestTrackEgressResult result =
-                orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
+                orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_a"));
 
         assertEquals(TrackRecordingDecision.RECORD, result.decision());
         assertTrue(result.enqueued());
@@ -63,9 +62,9 @@ class RecordingOrchestratorTest {
 
     @Test
     void 같은_트랙의_중복_요청은_한_번만_등록된다() {
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_a"));
         RequestTrackEgressResult second =
-                orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_a"));
+                orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_a"));
 
         assertFalse(second.enqueued());
         assertEquals(1, outbox.rows.size());
@@ -75,18 +74,22 @@ class RecordingOrchestratorTest {
     void 학생_카메라는_거부되고_outbox에_남지_않는다() {
         assertThrows(
                 ForbiddenStudentCameraTrackException.class,
-                () -> orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.CAMERA, false, "TR_c")));
+                () -> orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.CAMERA, "TR_c")));
         assertEquals(0, outbox.rows.size());
     }
 
     @Test
-    void 미승인_학생_화면공유는_SKIP이고_등록되지_않는다() {
-        RequestTrackEgressResult result =
-                orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.SCREEN_SHARE, false, "TR_s"));
+    void 학생_화면공유는_영상과_오디오가_모두_등록된다() {
+        RequestTrackEgressResult video =
+                orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.SCREEN_SHARE, "TR_s"));
+        RequestTrackEgressResult audio =
+                orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.SCREEN_SHARE_AUDIO, "TR_sa"));
 
-        assertEquals(TrackRecordingDecision.SKIP, result.decision());
-        assertFalse(result.enqueued());
-        assertEquals(0, outbox.rows.size());
+        assertEquals(TrackRecordingDecision.RECORD, video.decision());
+        assertEquals(TrackRecordingDecision.RECORD, audio.decision());
+        assertTrue(video.enqueued());
+        assertTrue(audio.enqueued());
+        assertEquals(2, outbox.rows.size());
     }
 
     @Test
@@ -95,33 +98,23 @@ class RecordingOrchestratorTest {
         assertThrows(
                 InvalidRecordingAliasException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID, "TR_a", "김태정", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE, false)));
+                        SESSION_ID, "TR_a", "김태정", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
         // 별칭·역할 불일치
         assertThrows(
                 InvalidRecordingTrackException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID,
-                        "TR_a",
-                        "instructor",
-                        SessionParticipantRole.STUDENT,
-                        TrackSource.MICROPHONE,
-                        false)));
+                        SESSION_ID, "TR_a", "instructor", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
         // trackSid 형식 위반
         assertThrows(
                 InvalidRecordingTrackException.class,
                 () -> orchestrator.request(new RequestTrackEgressCommand(
-                        SESSION_ID,
-                        "../etc",
-                        "student-001",
-                        SessionParticipantRole.STUDENT,
-                        TrackSource.MICROPHONE,
-                        false)));
+                        SESSION_ID, "../etc", "student-001", SessionParticipantRole.STUDENT, TrackSource.MICROPHONE)));
         assertEquals(0, outbox.rows.size());
     }
 
     @Test
     void 릴레이는_claim에_성공한_행만_처리하고_recordings_행을_남긴다() {
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_m"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_m"));
 
         int processed = orchestrator.relayPendingOutbox();
 
@@ -139,7 +132,7 @@ class RecordingOrchestratorTest {
 
     @Test
     void 강사_마이크는_코칭용_오디오_스트림_Egress도_시작한다() {
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_m"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_m"));
 
         orchestrator.relayPendingOutbox();
 
@@ -152,8 +145,8 @@ class RecordingOrchestratorTest {
 
     @Test
     void 강사_카메라와_학생_마이크는_오디오_스트림_Egress를_만들지_않는다() {
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_c"));
-        orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.MICROPHONE, false, "TR_s"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_c"));
+        orchestrator.request(command(SessionParticipantRole.STUDENT, TrackSource.MICROPHONE, "TR_s"));
 
         orchestrator.relayPendingOutbox();
 
@@ -163,7 +156,7 @@ class RecordingOrchestratorTest {
 
     @Test
     void 다른_릴레이가_이미_claim한_행은_건너뛴다() {
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_m"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_m"));
         outbox.preClaimAll(); // 다른 인스턴스가 선점한 상황
 
         int processed = orchestrator.relayPendingOutbox();
@@ -176,7 +169,7 @@ class RecordingOrchestratorTest {
     void Egress_시작_후_저장이_실패하면_재시도하지_않고_egressId를_남긴다() {
         // 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로, 이 작업은 즉시 FAILED로 종결돼야 한다.
         recordings.failSave = true;
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_orphan"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_orphan"));
 
         orchestrator.relayPendingOutbox();
         outbox.makeAllDueNow();
@@ -192,7 +185,7 @@ class RecordingOrchestratorTest {
         // markCompleted가 실패하면 행이 IN_PROGRESS로 남고 lease 만료 후 다시 소비된다.
         // 그때 handle이 기존 Egress를 채택해야 하므로 외부 시작은 한 번만 일어나야 한다.
         outbox.failMarkCompleted = true;
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_mc"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_mc"));
         orchestrator.relayPendingOutbox();
 
         outbox.failMarkCompleted = false;
@@ -209,7 +202,7 @@ class RecordingOrchestratorTest {
         // 같은 트랙에 스트림 Egress 가 두 개 붙으면 두 PCM 이 한 링버퍼에 뒤섞이고, 누적 바이트가 경과 시간을
         // 앞질러 무음 패딩이 영구히 멈춘다. 예외도 로그도 없이 조용히 틀리는 종류라 재실행 경로를 못 박는다.
         outbox.failMarkCompleted = true;
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_ws"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_ws"));
         orchestrator.relayPendingOutbox();
         assertEquals(1, egressPort.audioStreamRequests.size());
 
@@ -226,7 +219,7 @@ class RecordingOrchestratorTest {
         // 표시가 TTL 로 사라졌거나 첫 저장이 실패했을 수 있다. 표시가 없으면 웹훅이 "녹화 미준비" 503 을 돌려
         // LiveKit 이 무한 재전송한다.
         outbox.failMarkCompleted = true;
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_re"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_re"));
         orchestrator.relayPendingOutbox();
         audioStreamRegistry.egressIds.clear();
 
@@ -242,7 +235,7 @@ class RecordingOrchestratorTest {
         // 종료된 실행을 채택하면 흐름이 끊긴 상태로 굳어 그 세션은 코칭 오디오를 영구히 받지 못한다.
         // 중복 유입이 해로운 구간은 실행이 살아 있을 때뿐이므로, 죽었으면 새로 시작해야 한다.
         outbox.failMarkCompleted = true;
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, false, "TR_dead"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.MICROPHONE, "TR_dead"));
         orchestrator.relayPendingOutbox();
         egressPort.audioStreamEnded("TR_dead");
 
@@ -256,7 +249,7 @@ class RecordingOrchestratorTest {
     @Test
     void Egress_실패는_백오프와_함께_재시도로_남긴다() {
         egressPort.failWith = new IllegalStateException("livekit down");
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_f"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_f"));
 
         orchestrator.relayPendingOutbox();
 
@@ -270,7 +263,7 @@ class RecordingOrchestratorTest {
     @Test
     void 백오프가_지나기_전에는_재시도하지_않는다() {
         egressPort.failWith = new IllegalStateException("livekit down");
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_b"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_b"));
         orchestrator.relayPendingOutbox(); // 실패 → next_attempt_at = NOW+30s
 
         int processed = orchestrator.relayPendingOutbox(); // 같은 시각(NOW) 재실행
@@ -282,7 +275,7 @@ class RecordingOrchestratorTest {
     @Test
     void 재시도_상한을_넘으면_FAILED로_남긴다() {
         egressPort.failWith = new IllegalStateException("livekit down");
-        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, false, "TR_x"));
+        orchestrator.request(command(SessionParticipantRole.INSTRUCTOR, TrackSource.CAMERA, "TR_x"));
 
         for (int i = 0; i < 5; i++) {
             outbox.makeAllDueNow(); // 테스트에서는 백오프 시간을 건너뛴다
