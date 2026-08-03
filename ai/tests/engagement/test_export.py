@@ -13,7 +13,11 @@ from zani_ai.engagement.export import (
     assert_output_parity,
     export_onnx,
 )
-from zani_ai.engagement.model import EngagementTransformer, ModelConfig
+from zani_ai.engagement.model import (
+    EngagementTransformer,
+    ModelConfig,
+    ordinal_binary_class_probabilities,
+)
 
 
 def test_exported_onnx_matches_pytorch_and_writes_metadata(tmp_path: Path) -> None:
@@ -63,6 +67,35 @@ def test_parity_still_rejects_a_genuinely_wrong_output() -> None:
 
     with pytest.raises(AssertionError):
         assert_output_parity(broken, _OBSERVED_TORCH)
+
+
+def test_ordinal_binary_head_exports_four_repaired_class_probabilities(tmp_path: Path) -> None:
+    """E0-L's completion condition: the deployed graph keeps the input shape and
+    ends in the same monotonicity-repaired distribution the metrics were read from.
+    """
+    torch.manual_seed(237)
+    model = EngagementTransformer(
+        torch.zeros(98),
+        torch.ones(98),
+        config=ModelConfig(
+            d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=0, head="ordinal_binary"
+        ),
+    ).eval()
+
+    result = export_onnx(model, DeploymentMetadata.default(), tmp_path)
+
+    tokens = np.arange(20 * 98, dtype=np.float32).reshape(1, 20, 98) / 1000
+    actual = ort.InferenceSession(str(result.model_path)).run(None, {"tokens": tokens})[0]
+    expected = ordinal_binary_class_probabilities(model(torch.from_numpy(tokens))).detach().numpy()
+    assert actual.shape == (1, 4)
+    np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-5)
+    assert (actual >= 0).all()
+    np.testing.assert_allclose(actual.sum(axis=1), np.ones(1), rtol=1e-5, atol=1e-6)
+    assert json.loads(result.metadata_path.read_text(encoding="utf-8"))["input_shape"] == [
+        "batch",
+        20,
+        98,
+    ]
 
 
 def test_export_succeeds_when_a_feature_std_is_clamped(tmp_path: Path) -> None:

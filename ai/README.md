@@ -545,6 +545,95 @@ artifacts/engagement/e0/
 샘플 영상, 합성 학습 데이터나 가짜 모델을 자동 생성하지 않습니다. 실제 정확도와 F1은
 공식 데이터로 학습한 뒤 `metrics.json`에서 확인합니다.
 
+### E0-L 순서형 K-1 이진 헤드
+
+E0-L은 등급 순서를 K-1 = 3개의 **독립** 이진 결정으로 분해합니다. 문헌은 이 분해로 ST-GCN
+기준 69.37% → 71.24%(+1.87%p)를 보고합니다. 순서 구조를 쓴 기존 시도 둘과는 다른 지점을
+건드립니다.
+
+- **E0-B(CORAL)** 는 가중치 벡터 하나를 세 임계값이 공유하고 bias만 따로 둡니다. 그래서
+  누적 로짓이 구조적으로 단조이고, 독립 헤드가 서로 어긋날 여지가 없습니다. macro-F1 0.5185.
+- **E0-H(SORD)** 는 softmax head를 두고 손실의 *타깃*만 이웃 등급으로 퍼뜨립니다. Validation
+  정확도 67.58%(우리 최고) 대비 macro-F1 56.80%(우리 최저).
+
+따라서 미검정으로 남은 조합은 **독립성 + 동결 백본**이고, E0-L은 그 밖의 것을 바꾸지
+않습니다. 헤드는 E0 분류기와 같은 모양(`Linear(256→128)→ReLU→Dropout(0.3)→Linear(128→1)`)의
+독립 3벌이며, 2단계 일정은 E0의 lr 1e-4 · 200 epoch · patience 20 · Validation Macro-F1
+선택을 그대로 상속합니다.
+
+**1단계는 재학습하지 않습니다.** `--stage1`이 완주한 E0 출력 디렉터리를 가리키고 seed n이
+seed n의 `best.pt`를 씁니다. E0-I가 reliability manifest를 `inputs`에 지문화한 선례를 따라
+seed별 체크포인트의 경로·크기·SHA-256이 `inputs.stage1.seeds`에 기록되고, 그 map의 정규
+해시가 `inputs.stage1.sha256`이 되어 다른 1단계를 가리킨 재개는 거부됩니다. 학습 전후와
+seed 완료 기록 직전에 파일이 그대로인지 다시 검사합니다.
+
+동결 범위는 `input_projection`·`position_embedding`·`encoder`와 정규화 통계입니다.
+gradient를 끄는 것으로 끝내지 않고 **백본을 `eval` 모드에 고정**합니다. `model.train()`이
+encoder dropout을 켜면 표현이 배치마다 흔들리고, 그렇게 맞춘 헤드는 동결 백본에 맞춘 헤드가
+아니기 때문입니다. optimizer도 헤드 파라미터만 받습니다.
+
+적재한 정규화 통계가 이번 Train 분할에서 재계산한 값과 어긋나면 실행을 거부합니다. 통계는
+Train 분할만의 함수이므로, 어긋난다는 것은 그 백본이 이 데이터셋을 본 적이 없다는 뜻입니다.
+
+#### 비단조 처리 규칙
+
+독립 헤드는 `P(y>0) ≥ P(y>1) ≥ P(y>2)`를 보장하지 않습니다. 규칙은 **누적 최소 보정**입니다.
+`p = sigmoid(z)`에 `p̃_j = min(p_0..p_j)`를 적용해 단조 원뿔로 투사하고, 인접 차
+`[1-p̃₀, p̃₀-p̃₁, p̃₁-p̃₂, p̃₂]`를 클래스 확률로 씁니다. `p̃`가 비증가이므로 차는 구조적으로
+음수가 아니고 합이 1이며, clamp와 정규화는 float 오차만 흡수합니다.
+
+`torch.cummin` 대신 정적인 임계값 개수만큼 펼친 루프로 씁니다. cummin에는 대응하는 ONNX
+연산자가 없어 `Scan`으로 내려가지만, 펼친 형태는 `Min` 노드 사슬이 되어 배포 그래프에
+반복문이 남지 않습니다. batch는 양쪽 모두 유일한 동적 축입니다.
+
+보정 **전** 위반율은 `metrics.json`의 `validation`·`test` 블록에
+`monotonicity_violation_rate`로 남습니다. 다른 head에서는 `null`이라 "인접 쌍이 없는
+프로토콜"과 "위반이 없었던 프로토콜"이 구분됩니다.
+
+디코딩은 CORAL의 `count(p > 0.5)`가 아니라 **보정된 확률의 argmax**입니다. 브라우저는
+내보낸 벡터에 softmax를 한 번 더 걸고 argmax하며 softmax는 순서를 보존하므로, 배포 시
+예측 라벨은 곧 그 벡터의 argmax입니다. 두 규칙은 `p̃ = (0.9, 0.6, 0.4)`에서 각각 2와 3으로
+갈리므로, 랭크를 택하면 측정한 숫자가 배포된 동작이 아니게 됩니다.
+
+`monotonicity`와 `decoding`이 재현성 identity에 들어가는 이유가 이것입니다. 둘 다 고정된
+가중치가 내는 숫자를 바꾸므로 프로토콜의 일부입니다. E0-L 해시는 cpu `76c7321e…`,
+cuda `2c6c20aa…`이며, 기본값을 벗어난 프로토콜에서만 기록되므로 기존 15개 프로토콜의
+`configuration_sha256`은 바뀌지 않습니다.
+
+#### 실행
+
+E0-L은 E0의 특징을 그대로 쓰므로 `build-features`를 다시 돌릴 필요가 없습니다. `--features`와
+`--stage1`은 같은 실행이 남긴 것이어야 합니다 — 통계 검사가 이를 강제하고, 비교기도 두
+manifest의 SHA-256을 대조합니다.
+
+```bash
+uv run python -m zani_ai engagement reproduce-e0l \
+  --features datasets/processed/engagenet \
+  --stage1 artifacts/engagement/e0-clean \
+  --output artifacts/engagement/e0l-ordinal-binary \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0l-ordinal-binary --split validation
+```
+
+Validation 비교를 기록한 뒤에만 고정 checkpoint로 Test를 한 번 평가합니다.
+
+```bash
+uv run python -m zani_ai engagement finalize-e0l \
+  --features datasets/processed/engagenet \
+  --output artifacts/engagement/e0l-ordinal-binary \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0l-ordinal-binary
+```
+
+seed는 순차로 돕니다. 동결 백본이라도 forward는 encoder 전체를 지나므로 L40S 한 장에서는
+여전히 compute bound이고, 같은 카드에 seed를 쌓으면 총 시간이 줄지 않습니다
+([../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md) 참고).
+
+한 가지 유보: 현 SOTA(PriorNet)는 순서 구조 없이 73.58%를 냅니다. 순서 구조를 쓴 우리 시도
+둘이 모두 기준선을 넘지 못했으므로 이 방향의 상한은 크지 않을 수 있습니다.
+
 ## 브라우저 실시간 추론
 
 ONNX export를 완료한 뒤 웹 앱을 실행합니다.

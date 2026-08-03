@@ -31,7 +31,11 @@ from zani_ai.engagement.contracts import (
     SplitName,
 )
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
-from zani_ai.engagement.model import EngagementTransformer, ModelConfig
+from zani_ai.engagement.model import (
+    EngagementTransformer,
+    ModelConfig,
+    ordinal_binary_class_probabilities,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +132,9 @@ class TrainingConfig:
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
+    # E0-L only: the stage-1 checkpoint whose backbone stage 2 freezes. Required
+    # by, and restricted to, the `ordinal_binary` head.
+    stage1_checkpoint: Path | None = None
     # E0-I only. Defaults preserve every existing protocol and checkpoint hash.
     curriculum: str = "none"
     reliability_manifest: Path | None = None
@@ -144,6 +151,11 @@ class EvaluationMetrics:
     quadratic_weighted_kappa: float
     confusion_matrix: list[list[int]]
     classification_report: dict[str, object]
+    #: Share of adjacent threshold pairs whose independent binary heads came out
+    #: in the wrong order, measured *before* the monotonicity repair. ``None``
+    #: for every head that has no such pairs, which keeps "not applicable"
+    #: distinguishable from "never violated".
+    monotonicity_violation_rate: float | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -586,6 +598,52 @@ class CoralObjective:
         return p / p.sum(dim=1, keepdim=True)
 
 
+class OrdinalBinaryObjective:
+    """K-1 *independent* binary heads over the grade order (ticket 237).
+
+    The targets are CORAL's cumulative indicators ``1[y>j]``, but nothing is
+    shared between the heads, so the sigmoid outputs are not ordered and
+    ``P(y>0) >= P(y>1) >= P(y>2)`` can be violated. The rule for that case is
+    fixed here rather than left to the caller: the running minimum projects the
+    cumulative probabilities onto the monotone cone, and the class distribution
+    is read off the adjacent differences (see
+    :func:`model.monotone_cumulative_probabilities`).
+
+    Decoding is the ``argmax`` of those class probabilities, not CORAL's
+    ``count(p > 0.5)``. The exported ONNX graph emits this probability vector and
+    the browser argmaxes it (after a softmax, which preserves order), so the two
+    rules disagreeing -- ``p̃ = (0.9, 0.6, 0.4)`` is rank 2 but argmax 3 -- would
+    mean the measured number is not the deployed behavior.
+    """
+
+    def __init__(self, num_classes: int = 4) -> None:
+        self.k = num_classes - 1
+
+    def _targets(self, labels: Tensor) -> Tensor:
+        j = torch.arange(self.k, device=labels.device).unsqueeze(0)
+        return (labels.unsqueeze(1) > j).float()  # [B,k], 1[y>j]
+
+    def loss(self, out: Tensor, labels: Tensor) -> Tensor:
+        return nn.functional.binary_cross_entropy_with_logits(out, self._targets(labels))
+
+    def predict(self, out: Tensor) -> Tensor:
+        return self.class_probs(out).argmax(dim=1)
+
+    def class_probs(self, out: Tensor) -> Tensor:
+        return ordinal_binary_class_probabilities(out)
+
+    def violation_counts(self, out: Tensor) -> tuple[int, int]:
+        """``(violated adjacent pairs, total adjacent pairs)`` before repair.
+
+        Reported so the repair cannot hide how often it was needed: a protocol
+        whose heads disagree with the grade order on most samples is a different
+        finding from one whose repair never fires.
+        """
+        probabilities = torch.sigmoid(out)
+        violated = probabilities[:, :-1] < probabilities[:, 1:]
+        return int(violated.sum().item()), int(violated.numel())
+
+
 def make_objective(
     config: Any,
     class_weights: Tensor | None = None,
@@ -601,13 +659,17 @@ def make_objective(
         )
     # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
     # attribute); any config without a `head` defaults to softmax.
-    if getattr(config, "head", "softmax") == "coral":
+    head = getattr(config, "head", "softmax")
+    if head in ("coral", "ordinal_binary"):
         if target_encoding != "one_hot":
-            # CORAL's targets are cumulative 1[y>j] indicators, so there is no
-            # class distribution left for SORD to soften. Ignoring the request
-            # would let a run record a target encoding it never trained with.
-            raise ValueError("target_encoding is not applicable to the CORAL head")
-        # CORAL replaces the softmax head itself, so `loss` does not apply.
+            # Both heads fit cumulative 1[y>j] indicators, so there is no class
+            # distribution left for SORD to soften. Ignoring the request would
+            # let a run record a target encoding it never trained with.
+            name = "CORAL" if head == "coral" else "ordinal-binary"
+            raise ValueError(f"target_encoding is not applicable to the {name} head")
+        # These heads replace the softmax head itself, so `loss` does not apply.
+        if head == "ordinal_binary":
+            return OrdinalBinaryObjective(config.num_classes)
         return CoralObjective(config.num_classes)
     if loss not in LOSS_SCHEMES:
         raise ValueError(f"loss must be one of {LOSS_SCHEMES}, got {loss!r}")
@@ -766,11 +828,17 @@ def evaluate_model(
     objective = make_objective(model.config)  # type: ignore[attr-defined]
     expected: list[int] = []
     predicted: list[int] = []
+    violated_pairs = 0
+    total_pairs = 0
     with torch.inference_mode():
         for tokens, labels in loader:
             logits = model(tokens.to(device))
             expected.extend(labels.tolist())
             predicted.extend(objective.predict(logits).cpu().tolist())
+            if isinstance(objective, OrdinalBinaryObjective):
+                violated, total = objective.violation_counts(logits)
+                violated_pairs += violated
+                total_pairs += total
     report = classification_report(
         expected,
         predicted,
@@ -787,6 +855,7 @@ def evaluate_model(
         quadratic_weighted_kappa=kappa,
         confusion_matrix=confusion_matrix(expected, predicted, labels=list(range(4))).tolist(),
         classification_report=cast(dict[str, object], report),
+        monotonicity_violation_rate=violated_pairs / total_pairs if total_pairs else None,
     )
 
 
@@ -864,6 +933,89 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     return model.to(device)
 
 
+#: ``state_dict`` prefixes that make up the frozen representation. The
+#: classifier head is deliberately absent: stage 2 replaces it.
+_BACKBONE_PREFIXES = (
+    "feature_mean",
+    "feature_std",
+    "input_projection.",
+    "position_embedding",
+    "encoder.",
+)
+_STAGE1_MODEL_FIELDS = (
+    "input_dim",
+    "segment_count",
+    "d_model",
+    "nhead",
+    "num_layers",
+    "mlp_dim",
+    "num_classes",
+)
+
+
+def freeze_stage1_backbone(
+    model: EngagementTransformer,
+    checkpoint_path: Path,
+    computed: FeatureStatistics,
+) -> FeatureStatistics:
+    """Copy a stage-1 checkpoint's backbone into ``model`` and freeze it.
+
+    Returns the stage-1 feature statistics, which become this run's statistics:
+    the frozen encoder was fitted against that normalization, so recomputing it
+    -- even to the same values -- would leave the checkpoint describing a
+    normalization the weights never saw.
+
+    The statistics are also the check that the two stages share a dataset. They
+    are a function of the Train split alone, so a mismatch means the backbone was
+    trained on other data and the run is refused rather than silently continued.
+    """
+    payload = cast(
+        dict[str, Any], torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    )
+    if payload.get("model_family", "transformer") != "transformer":
+        raise ValueError(f"stage-1 checkpoint must be a Transformer checkpoint: {checkpoint_path}")
+    recorded = dict(cast(dict[str, Any], payload["model_config"]))
+    recorded.setdefault("head", "softmax")
+    stage1_config = ModelConfig(**recorded)
+    for name in _STAGE1_MODEL_FIELDS:
+        if getattr(stage1_config, name) != getattr(model.config, name):
+            raise ValueError(
+                f"stage-1 checkpoint {name} does not match this protocol's model: "
+                f"{checkpoint_path}"
+            )
+    stage1 = FeatureStatistics(
+        np.asarray(payload["feature_mean"], dtype=np.float32),
+        np.asarray(payload["feature_std"], dtype=np.float32),
+    )
+    if stage1.mean.shape != computed.mean.shape or stage1.std.shape != computed.std.shape:
+        raise ValueError(
+            f"stage-1 checkpoint feature statistics have a wrong shape: {checkpoint_path}"
+        )
+    if not (
+        np.allclose(stage1.mean, computed.mean, rtol=1e-5, atol=1e-6)
+        and np.allclose(stage1.std, computed.std, rtol=1e-5, atol=1e-6)
+    ):
+        raise ValueError(
+            "stage-1 checkpoint feature statistics differ from this Train split; "
+            f"its backbone was trained on other data: {checkpoint_path}"
+        )
+    state = cast(dict[str, Tensor], payload["model_state"])
+    backbone = {key: value for key, value in state.items() if key.startswith(_BACKBONE_PREFIXES)}
+    incompatible = model.load_state_dict(backbone, strict=False)
+    if incompatible.unexpected_keys:
+        raise ValueError(
+            f"stage-1 checkpoint has unusable backbone keys {tuple(incompatible.unexpected_keys)}: "
+            f"{checkpoint_path}"
+        )
+    absent = tuple(key for key in incompatible.missing_keys if not key.startswith("ordinal_heads."))
+    if absent:
+        raise ValueError(
+            f"stage-1 checkpoint is missing backbone weights {absent}: {checkpoint_path}"
+        )
+    model.freeze_backbone()
+    return stage1
+
+
 def train_model(
     config: TrainingConfig,
     *,
@@ -900,6 +1052,16 @@ def train_model(
         )
     if config.build_model is None and not config.needs_feature_stats:
         raise ValueError("config.build_model is required when needs_feature_stats is False")
+    # The two are one decision: a head with no pretrained backbone to freeze
+    # trains from scratch, and a frozen backbone with a softmax head is E0 with
+    # its encoder switched off. Neither is a protocol we have.
+    if (getattr(config.model, "head", "softmax") == "ordinal_binary") != (
+        config.stage1_checkpoint is not None
+    ):
+        raise ValueError(
+            "the ordinal_binary head requires stage1_checkpoint, and stage1_checkpoint "
+            "requires the ordinal_binary head"
+        )
     datasets = _load_feature_datasets(
         config.features_root,
         include_test=evaluate_test,
@@ -917,11 +1079,16 @@ def train_model(
             datasets.train.token_arrays(), token_feature_count=schema.token_feature_count
         )
         if config.build_model is None:
-            model: nn.Module = EngagementTransformer(
+            transformer = EngagementTransformer(
                 torch.from_numpy(statistics.mean),
                 torch.from_numpy(statistics.std),
                 config=config.model,
             ).to(device)
+            if config.stage1_checkpoint is not None:
+                statistics = freeze_stage1_backbone(
+                    transformer, config.stage1_checkpoint, statistics
+                )
+            model: nn.Module = transformer
         else:
             model = config.build_model(statistics=statistics).to(device)
     else:
@@ -941,7 +1108,13 @@ def train_model(
         target_encoding=config.target_encoding,
         sord_alpha=config.sord_alpha,
     )
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    # Frozen backbone parameters are excluded rather than merely left without
+    # gradients, so what stage 2 trains is stated instead of implied. For every
+    # single-stage protocol this is every parameter, exactly as before.
+    optimizer = torch.optim.Adam(
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=config.learning_rate,
+    )
     scheduler = (
         torch.optim.lr_scheduler.StepLR(optimizer, step_size=config.lr_step, gamma=0.1)
         if config.lr_step
@@ -1069,6 +1242,8 @@ def train_model(
     training_payload["output_dir"] = str(config.output_dir)
     if config.reliability_manifest is not None:
         training_payload["reliability_manifest"] = str(config.reliability_manifest)
+    if config.stage1_checkpoint is not None:
+        training_payload["stage1_checkpoint"] = str(config.stage1_checkpoint)
     training_payload["model"] = model.config.to_dict()  # type: ignore[attr-defined]
     if training_payload.get("build_model") is not None:
         # `build_model` is a callable and not JSON-serializable; record a
@@ -1109,12 +1284,14 @@ __all__ = [
     "FeatureStatistics",
     "FocalObjective",
     "Objective",
+    "OrdinalBinaryObjective",
     "SoftmaxObjective",
     "SordObjective",
     "TrainingConfig",
     "TrainingResult",
     "compute_feature_statistics",
     "evaluate_model",
+    "freeze_stage1_backbone",
     "load_checkpoint",
     "make_objective",
     "ordinal_quality",

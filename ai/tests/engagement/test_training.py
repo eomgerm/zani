@@ -11,7 +11,12 @@ import pytest
 import torch
 
 from zani_ai.engagement import training as training_module
-from zani_ai.engagement.model import ModelConfig
+from zani_ai.engagement.model import (
+    EngagementTransformer,
+    ModelConfig,
+    monotone_cumulative_probabilities,
+    ordinal_binary_class_probabilities,
+)
 from zani_ai.engagement.reliability import (
     ClipReliability,
     ReliabilityCriteria,
@@ -25,6 +30,7 @@ from zani_ai.engagement.training import (
     CoralObjective,
     FeatureEntry,
     FocalObjective,
+    OrdinalBinaryObjective,
     SoftmaxObjective,
     SordObjective,
     TrainingConfig,
@@ -665,3 +671,264 @@ def test_sord_config_reaches_the_training_loop(
     assert isinstance(objective, SordObjective)
     assert objective.alpha == 1.5
     assert not isinstance(sampler, torch.utils.data.WeightedRandomSampler)
+
+
+# --- E0-L: K-1 independent binary heads (ticket 237) -------------------------
+
+_TINY_MODEL = ModelConfig(d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=0)
+_ORDINAL_MODEL = ModelConfig(
+    d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=0, head="ordinal_binary"
+)
+
+
+def _stage1_checkpoint(tmp_path: Path, features: Path) -> Path:
+    """A completed softmax-head run, standing in for one of E0's seeds."""
+    train_model(
+        TrainingConfig(
+            features_root=features,
+            output_dir=tmp_path / "stage1",
+            max_epochs=1,
+            batch_size=4,
+            patience=1,
+            device="cpu",
+            model=_TINY_MODEL,
+        ),
+        evaluate_test=False,
+    )
+    return tmp_path / "stage1" / "best.pt"
+
+
+@pytest.mark.parametrize(
+    "logits",
+    [
+        [0.0, 0.0, 0.0],
+        [3.0, 2.0, 1.0],
+        [-3.0, 2.0, 5.0],
+        [5.0, -5.0, 5.0],
+        [40.0, -40.0, 40.0],
+        [1.0, 1.0, -1.0],
+    ],
+    ids=["flat", "ordered", "reversed", "dip", "saturated", "tail-drop"],
+)
+def test_repaired_cumulative_probabilities_are_always_ordered(logits: list[float]) -> None:
+    """The ticket's completion condition: no violation survives decoding."""
+    out = torch.tensor([logits])
+
+    cumulative = monotone_cumulative_probabilities(out)
+    probabilities = ordinal_binary_class_probabilities(out)
+
+    assert bool((cumulative[:, :-1] - cumulative[:, 1:] >= 0).all())
+    assert bool((probabilities >= 0).all())
+    torch.testing.assert_close(probabilities.sum(dim=1), torch.ones(1))
+
+
+def test_repaired_probabilities_stay_ordered_on_random_logits() -> None:
+    generator = torch.Generator().manual_seed(237)
+    out = torch.randn(512, 3, generator=generator) * 8
+
+    cumulative = monotone_cumulative_probabilities(out)
+    probabilities = ordinal_binary_class_probabilities(out)
+
+    assert bool((cumulative[:, :-1] - cumulative[:, 1:] >= 0).all())
+    assert bool((probabilities >= 0).all())
+    torch.testing.assert_close(probabilities.sum(dim=1), torch.ones(512))
+
+
+def test_repair_leaves_an_already_ordered_sample_alone() -> None:
+    """Ordered heads decode exactly like CORAL, whose formula this shares."""
+    out = torch.tensor([[2.0, 0.5, -1.5]])
+
+    torch.testing.assert_close(monotone_cumulative_probabilities(out), torch.sigmoid(out))
+    torch.testing.assert_close(
+        ordinal_binary_class_probabilities(out), CoralObjective(4).class_probs(out)
+    )
+    assert OrdinalBinaryObjective(4).violation_counts(out) == (0, 2)
+
+
+def test_violation_counts_match_a_hand_count() -> None:
+    out = torch.tensor(
+        [
+            [2.0, 1.0, 0.0],  # ordered: 0 of 2 pairs
+            [0.0, 1.0, 2.0],  # reversed: 2 of 2
+            [2.0, 0.0, 1.0],  # one dip: 1 of 2
+        ]
+    )
+
+    assert OrdinalBinaryObjective(4).violation_counts(out) == (3, 6)
+
+
+def test_ordinal_binary_fits_the_same_cumulative_targets_as_coral() -> None:
+    """Only the head is independent; the objective is CORAL's 1[y>j] BCE."""
+    out = torch.tensor([[0.4, -0.2, 1.1], [-1.0, 0.7, 0.3]])
+    labels = torch.tensor([0, 3])
+
+    torch.testing.assert_close(
+        OrdinalBinaryObjective(4).loss(out, labels), CoralObjective(4).loss(out, labels)
+    )
+
+
+def test_the_heads_share_no_parameters() -> None:
+    """What separates E0-L from E0-B: CORAL shares a weight vector, this does not."""
+    model = EngagementTransformer(torch.zeros(98), torch.ones(98), config=_ORDINAL_MODEL)
+
+    assert len(model.ordinal_heads) == 3
+    identities = [
+        {id(parameter) for parameter in head.parameters()} for head in model.ordinal_heads
+    ]
+    assert identities[0].isdisjoint(identities[1])
+    assert identities[1].isdisjoint(identities[2])
+    assert identities[0].isdisjoint(identities[2])
+    assert model(torch.zeros(2, 20, 98)).shape == (2, 3)
+
+
+def test_decoding_is_argmax_where_rank_counting_would_disagree() -> None:
+    """Repaired (0.9, 0.6, 0.4) is rank 2 but argmax 3.
+
+    The exported graph emits the probability vector and the browser argmaxes it,
+    so evaluation has to read it the same way or the measured grade is not the
+    deployed one.
+    """
+    out = torch.logit(torch.tensor([[0.9, 0.6, 0.4]]))
+
+    torch.testing.assert_close(
+        ordinal_binary_class_probabilities(out), torch.tensor([[0.1, 0.3, 0.2, 0.4]])
+    )
+    assert CoralObjective(4).predict(out).tolist() == [2]
+    assert OrdinalBinaryObjective(4).predict(out).tolist() == [3]
+
+
+def test_make_objective_builds_the_ordinal_binary_objective() -> None:
+    assert isinstance(make_objective(_ORDINAL_MODEL), OrdinalBinaryObjective)
+
+
+def test_sord_is_refused_on_the_ordinal_binary_head() -> None:
+    with pytest.raises(ValueError, match="not applicable to the ordinal-binary head"):
+        make_objective(_ORDINAL_MODEL, target_encoding="sord")
+
+
+def test_stage_two_trains_the_heads_and_nothing_else(tmp_path: Path) -> None:
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+    stage1 = _stage1_checkpoint(tmp_path, features)
+    frozen = {
+        name: value.clone()
+        for name, value in torch.load(stage1, weights_only=False)["model_state"].items()
+        if not name.startswith("classifier.")
+    }
+
+    result = train_model(
+        TrainingConfig(
+            features_root=features,
+            output_dir=tmp_path / "stage2",
+            max_epochs=2,
+            batch_size=4,
+            patience=2,
+            learning_rate=1e-1,
+            device="cpu",
+            model=_ORDINAL_MODEL,
+            stage1_checkpoint=stage1,
+        ),
+        evaluate_test=False,
+    )
+
+    trained = torch.load(result.checkpoint_path, weights_only=False)["model_state"]
+    for name, value in frozen.items():
+        assert bool(torch.equal(trained[name], value)), f"{name} moved during stage 2"
+    assert any(name.startswith("ordinal_heads.") for name in trained)
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+    assert metrics["validation"]["monotonicity_violation_rate"] is not None
+
+
+def test_the_frozen_backbone_never_enters_training_mode() -> None:
+    """A backbone left in training mode resamples encoder dropout every batch, so
+    the head would be fitted against a representation that moves."""
+    model = EngagementTransformer(torch.zeros(98), torch.ones(98), config=_ORDINAL_MODEL)
+    model.freeze_backbone()
+
+    model.train()
+
+    assert not model.encoder.training
+    assert not model.input_projection.training
+    assert model.ordinal_heads.training
+    assert not model.position_embedding.requires_grad
+    assert all(not parameter.requires_grad for parameter in model.encoder.parameters())
+    assert all(parameter.requires_grad for parameter in model.ordinal_heads.parameters())
+
+
+def test_a_stage1_checkpoint_from_other_data_is_rejected(tmp_path: Path) -> None:
+    """Feature statistics are a function of the Train split alone, so a mismatch
+    means the frozen backbone never saw this dataset."""
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+    stage1 = _stage1_checkpoint(tmp_path, features)
+    payload = torch.load(stage1, weights_only=False)
+    payload["feature_mean"] = payload["feature_mean"] + 1.0
+    torch.save(payload, stage1)
+
+    with pytest.raises(ValueError, match="trained on other data"):
+        train_model(
+            TrainingConfig(
+                features_root=features,
+                output_dir=tmp_path / "stage2",
+                max_epochs=1,
+                batch_size=4,
+                patience=1,
+                device="cpu",
+                model=_ORDINAL_MODEL,
+                stage1_checkpoint=stage1,
+            ),
+            evaluate_test=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("model", "with_stage1"),
+    [(_ORDINAL_MODEL, False), (_TINY_MODEL, True)],
+    ids=["head-without-stage1", "stage1-without-head"],
+)
+def test_the_head_and_its_stage1_come_together(
+    tmp_path: Path, model: ModelConfig, with_stage1: bool
+) -> None:
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+    stage1 = _stage1_checkpoint(tmp_path, features) if with_stage1 else None
+
+    with pytest.raises(ValueError, match="requires stage1_checkpoint"):
+        train_model(
+            TrainingConfig(
+                features_root=features,
+                output_dir=tmp_path / "stage2",
+                max_epochs=1,
+                batch_size=4,
+                patience=1,
+                device="cpu",
+                model=model,
+                stage1_checkpoint=stage1,
+            ),
+            evaluate_test=False,
+        )
+
+
+def test_other_heads_record_no_violation_rate(tmp_path: Path) -> None:
+    """`null` keeps "no adjacent pairs exist" apart from "none were violated"."""
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+
+    result = train_model(
+        TrainingConfig(
+            features_root=features,
+            output_dir=tmp_path / "run",
+            max_epochs=1,
+            batch_size=4,
+            patience=1,
+            device="cpu",
+            model=_TINY_MODEL,
+        ),
+        evaluate_test=False,
+    )
+
+    assert result.validation.monotonicity_violation_rate is None
