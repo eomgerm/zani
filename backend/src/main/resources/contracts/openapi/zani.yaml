@@ -326,10 +326,61 @@ components:
           type: string
         inviteCode:
           type: string
+        title:
+          type: string
+        instructorName:
+          # 학생 카드가 "누구 수업인지" 를 보여주는 데 쓴다.
+          type: string
         status:
           $ref: "#/components/schemas/SessionStatus"
         role:
           $ref: "#/components/schemas/SessionRole"
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          # 진행 중인 수업에는 종료 시각이 없다.
+          type: string
+          format: date-time
+          nullable: true
+        participantCount:
+          # 들어온 적 있는 사람 수다. 지금 접속 중인 인원이 아니다 — 참가자 행은 퇴장해도 남는다.
+          type: integer
+          format: int64
+        reportStatus:
+          $ref: "#/components/schemas/SessionReportStatus"
+        rejoinable:
+          # 진행 중이면서 내 참가자 행이 있을 때만 true. 프리조인을 다시 거치지 않고 강의실로 들어갈 수 있다.
+          type: boolean
+      # required 가 없으면 OpenAPI 는 모든 필드를 선택으로 본다. 그러면 서버가 필드를 빼도 계약 테스트가
+      # 통과하고, 어긋남이 프론트의 응답 가드까지 흘러가서야 드러난다 — 그때는 목록뿐 아니라 같은 응답을
+      # 쓰는 다른 화면까지 함께 멈춘다. 필드 삭제를 백엔드에서 잡으려면 여기에 적어 두어야 한다.
+      #
+      # endedAt 도 넣는다. required 는 "키가 있어야 한다" 이고 값이 null 인 것은 nullable 이 따로 허락하므로,
+      # 진행 중인 수업이라도 `"endedAt": null` 로 나가는 지금 동작과 어긋나지 않는다. 빼 두면 계약이 "없어도
+      # 된다" 고 말하는데 프론트 가드는 없으면 거절해, 서로 다른 것을 약속하게 된다.
+      required:
+        - sessionId
+        - inviteCode
+        - title
+        - instructorName
+        - status
+        - role
+        - startedAt
+        - endedAt
+        - participantCount
+        - reportStatus
+        - rejoinable
+
+    SessionReportStatus:
+      # pipeline_jobs 의 여섯 단계를 화면이 구분해야 하는 셋으로 접은 값이다.
+      # 중간 단계를 그대로 노출하면 화면이 파이프라인 구현에 묶여, 단계가 늘 때마다 FE 도 고쳐야 한다.
+      type: string
+      enum:
+        - NONE
+        - PROCESSING
+        - COMPLETED
+        - FAILED
 
     SessionListApiResponse:
       type: object

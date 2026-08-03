@@ -3,6 +3,7 @@ package com.a105.zani.postclass.domain.model;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 사후 처리 작업의 단계 전이 규칙(FRD §17.1 처리 순서).
@@ -23,6 +24,12 @@ public final class PipelineStateMachine {
             PipelineStatus.PUBLISHED, EnumSet.noneOf(PipelineStatus.class),
             PipelineStatus.FAILED, EnumSet.noneOf(PipelineStatus.class));
 
+    /** 갈 곳이 남은 단계 = 아직 끝나지 않은 단계. 단계를 더하면 여기에도 자동으로 반영된다. */
+    private static final Set<PipelineStatus> UNFINISHED_STAGES = NEXT_STAGES.entrySet().stream()
+            .filter(stage -> !stage.getValue().isEmpty())
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toCollection(() -> EnumSet.noneOf(PipelineStatus.class)));
+
     private PipelineStateMachine() {}
 
     /**
@@ -32,5 +39,15 @@ public final class PipelineStateMachine {
      */
     public static boolean canAdvance(PipelineStatus from, PipelineStatus to) {
         return NEXT_STAGES.get(from).contains(to);
+    }
+
+    /**
+     * 아직 끝나지 않은 단계들. 밀린 작업을 고르는 쪽이 쓴다.
+     *
+     * <p>끝난 단계를 빼는 대신 이 목록으로 지목하는 이유: {@code status NOT IN (...)} 은 인덱스 선행 컬럼의 부정 조건이라 범위 스캔이 되지 않아, MySQL 이 (status,
+     * created_at) 인덱스를 두고도 테이블을 통째로 훑는다.
+     */
+    public static Set<PipelineStatus> unfinishedStages() {
+        return UNFINISHED_STAGES;
     }
 }

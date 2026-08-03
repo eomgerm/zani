@@ -32,7 +32,10 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 class StompHeartbeatSchedulerIsolationTest {
 
     /**
-     * {@code application.yaml} 의 {@code spring.task.scheduling.pool.size} 와 같은 값. 설정을 바꾸면 이 값도 함께 올린다.
+     * {@code application.yaml} 의 {@code spring.task.scheduling.pool.size} 와 <b>같아야 하는</b> 값. 설정을 바꾸면 이 값도 함께 바꾼다.
+     *
+     * <p>같은 숫자를 두 곳에 손으로 적는 구조라 실제로 한 번 어긋났다 — 알림 이메일 릴레이가 붙어 설정이 7 로 오르는 동안 이 상수가 6 에 남아 있었다(116). 스케줄 작업을 늘릴 때 두 곳을
+     * 같이 보라.
      *
      * <p>{@code SchedulingPoolSizeTest} 가 같은 설정을 스케줄 작업 수 기준으로 따로 지킨다. 그쪽은 YAML 텍스트만 읽으므로 <b>설정이 실제로 쓰이는지</b>는 이 테스트만
      * 안다 — {@code @Scheduled} 가 브로커 풀로 새던 동안에도 그 테스트는 초록이었다.

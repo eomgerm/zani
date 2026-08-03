@@ -1,4 +1,4 @@
-import type { LectureStatus } from "./fixtures";
+import type { LectureStatus } from "./myLectures";
 
 /**
  * 강의 카드 상태 칩 정보.
@@ -6,7 +6,7 @@ import type { LectureStatus } from "./fixtures";
  * 칩 자체는 흰 배경 고정이고 상태는 왼쪽 점 색으로만 구분한다(프로토타입 statusPill/statusDot).
  * 라벨은 녹화가 아니라 분석 진행도를 가리킨다.
  *
- * FAILED 는 목록·캘린더에서 걸러지므로 화면에 닿지 않지만, 방어적으로 남겨 둔다.
+ * 분석에 실패한 강의도 목록에 남는다. 리포트가 실패했다고 수업이 없었던 것은 아니고, 목록에서 사라지면 강사는 자기 수업이 없어진 것으로 본다.
  */
 export function statusInfo(status: LectureStatus): { label: string; dot: string } {
   switch (status) {

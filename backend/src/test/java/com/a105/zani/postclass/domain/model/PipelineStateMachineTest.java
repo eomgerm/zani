@@ -1,10 +1,12 @@
 package com.a105.zani.postclass.domain.model;
 
+import java.util.EnumSet;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -64,6 +66,18 @@ class PipelineStateMachineTest {
                     () -> PipelineStateMachine.canAdvance(stage, PipelineStatus.FAILED),
                     () -> stage + " 의 전이 규칙이 정의되지 않았습니다");
         }
+    }
+
+    @Test
+    void countsEveryStageThatStillHasSomewhereToGoAsUnfinished() {
+        // 밀린 작업을 고르는 쿼리가 이 목록을 그대로 쓴다. 끝난 단계가 섞이면 이미 결과가 나온 수업까지 경보에 올라온다.
+        assertEquals(
+                EnumSet.of(
+                        PipelineStatus.QUEUED,
+                        PipelineStatus.TRANSCRIBING,
+                        PipelineStatus.ANALYZING,
+                        PipelineStatus.VALIDATING),
+                PipelineStateMachine.unfinishedStages());
     }
 
     @Test

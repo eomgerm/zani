@@ -31,6 +31,8 @@ class SaveNoteDraftServiceTest {
     private static final long INSTRUCTOR_USER = 11L;
     private static final long INSTRUCTOR_PARTICIPANT = 7L;
     private static final Instant NOW = Instant.parse("2026-07-30T09:00:00Z");
+    private static final Instant SESSION_STARTED_AT = NOW.minusSeconds(3600);
+    private static final Instant SESSION_ENDED_AT = NOW.minusSeconds(600);
 
     private final InMemoryInstructorNoteRepository noteRepository = new InMemoryInstructorNoteRepository();
     private final StubResolveEndedParticipant resolveParticipant = new StubResolveEndedParticipant();
@@ -146,7 +148,8 @@ class SaveNoteDraftServiceTest {
             if (failure != null) {
                 throw failure;
             }
-            return new ResolveEndedSessionParticipantResult(INSTRUCTOR_PARTICIPANT, role);
+            return new ResolveEndedSessionParticipantResult(
+                    INSTRUCTOR_PARTICIPANT, role, SESSION_STARTED_AT, SESSION_ENDED_AT);
         }
     }
 }

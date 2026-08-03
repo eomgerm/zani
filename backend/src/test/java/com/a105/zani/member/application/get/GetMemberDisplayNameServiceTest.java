@@ -30,6 +30,11 @@ class GetMemberDisplayNameServiceTest {
             public Optional<Member> findByGoogleSubject(String googleSubject) {
                 return Optional.empty();
             }
+
+            @Override
+            public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
+                return java.util.List.of();
+            }
         });
     }
 

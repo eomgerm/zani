@@ -90,7 +90,7 @@ class ResolveSessionParticipantServiceTest {
 
     private static Session session(SessionStatus status) {
         return Session.reconstitute(
-                SESSION_ID, 7L, "제목", "INVITE01", false, T0, status, SessionAnalysisStatus.NOT_STARTED);
+                SESSION_ID, 7L, "제목", "INVITE01", false, T0, null, status, SessionAnalysisStatus.NOT_STARTED);
     }
 
     private static final class FakeSessionRepository implements SessionRepository {

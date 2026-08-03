@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { CalendarIcon, ListIcon, SearchIcon, SortIcon } from "@/shared/ui";
-import { lectures } from "./fixtures";
+import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
+import { useMyLectures } from "./useMyLectures";
 import { LectureCard } from "./components/LectureCard";
 import { LectureCalendar } from "./components/LectureCalendar";
 
@@ -24,19 +25,19 @@ function viewCls(active: boolean) {
 
 /**
  * SC-05 내 강의실. 참여/진행 강의를 검색·정렬·리스트/캘린더로 확인한다.
- * 필터·검색·정렬·보기 전환은 시연용 로컬 상태로 동작한다.
+ * 검색·정렬·보기 전환은 받아 온 목록 위에서 화면이 처리한다(서버는 페이지네이션 없이 전체를 준다).
+ *
+ * <p><b>분석에 실패한 강의도 보여준다.</b> 리포트가 실패했다고 수업이 없었던 것은 아니다. 목록에서 지우면 강사는 자기 수업이 사라진 것으로 보고, 재처리를 요청할 방법도 없어진다.
  */
-export function MyLecturesScreen() {
+export function MyLecturesScreen({ requestList }: { requestList?: SessionListRequester }) {
   const [tab, setTab] = useState<"student" | "instructor">("student");
   const [search, setSearch] = useState("");
   const [sortDesc, setSortDesc] = useState(true);
   const [view, setView] = useState<"list" | "cal">("list");
 
-  // 분석에 실패한 강의는 보여줄 결과가 없어 목록·캘린더 모두에서 제외한다.
-  const mine = useMemo(
-    () => lectures.filter((l) => l.status !== "FAILED").filter((l) => l.role === tab),
-    [tab],
-  );
+  const { lectures, loading, error } = useMyLectures(requestList);
+
+  const mine = useMemo(() => lectures.filter((l) => l.role === tab), [lectures, tab]);
 
   const visible = useMemo(() => {
     const filtered = mine.filter((l) =>
@@ -108,7 +109,16 @@ export function MyLecturesScreen() {
         </div>
       </div>
 
-      {view === "list" ? (
+      {/* 실패를 빈 목록과 같은 문구로 보여주면 사용자는 자기 수업이 사라진 줄 안다. 반드시 갈라 놓는다. */}
+      {loading ? (
+        <div className="px-5 py-[70px] text-center text-ink-fainter" role="status">
+          강의 목록을 불러오는 중이에요…
+        </div>
+      ) : error !== null ? (
+        <div className="px-5 py-[70px] text-center" role="alert">
+          <div className="mb-1 font-bold text-ink-muted">{error}</div>
+        </div>
+      ) : view === "list" ? (
         visible.length === 0 ? (
           <div className="px-5 py-[70px] text-center text-ink-fainter">
             <div className="mb-3.5 text-[44px]">📭</div>
