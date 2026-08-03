@@ -1,5 +1,6 @@
 package com.a105.zani.quiz.infrastructure.persistence;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +31,9 @@ import com.a105.zani.quiz.infrastructure.persistence.repository.QuizQuestionJpaR
 @RequiredArgsConstructor
 public class StudentQuizPersistenceAdapter implements StudentQuizPort {
 
+    /** MySQL ER_DUP_ENTRY — 유니크 제약 위반의 벤더 에러 코드. */
+    private static final int MYSQL_DUPLICATE_ENTRY = 1062;
+
     private final QuizJpaRepository quizJpaRepository;
     private final QuizQuestionJpaRepository quizQuestionJpaRepository;
     private final QuizOptionJpaRepository quizOptionJpaRepository;
@@ -50,10 +54,29 @@ public class StudentQuizPersistenceAdapter implements StudentQuizPort {
             quizAnswerJpaRepository.saveAllAndFlush(answers.stream()
                     .map(StudentQuizPersistenceAdapter::entityOf)
                     .toList());
-        } catch (DataIntegrityViolationException raceLost) {
-            // UK_QUIZ_ANSWERS_QUIZ_QUESTION — 사전 검사를 나란히 통과한 두 제출 중 늦게 커밋하는 쪽이다.
-            throw new QuizAlreadySubmittedException(raceLost);
+        } catch (DataIntegrityViolationException violation) {
+            // 중복 키만 재제출 409 다 — UK_QUIZ_ANSWERS_QUIZ_QUESTION, 사전 검사를 나란히 통과한 두 제출 중
+            // 늦게 커밋하는 쪽. FK·NOT NULL 같은 다른 위반까지 409 로 오진하지 않도록 그대로 전파한다(500).
+            if (isDuplicateEntry(violation)) {
+                throw new QuizAlreadySubmittedException(violation);
+            }
+            throw violation;
         }
+    }
+
+    /**
+     * cause 체인의 SQL 에러 코드로 중복 키 위반인지 판별한다.
+     *
+     * <p>제약 이름 파싱은 드라이버·버전에 따라 메시지 포맷이 달라, 매칭이 어긋나면 정당한 재제출 경합이 500 으로 새는 역회귀가 된다. MySQL 의 ER_DUP_ENTRY(1062) 에러 코드는
+     * 메시지 포맷과 무관하게 안정적이다.
+     */
+    private static boolean isDuplicateEntry(DataIntegrityViolationException violation) {
+        for (Throwable cause = violation.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getErrorCode() == MYSQL_DUPLICATE_ENTRY;
+            }
+        }
+        return false;
     }
 
     private StudentQuizSnapshot snapshotOf(QuizJpaEntity quiz) {

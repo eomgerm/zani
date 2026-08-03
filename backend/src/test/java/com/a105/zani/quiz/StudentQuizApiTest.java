@@ -4,12 +4,14 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,10 +20,14 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import com.a105.zani.auth.application.port.TokenProvider;
+import com.a105.zani.quiz.application.exception.QuizAlreadySubmittedException;
+import com.a105.zani.quiz.application.port.NewQuizAnswer;
+import com.a105.zani.quiz.application.port.StudentQuizPort;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,6 +68,9 @@ class StudentQuizApiTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private StudentQuizPort studentQuizPort;
 
     private MockMvc mockMvc;
 
@@ -214,6 +223,32 @@ class StudentQuizApiTest {
         jdbcTemplate.update("UPDATE sessions SET status = 'LIVE' WHERE id = ?", SESSION_ID);
 
         fetchQuiz(STUDENT_ID).andExpect(status().isNotFound());
+    }
+
+    /** HTTP 경로는 사전 검사(기존 답 유무)가 먼저 409 를 돌려줘 DB 유니크 경합 분기에 닿지 못한다. 아래 두 건만 포트를 직접 부른다. */
+    @Test
+    void translatesTheDuplicateKeyRaceIntoAlreadySubmittedAtThePort() {
+        Instant answeredAt = Instant.now();
+        List<NewQuizAnswer> submission = List.of(
+                new NewQuizAnswer(QUESTION_1_ID, OPTION_1_CORRECT_ID, answeredAt),
+                new NewQuizAnswer(QUESTION_2_ID, OPTION_2_CORRECT_ID, answeredAt));
+        studentQuizPort.saveAnswers(submission);
+
+        assertThrows(QuizAlreadySubmittedException.class, () -> studentQuizPort.saveAnswers(submission));
+
+        // 경합에서 진 쪽은 아무것도 남기지 않고, 먼저 커밋된 제출이 그대로 남는다.
+        assertEquals(2, answerCount());
+    }
+
+    @Test
+    void propagatesANonDuplicateIntegrityViolationInsteadOfMisreportingConflict() {
+        // 다른 문항의 보기 — 복합 FK(quiz_question_id, selected_quiz_option_id) 위반이라 중복 키(1062)가 아니다.
+        List<NewQuizAnswer> foreignKeyBreaker =
+                List.of(new NewQuizAnswer(QUESTION_1_ID, OPTION_2_CORRECT_ID, Instant.now()));
+
+        assertThrows(DataIntegrityViolationException.class, () -> studentQuizPort.saveAnswers(foreignKeyBreaker));
+
+        assertEquals(0, answerCount());
     }
 
     private ResultActions fetchQuiz(long memberId) throws Exception {
