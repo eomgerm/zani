@@ -28,8 +28,25 @@ from zani_ai.engagement.stgcn import (
     PaperEngagementSTGCN,
     PaperSTGCNConfig,
 )
+from zani_ai.engagement.training import (
+    EvaluationMetrics,
+    TrainingConfig,
+    _save_checkpoint,
+    load_checkpoint,
+)
 
 E1P = SPECS["E1-P"]
+
+
+def _metrics() -> EvaluationMetrics:
+    return EvaluationMetrics(
+        accuracy=0.5,
+        macro_f1=0.4,
+        within_one_accuracy=0.9,
+        quadratic_weighted_kappa=0.3,
+        confusion_matrix=[[1, 0, 0, 0]] * 4,
+        classification_report={},
+    )
 
 
 def _mean_xy() -> np.ndarray:
@@ -121,6 +138,64 @@ def test_export_metadata_declares_the_step_count_it_was_trained_at() -> None:
     assert e1.input_shape == ("batch", 3, 100, 78)
     assert e1.segment_count == 100
     assert e1.sample_fps == 10.0
+
+
+def test_checkpoint_round_trips_the_paper_model(tmp_path) -> None:
+    """The checkpoint has to carry its own graph, and come back as the same model.
+
+    `_save_checkpoint` stores an ST-GCN's fixed graph buffer explicitly, and the
+    two families hold different ones -- E1's `[3,V,V]` partitions under
+    `partitions`, the paper's `[V,V]` `A+I` under `adjacency`. Reading the wrong
+    key rebuilds the wrong class, and `model_family` is "stgcn" for both, so the
+    stored key is the only discriminator.
+    """
+    graph = tmp_path / "landmark_78_v1_graph.npz"
+    save_graph(graph, tuple(range(NODE_COUNT)), build_spatial_partitions(_mean_xy()))
+    model = paper_stgcn_model_builder(graph)()
+    checkpoint = tmp_path / "best.pt"
+    _save_checkpoint(
+        checkpoint,
+        model,
+        TrainingConfig(features_root=tmp_path, output_dir=tmp_path),
+        None,
+        epoch=0,
+        validation=_metrics(),
+        schema=E1P.schema_name,
+    )
+
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    assert "adjacency" in payload
+    assert "partitions" not in payload
+    assert payload["adjacency"].shape == (NODE_COUNT, NODE_COUNT)
+
+    restored = load_checkpoint(checkpoint)
+    assert isinstance(restored, PaperEngagementSTGCN)
+    for original, loaded in zip(
+        model.state_dict().values(), restored.state_dict().values(), strict=True
+    ):
+        assert torch.equal(original, loaded)
+
+
+def test_checkpoint_round_trips_the_e1_model(tmp_path) -> None:
+    """The same path must still rebuild E1, whose checkpoints already exist."""
+    graph = tmp_path / "landmark_78_v1_graph.npz"
+    save_graph(graph, tuple(range(NODE_COUNT)), build_spatial_partitions(_mean_xy()))
+    model = stgcn_model_builder(graph)()
+    checkpoint = tmp_path / "best.pt"
+    _save_checkpoint(
+        checkpoint,
+        model,
+        TrainingConfig(features_root=tmp_path, output_dir=tmp_path),
+        None,
+        epoch=0,
+        validation=_metrics(),
+        schema="landmark_78_v1",
+    )
+
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    assert "partitions" in payload
+    assert "adjacency" not in payload
+    assert isinstance(load_checkpoint(checkpoint), EngagementSTGCN)
 
 
 def test_exported_paper_model_runs_at_its_declared_shape(tmp_path) -> None:

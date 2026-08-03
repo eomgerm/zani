@@ -184,10 +184,12 @@ def test_completed_protocols_stay_pinned_to_the_five_seed_identity(spec: Experim
 
     ``seeds`` is inside ``configuration``, so letting one of these inherit the
     new default would change its ``configuration_sha256`` and make
-    ``_validate_summary_identity`` reject its own output directory. Only E0-10,
-    which has nothing on disk yet, may carry the new list.
+    ``_validate_summary_identity`` reject its own output directory. Only a
+    protocol with nothing on disk yet may carry the new list: E0-10, and E1-P,
+    which is added by S15P11A105-288 and has never been run.
     """
-    expected = CANDIDATE_SEEDS if spec.protocol == "E0-10" else E0_SEEDS
+    ten_seed_protocols = {"E0-10", "E1-P"}
+    expected = CANDIDATE_SEEDS if spec.protocol in ten_seed_protocols else E0_SEEDS
 
     assert spec.seeds == expected
 

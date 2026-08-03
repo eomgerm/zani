@@ -880,10 +880,21 @@ def _save_checkpoint(
         payload["feature_mean"] = statistics.mean
         payload["feature_std"] = statistics.std
     else:
-        # ST-GCN's adjacency `partitions` buffer is fixed but not learned, so it
-        # is not part of `model_state`'s gradient-bearing parameters logically;
-        # store it explicitly so the checkpoint is self-contained.
-        payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
+        from zani_ai.engagement.stgcn import PaperEngagementSTGCN
+
+        # An ST-GCN's graph buffer is fixed but not learned, so it is not part of
+        # `model_state`'s gradient-bearing parameters logically; store it
+        # explicitly so the checkpoint is self-contained.
+        #
+        # The two ST-GCN families hold different graphs -- E1's three
+        # spatial-configuration partitions `[3,V,V]` and the paper's single
+        # `A+I` `[V,V]` -- so each gets its own key. That key is what
+        # `load_checkpoint` dispatches on: sharing one would let a checkpoint
+        # load and come back as the wrong model.
+        if isinstance(model, PaperEngagementSTGCN):
+            payload["adjacency"] = model.adjacency.detach().cpu().numpy()
+        else:
+            payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
     payload.update(
         {
             "epoch": epoch,
@@ -905,12 +916,28 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     model_family = checkpoint.get("model_family", "transformer")
     cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
     if model_family == "stgcn":
-        from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+        from zani_ai.engagement.stgcn import (
+            EngagementSTGCN,
+            PaperEngagementSTGCN,
+            PaperSTGCNConfig,
+            STGCNConfig,
+        )
 
         if "channels" in cfg_dict:
             cfg_dict["channels"] = tuple(cfg_dict["channels"])
-        stgcn_config = STGCNConfig(**cfg_dict)
-        stgcn_model = EngagementSTGCN(torch.as_tensor(checkpoint["partitions"]), stgcn_config)
+        # Which graph the checkpoint carries decides which model it is. See the
+        # note in `_save_checkpoint`: `model_family` is "stgcn" for both
+        # families, because it is part of the reproducibility identity and
+        # splitting it would rewrite E1's configuration hash.
+        stgcn_model: nn.Module
+        if "adjacency" in checkpoint:
+            stgcn_model = PaperEngagementSTGCN(
+                torch.as_tensor(checkpoint["adjacency"]), PaperSTGCNConfig(**cfg_dict)
+            )
+        else:
+            stgcn_model = EngagementSTGCN(
+                torch.as_tensor(checkpoint["partitions"]), STGCNConfig(**cfg_dict)
+            )
         stgcn_model.load_state_dict(checkpoint["model_state"])
         return stgcn_model.to(device)
     if model_family != "transformer":
