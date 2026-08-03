@@ -70,7 +70,9 @@ const isSessionSummary = (value: unknown): value is SessionSummary => {
 /**
  * 내가 참여한 수업 목록을 가져온다(GET /api/v1/sessions).
  *
- * <p>응답에는 제목·시작 시각이 없다. 그래서 "진행 중인 수업으로 돌아가기"처럼 식별자만 필요한 용도에는 쓸 수 있지만, 제목을 보여주는 목록 화면에는 서버가 필드를 추가해야 한다.
+ * <p>강사로 연 수업과 학생으로 들은 수업이 함께 오고 `role` 로 갈린다. 페이지네이션이 없어 전체가 한 번에 온다 — 검색·정렬·달력 묶음은 받아 온 목록 위에서 화면이 처리한다.
+ *
+ * <p>모양이 어긋난 항목이 하나라도 있으면 전체를 거절한다. 일부만 받아 두면 화면이 빈 칸을 그리고, 그 원인이 서버 변경인지 이쪽 버그인지 나중에 가릴 수 없다.
  */
 export const requestSessionList: SessionListRequester = async (accessToken, signal) => {
   const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/$/, "");

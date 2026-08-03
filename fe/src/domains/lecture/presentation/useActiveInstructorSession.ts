@@ -28,7 +28,8 @@ export type ActiveInstructorSessionState = {
  *
  * <p>조회 실패와 "활성 수업 없음"을 밖으로 구분해 주지 않는다. 이 값을 쓰는 홈 배너의 용도는 "돌아가기·종료"뿐이라, 상태를 알 수 없을 때 보여줄 것도 없다. 실패 원인은 콘솔에만 남긴다.
  *
- * <p>목록 API 는 제목을 주지 않으므로 이 훅도 식별자만 다룬다. 배너가 제목을 보여주려면 서버가 필드를 추가해야 한다.
+ * <p>목록 API 는 제목도 함께 주지만 이 훅은 식별자만 골라 쓴다. 배너가 하는 일이 "돌아가기·종료" 뿐이라 그 이상이 필요하지 않다 — 제목을 보여주려면 여기서 {@code SessionSummary} 를 그대로
+ * 넘기면 된다.
  */
 export function useActiveInstructorSession(
   requestList: SessionListRequester = requestSessionList,
