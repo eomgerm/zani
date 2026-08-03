@@ -36,7 +36,7 @@ class GetMemberDisplayNameServiceTest {
     @Test
     void returnsTheDisplayNameOfAnExistingMember() {
         GetMemberDisplayNameService service = serviceReturning(
-                Optional.of(Member.reconstitute(MEMBER_ID, "google-sub", "user@zani.local", "홍길동", null)));
+                Optional.of(Member.reconstitute(MEMBER_ID, "google-sub", "user@zani.local", "홍길동", null, true)));
 
         assertEquals(
                 "홍길동",

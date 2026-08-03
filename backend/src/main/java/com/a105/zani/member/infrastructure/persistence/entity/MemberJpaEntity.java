@@ -38,6 +38,9 @@ public class MemberJpaEntity extends BaseSoftDeletableJpaEntity {
     @Column(name = "profile_image_url", length = 500)
     private String profileImageUrl;
 
+    @Column(name = "report_email_enabled", nullable = false)
+    private boolean reportEmailEnabled;
+
     @Column(name = "retention_expires_at", columnDefinition = "DATETIME(6)")
     private Instant retentionExpiresAt;
 }

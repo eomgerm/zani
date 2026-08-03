@@ -26,12 +26,13 @@ public interface NotificationDiscoveryJpaRepository extends JpaRepository<Notifi
             nativeQuery = true)
     List<Long> findReadyReportSessionsWithoutNotification(@Param("type") String type, @Param("limit") int limit);
 
-    /** 세션의 학생 수신자(역할 STUDENT). */
+    /** 세션의 학생 수신자(역할 STUDENT). 리포트 알림 수신을 끈(report_email_enabled = FALSE) 회원은 발송 대상에서 제외한다. */
     @Query(
             value = "SELECT p.member_id AS memberId, m.email AS email, m.display_name AS displayName"
                     + " FROM session_participants p"
                     + " JOIN members m ON m.id = p.member_id"
                     + " WHERE p.session_id = :sessionId AND p.role = 'STUDENT' AND m.deleted_at IS NULL"
+                    + " AND m.report_email_enabled = TRUE"
                     + " ORDER BY p.id ASC",
             nativeQuery = true)
     List<ReportRecipientRow> findRecipients(@Param("sessionId") Long sessionId);
