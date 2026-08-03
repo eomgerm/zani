@@ -19,6 +19,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param transcribeLanguage 전사 언어. 한국어 강의를 전제로 기본값은 ko 다. 비우면 GMS 가 자동 감지한다
  * @param tipModel 팁 문구를 채우는 모델. 기본 gpt-5.4-mini
  * @param tipTimeout 팁 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 팁은 만들지 않는다
+ * @param analysisModel 사후 학생별 분석 모델. 기본 gpt-5.4-mini
+ * @param analysisTimeout 분석 호출 timeout. 재시도가 없으므로 초과하면 그 학생의 분석은 실패로 끝난다
  */
 @ConfigurationProperties(prefix = "gms")
 public record GmsProperties(
@@ -31,13 +33,16 @@ public record GmsProperties(
         Duration transcribeTimeout,
         String transcribeLanguage,
         String tipModel,
-        Duration tipTimeout) {
+        Duration tipTimeout,
+        String analysisModel,
+        Duration analysisTimeout) {
 
     /** record 기본 구현은 apiKey 를 그대로 출력한다. 설정 덤프·예외 메시지로 키가 새지 않도록 마스킹한다. */
     @Override
     public String toString() {
         return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s,"
-                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s, tipModel=%s, tipTimeout=%s]"
+                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s, tipModel=%s, tipTimeout=%s,"
+                + " analysisModel=%s, analysisTimeout=%s]"
                         .formatted(
                                 baseUrl,
                                 apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
@@ -48,6 +53,8 @@ public record GmsProperties(
                                 transcribeTimeout,
                                 transcribeLanguage,
                                 tipModel,
-                                tipTimeout);
+                                tipTimeout,
+                                analysisModel,
+                                analysisTimeout);
     }
 }
