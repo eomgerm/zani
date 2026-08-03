@@ -346,6 +346,20 @@ def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _width(text))
 
 
+def _error_total(protocol: Protocol) -> str:
+    """Pooled error count, with the per-seed rate that survives a seed change.
+
+    The confusion matrices are summed over seeds, so the raw total scales with
+    the seed count: a 10-seed protocol shows about twice a 5-seed one's errors
+    while being the same model. That was harmless while every protocol ran five
+    seeds; since S15P11A105-238 the two sides routinely differ, and the bare
+    total reads as a regression that is not there.
+    """
+    seeds = len(protocol.seeds)
+    per_seed = protocol.error_count / seeds
+    return f"{protocol.label} {protocol.error_count} ({seeds} seeds, {per_seed:.1f}/seed)"
+
+
 def _detection_note(n_baseline: int, n_variant: int) -> str:
     """One line telling the reader what the 검출한계 column means for these n."""
     return (
@@ -495,12 +509,12 @@ def main() -> int:
     print(_table(header, rows))
     print(_detection_note(len(baseline.seeds), len(variant.seeds)))
 
-    print(
-        f"\n오분류 총계: {baseline.label} {baseline.error_count} "
-        f"→ {variant.label} {variant.error_count}"
-    )
+    print(f"\n오분류 총계: {_error_total(baseline)} → {_error_total(variant)}")
     for protocol in (baseline, variant):
-        print(f"\n{protocol.label} pooled confusion matrix (행=정답, 열=예측)")
+        print(
+            f"\n{protocol.label} pooled confusion matrix "
+            f"({len(protocol.seeds)} seeds 합산, 행=정답, 열=예측)"
+        )
         for row in protocol.pooled_confusion:
             print("  " + " ".join(f"{int(value):5d}" for value in row))
 
