@@ -78,7 +78,11 @@ DELETE FROM `recordings` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `transcripts` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `session_sections` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `instructor_notes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
-DELETE FROM `pipeline_jobs` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
+-- pipeline_jobs 만 대역이 아니라 세션으로 지운다. 이 표에는 애플리케이션이 시드 세션에 대해 TSID 행을
+-- 직접 만든 전례가 있다(비활성 스윕이 시드 초안을 확정하면서 남겼다). 대역으로만 지우면 그 행이 남아
+-- 시연 세션에 엉뚱한 사후 처리 작업이 붙은 채로 굳는다. sessions FK 가 없는 큐 성격의 표라 세션 범위로
+-- 지워도 다른 표를 건드리지 않는다.
+DELETE FROM `pipeline_jobs` WHERE `session_id` BETWEEN 1000000002001 AND 1000000002099;
 DELETE FROM `session_status_changes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `session_participants` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `sessions` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
@@ -304,12 +308,19 @@ VALUES
     (1000000007002, @s2, 1000000003101,
      '예외 처리 구간 설명이 길어졌다. 응답 코드 표를 미리 배포하자.',
      'FINALIZED', '2026-07-16 07:20:00.000000', '2026-07-16 07:25:00.000000',
-     '2026-07-16 07:15:00.000000', '2026-07-16 07:25:00.000000'),
-    -- 확정 전이라 사후 처리가 시작되지 않았다. 세션의 analysis_status 가 WAITING_FOR_NOTE 인 이유다.
-    (1000000007003, @s3, 1000000003201,
-     '정규형 예시를 더 쉬운 도메인으로 바꿔야겠다. 아직 작성 중.',
-     'DRAFT', '2026-07-08 06:57:00.000000', NULL,
-     '2026-07-08 06:50:00.000000', '2026-07-08 06:57:00.000000');
+     '2026-07-16 07:15:00.000000', '2026-07-16 07:25:00.000000');
+
+-- @s3 에는 메모 행을 넣지 않는다. 강사가 아직 메모를 열지 않은 상태이고, 그것이 WAITING_FOR_NOTE 다.
+--
+-- DRAFT 로 넣으면 안 된다. 비활성 스윕(NoteInactivityScheduler, 1분 주기)이 세션을 가리지 않고
+-- "status = 'DRAFT' 이고 last_edited_at 이 30분 전보다 오래된" 행을 전부 확정한다. 시드의 시각은
+-- 고정된 과거라 어떤 값을 넣어도 이 조건에 걸려, 기동 몇 분 만에 FINALIZED 로 바뀌고 pipeline_jobs 에
+-- TSID 행이 하나 생긴다. 실제로 그렇게 됐다 — 시드 대역 밖 행이라 시드가 지우지도 못했다.
+-- NOW() 기준으로 넣어도 30분 뒤에 같은 일이 생긴다.
+--
+-- 잃는 것은 미리 써 둔 초안 문구뿐인데, 메모는 조회 API 가 없어(PUT draft·POST finalize 뿐) 그 문구가
+-- 화면에 뜰 수단도 지금은 없다. 시연에서는 빈 편집기에 강사가 직접 쓰고 `작성 완료`를 누르면 된다.
+-- 나중에 메모 조회 API 가 생기고 초안이 필요해지면, 그 일감이 스윕 제외 방법과 함께 정한다.
 
 -- 사후 처리 작업은 메모 확정 시각에 만들어진다(V6 주석). 확정하지 않은 @s3 에는 행이 없다.
 INSERT INTO `pipeline_jobs` (`id`, `session_id`, `status`, `created_at`, `updated_at`)

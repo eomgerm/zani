@@ -23,7 +23,7 @@ FROM (
     UNION ALL SELECT 'session_status_changes', COUNT(*), 6 FROM `session_status_changes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'session_sections', COUNT(*), 7 FROM `session_sections` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'transcripts', COUNT(*), 1 FROM `transcripts` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'instructor_notes', COUNT(*), 3 FROM `instructor_notes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
+    UNION ALL SELECT 'instructor_notes', COUNT(*), 2 FROM `instructor_notes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'pipeline_jobs', COUNT(*), 2 FROM `pipeline_jobs` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'recordings', COUNT(*), 26 FROM `recordings` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'recording_files', COUNT(*), 26 FROM `recording_files` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
@@ -96,7 +96,24 @@ LEFT JOIN `session_participants` p
 WHERE s.`id` BETWEEN 1000000000000 AND 1000000999999
 ORDER BY s.`id`;
 
-SELECT '=== 6. 참여도 이벤트 분포(구간·출력별) ===' AS `check`;
+-- 스케줄러가 시드 데이터를 건드렸는지 본다. 둘 다 시드를 적용한 직후에는 0 이어야 하고, 앱을 몇 분
+-- 띄운 뒤에도 0 이어야 한다. 0 이 아니면 시드가 백그라운드 작업과 싸우고 있다는 뜻이다.
+--   - DRAFT 메모: 비활성 스윕이 30분 지난 초안을 세션 구분 없이 확정한다. 시드는 초안을 남기지 않는다.
+--   - 시드 세션의 대역 밖 pipeline_jobs: 스윕이 확정하면서 만든 TSID 행이다. 대역 삭제로는 지워지지 않는다.
+SELECT '=== 6. 스케줄러가 만든 오염 ===' AS `check`;
+
+SELECT 'DRAFT 상태 시드 메모' AS `item`, COUNT(*) AS `rows_found`,
+       IF(COUNT(*) = 0, 'OK', 'CONTAMINATED — 비활성 스윕이 확정해 버린다') AS `result`
+FROM `instructor_notes`
+WHERE `id` BETWEEN 1000000000000 AND 1000000999999 AND `status` = 'DRAFT'
+UNION ALL
+SELECT '시드 세션의 대역 밖 pipeline_jobs', COUNT(*),
+       IF(COUNT(*) = 0, 'OK', 'CONTAMINATED — 앱이 만든 행이 시연 세션에 붙어 있다')
+FROM `pipeline_jobs`
+WHERE `session_id` BETWEEN 1000000002001 AND 1000000002099
+  AND `id` NOT BETWEEN 1000000000000 AND 1000000999999;
+
+SELECT '=== 7. 참여도 이벤트 분포(구간·출력별) ===' AS `check`;
 
 SELECT `detector_outcome`,
        COUNT(*) AS `events`,
