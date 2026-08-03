@@ -15,10 +15,13 @@
 -- 신규 Track Egress 에 대해서는 도메인이 필수값으로 검증한다(DB 가 아니라 코드가 막는다).
 ALTER TABLE `recordings`
     ADD COLUMN `session_participant_id` BIGINT       NULL COMMENT '이 Egress 가 녹화하는 트랙의 발행자 세션 참여자 ID. 종료 시 recording_files 로 옮긴다' AFTER `livekit_egress_id`,
-    ADD COLUMN `track_source`           VARCHAR(30)  NULL COMMENT '녹화 대상 트랙 종류. MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO, CAMERA' AFTER `session_participant_id`,
+    ADD COLUMN `track_source`           VARCHAR(30)  NULL COMMENT '녹화 대상 트랙 종류. MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO, CAMERA(강사만)' AFTER `session_participant_id`,
     ADD COLUMN `livekit_track_sid`      VARCHAR(255) NULL COMMENT 'Egress 시작 시 지정한 LiveKit Track SID. webhook 페이로드에 track 정보가 없을 때의 정본' AFTER `track_source`;
 
 -- recording_files 에는 화자 컬럼이 이미 있으므로 트랙 종류만 더한다. 사후 전사가 마이크 트랙만 골라내는 데 쓴다
 -- (화면 공유 오디오는 녹화하되 MVP 전사 대상에서 제외한다).
+--
+-- CAMERA 도 들어올 수 있다. RecordingTrackPolicy 는 강사의 모든 source 를 RECORD 로 보고, 학생 카메라만
+-- FORBIDDEN 으로 막는다. 즉 금지되는 것은 "학생 카메라" 이지 CAMERA 자체가 아니다.
 ALTER TABLE `recording_files`
-    ADD COLUMN `track_source` VARCHAR(30) NULL COMMENT '녹화된 트랙 종류. MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO' AFTER `file_type`;
+    ADD COLUMN `track_source` VARCHAR(30) NULL COMMENT '녹화된 트랙 종류. MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO, CAMERA(강사만)' AFTER `file_type`;
