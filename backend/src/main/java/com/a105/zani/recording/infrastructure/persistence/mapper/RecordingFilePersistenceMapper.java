@@ -14,6 +14,8 @@ public class RecordingFilePersistenceMapper {
                 .sessionId(file.sessionId())
                 .recordingId(file.recordingId())
                 .sessionParticipantId(file.sessionParticipantId())
+                .trackSource(
+                        file.trackSource() == null ? null : file.trackSource().name())
                 .fileType(file.fileType())
                 .storageKey(file.storageKey())
                 .livekitTrackSid(file.livekitTrackSid())

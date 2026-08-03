@@ -43,7 +43,7 @@ class RecordingOutboxPersistenceAdapterTest {
                 dedupKey,
                 RecordingOutboxType.START_TRACK_EGRESS,
                 9_000_100L,
-                new TrackEgressPayload("TR_test", "student-001", TrackSource.MICROPHONE));
+                new TrackEgressPayload("TR_test", "student-001", TrackSource.MICROPHONE, 9_000_200L));
     }
 
     // 상태 전이는 fetchDue(next_attempt_at·건수 제한에 걸린다)가 아니라 해당 행을 직접 읽어 확인한다.

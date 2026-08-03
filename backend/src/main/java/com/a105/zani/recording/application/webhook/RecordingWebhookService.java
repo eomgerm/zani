@@ -113,7 +113,8 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
                     event.trackSid(),
                     alias.value(),
                     participant.get().role(),
-                    event.trackSource()));
+                    event.trackSource(),
+                    participant.get().id()));
         } catch (ForbiddenStudentCameraTrackException securityViolation) {
             // 학생 카메라 발행은 저장 정책 위반이다. 보안 위반으로 기록만 하고 webhook은 정상 응답한다(재전송 불필요).
             log.warn(
@@ -152,6 +153,16 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         Session session =
                 sessionRepository.findById(recording.sessionId()).orElseThrow(RecordingNotReadyException::new);
         long timelineStartMs = session.startedAt().toEpochMilli();
+        // V12 이전에 시작된 Egress 는 화자·트랙 종류가 없다. 필수값 가드에 걸리면 이 메서드가 예외로 끝나고,
+        // 호출자가 상태를 저장하기 전이라 녹화가 RECORDING 으로 남아 LiveKit 이 같은 webhook 을 무한히 재전송한다.
+        // 전환기 행만 값 없이 받아 파일 행은 남긴다 — 최종 MP4 병합이 그 구간을 볼 수 있어야 한다.
+        boolean legacyRecording = recording.sessionParticipantId() == null || recording.trackSource() == null;
+        if (legacyRecording) {
+            log.warn(
+                    "Recording predates participant metadata, saving files without speaker: session={}, egressId={}",
+                    recording.sessionId(),
+                    recording.livekitEgressId());
+        }
         boolean trackSidTaken = false;
         for (EgressFileResult file : event.files()) {
             String relativePath = sessionRelativePath(file.filepath(), recording.sessionId());
@@ -172,16 +183,35 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             Long endedOffset = file.endedAtMs() > 0 ? Math.max(0, file.endedAtMs() - timelineStartMs) : null;
             // UK(recording_id, livekit_track_sid)는 한 녹화에 트랙당 한 행만 허용한다. Track Egress는 트랙당 파일 하나가
             // 정상이며, 세그먼트가 여러 개로 오면 첫 행만 trackSid를 갖고 나머지는 null로 남긴다(MySQL은 NULL을 중복으로 보지 않음).
+            // webhook 페이로드에 track 정보가 없을 수 있으므로 Egress 시작 시 적어 둔 recordings 의 값을 정본으로 쓴다.
             String trackSid = trackSidTaken ? null : event.egressTrackSid();
+            if (trackSid == null && !trackSidTaken) {
+                trackSid = recording.livekitTrackSid();
+            }
             trackSidTaken = trackSidTaken || trackSid != null;
-            recordingFileRepository.save(RecordingFile.trackFile(
-                    TsidGenerator.generate(),
-                    recording.sessionId(),
-                    recording.id(),
-                    relativePath,
-                    trackSid,
-                    startedOffset,
-                    endedOffset));
+            // 화자·트랙 종류는 추정하지 않고 recordings 에 보관된 값을 그대로 옮긴다(S15P11A105-97).
+            RecordingFile trackFile = legacyRecording
+                    ? RecordingFile.legacyTrackFile(
+                            TsidGenerator.generate(),
+                            recording.sessionId(),
+                            recording.id(),
+                            recording.sessionParticipantId(),
+                            recording.trackSource(),
+                            relativePath,
+                            trackSid,
+                            startedOffset,
+                            endedOffset)
+                    : RecordingFile.trackFile(
+                            TsidGenerator.generate(),
+                            recording.sessionId(),
+                            recording.id(),
+                            recording.sessionParticipantId(),
+                            recording.trackSource(),
+                            relativePath,
+                            trackSid,
+                            startedOffset,
+                            endedOffset);
+            recordingFileRepository.save(trackFile);
         }
     }
 
