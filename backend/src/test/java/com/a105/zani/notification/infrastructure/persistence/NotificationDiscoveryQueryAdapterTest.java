@@ -72,6 +72,22 @@ class NotificationDiscoveryQueryAdapterTest {
         assertEquals("학생", only.displayName());
     }
 
+    @Test
+    @Transactional
+    void excludesStudentsWhoTurnedOffReportEmail() {
+        long hostMember = insertMember("host2@zani.app", "강사", false);
+        long sessionId = insertSession(hostMember, false);
+        long optedIn = insertMember("in@zani.app", "수신", false);
+        long optedOut = insertMemberWithReportEmail("out@zani.app", "미수신", false);
+        insertParticipant(sessionId, optedIn, "STUDENT");
+        insertParticipant(sessionId, optedOut, "STUDENT");
+
+        List<ReportRecipient> recipients = adapter.findRecipients(sessionId);
+
+        assertEquals(1, recipients.size(), "리포트 알림을 끈 학생은 발송 대상에서 제외된다");
+        assertEquals(optedIn, recipients.get(0).memberId());
+    }
+
     /** 강사(host) 회원과 세션을 만들고, 리포트를 공개/미공개로 붙인다. */
     private long sessionWithReport(boolean published) {
         long host = insertMember("host-" + suffix() + "@zani.app", "강사", false);
@@ -85,6 +101,22 @@ class NotificationDiscoveryQueryAdapterTest {
         jdbcTemplate.update(
                 "INSERT INTO members (id, google_subject, email, display_name, created_at, updated_at, deleted_at)"
                         + " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                id,
+                "sub-" + suffix(),
+                email,
+                displayName,
+                ts(NOW),
+                ts(NOW),
+                deleted ? ts(NOW) : null);
+        return id;
+    }
+
+    /** report_email_enabled 를 명시해 넣는다(수신 OFF 게이트 검증용). */
+    private long insertMemberWithReportEmail(String email, String displayName, boolean deleted) {
+        long id = TsidGenerator.generate();
+        jdbcTemplate.update(
+                "INSERT INTO members (id, google_subject, email, display_name, report_email_enabled, created_at,"
+                        + " updated_at, deleted_at) VALUES (?, ?, ?, ?, FALSE, ?, ?, ?)",
                 id,
                 "sub-" + suffix(),
                 email,

@@ -15,6 +15,7 @@ public class MemberPersistenceMapper {
                 .email(member.email())
                 .displayName(member.displayName())
                 .profileImageUrl(member.profileImageUrl())
+                .reportEmailEnabled(member.reportEmailEnabled())
                 .build();
     }
 
@@ -24,6 +25,7 @@ public class MemberPersistenceMapper {
                 entity.getGoogleSubject(),
                 entity.getEmail(),
                 entity.getDisplayName(),
-                entity.getProfileImageUrl());
+                entity.getProfileImageUrl(),
+                entity.isReportEmailEnabled());
     }
 }

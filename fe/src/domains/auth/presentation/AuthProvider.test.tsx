@@ -35,6 +35,7 @@ const restoredMember: CurrentMember = {
   email: "restored@example.com",
   displayName: "복원된 사용자",
   profileImageUrl: null,
+  reportEmailEnabled: true,
 };
 
 // 세션 복원 부트 effect가 기본으로 실행되므로, 복원 자체를 테스트하지 않는 케이스에서는
