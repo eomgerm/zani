@@ -1,5 +1,7 @@
 package com.a105.zani.member.infrastructure.persistence;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -42,5 +44,12 @@ public class MemberPersistenceAdapter implements MemberRepository {
     @Override
     public Optional<Member> findByGoogleSubject(String googleSubject) {
         return memberJpaRepository.findByGoogleSubject(googleSubject).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<Member> findAllByIds(Collection<Long> ids) {
+        return memberJpaRepository.findAllById(ids).stream()
+                .map(mapper::toDomain)
+                .toList();
     }
 }

@@ -84,6 +84,11 @@ class ResolveGoogleMemberServiceTest {
             return Optional.ofNullable(membersByGoogleSubject.get(googleSubject));
         }
 
+        @Override
+        public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
+            return java.util.List.of();
+        }
+
         int saveCount() {
             return saveCount.get();
         }
@@ -116,6 +121,11 @@ class ResolveGoogleMemberServiceTest {
         @Override
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             return saveAttempted ? Optional.of(winner) : Optional.empty();
+        }
+
+        @Override
+        public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
+            return java.util.List.of();
         }
 
         Long winnerId() {
