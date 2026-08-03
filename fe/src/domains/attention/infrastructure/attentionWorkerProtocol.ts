@@ -24,10 +24,14 @@ export interface PredictionResponse {
 
 /**
  * 실패 종류.
- * - `modelUnavailable`: 모델·메타데이터를 못 불러왔다. 판정을 비활성화하고 수업은 계속한다.
+ * - `modelUnavailable`: 모델·메타데이터를 끝까지 못 불러왔다. 판정을 비활성화하고 수업은 계속한다.
+ * - `modelLoadRetrying`: 로드는 실패했지만 재시도가 남았다. 이 창만 건너뛰고 다음 창은 계속 보낸다.
  * - `inferenceFailed`: 세션은 살아 있고 이번 추론만 실패했다. 다음 창을 다시 시도한다.
  */
-export type AttentionFailureKind = "modelUnavailable" | "inferenceFailed";
+export type AttentionFailureKind =
+  | "modelUnavailable"
+  | "modelLoadRetrying"
+  | "inferenceFailed";
 
 export interface FailureResponse {
   readonly type: "failure";
