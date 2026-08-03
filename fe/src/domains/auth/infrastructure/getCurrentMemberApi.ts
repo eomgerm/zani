@@ -2,6 +2,8 @@ export type CurrentMember = {
   email: string;
   displayName: string;
   profileImageUrl: string | null;
+  /** 강의 리포트 완료 이메일 수신 여부. 예전 응답 호환을 위해 값이 없으면 수신(true)으로 본다. */
+  reportEmailEnabled: boolean;
 };
 
 export type CurrentMemberRequester = (
@@ -62,5 +64,11 @@ export const getCurrentMember: CurrentMemberRequester = async (accessToken, sign
     throw new GetCurrentMemberRequestError("Get current member response had an invalid envelope.");
   }
 
-  return (envelope as { data: CurrentMember }).data;
+  const data = (envelope as { data: Record<string, unknown> }).data;
+  return {
+    email: data.email as string,
+    displayName: data.displayName as string,
+    profileImageUrl: data.profileImageUrl as string | null,
+    reportEmailEnabled: typeof data.reportEmailEnabled === "boolean" ? data.reportEmailEnabled : true,
+  };
 };
