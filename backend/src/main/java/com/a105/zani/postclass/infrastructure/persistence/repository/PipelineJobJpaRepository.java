@@ -1,9 +1,12 @@
 package com.a105.zani.postclass.infrastructure.persistence.repository;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -40,16 +43,21 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     }
 
     /**
-     * 단계를 잠금 읽기로 가져온다. 잠금 읽기는 스냅숏이 아니라 최신 커밋본을 보므로, 앞선 전이가 방금 커밋한 단계까지 보인다.
+     * 단계·시도 횟수·등록 시각을 잠금 읽기로 가져온다. 잠금 읽기는 스냅숏이 아니라 최신 커밋본을 보므로, 앞선 전이가 방금 커밋한 단계까지 보인다.
      *
-     * <p>전이 직전에만 부른다 — 여기서 잡은 잠금이 같은 트랜잭션의 UPDATE 까지 이어져야 두 워커가 같은 단계를 두 번 수행하지 않는다.
+     * <p>전이·재시도 직전에만 부른다 — 여기서 잡은 잠금이 같은 트랜잭션의 UPDATE 까지 이어져야 두 워커가 같은 단계를 두 번 수행하지 않는다.
+     *
+     * <p>스칼라 대신 행 전체를 읽는 이유: 재시도 판단에 단계·시도 횟수·등록 시각이 모두 필요한데, 컬럼이 몇 개 되지 않아 나눠 읽어 잠금을 두 번 잡을 이유가 없다.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select job.status from PipelineJobJpaEntity job where job.sessionId = :sessionId")
-    Optional<String> findStatusForUpdate(@Param("sessionId") Long sessionId);
+    @Query("select job from PipelineJobJpaEntity job where job.sessionId = :sessionId")
+    Optional<PipelineJobJpaEntity> findForUpdate(@Param("sessionId") Long sessionId);
 
     /**
-     * 단계를 바꾼다. 갈 수 있는 단계인지는 잠금 읽기 뒤 호출자가 이미 판단했으므로 조건을 두지 않는다.
+     * 단계를 바꾸고 재시도 예산을 초기화한다. 갈 수 있는 단계인지는 잠금 읽기 뒤 호출자가 이미 판단했으므로 조건을 두지 않는다.
+     *
+     * <p>last_error 는 지우지 않는다. 그 값은 "마지막 실패 사유" 이력이라 단계가 넘어갔다고 사라질 이유가 없고, 무엇보다 FAILED 로 옮기는 것도 이 쿼리다 — 여기서 지우면 실패 사유를
+     * 남기는 호출과 단계를 옮기는 호출의 순서에 따라 사유가 지워진다.
      *
      * <p>updated_at 을 함께 쓰는 이유: 벌크 UPDATE 는 {@code @LastModifiedDate} 리스너를 타지 않아, 명시하지 않으면 단계 변경 시각이 등록 시각에 머문다. 8시간
      * SLA(AI-006)를 재는 쪽이 이 값으로 어느 단계에서 멈췄는지 본다.
@@ -60,9 +68,57 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update PipelineJobJpaEntity job
-               set job.status = :status, job.updatedAt = :changedAt
+               set job.status = :status, job.updatedAt = :changedAt,
+                   job.attemptCount = 0, job.nextAttemptAt = null
              where job.sessionId = :sessionId
             """)
     int updateStatus(
             @Param("sessionId") Long sessionId, @Param("status") String status, @Param("changedAt") Instant changedAt);
+
+    /** 단계는 그대로 두고 시도 횟수를 올리며 다음 시도 시각과 실패 사유를 남긴다. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.attemptCount = job.attemptCount + 1, job.nextAttemptAt = :nextAttemptAt,
+                   job.lastError = :error, job.updatedAt = :changedAt
+             where job.sessionId = :sessionId
+            """)
+    int markRetry(
+            @Param("sessionId") Long sessionId,
+            @Param("error") String error,
+            @Param("nextAttemptAt") Instant nextAttemptAt,
+            @Param("changedAt") Instant changedAt);
+
+    /** 실패 사유를 남기고 재시도 대기를 푼다. 단계 전이는 호출자가 상태 머신을 거쳐 따로 한다. */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.lastError = :error, job.nextAttemptAt = null, job.updatedAt = :changedAt
+             where job.sessionId = :sessionId
+            """)
+    int markFailed(
+            @Param("sessionId") Long sessionId, @Param("error") String error, @Param("changedAt") Instant changedAt);
+
+    /**
+     * 아직 끝나지 않았는데 기준 시각보다 먼저 등록된 작업의 세션 ID. 오래 밀린 것부터.
+     *
+     * <p>끝난 단계를 제외하는 조건을 상태 목록으로 받는 이유: 쿼리에 단계 리터럴을 두지 않기 위해서다({@link PipelineStatus} 가 단일 소스).
+     */
+    @Query("""
+            select job.sessionId from PipelineJobJpaEntity job
+             where job.status not in :finishedStatuses and job.createdAt <= :queuedBefore
+             order by job.createdAt asc
+            """)
+    List<Long> findOverdueSessionIds(
+            @Param("finishedStatuses") Collection<String> finishedStatuses,
+            @Param("queuedBefore") Instant queuedBefore,
+            Pageable pageable);
+
+    /** 마감을 넘긴 작업. 끝난 단계(PUBLISHED·FAILED)는 더 볼 것이 없으므로 제외한다. */
+    default List<Long> findOverdueSessionIds(Instant queuedBefore, int limit) {
+        return findOverdueSessionIds(
+                List.of(PipelineStatus.PUBLISHED.name(), PipelineStatus.FAILED.name()),
+                queuedBefore,
+                Pageable.ofSize(limit));
+    }
 }
