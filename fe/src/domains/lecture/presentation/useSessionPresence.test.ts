@@ -32,8 +32,10 @@ const connectedSnapshot: PresenceSnapshot = { reconnectStatus: "CONNECTED", sess
 const reporter = (snapshot: PresenceSnapshot = connectedSnapshot) =>
   vi.fn().mockResolvedValue(snapshot);
 
-const renderPresence = (report: ReturnType<typeof reporter>) =>
-  renderHook(() => useSessionPresence("session-1", { intervalMs: 10_000, report }));
+const renderPresence = (
+  report: ReturnType<typeof reporter>,
+  reportExit: ReturnType<typeof vi.fn> = vi.fn(),
+) => renderHook(() => useSessionPresence("session-1", { intervalMs: 10_000, report, reportExit }));
 
 beforeEach(() => {
   hoisted.status = "stable";
@@ -179,5 +181,34 @@ describe("useSessionPresence", () => {
     await act(async () => vi.advanceTimersByTime(30_000));
 
     expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  // heartbeat 는 탭과 함께 그냥 멈출 뿐 "끊겼다"를 알리지 않는다. 이 보고가 없으면 강사가 브라우저를
+  // 그냥 닫았을 때 5분 유예가 시작되지 않아 수업이 3시간 상한까지 LIVE 로 남는다.
+  it("reports the exit when the page is hidden so the class can end", async () => {
+    const report = reporter();
+    const reportExit = vi.fn();
+    renderPresence(report, reportExit);
+    await act(async () => vi.advanceTimersByTime(0));
+
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(reportExit).toHaveBeenCalledWith("session-1", "test-access-token");
+  });
+
+  it("stops listening for the exit after unmount", async () => {
+    const report = reporter();
+    const reportExit = vi.fn();
+    const { unmount } = renderPresence(report, reportExit);
+    await act(async () => vi.advanceTimersByTime(0));
+
+    unmount();
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(reportExit).not.toHaveBeenCalled();
   });
 });
