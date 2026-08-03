@@ -210,6 +210,17 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
 
     private void startTrackEgress(PendingRecordingOutboxMessage message, int attempt) {
         TrackEgressPayload payload = message.payload();
+        // 외부 호출보다 먼저 검증한다. V12 이전에 쌓인 payload 에는 참가자 id 가 없어 null 로 역직렬화되는데,
+        // Egress 를 먼저 띄우고 나서 Recording.startTrack 의 가드에 걸리면 LiveKit 실행은 이미 시작됐고
+        // recordings 행은 없는 상태가 된다 — 그 실행과 산출물을 DB 로 추적할 방법이 사라진다. 여기서 끊으면
+        // 외부에 아무 일도 일어나지 않고 outbox 재시도로 남는다(끝내 실패하면 그 트랙만 녹화되지 않는다).
+        if (payload.sessionParticipantId() == null || payload.source() == null || payload.trackSid() == null) {
+            log.error(
+                    "Track egress payload is missing participant metadata, refusing to start: session={}, trackSid={}",
+                    message.sessionId(),
+                    payload.trackSid());
+            throw new InvalidRecordingTrackException();
+        }
         TrackEgressRequest request = new TrackEgressRequest(
                 message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source());
 

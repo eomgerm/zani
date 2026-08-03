@@ -16,6 +16,8 @@ import com.a105.zani.recording.application.port.IssuedTrackEgress;
 import com.a105.zani.recording.application.port.NewRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.PendingRecordingOutboxMessage;
 import com.a105.zani.recording.application.port.RecordingOutboxPort;
+import com.a105.zani.recording.application.port.RecordingOutboxType;
+import com.a105.zani.recording.application.port.TrackEgressPayload;
 import com.a105.zani.recording.application.port.TrackEgressPort;
 import com.a105.zani.recording.application.port.TrackEgressRequest;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
@@ -194,6 +196,22 @@ class RecordingOrchestratorTest {
         assertEquals(1, egressPort.requests.size());
         assertEquals("FAILED", outbox.statusOf("track:100:TR_orphan"));
         assertTrue(outbox.errorOf("track:100:TR_orphan").contains("EG_1"));
+    }
+
+    @Test
+    void 참가자_id가_없는_구버전_payload는_Egress를_시작하지_않는다() {
+        // V12 이전에 쌓인 pending 행은 sessionParticipantId 가 null 로 역직렬화된다. Egress 를 먼저 띄우고
+        // 나서 거부하면 LiveKit 실행은 시작됐는데 recordings 행이 없어 추적할 수 없다. 외부 호출 전에 끊어야 한다.
+        outbox.enqueue(new NewRecordingOutboxMessage(
+                "track:100:TR_legacy",
+                RecordingOutboxType.START_TRACK_EGRESS,
+                SESSION_ID,
+                new TrackEgressPayload("TR_legacy", "student-001", TrackSource.MICROPHONE, null)));
+
+        orchestrator.relayPendingOutbox();
+
+        assertEquals(0, egressPort.requests.size());
+        assertEquals(0, recordings.saved.size());
     }
 
     @Test

@@ -38,6 +38,7 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -311,6 +312,43 @@ class RecordingWebhookServiceTest {
         assertEquals(1, egressRequests.size());
         assertEquals(7L, egressRequests.get(0).sessionParticipantId());
         assertEquals(TrackSource.MICROPHONE, egressRequests.get(0).source());
+    }
+
+    @Test
+    void V12_이전_녹화의_종료_webhook은_화자가_없어도_파일을_저장하고_상태를_넘긴다() {
+        // 배포 순간에 진행 중이던 Egress. recordings 의 신규 컬럼이 전부 null 이다.
+        // 예외가 나가면 상태 저장 전에 끊겨 RECORDING 으로 남고 LiveKit 이 무한 재전송한다.
+        recordingsByEgressId.put(
+                "EG_LEGACY",
+                Recording.reconstitute(
+                        30L,
+                        SESSION_ID,
+                        "EG_LEGACY",
+                        null,
+                        null,
+                        null,
+                        Recording.TYPE_TRACK,
+                        1,
+                        RecordingStatus.RECORDING,
+                        SESSION_START,
+                        null));
+        nextEvent = egressEvent(
+                "EV_LEGACY",
+                RecordingWebhookEventType.EGRESS_ENDED,
+                "EG_LEGACY",
+                Boolean.TRUE,
+                List.of(new EgressFileResult(
+                        "/srv/zani/recordings/100/raw/participants/student-001/student-001-microphone-TR_old.ogg",
+                        SESSION_START.plusSeconds(10).toEpochMilli(),
+                        SESSION_START.plusSeconds(20).toEpochMilli(),
+                        1_000L)));
+
+        service.process("{}", "ok");
+
+        assertEquals(RecordingStatus.COMPLETE, recordingsByEgressId.get("EG_LEGACY").status());
+        assertEquals(1, savedFiles.size());
+        assertNull(savedFiles.get(0).sessionParticipantId());
+        assertNull(savedFiles.get(0).trackSource());
     }
 
     @Test

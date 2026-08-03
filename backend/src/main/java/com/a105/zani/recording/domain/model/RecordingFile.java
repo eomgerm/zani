@@ -78,6 +78,42 @@ public class RecordingFile {
                 endedOffsetMs);
     }
 
+    /**
+     * V12 이전에 시작된 Egress 의 산출물을 기록한다. 화자·트랙 종류가 없는 것을 허용한다.
+     *
+     * <p>배포 전환기 전용이다. V12 는 컬럼을 NULL 허용으로 더했으므로 그 전에 만들어진 {@code recordings} 행에는 세 값이 모두 없다. 배포 순간에 진행 중이던 Egress 의
+     * {@code egress_ended} 가 배포 후 도착하면 그 행을 그대로 쓰게 되는데, {@link #trackFile} 의 필수값 가드에 걸려 예외가 나간다. 그러면 파일 행이 저장되지 않는 데서
+     * 끝나지 않는다 — 호출자가 상태를 저장하기 전에 예외가 올라가 녹화가 {@code RECORDING} 으로 남고, LiveKit 이 같은 webhook 을 무한히 재전송한다.
+     *
+     * <p>그래서 값을 요구하지 않고 받는다. 경로 가드는 유지한다. 화자를 복원할 근거가 없어 채울 수 없을 뿐이고, 파일 행 자체는 남겨야 최종 MP4 병합이 그 구간을 볼 수 있다.
+     * 신규 Egress 는 {@link #trackFile} 로만 들어오므로 이 경로가 새 데이터에 쓰이지는 않는다.
+     */
+    public static RecordingFile legacyTrackFile(
+            Long id,
+            Long sessionId,
+            Long recordingId,
+            Long sessionParticipantId,
+            TrackSource trackSource,
+            String storageKey,
+            String livekitTrackSid,
+            Long startedOffsetMs,
+            Long endedOffsetMs) {
+        if (!isSafeRelativePath(storageKey)) {
+            throw new InvalidRecordingTrackException();
+        }
+        return new RecordingFile(
+                id,
+                sessionId,
+                recordingId,
+                sessionParticipantId,
+                trackSource,
+                TYPE_TRACK,
+                storageKey,
+                livekitTrackSid,
+                startedOffsetMs,
+                endedOffsetMs);
+    }
+
     private static boolean isSafeRelativePath(String path) {
         if (path == null || path.isBlank() || path.startsWith("/") || path.contains("\\") || path.contains(":")) {
             return false;

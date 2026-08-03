@@ -153,6 +153,16 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         Session session =
                 sessionRepository.findById(recording.sessionId()).orElseThrow(RecordingNotReadyException::new);
         long timelineStartMs = session.startedAt().toEpochMilli();
+        // V12 이전에 시작된 Egress 는 화자·트랙 종류가 없다. 필수값 가드에 걸리면 이 메서드가 예외로 끝나고,
+        // 호출자가 상태를 저장하기 전이라 녹화가 RECORDING 으로 남아 LiveKit 이 같은 webhook 을 무한히 재전송한다.
+        // 전환기 행만 값 없이 받아 파일 행은 남긴다 — 최종 MP4 병합이 그 구간을 볼 수 있어야 한다.
+        boolean legacyRecording = recording.sessionParticipantId() == null || recording.trackSource() == null;
+        if (legacyRecording) {
+            log.warn(
+                    "Recording predates participant metadata, saving files without speaker: session={}, egressId={}",
+                    recording.sessionId(),
+                    recording.livekitEgressId());
+        }
         boolean trackSidTaken = false;
         for (EgressFileResult file : event.files()) {
             String relativePath = sessionRelativePath(file.filepath(), recording.sessionId());
@@ -180,16 +190,28 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             }
             trackSidTaken = trackSidTaken || trackSid != null;
             // 화자·트랙 종류는 추정하지 않고 recordings 에 보관된 값을 그대로 옮긴다(S15P11A105-97).
-            recordingFileRepository.save(RecordingFile.trackFile(
-                    TsidGenerator.generate(),
-                    recording.sessionId(),
-                    recording.id(),
-                    recording.sessionParticipantId(),
-                    recording.trackSource(),
-                    relativePath,
-                    trackSid,
-                    startedOffset,
-                    endedOffset));
+            RecordingFile trackFile = legacyRecording
+                    ? RecordingFile.legacyTrackFile(
+                            TsidGenerator.generate(),
+                            recording.sessionId(),
+                            recording.id(),
+                            recording.sessionParticipantId(),
+                            recording.trackSource(),
+                            relativePath,
+                            trackSid,
+                            startedOffset,
+                            endedOffset)
+                    : RecordingFile.trackFile(
+                            TsidGenerator.generate(),
+                            recording.sessionId(),
+                            recording.id(),
+                            recording.sessionParticipantId(),
+                            recording.trackSource(),
+                            relativePath,
+                            trackSid,
+                            startedOffset,
+                            endedOffset);
+            recordingFileRepository.save(trackFile);
         }
     }
 
