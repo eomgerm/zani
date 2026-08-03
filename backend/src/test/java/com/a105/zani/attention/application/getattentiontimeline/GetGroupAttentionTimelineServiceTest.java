@@ -8,6 +8,7 @@ import com.a105.zani.attention.domain.model.DetectorOutcome;
 import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 import com.a105.zani.attention.domain.model.timeline.ObservationRecord;
 import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
+import com.a105.zani.report.application.listsessionsections.SessionSectionView;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
@@ -22,12 +23,13 @@ class GetGroupAttentionTimelineServiceTest {
 
     private final StubEndedSessionAccess access = new StubEndedSessionAccess();
     private final FakeAttentionTimelineQueryPort queryPort = new FakeAttentionTimelineQueryPort();
+    private final StubListSessionSections listSessionSections = new StubListSessionSections();
 
     private GetGroupAttentionTimelineService service;
 
     @BeforeEach
     void setUp() {
-        service = new GetGroupAttentionTimelineService(access, queryPort, POLICY);
+        service = new GetGroupAttentionTimelineService(access, queryPort, listSessionSections, POLICY);
         access.role = SessionParticipantRole.INSTRUCTOR;
     }
 
@@ -42,6 +44,13 @@ class GetGroupAttentionTimelineServiceTest {
         }
     }
 
+    /** 집계 인원 5명을 채운다. 그러지 않으면 집중 흐름 칸이 전부 숨김 처리된다. */
+    private void observeFiveStudents(int count) {
+        for (long participantId = 1L; participantId <= 5L; participantId++) {
+            observe(participantId, count);
+        }
+    }
+
     @Test
     @DisplayName("학생이 집단 경로를 부르면 403 이다")
     void students_cannot_read_the_group_timeline() {
@@ -51,12 +60,14 @@ class GetGroupAttentionTimelineServiceTest {
     }
 
     @Test
-    @DisplayName("관측이 없으면 빈 시계열을 돌려준다 — 오류가 아니다")
-    void no_observations_yields_an_empty_series() {
+    @DisplayName("관측이 없으면 모든 배열이 비어 있다 — 오류가 아니다")
+    void no_observations_yields_empty_arrays() {
         GetGroupAttentionTimelineResult result = get();
 
-        assertThat(result.points()).isEmpty();
+        assertThat(result.focusBuckets()).isEmpty();
+        assertThat(result.signalPoints()).isEmpty();
         assertThat(result.distractedIntervals()).isEmpty();
+        assertThat(result.sections()).isEmpty();
         // 그릴 것이 없으면 길이도 0 이다. 3시간짜리 빈 축을 만들 이유가 없다.
         assertThat(result.durationSeconds()).isZero();
     }
@@ -88,29 +99,82 @@ class GetGroupAttentionTimelineServiceTest {
     }
 
     @Test
-    @DisplayName("intervalSeconds 는 정책의 5초다")
-    void interval_comes_from_the_policy() {
-        observe(1L, 12);
+    @DisplayName("격자 두 개의 간격을 각각 정책에서 가져온다")
+    void the_two_grids_report_their_own_intervals() {
+        observeFiveStudents(12);
 
-        assertThat(get().intervalSeconds()).isEqualTo(5);
+        GetGroupAttentionTimelineResult result = get();
+
+        assertThat(result.focusIntervalSeconds()).isEqualTo(30);
+        assertThat(result.signalIntervalSeconds()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("두 격자의 점 개수가 다르다 — 30초 칸이 5초 점보다 훨씬 적다")
+    void the_two_grids_have_different_point_counts() {
+        observeFiveStudents(30); // 마지막 관측 290초 → 길이 290초
+
+        GetGroupAttentionTimelineResult result = get();
+
+        assertThat(result.focusBuckets()).hasSize(10); // 0·30·…·270
+        assertThat(result.signalPoints()).hasSize(59); // 0·5·…·290
     }
 
     @Test
     @DisplayName("학생 5명이 모두 접속해 있으면 그 수가 점에 그대로 담긴다")
     void counts_every_connected_student() {
-        for (long participantId = 1L; participantId <= 5L; participantId++) {
-            observe(participantId, 30); // 0~300초
-        }
+        observeFiveStudents(30);
 
         GetGroupAttentionTimelineResult result = get();
 
-        GroupSignalPoint point = result.points().stream()
+        GroupSignalPoint point = result.signalPoints().stream()
                 .filter(candidate -> candidate.offsetSeconds() == 200L)
                 .findFirst()
                 .orElseThrow();
         assertThat(point.connectedCount()).isEqualTo(5);
         assertThat(point.eligibleCount()).isEqualTo(5);
         assertThat(point.checkNeededRatio()).isEqualTo(0.0d);
+    }
+
+    @Test
+    @DisplayName("집단 집중 흐름은 3단계 관측에서 3.0 이다")
+    void the_group_focus_flow_averages_the_levels() {
+        observeFiveStudents(30);
+
+        Double level = get().focusBuckets().stream()
+                .filter(bucket -> bucket.offsetSeconds() == 120L)
+                .findFirst()
+                .orElseThrow()
+                .focusLevel();
+
+        assertThat(level).isEqualTo(3.0d);
+    }
+
+    @Test
+    @DisplayName("248 이 내용 구간을 안 채웠어도 나머지 계열은 정상이다")
+    void missing_sections_do_not_break_the_rest() {
+        observeFiveStudents(30);
+
+        GetGroupAttentionTimelineResult result = get();
+
+        assertThat(result.sections()).isEmpty();
+        assertThat(result.focusBuckets()).isNotEmpty();
+        assertThat(result.signalPoints()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("내용 구간 경계는 밀리초로 와서 초로 바뀐다")
+    void section_offsets_are_converted_from_milliseconds() {
+        observeFiveStudents(30);
+        // 60초 경계로 나눈 두 구간. ms 를 초로 바꾸지 않으면 두 구간이 모두 0~300 을 덮어 값이 같아진다.
+        listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞"));
+        listSessionSections.sections.add(new SessionSectionView(60_000L, 300_000L, "뒤"));
+
+        GetGroupAttentionTimelineResult result = get();
+
+        assertThat(result.sections())
+                .extracting(section -> section.startSeconds() + "-" + section.endSeconds())
+                .containsExactly("0-60", "60-300");
     }
 
     @Test
