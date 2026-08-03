@@ -243,8 +243,11 @@ carry the information the reports need.
 
 ## 12. Open items
 
-| Item | Owner |
-| --- | --- |
-| Measure `whisper-1` latency for 45-minute chunks against the 8-hour SLA | S15P11A105-247 |
-| Split post-class LLM analysis across calls — a three-hour transcript exceeds one request | S15P11A105-248 |
-| Revise FRD §17 — §17.1 and §17.3 assume video chunks reach GMS, §17.4 assumes non-verbal signals are available, and requirement `AI-003` mandates using them. None of those are reachable through this gateway | product decision |
+**Why open** says what kind of work closes the item, because the three are not
+the same kind. Only the second is an undecided design question.
+
+| Item | Why open | Owner |
+| --- | --- | --- |
+| Measure `whisper-1` latency for 45-minute chunks against the 8-hour SLA | Unmeasured — measuring closes it | S15P11A105-247 |
+| Split post-class LLM analysis across calls — a three-hour transcript exceeds one request | Constraint proven (§4.1), how to split is undecided | S15P11A105-248 |
+| Revise FRD §17 — §17.1 and §17.3 assume video chunks reach GMS, §17.4 assumes non-verbal signals are available, and requirement `AI-003` mandates using them | Not achievable through this gateway (§10). Nothing left to decide technically; the documents and `AI-003` still have to be corrected | product decision |
