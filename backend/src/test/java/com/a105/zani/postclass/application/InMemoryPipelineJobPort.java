@@ -11,6 +11,7 @@ import java.util.Optional;
 import com.a105.zani.postclass.application.exception.PipelineJobUnavailableException;
 import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.application.port.PipelineJobState;
+import com.a105.zani.postclass.domain.model.PipelineStateMachine;
 import com.a105.zani.postclass.domain.model.PipelineStatus;
 
 /** 사후 처리 작업 큐의 in-memory 대역. 세션당 하나만 받는 실제 계약(session_id UNIQUE)을 그대로 지킨다. */
@@ -89,8 +90,7 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
     @Override
     public List<Long> findOverdueSessionIds(Instant queuedBefore, int limit) {
         return rows.entrySet().stream()
-                .filter(entry -> entry.getValue().status != PipelineStatus.PUBLISHED
-                        && entry.getValue().status != PipelineStatus.FAILED)
+                .filter(entry -> PipelineStateMachine.unfinishedStages().contains(entry.getValue().status))
                 .filter(entry -> !entry.getValue().queuedAt.isAfter(queuedBefore))
                 .sorted(Comparator.comparing(entry -> entry.getValue().queuedAt))
                 .map(Map.Entry::getKey)
