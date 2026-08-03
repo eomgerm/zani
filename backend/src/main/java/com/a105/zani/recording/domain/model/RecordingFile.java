@@ -85,8 +85,8 @@ public class RecordingFile {
      * {@code egress_ended} 가 배포 후 도착하면 그 행을 그대로 쓰게 되는데, {@link #trackFile} 의 필수값 가드에 걸려 예외가 나간다. 그러면 파일 행이 저장되지 않는 데서
      * 끝나지 않는다 — 호출자가 상태를 저장하기 전에 예외가 올라가 녹화가 {@code RECORDING} 으로 남고, LiveKit 이 같은 webhook 을 무한히 재전송한다.
      *
-     * <p>그래서 값을 요구하지 않고 받는다. 경로 가드는 유지한다. 화자를 복원할 근거가 없어 채울 수 없을 뿐이고, 파일 행 자체는 남겨야 최종 MP4 병합이 그 구간을 볼 수 있다.
-     * 신규 Egress 는 {@link #trackFile} 로만 들어오므로 이 경로가 새 데이터에 쓰이지는 않는다.
+     * <p>그래서 값을 요구하지 않고 받는다. 경로 가드는 유지한다. 화자를 복원할 근거가 없어 채울 수 없을 뿐이고, 파일 행 자체는 남겨야 최종 MP4 병합이 그 구간을 볼 수 있다. 신규 Egress 는
+     * {@link #trackFile} 로만 들어오므로 이 경로가 새 데이터에 쓰이지는 않는다.
      */
     public static RecordingFile legacyTrackFile(
             Long id,

@@ -345,7 +345,8 @@ class RecordingWebhookServiceTest {
 
         service.process("{}", "ok");
 
-        assertEquals(RecordingStatus.COMPLETE, recordingsByEgressId.get("EG_LEGACY").status());
+        assertEquals(
+                RecordingStatus.COMPLETE, recordingsByEgressId.get("EG_LEGACY").status());
         assertEquals(1, savedFiles.size());
         assertNull(savedFiles.get(0).sessionParticipantId());
         assertNull(savedFiles.get(0).trackSource());
