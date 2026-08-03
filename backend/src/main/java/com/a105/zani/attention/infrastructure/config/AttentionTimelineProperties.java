@@ -19,7 +19,7 @@ public record AttentionTimelineProperties(
         Duration maxDuration,
         Duration samplingInterval,
         Duration groupWindow,
-        Duration focusWindow,
+        Duration focusBucket,
         Duration connectionGap,
         Duration requiredConnection,
         Duration measurementOutage,
@@ -44,8 +44,8 @@ public record AttentionTimelineProperties(
         if (groupWindow == null) {
             groupWindow = defaults.groupWindow();
         }
-        if (focusWindow == null) {
-            focusWindow = defaults.focusWindow();
+        if (focusBucket == null) {
+            focusBucket = defaults.focusBucket();
         }
         if (connectionGap == null) {
             connectionGap = defaults.connectionGap();

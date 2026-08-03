@@ -99,6 +99,11 @@ attention:
     # 확정 문서 §6.2 의 상태 키 TTL 과 같은 값이다. 사후 재생이 실시간과 같은 순간에 같은 판단을 하려면
     # 두 값이 함께 움직여야 한다.
     connection-gap: ${ATTENTION_TIMELINE_CONNECTION_GAP:PT30S}
+    # 집중 흐름 칸 크기와 70% 게이트. 칸은 겹치지 않으며 이동창이 아니다(설계 문서 §2.8·§2.9).
+    # 게이트가 빡빡해 실측에서 공백이 과하게 많으면 여기를 조정한다. connection-gap 과 값이 같지만
+    # 뜻이 다르므로 함께 움직이지 않는다.
+    focus-bucket: ${ATTENTION_TIMELINE_FOCUS_BUCKET:PT30S}
+    focus-coverage-floor: ${ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR:0.7}
 
 coaching-trigger:
   # 최근 5분 유의 학생 비율의 하한. 이 값 이상이면 트리거한다(확정 문서 §7).

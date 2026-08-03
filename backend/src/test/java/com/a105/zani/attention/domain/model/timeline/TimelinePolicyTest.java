@@ -19,7 +19,8 @@ class TimelinePolicyTest {
         assertThat(policy.maxDuration()).isEqualTo(Duration.ofHours(3));
         assertThat(policy.samplingInterval()).isEqualTo(Duration.ofSeconds(5));
         assertThat(policy.groupWindow()).isEqualTo(Duration.ofMinutes(5));
-        assertThat(policy.focusWindow()).isEqualTo(Duration.ofSeconds(30));
+        // 겹치지 않는 칸의 크기다. 이동창이 아니다.
+        assertThat(policy.focusBucket()).isEqualTo(Duration.ofSeconds(30));
         // 확정 문서 §6.2 의 상태 키 TTL 과 같은 값이다. 사후 재생도 같은 순간에 같은 판단을 해야 한다.
         assertThat(policy.connectionGap()).isEqualTo(Duration.ofSeconds(30));
         assertThat(policy.requiredConnection()).isEqualTo(Duration.ofMinutes(1));
@@ -33,5 +34,17 @@ class TimelinePolicyTest {
         assertThat(policy.distractionEndRatio()).isEqualTo(0.20d);
         assertThat(policy.distractionEndHold()).isEqualTo(Duration.ofSeconds(30));
         assertThat(policy.distractionMergeGap()).isEqualTo(Duration.ofSeconds(15));
+    }
+
+    @Test
+    @DisplayName("70% 게이트는 30초 칸에서 판정 3건을 요구한다 — 2건은 20초라 못 넘는다")
+    void the_coverage_floor_requires_three_observations() {
+        TimelinePolicy policy = TimelinePolicy.defaults();
+
+        long required = (long) (policy.focusBucket().toMillis() * policy.focusCoverageFloor());
+
+        assertThat(required).isEqualTo(21_000L);
+        assertThat(2 * 10_000L).isLessThan(required);
+        assertThat(3 * 10_000L).isGreaterThanOrEqualTo(required);
     }
 }

@@ -17,7 +17,7 @@ public class AttentionTimelineConfig {
                 properties.maxDuration(),
                 properties.samplingInterval(),
                 properties.groupWindow(),
-                properties.focusWindow(),
+                properties.focusBucket(),
                 properties.connectionGap(),
                 properties.requiredConnection(),
                 properties.measurementOutage(),

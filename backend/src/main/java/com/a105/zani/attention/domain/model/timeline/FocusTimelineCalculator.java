@@ -29,7 +29,7 @@ public final class FocusTimelineCalculator {
     }
 
     private static Integer focusPercentAt(ParticipantReplay replay, long atMs, TimelinePolicy policy) {
-        long window = policy.focusWindow().toMillis();
+        long window = policy.focusBucket().toMillis();
         long from = atMs - window;
 
         long measurableMs = 0L;
