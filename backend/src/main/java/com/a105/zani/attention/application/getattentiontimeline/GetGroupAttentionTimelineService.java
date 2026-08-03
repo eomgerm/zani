@@ -10,8 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.attention.domain.model.timeline.DistractionIntervalDetector;
-import com.a105.zani.attention.domain.model.timeline.GroupTimelineCalculator;
-import com.a105.zani.attention.domain.model.timeline.GroupTimelinePoint;
+import com.a105.zani.attention.domain.model.timeline.GroupSignalCalculator;
+import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 import com.a105.zani.attention.domain.model.timeline.ObservationRecord;
 import com.a105.zani.attention.domain.model.timeline.ParticipantReplay;
 import com.a105.zani.attention.domain.model.timeline.PromptRecord;
@@ -54,7 +54,7 @@ public class GetGroupAttentionTimelineService implements GetGroupAttentionTimeli
 
         long durationMs = TimelineDurations.resolveMillis(access.startedAt(), access.endedAt(), observations, policy);
         List<ParticipantReplay> replays = replay(observations, queryPort.prompts(query.sessionId()));
-        List<GroupTimelinePoint> points = GroupTimelineCalculator.calculate(replays, durationMs, policy);
+        List<GroupSignalPoint> points = GroupSignalCalculator.calculate(replays, durationMs, policy);
 
         return new GetGroupAttentionTimelineResult(
                 intervalSeconds, durationMs / 1000L, points, DistractionIntervalDetector.detect(points, policy));

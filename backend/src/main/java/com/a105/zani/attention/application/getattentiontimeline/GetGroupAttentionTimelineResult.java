@@ -3,7 +3,7 @@ package com.a105.zani.attention.application.getattentiontimeline;
 import java.util.List;
 
 import com.a105.zani.attention.domain.model.timeline.DistractionInterval;
-import com.a105.zani.attention.domain.model.timeline.GroupTimelinePoint;
+import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 
 /**
  * 강사용 익명 집단 타임라인.
@@ -16,5 +16,5 @@ import com.a105.zani.attention.domain.model.timeline.GroupTimelinePoint;
 public record GetGroupAttentionTimelineResult(
         int intervalSeconds,
         long durationSeconds,
-        List<GroupTimelinePoint> points,
+        List<GroupSignalPoint> points,
         List<DistractionInterval> distractedIntervals) {}

@@ -11,7 +11,7 @@ import com.a105.zani.attention.domain.model.PromptAnswer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class GroupTimelineCalculatorTest {
+class GroupSignalCalculatorTest {
 
     private static final TimelinePolicy POLICY = TimelinePolicy.defaults();
 
@@ -28,7 +28,7 @@ class GroupTimelineCalculatorTest {
         return ParticipantReplay.of(id, events, prompts, POLICY);
     }
 
-    private static GroupTimelinePoint pointAt(List<GroupTimelinePoint> points, long offsetSeconds) {
+    private static GroupSignalPoint pointAt(List<GroupSignalPoint> points, long offsetSeconds) {
         return points.stream()
                 .filter(point -> point.offsetSeconds() == offsetSeconds)
                 .findFirst()
@@ -85,8 +85,8 @@ class GroupTimelineCalculatorTest {
     @Test
     @DisplayName("5초 간격으로 세션 길이만큼 점을 만든다")
     void emits_a_point_every_five_seconds() {
-        List<GroupTimelinePoint> points =
-                GroupTimelineCalculator.calculate(List.of(student(1L, DetectorOutcome.ENGAGED, 60)), 300_000L, POLICY);
+        List<GroupSignalPoint> points =
+                GroupSignalCalculator.calculate(List.of(student(1L, DetectorOutcome.ENGAGED, 60)), 300_000L, POLICY);
 
         assertThat(points).hasSize(61); // 0, 5, ... 300
         assertThat(points.get(0).offsetSeconds()).isZero();
@@ -103,7 +103,7 @@ class GroupTimelineCalculatorTest {
                 student(3L, DetectorOutcome.ENGAGED, 60),
                 student(4L, DetectorOutcome.ENGAGED, 60));
 
-        GroupTimelinePoint point = pointAt(GroupTimelineCalculator.calculate(four, 300_000L, POLICY), 200L);
+        GroupSignalPoint point = pointAt(GroupSignalCalculator.calculate(four, 300_000L, POLICY), 200L);
 
         assertThat(point.eligibleCount()).isEqualTo(4);
         assertThat(point.checkNeededRatio()).isNull();
@@ -117,8 +117,8 @@ class GroupTimelineCalculatorTest {
     @Test
     @DisplayName("5명이면 비율이 보인다 — 경계는 미만이다")
     void shows_ratios_at_exactly_five() {
-        GroupTimelinePoint point =
-                pointAt(GroupTimelineCalculator.calculate(fiveEngagedStudents(), 300_000L, POLICY), 200L);
+        GroupSignalPoint point =
+                pointAt(GroupSignalCalculator.calculate(fiveEngagedStudents(), 300_000L, POLICY), 200L);
 
         assertThat(point.eligibleCount()).isEqualTo(5);
         assertThat(point.checkNeededRatio()).isEqualTo(0.0d);
@@ -130,7 +130,7 @@ class GroupTimelineCalculatorTest {
         // 학생 10명 중 6명이 카메라를 끈 지 1분이 넘었고, 켠 4명 중 2명이 CONFUSED 다.
         List<ParticipantReplay> students = sixCameraOffAndFourEngagedWithTwoConfused();
 
-        GroupTimelinePoint point = pointAt(GroupTimelineCalculator.calculate(students, 600_000L, POLICY), 400L);
+        GroupSignalPoint point = pointAt(GroupSignalCalculator.calculate(students, 600_000L, POLICY), 400L);
 
         assertThat(point.connectedCount()).isEqualTo(10);
         assertThat(point.eligibleCount()).isEqualTo(4);
@@ -143,8 +143,8 @@ class GroupTimelineCalculatorTest {
     @DisplayName("두 상태를 함께 겪은 학생을 두 번 세지 않는다")
     void the_numerator_is_a_union() {
         // 학생 5명 중 1명이 UNMEASURABLE 확정과 CONFUSED 응답을 모두 가진다.
-        GroupTimelinePoint point = pointAt(
-                GroupTimelineCalculator.calculate(fiveStudentsOneWithTwoSignificantStates(), 600_000L, POLICY), 400L);
+        GroupSignalPoint point = pointAt(
+                GroupSignalCalculator.calculate(fiveStudentsOneWithTwoSignificantStates(), 600_000L, POLICY), 400L);
 
         assertThat(point.checkNeededRatio()).isEqualTo(0.2d); // 2/5 가 아니라 1/5
         // 분포는 상태별로 센다. 한 학생이 두 상태를 가지면 두 분포 모두에 들어가므로 합이 확인 필요 비율보다
@@ -156,8 +156,8 @@ class GroupTimelineCalculatorTest {
     @Test
     @DisplayName("접속자가 없는 구간은 분모가 0 이라 비율이 null 이다")
     void no_connected_students_yields_null() {
-        GroupTimelinePoint point = pointAt(
-                GroupTimelineCalculator.calculate(List.of(student(1L, DetectorOutcome.ENGAGED, 6)), 600_000L, POLICY),
+        GroupSignalPoint point = pointAt(
+                GroupSignalCalculator.calculate(List.of(student(1L, DetectorOutcome.ENGAGED, 6)), 600_000L, POLICY),
                 500L);
 
         assertThat(point.connectedCount()).isZero();

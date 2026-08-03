@@ -5,7 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.a105.zani.attention.domain.model.DetectorOutcome;
-import com.a105.zani.attention.domain.model.timeline.GroupTimelinePoint;
+import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 import com.a105.zani.attention.domain.model.timeline.ObservationRecord;
 import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
@@ -104,7 +104,7 @@ class GetGroupAttentionTimelineServiceTest {
 
         GetGroupAttentionTimelineResult result = get();
 
-        GroupTimelinePoint point = result.points().stream()
+        GroupSignalPoint point = result.points().stream()
                 .filter(candidate -> candidate.offsetSeconds() == 200L)
                 .findFirst()
                 .orElseThrow();

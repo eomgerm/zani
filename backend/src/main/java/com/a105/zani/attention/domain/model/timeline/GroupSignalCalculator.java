@@ -9,26 +9,29 @@ import java.util.Set;
 import com.a105.zani.attention.domain.model.AttentionState;
 
 /**
- * 참가자 재생기 여러 개에서 5초 격자마다 익명 집단 비율을 뽑는다.
+ * 참가자 재생기 여러 개에서 5초 격자마다 익명 집단 신호 비율을 뽑는다.
+ *
+ * <p>30초 집중 흐름({@link GroupFocusCalculator})과 격자가 다르다. 이름을 "타임라인" 이 아니라 "신호" 로 두는 이유이며, 이쪽이 5초 격자를 가리킨다는 것을 호출부에서 바로 읽을
+ * 수 있어야 한다.
  *
  * <p>실시간 코칭 트리거({@code GetCoachingSignalsService})와 판정 규칙은 같지만 파이프라인은 공유하지 않는다. 실시간은 Redis 상태를 읽고 이쪽은 저장된 원본 행을 재생하며,
  * 동작 중인 코칭 트리거에 회귀를 만들지 않기 위해 중복이 남더라도 갈라 둔다.
  */
-public final class GroupTimelineCalculator {
+public final class GroupSignalCalculator {
 
-    private GroupTimelineCalculator() {}
+    private GroupSignalCalculator() {}
 
-    public static List<GroupTimelinePoint> calculate(
+    public static List<GroupSignalPoint> calculate(
             List<ParticipantReplay> replays, long durationMs, TimelinePolicy policy) {
         long step = policy.samplingInterval().toMillis();
-        List<GroupTimelinePoint> points = new ArrayList<>();
+        List<GroupSignalPoint> points = new ArrayList<>();
         for (long at = 0; at <= durationMs; at += step) {
             points.add(pointAt(replays, at, policy));
         }
         return List.copyOf(points);
     }
 
-    private static GroupTimelinePoint pointAt(List<ParticipantReplay> replays, long atMs, TimelinePolicy policy) {
+    private static GroupSignalPoint pointAt(List<ParticipantReplay> replays, long atMs, TimelinePolicy policy) {
         long offsetSeconds = atMs / 1000L;
 
         List<ParticipantReplay> connected =
@@ -45,7 +48,7 @@ public final class GroupTimelineCalculator {
                 connected.size() < policy.minimumEligible() ? null : (double) cameraOffCount / connected.size();
 
         if (eligible.size() < policy.minimumEligible()) {
-            return GroupTimelinePoint.withoutDistribution(
+            return GroupSignalPoint.withoutDistribution(
                     offsetSeconds, connected.size(), eligible.size(), cameraOffRatio);
         }
 
@@ -64,7 +67,7 @@ public final class GroupTimelineCalculator {
         }
 
         int denominator = eligible.size();
-        return new GroupTimelinePoint(
+        return new GroupSignalPoint(
                 offsetSeconds,
                 connected.size(),
                 denominator,

@@ -1,7 +1,9 @@
 package com.a105.zani.attention.domain.model.timeline;
 
 /**
- * 5초 격자 한 점의 익명 집단 집계.
+ * 5초 격자 한 점의 익명 집단 신호 비율.
+ *
+ * <p>30초 집중 흐름과 격자가 다르다. 둘은 독립적으로 계산되고 응답에서도 배열이 갈린다(설계 문서 §3.1).
  *
  * <p>학생 식별자와 학생별 값은 어떤 필드로도 담지 않는다(REPORT-I-002 · ALERT-004).
  *
@@ -17,7 +19,7 @@ package com.a105.zani.attention.domain.model.timeline;
  * @param nonResponseRatio 무응답 비율. 분모는 {@code eligibleCount}
  * @param unmeasurableRatio 판단 불가 비율. 분모는 {@code eligibleCount}
  */
-public record GroupTimelinePoint(
+public record GroupSignalPoint(
         long offsetSeconds,
         int connectedCount,
         int eligibleCount,
@@ -33,9 +35,9 @@ public record GroupTimelinePoint(
      *
      * <p>카메라 OFF 비율은 분모가 달라 함께 감추지 않는다. 집계 대상이 4명이어도 접속자가 10명이면 "10명 중 6명이 카메라를 껐다"는 사실은 익명성을 해치지 않고 그대로 말할 수 있다.
      */
-    public static GroupTimelinePoint withoutDistribution(
+    public static GroupSignalPoint withoutDistribution(
             long offsetSeconds, int connectedCount, int eligibleCount, Double cameraOffRatio) {
-        return new GroupTimelinePoint(
+        return new GroupSignalPoint(
                 offsetSeconds, connectedCount, eligibleCount, null, cameraOffRatio, null, null, null, null);
     }
 }

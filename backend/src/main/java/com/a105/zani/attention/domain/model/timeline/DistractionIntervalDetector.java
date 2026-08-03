@@ -15,7 +15,7 @@ public final class DistractionIntervalDetector {
 
     private DistractionIntervalDetector() {}
 
-    public static List<DistractionInterval> detect(List<GroupTimelinePoint> points, TimelinePolicy policy) {
+    public static List<DistractionInterval> detect(List<GroupSignalPoint> points, TimelinePolicy policy) {
         if (points.isEmpty()) {
             return List.of();
         }
@@ -31,7 +31,7 @@ public final class DistractionIntervalDetector {
         long belowRunStart = 0L;
         long belowHeld = 0L;
 
-        for (GroupTimelinePoint point : points) {
+        for (GroupSignalPoint point : points) {
             Double ratio = point.checkNeededRatio();
             if (ratio == null) {
                 // 판단 불가다. 진행 중인 구간을 끝내지도, 어느 누적을 늘리지도 않는다(설계 문서 §2.5).

@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.a105.zani.attention.application.getattentiontimeline.GetGroupAttentionTimelineResult;
 import com.a105.zani.attention.domain.model.timeline.DistractionInterval;
-import com.a105.zani.attention.domain.model.timeline.GroupTimelinePoint;
+import com.a105.zani.attention.domain.model.timeline.GroupSignalPoint;
 
 /**
  * 강사용 익명 집단 타임라인 응답.
@@ -69,7 +69,7 @@ public record GroupAttentionTimelineResponse(
             @Schema(description = "판단 불가 비율. 분모는 eligibleCount.", example = "0.05", nullable = true)
             Double unmeasurableRatio) {
 
-        private static Point from(GroupTimelinePoint point) {
+        private static Point from(GroupSignalPoint point) {
             return new Point(
                     point.offsetSeconds(),
                     point.connectedCount(),

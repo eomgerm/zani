@@ -14,10 +14,10 @@ class DistractionIntervalDetectorTest {
     private static final TimelinePolicy POLICY = TimelinePolicy.defaults();
 
     /** 확인 필요 비율만 있는 점 목록을 만든다. null 은 판단 불가 구간이다. */
-    private static List<GroupTimelinePoint> points(Double... ratios) {
-        List<GroupTimelinePoint> points = new ArrayList<>();
+    private static List<GroupSignalPoint> points(Double... ratios) {
+        List<GroupSignalPoint> points = new ArrayList<>();
         for (int i = 0; i < ratios.length; i++) {
-            points.add(new GroupTimelinePoint(i * 5L, 10, 10, ratios[i], 0.0d, null, null, null, null));
+            points.add(new GroupSignalPoint(i * 5L, 10, 10, ratios[i], 0.0d, null, null, null, null));
         }
         return points;
     }
@@ -53,7 +53,7 @@ class DistractionIntervalDetectorTest {
     @Test
     @DisplayName("20% 미만이 30초 유지되면 종료한다")
     void ends_after_thirty_seconds_below_the_threshold() {
-        List<GroupTimelinePoint> series = points(concat(repeat(0.35d, 5), repeat(0.10d, 7)));
+        List<GroupSignalPoint> series = points(concat(repeat(0.35d, 5), repeat(0.10d, 7)));
 
         // 25초부터 임계 미만이 이어져 50초에서 30초를 채운다. 구간은 그 연속의 첫 점인 25초에서 닫힌다 —
         // 아래 merges_intervals_closer_than_fifteen_seconds 와 같은 규칙이다.
@@ -65,7 +65,7 @@ class DistractionIntervalDetectorTest {
     @DisplayName("두 구간의 간격이 15초 미만이면 병합한다")
     void merges_intervals_closer_than_fifteen_seconds() {
         // 30% 로 20초 열고 → 10% 로 30초 유지해 25초에서 닫고 → 다시 30% 로 20초 연다.
-        List<GroupTimelinePoint> series = points(concat(
+        List<GroupSignalPoint> series = points(concat(
                 repeat(0.35d, 5), // 0~20 구간이 열린다
                 repeat(0.10d, 6), // 25~50, 30초 유지되어 25초에서 닫힌다
                 repeat(0.35d, 5))); // 55~75
@@ -98,7 +98,7 @@ class DistractionIntervalDetectorTest {
     @DisplayName("null 구간은 진행 중인 구간을 끝내지 않고 누적을 멈춘다")
     void null_ratios_suspend_the_counters() {
         // 30% 20초로 열린 뒤 null 이 60초 이어지고 다시 30% 가 온다.
-        List<GroupTimelinePoint> series = points(concat(repeat(0.35d, 5), nulls(12), repeat(0.35d, 5)));
+        List<GroupSignalPoint> series = points(concat(repeat(0.35d, 5), nulls(12), repeat(0.35d, 5)));
 
         // null 을 0% 로 봤다면 여기서 종료됐을 것이다. 하나로 이어져야 한다.
         assertThat(DistractionIntervalDetector.detect(series, POLICY))
@@ -109,7 +109,7 @@ class DistractionIntervalDetectorTest {
     @DisplayName("null 구간은 시작 누적도 멈춘다")
     void null_ratios_do_not_accumulate_the_start_condition() {
         // 30% 가 10초, null 10초, 다시 30% 10초. 이어 세면 20초라 열리지만 열리면 안 된다.
-        List<GroupTimelinePoint> series = points(concat(repeat(0.35d, 2), nulls(2), repeat(0.35d, 2)));
+        List<GroupSignalPoint> series = points(concat(repeat(0.35d, 2), nulls(2), repeat(0.35d, 2)));
 
         assertThat(DistractionIntervalDetector.detect(series, POLICY)).isEmpty();
     }
@@ -117,7 +117,7 @@ class DistractionIntervalDetectorTest {
     @Test
     @DisplayName("끝까지 임계 이상이면 마지막 점에서 구간을 닫는다")
     void an_open_interval_closes_at_the_last_point() {
-        List<GroupTimelinePoint> series = points(repeat(0.35d, 9)); // 0~40초
+        List<GroupSignalPoint> series = points(repeat(0.35d, 9)); // 0~40초
 
         assertThat(DistractionIntervalDetector.detect(series, POLICY))
                 .containsExactly(new DistractionInterval(0L, 40L));
