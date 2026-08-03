@@ -80,9 +80,14 @@ public class SessionInviteController {
     }
 
     @Operation(summary = "내 수업 목록", description = """
-                    로그인한 사용자가 참여한 수업을 최근 순으로 돌려줍니다. 강사로 연 수업과 학생으로 입장한 수업이 모두 포함됩니다.
+                    로그인한 사용자가 참여한 수업을 돌려줍니다. 강사로 연 수업과 학생으로 입장한 수업이 모두 포함되며, `role` 로 구분합니다.
+                    같은 수업이 두 목록에 겹치면 강사 항목으로 한 번만 나갑니다. **페이지네이션은 없습니다** — 달력 화면도 이 응답을 그대로 쓰고 월별 묶음은 화면이 만듭니다.
 
-                    각 항목에는 제목·상태(`LIVE` 또는 `ENDED`)·시작 시각이 담깁니다. 페이지네이션은 없습니다.
+                    각 항목에는 제목·상태·시작/종료 시각·참가자 수·리포트 상태·재입장 가능 여부가 담깁니다.
+
+                    - `participantCount` 는 **들어온 적 있는 사람 수**입니다. 지금 접속 중인 인원이 아닙니다(참가자 행은 퇴장해도 남습니다).
+                    - `reportStatus` 는 사후 처리 진행 상태입니다. `NONE`(시작 전) · `PROCESSING` · `COMPLETED` · `FAILED`.
+                    - `rejoinable` 이 `true` 면 프리조인을 다시 거치지 않고 강의실로 바로 들어갈 수 있습니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(

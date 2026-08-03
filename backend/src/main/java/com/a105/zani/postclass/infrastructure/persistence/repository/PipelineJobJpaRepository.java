@@ -1,6 +1,8 @@
 package com.a105.zani.postclass.infrastructure.persistence.repository;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import jakarta.persistence.LockModeType;
 
@@ -38,6 +40,18 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     default int insertIgnore(Long id, Long sessionId, Instant queuedAt) {
         return insertIgnoreWithStatus(id, sessionId, PipelineStatus.QUEUED.name(), queuedAt);
     }
+
+    /**
+     * 여러 세션의 단계를 한 번에 읽는다. 목록 화면이 세션마다 물으면 목록 길이만큼 쿼리가 나간다.
+     *
+     * <p>잠금 없이 읽는다 — 이 값은 화면에 보여줄 뿐 전이 판단에 쓰지 않는다. 작업이 없는 세션은 결과에서 빠진다.
+     */
+    @Query("""
+            select job.sessionId, job.status
+              from PipelineJobJpaEntity job
+             where job.sessionId in :sessionIds
+            """)
+    List<Object[]> findStatusesBySessionIds(@Param("sessionIds") Collection<Long> sessionIds);
 
     /**
      * 단계를 잠금 읽기로 가져온다. 잠금 읽기는 스냅숏이 아니라 최신 커밋본을 보므로, 앞선 전이가 방금 커밋한 단계까지 보인다.
