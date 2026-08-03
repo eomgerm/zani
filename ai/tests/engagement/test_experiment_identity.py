@@ -23,6 +23,9 @@ from typing import cast
 import pytest
 
 from zani_ai.engagement.experiment import (
+    CANDIDATE_SEEDS,
+    E0_10_SPEC,
+    E0_SEEDS,
     E0_SPEC,
     E0A_SPEC,
     E0B_SPEC,
@@ -88,6 +91,9 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-K", "cuda"): "2bdd0769df956cff3f2787e8b5ab5735a48897dda8683f1f625f415b3be8673b",
     ("E0-L", "cpu"): "76c7321e20450759a7d7baa494ef8b43da9316db42779f9e4cefdeaa397c3d8b",
     ("E0-L", "cuda"): "2c6c20aafb133ad95ae44b34f5ccbf17125bb27351009af76b2c337621b6703b",
+    # E0-10 is new in S15P11A105-238; measured on this tree, not before it.
+    ("E0-10", "cpu"): "bdca954125cd03df0915a62015f457b5e80317c0746c83f4ff7d8d4a7a62816e",
+    ("E0-10", "cuda"): "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -110,6 +116,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0J_SPEC,
     E0K_SPEC,
     E0L_SPEC,
+    E0_10_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -146,6 +153,55 @@ def test_every_protocol_is_covered() -> None:
 
 def test_spec_registry_matches_the_pinned_specs() -> None:
     assert {spec.protocol: spec for spec in SPECS_TUPLE} == SPECS
+
+
+def test_candidate_seeds_extend_the_frozen_five() -> None:
+    """S15P11A105-238 raises the count without moving the seeds already run.
+
+    The overlap is what lets a 10-seed run be read against the 5-seed run of
+    the same protocol seed by seed; a fresh set of ten would make the two
+    incomparable at that level for no gain.
+    """
+    assert len(CANDIDATE_SEEDS) == 10
+    assert CANDIDATE_SEEDS[: len(E0_SEEDS)] == E0_SEEDS
+    assert len(set(CANDIDATE_SEEDS)) == len(CANDIDATE_SEEDS)
+
+
+def test_new_specs_default_to_the_candidate_seed_count() -> None:
+    """A protocol added from now on must not silently inherit five seeds."""
+    added_without_thinking = ExperimentSpec("E-new", E0_SPEC.schema, E0_SPEC.model_config)
+
+    assert added_without_thinking.seeds == CANDIDATE_SEEDS
+
+
+@pytest.mark.parametrize("spec", SPECS_TUPLE, ids=lambda spec: spec.protocol)
+def test_completed_protocols_stay_pinned_to_the_five_seed_identity(spec: ExperimentSpec) -> None:
+    """Everything through E0-L has seeds on disk under the 5-seed hash.
+
+    ``seeds`` is inside ``configuration``, so letting one of these inherit the
+    new default would change its ``configuration_sha256`` and make
+    ``_validate_summary_identity`` reject its own output directory. Only E0-10,
+    which has nothing on disk yet, may carry the new list.
+    """
+    expected = CANDIDATE_SEEDS if spec.protocol == "E0-10" else E0_SEEDS
+
+    assert spec.seeds == expected
+
+
+def test_e0_10_is_e0_measured_more_times_and_nothing_else() -> None:
+    """The baseline at ten seeds must differ from E0 in the seed list alone.
+
+    Its whole purpose is to be comparable to E0: any other drift would mean the
+    10-seed comparison is measuring the drift instead of the candidate.
+    """
+    base = _build_configuration(E0_SPEC, "cuda")
+    extended = _build_configuration(E0_10_SPEC, "cuda")
+    differing = {key for key in base | extended if base.get(key) != extended.get(key)}
+
+    assert differing == {"seeds"}
+    assert extended["seeds"] == list(CANDIDATE_SEEDS)
+    assert _canonical_hash(extended) != _canonical_hash(base)
+    assert replace(E0_10_SPEC, protocol="E0", seeds=E0_SEEDS) == E0_SPEC
 
 
 def test_e0k_runs_its_whole_schedule_and_differs_from_e0_only_there() -> None:

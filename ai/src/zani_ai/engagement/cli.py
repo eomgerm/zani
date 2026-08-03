@@ -529,13 +529,17 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0j", "E0-J", "E0-J (zero placeholders for missing faces)"),
         ("e0k", "E0-K", "E0-K (lr 1e-3, step decay, 300 epochs)"),
         ("e0l", "E0-L", "E0-L (K-1 순서형 이진 헤드, 동결 백본 2단계)"),
+        ("e0-10", "E0-10", "E0-10 (E0와 동일, 10-seed 비교 기준선)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
     ):
         reproduce = commands.add_parser(
             f"reproduce-{command}",
-            help=f"run the validation-only five-seed {description} protocol",
+            # Seed counts differ per protocol since S15P11A105-238 (five for
+            # everything through E0-L, ten for E0-10 and later candidates), so
+            # the count lives in the spec and in ai/README.md, not here.
+            help=f"run the validation-only multi-seed {description} protocol",
         )
         _add_experiment_options(reproduce)
         _add_drift_option(reproduce)

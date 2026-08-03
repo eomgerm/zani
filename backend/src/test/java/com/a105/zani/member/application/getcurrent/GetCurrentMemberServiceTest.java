@@ -55,5 +55,10 @@ class GetCurrentMemberServiceTest {
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             throw new UnsupportedOperationException("not needed for this test");
         }
+
+        @Override
+        public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
     }
 }
