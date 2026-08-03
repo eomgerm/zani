@@ -88,6 +88,23 @@ postclass:
     # 외부 프로세스 1회 상한. 초과하면 강제 종료한다. stream copy 는 I/O 뿐이라 3시간 트랙도 초 단위로
     # 끝나지만, 멈춘 프로세스가 오케스트레이션 스레드를 잡는 것을 막는 안전장치다.
     process-timeout: ${POSTCLASS_FFMPEG_TIMEOUT:PT60S}
+    # 전사 대기 작업을 훑는 주기. 스케줄 스레드는 디스패치만 하고 즉시 반환하므로 짧게 둘 수 있다.
+    poll-delay: ${POSTCLASS_TRANSCRIPTION_POLL_DELAY:PT10S}
+    # 청크 목표 길이. 25 MiB 한도가 아니라 힙(요청 버퍼링)과 timeout 예측 가능성 때문에 이 값이다.
+    # 실측 비트레이트(104.8~127 kbps)로 10분이면 7.9~9.5 MB 라 한도에 여유가 크다. 짧게 쪼개면 호출당
+    # 고정 오버헤드가 곱해진다 — 2분 청크의 처리시간/길이 비율이 5분 파일의 약 2배였다(실측).
+    chunk-duration: ${POSTCLASS_CHUNK_DURATION:PT10M}
+    # 실질 업로드 상한. GMS 멀티파트 한도는 25 MiB(26,214,400 B) 실측이고 여유를 두어 24 MiB 로 잡는다.
+    # 목표 시간으로 자른 뒤 산출물 크기를 확인해 이 값을 넘으면 그 청크만 반으로 다시 자른다 —
+    # 파일 내부에서도 비트레이트가 변하므로 평균으로 역산한 시간만 믿을 수 없다.
+    max-upload-bytes: ${POSTCLASS_MAX_UPLOAD_BYTES:25165824}
+    # GMS 청크 호출 동시성. 오케스트레이션은 1개(세션 직렬)이고 이 값은 그 안의 업로드에만 적용된다.
+    # 힙은 청크 크기 × 이 값보다 크다(byte[] 복사·multipart 조립). 올릴 때 peak heap 을 함께 본다.
+    concurrency: ${POSTCLASS_TRANSCRIPTION_CONCURRENCY:2}
+    # 무음 사전 판별. 기본 OFF 다(S15P11A105-292 로 분리). GMS 응답의 no_speech_prob 는 호출 후 값이라
+    # 호출 수를 줄이지 못하고, 마이크 ON 상태의 침묵(-30.3 dB)은 발화(-24.0 dB)와 6 dB 차이라 음량만으로
+    # 가릴 수 없다. 잘못 건너뛰어 발화를 잃는 것이 호출 낭비보다 나쁘다.
+    silence-prefilter-enabled: ${POSTCLASS_SILENCE_PREFILTER_ENABLED:false}
 
 notification:
   email:
@@ -118,6 +135,11 @@ gms:
   # 효용이 떨어진다. 운영 데이터가 쌓이면 팀에서 재조정한다.
   transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
   transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
+  # 사후 배치 전사 전용 timeout. 위의 transcribe-timeout(20s) 을 재사용하면 안 된다 — 그 값은 실시간
+  # 코칭용이고 "느린 응답을 끊는 쪽이 낫다" 는 판단이 들어 있다. 배치는 반대로 기다려야 한다.
+  # 실측 최악 비율(처리시간/오디오길이 0.198)을 10분 청크에 적용하면 약 119초다. 10분은 미실측이라
+  # 여유를 두어 180초로 시작하고, timeout 이 나도 S15P11A105-107 의 재시도 정책을 그대로 쓴다.
+  postclass-transcribe-timeout: ${GMS_POSTCLASS_TRANSCRIBE_TIMEOUT:180s}
   tip-model: ${GMS_TIP_MODEL:gpt-5.4-mini}
   # 팁 문구 전용 timeout. 실측에서 슬롯 1개 응답이 1.2~1.5초였다(프롬프트 100토큰 기준).
   # 전사 뒤에 붙는 단계라 여유를 크게 둘 이유가 없다.

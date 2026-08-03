@@ -16,6 +16,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param connectTimeout 연결 timeout
  * @param sttModel 전사 모델. 기본 whisper-1
  * @param transcribeTimeout 전사 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 전사는 실패로 끝난다
+ * @param postclassTranscribeTimeout 사후 배치 전사 timeout. 실시간용보다 훨씬 길다 — 배치는 느린 응답을 끊는 것이 이득이 아니다
  * @param transcribeLanguage 전사 언어. 한국어 강의를 전제로 기본값은 ko 다. 비우면 GMS 가 자동 감지한다
  * @param tipModel 팁 문구를 채우는 모델. 기본 gpt-5.4-mini
  * @param tipTimeout 팁 호출 timeout. 재시도가 없으므로 초과하면 그 트리거의 팁은 만들지 않는다
@@ -29,6 +30,7 @@ public record GmsProperties(
         Duration connectTimeout,
         String sttModel,
         Duration transcribeTimeout,
+        Duration postclassTranscribeTimeout,
         String transcribeLanguage,
         String tipModel,
         Duration tipTimeout) {
