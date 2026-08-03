@@ -2,10 +2,23 @@ export type SessionSummary = {
   /** TSID 라 JS 안전 정수 범위를 넘는다. 문자열로만 다뤄야 값이 깨지지 않는다. */
   sessionId: string;
   inviteCode: string;
+  title: string;
+  /** 이 수업을 연 강사 이름. 학생 카드가 "누구 수업인지" 를 보여주는 데 쓴다. */
+  instructorName: string;
   /** `PREPARING`, `LIVE`, `ENDING`, `NOTE_PENDING`, `ENDED` 중 하나. 서버 구현에 따라 앞의 두 개만 올 수도 있다. */
   status: string;
   /** 이 수업에서 내 역할. `INSTRUCTOR` 또는 `STUDENT`. */
   role: string;
+  /** ISO 8601. */
+  startedAt: string;
+  /** 진행 중인 수업에는 없다. */
+  endedAt: string | null;
+  /** 들어온 적 있는 사람 수. 지금 접속 중인 인원이 아니다 — 참가자 행은 퇴장해도 남는다. */
+  participantCount: number;
+  /** `NONE`, `PROCESSING`, `COMPLETED`, `FAILED`. */
+  reportStatus: string;
+  /** 프리조인을 다시 거치지 않고 강의실로 들어갈 수 있는지. */
+  rejoinable: boolean;
 };
 
 export class SessionListRequestError extends Error {
@@ -42,8 +55,15 @@ const isSessionSummary = (value: unknown): value is SessionSummary => {
   return (
     idOf(summary.sessionId) !== null &&
     typeof summary.inviteCode === "string" &&
+    typeof summary.title === "string" &&
+    typeof summary.instructorName === "string" &&
     typeof summary.status === "string" &&
-    typeof summary.role === "string"
+    typeof summary.role === "string" &&
+    typeof summary.startedAt === "string" &&
+    (summary.endedAt === null || typeof summary.endedAt === "string") &&
+    typeof summary.participantCount === "number" &&
+    typeof summary.reportStatus === "string" &&
+    typeof summary.rejoinable === "boolean"
   );
 };
 

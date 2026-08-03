@@ -15,8 +15,15 @@ vi.mock("@/domains/auth", () => ({
 const summary = (over: Partial<SessionSummary> = {}): SessionSummary => ({
   sessionId: "100",
   inviteCode: "AAAAAAAA",
+  title: "테스트 수업",
+  instructorName: "박강사",
   status: "LIVE",
   role: "INSTRUCTOR",
+  startedAt: "2026-08-03T09:00:00Z",
+  endedAt: null,
+  participantCount: 3,
+  reportStatus: "NONE",
+  rejoinable: true,
   ...over,
 });
 

@@ -2,15 +2,18 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { LectureCalendar } from "./LectureCalendar";
-import type { Lecture } from "../fixtures";
+import type { MyLecture } from "../myLectures";
 
-const lecture = (over: Partial<Lecture> = {}): Lecture => ({
+const lecture = (over: Partial<MyLecture> = {}): MyLecture => ({
   id: "l1",
   title: "CS 네트워크 기초",
   date: "2026-07-10",
   role: "student",
   status: "COMPLETED",
   dur: "1시간 12분",
+  students: 12,
+  instructor: "박서준",
+  rejoinable: false,
   ...over,
 });
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui";
-import type { Lecture } from "../fixtures";
+import type { MyLecture } from "../myLectures";
 import { isLectureOpenable } from "../status";
 
 const WEEKDAYS = [
@@ -23,7 +23,7 @@ const navBtn =
   "flex size-8 cursor-pointer items-center justify-center rounded-[9px] border border-line-muted bg-surface text-ink-muted hover:bg-primary-softer";
 
 /** 강의 캘린더. 강의가 있는 날을 강조하고 월 단위로 이동한다. */
-export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
+export function LectureCalendar({ lectures }: { lectures: MyLecture[] }) {
   const [{ year, month }, setYm] = useState(INITIAL);
 
   const shift = (delta: number) =>
@@ -38,7 +38,7 @@ export function LectureCalendar({ lectures }: { lectures: Lecture[] }) {
   const daysInMonth = new Date(year, month, 0).getDate();
   const prefix = `${year}-${String(month).padStart(2, "0")}`;
 
-  const byDay = new Map<number, Lecture[]>();
+  const byDay = new Map<number, MyLecture[]>();
   for (const l of lectures) {
     if (!l.date.startsWith(prefix)) continue;
     const d = parseInt(l.date.slice(8), 10);
