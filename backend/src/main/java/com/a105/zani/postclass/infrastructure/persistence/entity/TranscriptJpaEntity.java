@@ -1,4 +1,4 @@
-package com.a105.zani.recording.infrastructure.persistence.entity;
+package com.a105.zani.postclass.infrastructure.persistence.entity;
 
 import java.util.Map;
 import jakarta.persistence.Column;
