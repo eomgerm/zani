@@ -112,6 +112,41 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     int markFailed(
             @Param("sessionId") Long sessionId, @Param("error") String error, @Param("changedAt") Instant changedAt);
 
+    /** 현재 단계를 유지한 채 재시도 대기만 푼다. 시도 횟수는 건드리지 않는다 — 재시도 선점 전용(S15P11A105-247). */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.nextAttemptAt = null, job.updatedAt = :changedAt
+             where job.sessionId = :sessionId
+            """)
+    int clearRetryWait(@Param("sessionId") Long sessionId, @Param("changedAt") Instant changedAt);
+
+    /**
+     * 전사를 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터.
+     *
+     * <p>{@code QUEUED} 전체와, 재시도 기한이 지난 {@code TRANSCRIBING} 만 고른다. {@code next_attempt_at} 이 {@code null} 인
+     * {@code TRANSCRIBING} 은 <b>실행 중</b>이므로 빼야 한다 — 넣으면 진행 중인 세션이 매 주기마다 다시 발견된다.
+     *
+     * <p>단계 리터럴을 파라미터로 받는 이유는 {@link #findOverdueSessionIds} 와 같다. 단계 이름을 바꿀 때 쿼리 문자열을 놓치지 않도록 호출부가 enum 에서 넘긴다.
+     */
+    @Query("""
+            select job.sessionId from PipelineJobJpaEntity job
+             where job.status = :queuedStatus
+                or (job.status = :transcribingStatus
+                    and job.nextAttemptAt is not null and job.nextAttemptAt <= :now)
+             order by job.createdAt asc
+            """)
+    List<Long> findDueTranscriptionSessionIds(
+            @Param("queuedStatus") String queuedStatus,
+            @Param("transcribingStatus") String transcribingStatus,
+            @Param("now") Instant now,
+            Pageable pageable);
+
+    default List<Long> findDueTranscriptionSessionIds(Instant now, int limit) {
+        return findDueTranscriptionSessionIds(
+                PipelineStatus.QUEUED.name(), PipelineStatus.TRANSCRIBING.name(), now, Pageable.ofSize(limit));
+    }
+
     /**
      * 아직 끝나지 않았는데 기준 시각보다 먼저 등록된 작업의 세션 ID. 오래 밀린 것부터.
      *

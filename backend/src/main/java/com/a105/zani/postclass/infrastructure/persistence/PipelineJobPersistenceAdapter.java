@@ -40,7 +40,10 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
             return pipelineJobJpaRepository
                     .findForUpdate(sessionId)
                     .map(job -> new PipelineJobState(
-                            PipelineStatus.valueOf(job.getStatus()), job.getAttemptCount(), job.getCreatedAt()));
+                            PipelineStatus.valueOf(job.getStatus()),
+                            job.getAttemptCount(),
+                            job.getCreatedAt(),
+                            job.getNextAttemptAt()));
         } catch (DataAccessException exception) {
             throw new PipelineJobUnavailableException(exception);
         }
@@ -68,6 +71,24 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
     public void markFailed(Long sessionId, String error, Instant changedAt) {
         try {
             pipelineJobJpaRepository.markFailed(sessionId, truncate(error), changedAt);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public List<Long> findDueTranscriptionSessionIds(Instant now, int limit) {
+        try {
+            return pipelineJobJpaRepository.findDueTranscriptionSessionIds(now, limit);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void clearRetryWait(Long sessionId, Instant changedAt) {
+        try {
+            pipelineJobJpaRepository.clearRetryWait(sessionId, changedAt);
         } catch (DataAccessException exception) {
             throw new PipelineJobUnavailableException(exception);
         }

@@ -65,6 +65,36 @@ public interface PipelineJobPort {
     void markFailed(Long sessionId, String error, Instant changedAt);
 
     /**
+     * 전사를 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터 최대 limit 건.
+     *
+     * <p>두 경우만 담는다.
+     *
+     * <ul>
+     *   <li>{@code QUEUED} — 아직 전사를 시작하지 않았다
+     *   <li>{@code TRANSCRIBING} 이면서 {@code next_attempt_at} 이 {@code now} 이하 — 실패해 재시도 기한이 지났다
+     * </ul>
+     *
+     * <p>{@code next_attempt_at} 이 {@code null} 인 {@code TRANSCRIBING} 은 <b>실행 중</b>이라 담지 않는다. 이 구분이 없으면 진행 중인 세션이 매
+     * 주기마다 다시 발견되고, 같은 전사가 겹쳐 돌 수 있다.
+     *
+     * <p>이 조회는 선점이 아니다. 실제 시작은 잠금 읽기를 거치는 짧은 트랜잭션에서 따로 판정한다({@code TryStartTranscriptionUseCase}).
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    List<Long> findDueTranscriptionSessionIds(Instant now, int limit);
+
+    /**
+     * 현재 단계를 유지한 채 재시도 대기만 푼다. <b>시도 횟수는 보존한다.</b>
+     *
+     * <p>재시도 선점 전용이다. {@link #updateStatus} 를 쓸 수 없는 이유는 그쪽이 시도 횟수를 0 으로 되돌리기 때문이다 — 그러면 실패를 반복하는 단계가 상한에 걸리지 않고 영원히
+     * 재시도된다. {@code AdvancePipelineJobUseCase#advance} 도 쓸 수 없다. 이미 같은 단계면 아무것도 쓰지 않고 반환하므로 {@code next_attempt_at} 이
+     * 남아, 실행 중에도 매 주기마다 다시 발견된다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    void clearRetryWait(Long sessionId, Instant changedAt);
+
+    /**
      * 아직 끝나지 않았는데 마감을 넘긴 작업의 세션 ID. 오래 밀린 것부터 최대 limit 건.
      *
      * <p>세션 ID 만 읽는 이유: 경보에 필요한 것은 대상 식별과 건수뿐이다.
