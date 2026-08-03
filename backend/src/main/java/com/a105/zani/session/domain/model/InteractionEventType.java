@@ -11,5 +11,8 @@ package com.a105.zani.session.domain.model;
 public enum InteractionEventType {
     HAND_RAISED,
     HAND_LOWERED,
-    REACTION
+    REACTION,
+
+    /** 강사의 강제 음소거. 행위자는 강사이고 대상은 payload 에 담긴다. */
+    FORCE_MUTED
 }

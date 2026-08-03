@@ -405,6 +405,37 @@ class SessionChannelStompRoundTripIntegrationTest {
         assertNull(received.poll(3, TimeUnit.SECONDS));
     }
 
+    /**
+     * 구독을 막아도 발행이 열려 있으면 남의 수업에 메시지를 밀어 넣을 수 있다. 자기 화면에 보이지 않을 뿐 교실 전원에게 뿌려지므로 구독을 여는 것보다 나쁘다.
+     *
+     * <p><b>발행 경로에는 인터셉터 검사가 없다.</b> {@code StompAuthChannelInterceptor} 는 SUBSCRIBE 만 보고, 차단은 유스케이스가 참가자를 조회하면서 하기로 되어
+     * 있다(그 파일 주석에 적힌 약속이다). 화면에 이 동작을 시키는 길이 없어 손으로는 확인할 수 없으므로, 약속이 세 경로 모두에서 지켜지는지 여기서 고정한다.
+     */
+    @Test
+    void 비멤버는_세션_주제에_발행할_수_없다() throws Exception {
+        StompSession member = connectAs(STUDENT_ID);
+        BlockingQueue<String> received = subscribeToSession(member);
+
+        StompSession outsider = connectAs(OUTSIDER_ID);
+        BlockingQueue<String> errors = subscribeToErrors(outsider);
+
+        sendChat(outsider, "c-1", "남의 수업에 끼어들기");
+        sendHand(outsider, "h-1", true);
+        sendReaction(outsider, "r-1", "CLAP");
+
+        // 셋 다 보낸 사람에게만 거절이 간다. 도착 순서는 보장되지 않으므로 사유만 본다.
+        for (int i = 0; i < 3; i++) {
+            String rejection = awaitFrame(errors);
+            assertEquals("MEDIA_TOKEN_002", JsonPath.read(rejection, "$.reason"));
+        }
+
+        // 교실에는 아무것도 닿지 않고 흔적도 남지 않는다.
+        assertNull(received.poll(1, TimeUnit.SECONDS));
+        assertEquals(0, rowCount());
+        assertEquals(0, interactionRowCount("HAND_RAISED"));
+        assertEquals(0, interactionRowCount("REACTION"));
+    }
+
     @Test
     void 토큰이_없는_CONNECT는_거절한다() {
         assertThrows(

@@ -12,6 +12,32 @@ MR 변경 → code-review 실행 → Claude Code 검토 → GitLab 댓글 게시
 
 자동 머지는 이 도구의 범위가 아닙니다. 댓글과 테스트 결과를 확인한 뒤 팀원의 Approve를 받아 머지합니다.
 
+## 검토 흐름
+
+```text
+Git diff 수집
+  ├─ MR 지정 시 최신 MR head ref 가져오기
+  ├─ Git 브랜치·커밋 컨벤션 검사
+  ├─ 프론트·백엔드 DDD 규칙 검사
+  ├─ 변경 파일 전체와 재사용 후보 문맥 수집
+  └─ Claude Code 의미 검토
+       └─ 80점 이상 결과만 반영
+            └─ JSON 보고서 생성
+                 └─ 선택 시 GitLab 요약 댓글 게시
+```
+
+검사는 두 층으로 나뉩니다.
+
+**규칙 기반 차단.** 브랜치명·커밋 컨벤션과 프론트·백엔드 DDD 경계를 기계적으로 검사합니다. 규칙의 정본은 [`.gitlab/CONTRIBUTING.md`](../.gitlab/CONTRIBUTING.md)와 [`.agents/ddd-development-guide.md`](../.agents/ddd-development-guide.md)이고, 이 도구가 실행할 때 읽는 설정은 `config/ddd-rules.json`입니다. 규칙을 바꿀 때는 정본을 먼저 고치고 설정을 맞춥니다.
+
+**Claude Code 권고.** 문맥 판단이 필요한 세 가지만 봅니다.
+
+- 변경으로 새로 생긴 명백한 버그, 보안, 오류 처리 누락
+- 변경된 코드와 후보 파일을 비교해 확인 가능한 공통 컴포넌트 미사용
+- 제공된 문맥으로 증명되는 중복 구현
+
+스타일 취향, 추측성 문제, 기존 코드 문제, 린터가 확실히 잡는 항목은 댓글로 남기지 않습니다. Claude는 변경과 무관한 저장소 전체를 뒤지지 않으며, 후보에 실제 정의가 있을 때만 재사용 또는 중복 권고를 작성합니다.
+
 ## 처음 한 번 준비
 
 1. 저장소 루트에서 `npm install`을 실행합니다. PowerShell 실행 정책 때문에 `npm`이 막히면 `npm.cmd install`을 사용합니다.
@@ -122,11 +148,20 @@ npm.cmd run test:code-review
 
 ## 폴더 안내
 
-- `bin/`: 실행 명령
-- `config/`: DDD 규칙과 Claude JSON 응답 형식
-- `lib/`: Git, 규칙 검사, Claude, GitLab 댓글 처리 코드
-- `test/`: 자동 테스트
-- `ci/`: Runner를 연결할 때 복사할 예시 설정
-- `.claude/agents/code-reviewer.md`: Claude Code에서 수동 리뷰할 때도 같은 기준을 쓰게 하는 역할 정의
+```text
+.claude/
+  agents/
+    code-reviewer.md        # Claude Code 수동 검토용 역할·품질 기준
 
-설계 배경은 [`docs/code-review/design.md`](../docs/code-review/design.md), 적용 순서는 [`docs/code-review/implementation-plan.md`](../docs/code-review/implementation-plan.md)에서 확인할 수 있습니다.
+code-review/
+  bin/                      # node로 실행하는 진입점
+  ci/                       # Runner를 연결할 때 복사할 예시 설정
+  config/                   # DDD 규칙과 Claude 응답 JSON 형식
+  lib/                      # Git, 규칙 검사, Claude, GitLab API, 보고서 처리
+  test/                     # 실제 Claude·GitLab 호출 없는 자동 테스트
+  README.md                 # 이 문서
+```
+
+실행 코드와 역할 문서를 나눠 둔 이유가 있습니다. Anthropic의 공식 Code Review 플러그인은 `plugins/code-review`라는 기능 이름과 `commands/` 구조를 씁니다. 다만 이 도구는 Jenkins와 GitLab CI에서도 실행되어야 하므로, Claude 전용 역할 문서만 `.claude/agents`에 두고 실행 코드는 일반적인 `code-review/`에 뒀습니다.
+
+`.claude/agents/code-reviewer.md`는 사람이 Claude Code에서 직접 리뷰할 때 자동 실행과 같은 기준을 쓰게 하는 역할 정의입니다. 읽기 전용 도구만 주어지며 파일을 고치거나 명령을 실행하지 않습니다.

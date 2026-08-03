@@ -52,7 +52,11 @@ const panelWith = ({
   />
 );
 
-const peoplePanel = (list: Participant[], isInstructor = false) => (
+const peoplePanel = (
+  list: Participant[],
+  isInstructor = false,
+  control: { onMute?: (identity: string) => void; mutingIdentity?: string | null } = {},
+) => (
   <RoomSidePanel
     panel="people"
     participants={list}
@@ -62,33 +66,105 @@ const peoplePanel = (list: Participant[], isInstructor = false) => (
     canSendChat
     onSendChat={vi.fn()}
     onRetryChat={vi.fn()}
+    onMute={control.onMute}
+    mutingIdentity={control.mutingIdentity ?? null}
   />
 );
+
+const instructor: Participant = {
+  id: "p-11",
+  name: "박서준",
+  color: "#10b981",
+  host: true,
+  cam: true,
+  mic: true,
+  hand: false,
+};
+
+const student = (overrides: Partial<Participant> = {}): Participant => ({
+  id: "p-22",
+  name: "이지은",
+  color: "#c9a24b",
+  cam: true,
+  mic: true,
+  hand: false,
+  ...overrides,
+});
 
 afterEach(cleanup);
 
 describe("RoomSidePanel 참가자 제어", () => {
   it("강사에게 음소거 버튼만 보이고 퇴장 버튼은 없다", () => {
-    render(
-      peoplePanel(
-        [
-          {
-            id: "p-11",
-            name: "박서준",
-            color: "#10b981",
-            host: true,
-            cam: true,
-            mic: true,
-            hand: false,
-          },
-          { id: "p-22", name: "이지은", color: "#c9a24b", cam: true, mic: true, hand: false },
-        ],
-        true,
-      ),
-    );
+    render(peoplePanel([instructor, student()], true));
 
     expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "이지은 퇴장" })).not.toBeInTheDocument();
+  });
+
+  /** 마이크 그림 하나로는 "지금 꺼져 있다"와 "꺼라"가 구분되지 않는다. 타일과 같은 이유로 글자를 쓴다. */
+  it("음소거 버튼은 글자로 보인다", () => {
+    render(peoplePanel([instructor, student()], true));
+
+    expect(screen.getByRole("button", { name: "이지은 음소거" })).toHaveTextContent("음소거");
+  });
+
+  it("누르면 그 참가자의 identity 로 제어를 호출한다", () => {
+    const onMute = vi.fn();
+    render(peoplePanel([instructor, student()], true, { onMute }));
+
+    fireEvent.click(screen.getByRole("button", { name: "이지은 음소거" }));
+
+    expect(onMute).toHaveBeenCalledWith("p-22");
+  });
+
+  /** 강제 해제가 없어 이미 꺼진 마이크에는 할 일이 없다. */
+  it("이미 음소거면 누를 수 없다", () => {
+    const onMute = vi.fn();
+    render(peoplePanel([instructor, student({ mic: false })], true, { onMute }));
+
+    const button = screen.getByRole("button", { name: "이지은 음소거" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "이미 음소거됨");
+    fireEvent.click(button);
+    expect(onMute).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 훅은 요청을 한 번에 하나만 보낸다. 그동안 다른 버튼이 눌리는 것처럼 보이면 강사는 껐다고 믿는데 소리는
+   * 계속 나간다. 눌러 봐야 소용없다는 것을 버튼이 직접 말해야 한다.
+   */
+  it("요청 중에는 다른 대상의 버튼도 잠기고 처리 중이라고 알린다", () => {
+    render(
+      peoplePanel(
+        [instructor, student(), student({ id: "p-33", name: "최유진" })],
+        true,
+        { mutingIdentity: "p-22" },
+      ),
+    );
+
+    const target = screen.getByRole("button", { name: "이지은 음소거" });
+    expect(target).toBeDisabled();
+    expect(target).toHaveAttribute("title", "음소거하는 중");
+
+    const other = screen.getByRole("button", { name: "최유진 음소거" });
+    expect(other).toBeDisabled();
+    expect(other).toHaveAttribute("title", "처리 중");
+  });
+
+  it("요청이 없으면 모든 버튼이 열려 있다", () => {
+    render(
+      peoplePanel([instructor, student(), student({ id: "p-33", name: "최유진" })], true),
+    );
+
+    expect(screen.getByRole("button", { name: "이지은 음소거" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "최유진 음소거" })).toBeEnabled();
+  });
+
+  /** 학생 화면에는 제어 버튼이 없어야 한다. 권한은 서버가 최종 판단하지만 보일 이유가 없다. */
+  it("학생에게는 버튼이 없다", () => {
+    render(peoplePanel([instructor, student()], false));
+
+    expect(screen.queryByRole("button", { name: "이지은 음소거" })).not.toBeInTheDocument();
   });
 });
 
