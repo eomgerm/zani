@@ -57,6 +57,26 @@ const PREDICTION: AttentionPrediction = {
   probabilities: [0.1, 0.1, 0.7, 0.1],
 };
 
+/** 서버로 나갈 수 있는 필드 전부. `windowStartedAtMs` 는 창 보고에만 실리는 선택 필드다. */
+const REPORT_CONTRACT_KEYS = [
+  "outcome",
+  "observedAtMs",
+  "windowStartedAtMs",
+  "clientEventId",
+];
+
+/**
+ * 창 보고에 항상 붙는 필드들. `vi.setSystemTime(0)` 을 쓰는 케이스 기준이라
+ * `observedAtMs` 는 0 이고, `windowStartedAtMs` 는 컨트롤러가 계산하는
+ * `observedAtMs - ATTENTION_DETECTION_CONFIG.windowMs` = `0 - 10_000` 이다.
+ * 멱등키는 보고마다 새로 뽑히므로 값이 아니라 존재만 고정한다.
+ */
+const WINDOW_REPORT = {
+  observedAtMs: 0,
+  windowStartedAtMs: -10_000,
+  clientEventId: expect.any(String),
+};
+
 describe("useAttentionDetection", () => {
   let frames: ReturnType<typeof manualFrameSource>;
   let close: Mock<() => void>;
@@ -358,7 +378,7 @@ describe("useAttentionDetection", () => {
       await act(async () => emitPrediction(PREDICTION));
 
       // 로컬 라벨("Engaged")이 그대로 나가면 서버 enum 과 어긋난다.
-      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", observedAtMs: 0 });
+      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", ...WINDOW_REPORT });
       expect(onReport).not.toHaveBeenCalledWith(
         expect.objectContaining({ outcome: "Engaged" }),
       );
@@ -379,7 +399,9 @@ describe("useAttentionDetection", () => {
         expect.objectContaining({ probabilities: PREDICTION.probabilities }),
       );
       for (const [report] of onReport.mock.calls) {
-        expect(Object.keys(report).sort()).toEqual(["observedAtMs", "outcome"]);
+        expect(
+          Object.keys(report).filter((key) => !REPORT_CONTRACT_KEYS.includes(key)),
+        ).toEqual([]);
       }
 
       view.unmount();
@@ -394,7 +416,7 @@ describe("useAttentionDetection", () => {
       await act(async () => {});
       await advance(10_000);
 
-      expect(onReport).toHaveBeenCalledWith({ outcome: "UNMEASURABLE", observedAtMs: 0 });
+      expect(onReport).toHaveBeenCalledWith({ outcome: "UNMEASURABLE", ...WINDOW_REPORT });
 
       view.unmount();
       vi.useRealTimers();
@@ -423,7 +445,7 @@ describe("useAttentionDetection", () => {
       await advance(20_000, 10_100);
       await act(async () => emitPrediction(PREDICTION));
 
-      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", observedAtMs: 0 });
+      expect(onReport).toHaveBeenCalledWith({ outcome: "ENGAGED", ...WINDOW_REPORT });
 
       view.unmount();
       hidden.mockRestore();

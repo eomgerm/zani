@@ -32,10 +32,10 @@ export {
   MicIcon,
   MicOffIcon,
   CameraIcon,
+  CameraOffIcon,
   ScreenShareIcon,
   HandIcon,
   ReactionIcon,
   CloseIcon,
-  KickIcon,
   MonitorIcon,
 } from "./icons";

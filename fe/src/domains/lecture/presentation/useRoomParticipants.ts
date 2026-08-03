@@ -50,7 +50,8 @@ function roleOf(participant: Participant): ParticipantTileData["role"] {
 
 /**
  * 백엔드가 토큰에 심은 값만 사용한다(가이드 §2). identity·표시 이름·역할을 프론트가 만들지 않는다.
- * 손들기는 LiveKit이 아니라 Spring WebSocket(가이드 §10) 소관이라 여기서는 false로 둔다.
+ * 손들기는 LiveKit이 아니라 업무 STOMP 채널(가이드 §10) 소관이라 여기서는 false 로 두고,
+ * 강의실이 손든 참가자 집합으로 덮어쓴다.
  */
 function toTileData(participant: Participant): ParticipantTileData {
   return {
@@ -61,6 +62,7 @@ function toTileData(participant: Participant): ParticipantTileData {
     cameraEnabled: participant.isCameraEnabled,
     microphoneEnabled: participant.isMicrophoneEnabled,
     handRaised: false,
+    speaking: participant.isSpeaking,
   };
 }
 
@@ -87,6 +89,8 @@ const PARTICIPANT_EVENTS: RoomEvent[] = [
   RoomEvent.LocalTrackUnpublished,
   // 역할은 metadata에서 읽으므로 metadata 변경을 구독한다.
   RoomEvent.ParticipantMetadataChanged,
+  // 발화자 하이라이트. 시작·종료가 모두 이 이벤트 하나로 오므로 별도 해제 이벤트가 없다.
+  RoomEvent.ActiveSpeakersChanged,
 ];
 
 export type UseRoomParticipantsResult = {

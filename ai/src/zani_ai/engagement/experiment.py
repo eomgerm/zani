@@ -18,7 +18,12 @@ import torch
 from torch import nn
 
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
-from zani_ai.engagement.features import SCHEMA_98, SCHEMA_132, FeatureSchema
+from zani_ai.engagement.features import (
+    SCHEMA_98,
+    SCHEMA_98_PLACEHOLDER,
+    SCHEMA_132,
+    FeatureSchema,
+)
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
 from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
@@ -242,6 +247,53 @@ E0I_SPEC = ExperimentSpec(
     needs_reliability_manifest=True,
 )
 
+# PriorNet (arXiv:2605.03615) finds its largest single-component EngageNet
+# gain by retaining failed face detections as fixed zero-frame placeholders.
+# E0-J isolates that preprocessing prior: model, objective, schedule, seeds,
+# and tensor shape stay identical to E0; only representation semantics change.
+E0J_SPEC = ExperimentSpec(
+    "E0-J",
+    SCHEMA_98_PLACEHOLDER,
+    ModelConfig(input_dim=98),
+)
+
+# E0-K is the second attempt at the schedule, and it moves the learning rate the
+# way E0-G should have. The pathology is unchanged since E0-C: under patience 20
+# the family's `best_epoch` lands at 0-11, so nothing in it has ever trained --
+# every loss, sampler and target change was measured on a model that stopped
+# before it could reshape a boundary. E0-G reached for that problem and went the
+# wrong direction, dropping lr to 1e-5 (10x slower, not faster); its Validation
+# 66.93% against E0's 66.65% was statistically indistinguishable on all three
+# metrics, which leaves the *upward* half of the lr axis untested.
+#
+# There is no Transformer-family literature schedule to restore here. EngageNet
+# (arXiv:2302.00431), which E0 adapts, publishes only layers, units, activations
+# and dropout in its Table 2 -- no optimizer, learning rate, batch size or epoch
+# count anywhere in the paper. What it does give is the target: Table 4 reports
+# 69.10% Validation / 67.61% Test for the Gaze + Head Pose + AU Transformer,
+# against our 66.65%.
+#
+# So lr 1e-3 / 300 epochs / decay every 100 is borrowed from arXiv:2403.17175 --
+# the ST-GCN paper E1 reproduces, a different architecture family. It enters as a
+# prescription for the measured pathology, not as reproduction, and that is also
+# why `batch_size` stays at E0's 32 rather than following that paper to 16: a
+# batch size chosen for a graph convolution says nothing about this Transformer,
+# and holding it fixed puts E0 (1e-4), E0-G (1e-5) and E0-K (1e-3) on one lr axis
+# where the three are directly comparable.
+#
+# `patience == max_epochs` disables early stopping, as on E1-A. With `lr_step`
+# 100 over 300 epochs the decay fires at 100 and 200, so unlike E0-G -- whose
+# 200-epoch budget left room for one decay -- the full recipe actually runs.
+E0K_SPEC = ExperimentSpec(
+    "E0-K",
+    SCHEMA_98,
+    ModelConfig(input_dim=98),
+    learning_rate=1e-3,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+)
+
 
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
@@ -365,6 +417,8 @@ SPECS: dict[str, ExperimentSpec] = {
         E0G_SPEC,
         E0H_SPEC,
         E0I_SPEC,
+        E0J_SPEC,
+        E0K_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -1427,6 +1481,8 @@ __all__ = [
     "E0C_SPEC",
     "E0D_SPEC",
     "E0I_SPEC",
+    "E0J_SPEC",
+    "E0K_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",

@@ -7,12 +7,12 @@ import { ParticipantTile, type ParticipantTileData } from "./ParticipantTile";
 /** 한 페이지에 보여주는 최대 타일 수 */
 const PER_PAGE = 12;
 
-/** 타일 가로:세로 비율. 웹캠이 가로로 잡으니 가로가 긴 형태가 화면을 덜 남긴다. */
-const TILE_WIDTH = 4;
-const TILE_HEIGHT = 3;
+/** 타일 가로:세로 비율. 웹캠 스트림 기본 비율(16:9)과 맞춰 영상 위아래가 잘리지 않게 한다(티켓 246). */
+const TILE_WIDTH = 16;
+const TILE_HEIGHT = 9;
 
 /**
- * 칸 안에 들어가는 최대 4:3 상자.
+ * 칸 안에 들어가는 최대 16:9 상자.
  *
  * <p>`aspectRatio` 만 주면 폭을 꽉 채운 뒤 높이가 칸을 넘쳐 잘린다. `max-height` 로는 막을 수 없다 — 높이를 깎아도 폭이 되돌아오지 않아 비율이 깨진다. 그래서 높이에서
  * 폭을 거꾸로 계산해 상한을 둔다. `cqh` 는 칸 높이의 1% 라 `100cqh` 가 칸 높이이고, 그 높이를 꽉 채우는 폭은 여기에 비율을 곱한 값이다(칸이 `container-type: size` 여야 한다).
@@ -40,6 +40,10 @@ type ParticipantGridProps = {
   narrow?: boolean;
   /** 참가자별 카메라 video ref 를 만들어 주는 함수. 없으면 화면 없이 아바타만 보여준다. */
   videoRefFor?: (identity: string) => React.Ref<HTMLVideoElement>;
+  /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
+  onMute?: (identity: string) => void;
+  /** 지금 음소거 요청이 진행 중인 대상. 요청은 한 번에 하나뿐이라 그동안 모든 버튼이 잠긴다. */
+  mutingIdentity?: string | null;
 };
 
 const pagerBtn = "flex size-[34px] items-center justify-center rounded-full border-0";
@@ -57,6 +61,8 @@ export function ParticipantGrid({
   isInstructor = false,
   narrow = false,
   videoRefFor,
+  onMute,
+  mutingIdentity = null,
 }: ParticipantGridProps) {
   const [page, setPage] = useState(0);
 
@@ -97,6 +103,9 @@ export function ParticipantGrid({
               }
               videoRef={videoRefFor?.(participant.id)}
               mirrored={participant.id === currentParticipantId}
+              onMute={onMute === undefined ? undefined : () => onMute(participant.id)}
+              muting={mutingIdentity === participant.id}
+              busy={mutingIdentity !== null && mutingIdentity !== participant.id}
             />
           </div>
         ))}
