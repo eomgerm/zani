@@ -71,13 +71,17 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         boolean connected = command.connectionState() == ConnectionState.CONNECTED;
         ReconnectStatus reconnectStatus = applyPresence(sessionId, participantId, participant.role(), connected);
 
-        // 마지막 사람이 나갔으면 수업을 붙잡고 있을 이유가 없다(LIVE-010). 이탈 보고 뒤에만 확인한다 —
-        // 접속 중인 heartbeat 는 방금 자기 presence 를 심었으므로 빈 방일 수 없다.
+        // 마지막 사람이 나갔으면 수업을 붙잡고 있을 이유가 없다(LIVE-010). DISCONNECTED 보고에서만 확인한다 —
+        // 접속 중인 heartbeat 는 방금 자기 presence 를 심었으므로 빈 방일 수 없고, RECONNECTING 은 복구를
+        // 시도 중인 일시 상태라 여기서 끝내면 마지막 참가자가 순간 끊김 한 번에 수업을 잃는다(강사 부재의
+        // 5분 유예와 달리 유예가 전혀 없다). FE 는 복구를 포기하는 시점에 DISCONNECTED 를 따로 보고하므로
+        // (useSessionPresence) 진짜 이탈은 그때 잡힌다.
         //
         // 강사 유예 중에는 비어 있어도 끝내지 않는다. 유예는 강사가 돌아올 시간을 주자는 것인데, 여기서 바로
         // 종료하면 혼자 준비 중이던 강사가 새로고침 한 번에 수업을 잃는다 — 5분 유예(LIVE-009)가 통째로
         // 무력해진다. 강사가 끝내 돌아오지 않으면 유예 만료가 같은 자리에서 종료를 집는다.
-        if (!connected && !isInstructorGraceRunning(sessionId) && isSessionEmpty(sessionId)) {
+        boolean departed = command.connectionState() == ConnectionState.DISCONNECTED;
+        if (departed && !isInstructorGraceRunning(sessionId) && isSessionEmpty(sessionId)) {
             endSession(sessionId, SessionEndReason.ALL_PARTICIPANTS_LEFT);
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
@@ -112,17 +116,17 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         return ReconnectStatus.DISCONNECTED;
     }
 
+    /** 강사 복귀를 기다리는 중인지. 유예가 도는 동안은 방이 비어도 종료하지 않는다. */
+    private boolean isInstructorGraceRunning(long sessionId) {
+        return presencePort.instructorGraceDeadline(sessionId).isPresent();
+    }
+
     /**
      * 이 세션에 접속 중인 참가자가 하나도 없는지.
      *
      * <p>참가자 후보를 DB 에서 받아 그중 presence 키가 살아 있는 사람을 센다 — Redis 키 공간을 훑지 않기
      * 위해서다({@link SessionPresencePort#connectedSince} 의 계약).
      */
-    /** 강사 복귀를 기다리는 중인지. 유예가 도는 동안은 방이 비어도 종료하지 않는다. */
-    private boolean isInstructorGraceRunning(long sessionId) {
-        return presencePort.instructorGraceDeadline(sessionId).isPresent();
-    }
-
     private boolean isSessionEmpty(long sessionId) {
         List<Long> participantIds = participantRepository.findBySessionId(sessionId).stream()
                 .map(SessionParticipant::id)

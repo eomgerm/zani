@@ -139,6 +139,25 @@ class SessionPresenceServiceTest {
     }
 
     /**
+     * RECONNECTING 은 복구 중인 일시 상태다 — 마지막 참가자라도 여기서 끝내지 않는다.
+     *
+     * <p>강사 부재에는 5분 유예가 있는데 마지막 참가자의 순간 끊김은 유예 없이 즉시 종료된다면 형평이 맞지 않는다. FE 는 복구를 포기할 때 DISCONNECTED 를 따로 보고하므로 진짜 이탈은 그
+     * 보고가 잡는다.
+     */
+    @Test
+    void keepsTheSessionWhileTheLastParticipantIsMerelyReconnecting() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+        // 강사 탭이 죽어 presence 가 TTL 로 사라졌다. 이탈을 보고하지 못했으므로 유예도 시작되지 않았다.
+        presencePort.clearPresence(SESSION_ID, INSTRUCTOR_PARTICIPANT);
+
+        PresenceResult blip = heartbeat(STUDENT_USER, ConnectionState.RECONNECTING);
+
+        assertFalse(blip.sessionEnded());
+        assertFalse(sessionRepository.session.isEnded());
+    }
+
+    /**
      * 강사 유예 중에는 방이 비어도 끝내지 않는다.
      *
      * <p>혼자 준비 중이던 강사가 새로고침하면 그 순간 방은 비어 있다. 여기서 종료하면 5분 유예(LIVE-009)가 통째로 무력해진다 — 강사는 돌아올 방을 잃는다.
