@@ -247,4 +247,4 @@ carry the information the reports need.
 | --- | --- |
 | Measure `whisper-1` latency for 45-minute chunks against the 8-hour SLA | S15P11A105-247 |
 | Split post-class LLM analysis across calls — a three-hour transcript exceeds one request | S15P11A105-248 |
-| Revise FRD §17 — §17.1 and §17.3 assume video chunks reach GMS; §17.4 assumes non-verbal signals are available | product decision |
+| Revise FRD §17 — §17.1 and §17.3 assume video chunks reach GMS, §17.4 assumes non-verbal signals are available, and requirement `AI-003` mandates using them. None of those are reachable through this gateway | product decision |
