@@ -42,6 +42,7 @@ from zani_ai.engagement.experiment import (
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
+    E1P_SPEC,
     SPECS,
     ExperimentSpec,
     _assert_file_record_unchanged,
@@ -100,6 +101,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E1-A", "cuda"): "5bc0d7f9ae6420c53d3b1a3d107d2a2165b5ee22aa88541a24468051f608d07e",
     ("E1-B", "cpu"): "f97f99b67dbfcd9175eb4ba5a5a6f0d55af19194c914f9425466b9d458406326",
     ("E1-B", "cuda"): "b2f2ddf8514256a654ecb15a83c08a6156aef9838dac7939bb2a7c9bae10ef9e",
+    ("E1-P", "cpu"): "c5fb4e569e4c488b369d76527ba0e0426b42445394ad42c52592fb3426863a2f",
+    ("E1-P", "cuda"): "75d43a54dd388461861a136106c9e1a7c95644b5d6c6c117f7bee29909aea1c8",
 }
 
 SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
@@ -120,6 +123,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
+    E1P_SPEC,
 )
 
 

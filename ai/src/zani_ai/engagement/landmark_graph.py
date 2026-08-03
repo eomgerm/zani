@@ -270,6 +270,10 @@ def build_paper_adjacency(mean_xy: NDArray[np.floating]) -> NDArray[np.float32]:
                     adjacency[a, b] = 1.0
                     adjacency[b, a] = 1.0
 
+    return _normalize_paper_adjacency(adjacency)
+
+
+def _normalize_paper_adjacency(adjacency: NDArray[np.float64]) -> NDArray[np.float32]:
     degree = adjacency.sum(axis=1)
     # Every node has a self-loop, so no degree can be zero and no guard is
     # needed here -- unlike `build_spatial_partitions`, whose centripetal and
@@ -277,6 +281,30 @@ def build_paper_adjacency(mean_xy: NDArray[np.floating]) -> NDArray[np.float32]:
     degree_inv_sqrt = np.power(degree, -0.5)
     normalized = (degree_inv_sqrt[:, None] * adjacency) * degree_inv_sqrt[None, :]
     return normalized.astype(np.float32)
+
+
+def paper_adjacency_from_partitions(
+    partitions: NDArray[np.floating],
+) -> NDArray[np.float32]:
+    """Recover the paper's single ``A+I`` from a saved 3-partition graph.
+
+    ``landmark_78_v1_graph.npz`` stores the three spatial-configuration subsets,
+    and the file cannot be regenerated from constants -- it was built from the
+    dataset's mean landmark positions. But the partitioning only *splits* the
+    Delaunay edges, so their union recovers ``A`` exactly, and the root subset is
+    the identity. Normalization depends on the graph's structure alone, so
+    ``A+I`` and its normalization follow with nothing lost.
+
+    Reusing the file also keeps the node topology identical between the E1
+    protocols and this reproduction, which is what makes their results
+    comparable.
+    """
+    partitions = np.asarray(partitions, dtype=np.float64)
+    if partitions.shape != (3, NODE_COUNT, NODE_COUNT):
+        raise ValueError(f"expected partitions shape (3, {NODE_COUNT}, {NODE_COUNT})")
+    edges = (partitions[1] != 0) | (partitions[2] != 0)
+    adjacency = (edges | np.eye(NODE_COUNT, dtype=bool)).astype(np.float64)
+    return _normalize_paper_adjacency(adjacency)
 
 
 # ---------------------------------------------------------------------------

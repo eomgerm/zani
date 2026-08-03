@@ -550,6 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
+        ("e1p", "E1-P", "E1-P (문헌 정합 non-ordinal ST-GCN, K=1 그래프)"),
     ):
         reproduce = commands.add_parser(
             f"reproduce-{command}",

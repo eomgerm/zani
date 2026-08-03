@@ -24,12 +24,24 @@ from zani_ai.engagement.features import (
     SCHEMA_132,
     FeatureSchema,
 )
-from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
+from zani_ai.engagement.landmark_graph import (
+    GRAPH_VERSION,
+    load_graph,
+    paper_adjacency_from_partitions,
+)
 from zani_ai.engagement.locking import DirectoryLock
 from zani_ai.engagement.model import ModelConfig
-from zani_ai.engagement.representations import landmark_sequence_name
+from zani_ai.engagement.representations import (
+    landmark_sequence_name,
+    landmark_sequence_placeholder_name,
+)
 from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
-from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+from zani_ai.engagement.stgcn import (
+    EngagementSTGCN,
+    PaperEngagementSTGCN,
+    PaperSTGCNConfig,
+    STGCNConfig,
+)
 from zani_ai.engagement.training import (
     EvaluationMetrics,
     FeatureStatistics,
@@ -106,7 +118,7 @@ class ExperimentSpec:
 
     protocol: str
     schema: FeatureSchema | None
-    model_config: ModelConfig | STGCNConfig
+    model_config: ModelConfig | STGCNConfig | PaperSTGCNConfig
     #: Defaults to the 10-seed candidate list, so a protocol added from now on
     #: is measured at a resolution that can separate it from its baseline. Every
     #: protocol that already has completed seeds pins ``E0_SEEDS`` explicitly --
@@ -424,6 +436,31 @@ def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     return build_stgcn_model
 
 
+def paper_stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
+    """Build the paper-faithful ST-GCN bound to a resolved graph file.
+
+    Same contract as `stgcn_model_builder` -- named inner function so
+    `metrics.json` records a stable name, `graph_path` rebound by
+    `reproduce_experiment` -- but it collapses the saved 3-partition graph back
+    to the paper's single `A+I` (`paper_adjacency_from_partitions`) and builds
+    `PaperEngagementSTGCN`.
+    """
+
+    def build_paper_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
+        """Ignores ``statistics``: ST-GCN needs no feature normalization stats."""
+        del statistics
+        if graph_path is None:
+            raise RuntimeError(
+                "landmark graph is unresolved; run through reproduce_experiment "
+                "or set ExperimentSpec.graph_path"
+            )
+        _, partitions = load_graph(graph_path)
+        adjacency = paper_adjacency_from_partitions(partitions)
+        return PaperEngagementSTGCN(torch.as_tensor(adjacency), PaperSTGCNConfig())
+
+    return build_paper_stgcn_model
+
+
 E1_SPEC = ExperimentSpec(
     "E1",
     None,
@@ -501,6 +538,45 @@ E1B_SPEC = ExperimentSpec(
 )
 
 
+# E1-P is the literature-faithful reproduction of arXiv:2403.17175, added beside
+# E1/E1-A/E1-B rather than replacing them so their artifacts stay reproducible.
+# Four things change together, which is why it is a new protocol and not a tweak:
+#
+# * the model. K=1 `(A+I)⊙M` with a shared spatial projection and learnable edge
+#   importance, canonical block order, 1x1 conv head -- see
+#   `stgcn.PaperEngagementSTGCN`, whose parameter count reconciles with the
+#   paper's reported 861,688.
+# * the input. 300 steps at 30 FPS, with missing-face steps left at zero instead
+#   of forward-filled, because the paper classifies absent-face samples rather
+#   than dropping them (§5).
+# * the seeds. The default 10-seed list, not E1's pinned five, because the paper
+#   reports a single accuracy with no seed count and the comparison needs a
+#   spread rather than a point.
+# * the reported metric. The paper's primary figure is validation accuracy;
+#   selection stays on macro-F1 for consistency with every other protocol here,
+#   and `validation_history` now carries per-epoch accuracy so the final-epoch
+#   and best-accuracy readings stay separable from it.
+#
+# `lr_step=100` with `max_epochs=300` gives the paper's two decays, 1e-3 at epoch
+# 0, 1e-4 at 100, 1e-5 at 200, and `patience == max_epochs` runs all 300.
+E1P_SPEC = ExperimentSpec(
+    "E1-P",
+    None,
+    PaperSTGCNConfig(),
+    representation_name=landmark_sequence_placeholder_name(300),
+    build_model=paper_stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 300, 78),
+    needs_landmark_graph=True,
+)
+
+
 #: Every reproducible protocol, keyed by the name it is known by on the CLI
 #: and in ``summary.json``. Lets callers dispatch on the protocol string
 #: instead of duplicating a handler per experiment.
@@ -524,6 +600,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
+        E1P_SPEC,
     )
 }
 
@@ -1265,9 +1342,17 @@ def prepare_run(
     manifest_path, manifest_sha256 = _validate_manifest(features_root, spec)
     if spec.needs_landmark_graph:
         resolved_graph = resolve_landmark_graph(features_root, graph_path or spec.graph_path)
-        spec = replace(
-            spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
+        # Rebind to the builder for *this* spec's model. Both ST-GCN families
+        # need a resolved graph, so keying the rebind off `needs_landmark_graph`
+        # alone would silently train the paper-faithful protocol with E1's
+        # 3-partition model -- the run would succeed and the numbers would be
+        # wrong. The spec's own `model_config` decides.
+        builder = (
+            paper_stgcn_model_builder
+            if isinstance(spec.model_config, PaperSTGCNConfig)
+            else stgcn_model_builder
         )
+        spec = replace(spec, graph_path=resolved_graph, build_model=builder(resolved_graph))
     if spec.needs_reliability_manifest:
         selected_reliability = reliability_path or spec.reliability_manifest
         if selected_reliability is None:
@@ -1419,7 +1504,13 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
     )
     export_metadata = (
-        DeploymentMetadata.for_stgcn()
+        # The schema name and step count come from the spec: the
+        # landmark-sequence family has both 100-step and 300-step members, and
+        # exporting one under the other's metadata would ship a model the
+        # browser loads and then feeds the wrong tensor.
+        DeploymentMetadata.for_stgcn(
+            spec.schema_name, steps=(spec.array_shape or (3, 100, 78))[1]
+        )
         if spec.schema is None
         else DeploymentMetadata.for_schema(spec.schema)
     )
@@ -1663,12 +1754,14 @@ __all__ = [
     "E0_SPEC",
     "E1A_SPEC",
     "E1B_SPEC",
+    "E1P_SPEC",
     "E1_SPEC",
     "SPECS",
     "E0ExperimentResult",
     "ExperimentSpec",
     "collect_only",
     "collect_summary",
+    "paper_stgcn_model_builder",
     "prepare_run",
     "reproduce_e0",
     "reproduce_experiment",
