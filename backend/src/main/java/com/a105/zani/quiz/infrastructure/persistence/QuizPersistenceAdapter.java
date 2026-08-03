@@ -1,0 +1,77 @@
+package com.a105.zani.quiz.infrastructure.persistence;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import com.a105.zani.common.persistence.TsidGenerator;
+import com.a105.zani.quiz.domain.model.Quiz;
+import com.a105.zani.quiz.domain.model.QuizOption;
+import com.a105.zani.quiz.domain.model.QuizQuestion;
+import com.a105.zani.quiz.domain.repository.QuizRepository;
+
+/**
+ * 퀴즈·문항·보기 세 테이블을 한 번에 넣는다.
+ *
+ * <p>멱등은 UK_QUIZZES_STUDENT_REPORT 에 맡긴다. 넣은 뒤 저장된 ID 를 되읽어 우리 TSID 가 아니면 다른 실행의 퀴즈이므로 문항을 덧붙이지 않는다.
+ *
+ * <p>{@code estimated_duration_minutes} 는 채우지 않는다. 249 의 응답 스키마에 없는 값이라 추정해 넣으면 근거 없는 숫자가 남는다.
+ */
+@Component
+@RequiredArgsConstructor
+public class QuizPersistenceAdapter implements QuizRepository {
+
+    private static final String INSERT_QUIZ = """
+            INSERT INTO quizzes (id, student_report_id, title, description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            ON DUPLICATE KEY UPDATE id = id
+            """;
+
+    private static final String SELECT_QUIZ_ID = """
+            SELECT id FROM quizzes WHERE student_report_id = ?
+            """;
+
+    private static final String INSERT_QUESTION = """
+            INSERT INTO quiz_questions (id, quiz_id, question_text, explanation, question_order, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            """;
+
+    private static final String INSERT_OPTION = """
+            INSERT INTO quiz_options
+                (id, quiz_question_id, option_text, is_correct, option_order, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            """;
+
+    private final JdbcTemplate jdbcTemplate;
+
+    @Override
+    public boolean saveIfAbsent(Quiz quiz) {
+        long quizId = TsidGenerator.generate();
+        jdbcTemplate.update(INSERT_QUIZ, quizId, quiz.studentReportId(), quiz.title(), quiz.description());
+
+        Long storedId = jdbcTemplate.queryForObject(SELECT_QUIZ_ID, Long.class, quiz.studentReportId());
+        if (storedId == null || storedId.longValue() != quizId) {
+            return false;
+        }
+
+        List<Object[]> questionRows = new ArrayList<>();
+        List<Object[]> optionRows = new ArrayList<>();
+        for (QuizQuestion question : quiz.questions()) {
+            long questionId = TsidGenerator.generate();
+            questionRows.add(new Object[] {
+                questionId, quizId, question.questionText(), question.explanation(), question.questionOrder()
+            });
+            for (QuizOption option : question.options()) {
+                optionRows.add(new Object[] {
+                    TsidGenerator.generate(), questionId, option.optionText(), option.correct(), option.optionOrder()
+                });
+            }
+        }
+        jdbcTemplate.batchUpdate(INSERT_QUESTION, questionRows);
+        jdbcTemplate.batchUpdate(INSERT_OPTION, optionRows);
+        return true;
+    }
+}
