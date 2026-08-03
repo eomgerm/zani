@@ -475,6 +475,12 @@ class RecordingOrchestratorTest {
             return java.util.Optional.ofNullable(liveAudioStreamByTrackSid.get(request.trackSid()));
         }
 
+        @Override
+        public int stopLiveEgress(Long sessionId) {
+            // 릴레이 테스트는 종료 정리를 다루지 않는다.
+            return 0;
+        }
+
         /** 스트림 Egress 가 종료된 상황. 재실행이 채택하지 않고 새로 시작해야 한다. */
         private void audioStreamEnded(String trackSid) {
             liveAudioStreamByTrackSid.remove(trackSid);
