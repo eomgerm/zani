@@ -30,6 +30,8 @@ public final class DistractionIntervalDetector {
         long aboveHeld = 0L;
         long belowRunStart = 0L;
         long belowHeld = 0L;
+        boolean sawRatio = false;
+        long lastRatioAt = 0L;
 
         for (GroupSignalPoint point : points) {
             Double ratio = point.checkNeededRatio();
@@ -38,6 +40,8 @@ public final class DistractionIntervalDetector {
                 // 0% 로 보면 인원이 잠깐 모자랐던 것이 "집중이 회복됐다"는 거짓 신호가 된다.
                 continue;
             }
+            sawRatio = true;
+            lastRatioAt = point.offsetSeconds();
             if (!open) {
                 if (ratio >= policy.distractionStartRatio()) {
                     if (aboveHeld == 0L) {
@@ -69,8 +73,14 @@ public final class DistractionIntervalDetector {
                 }
             }
         }
-        if (open) {
-            intervals.add(new DistractionInterval(openedAt, points.getLast().offsetSeconds()));
+        // 열린 채 끝나면 마지막 점이 아니라 마지막으로 비율이 있었던 점에서 닫는다. 시계열 끝이 판단 불가로
+        // 채워져 있을 때 목록의 마지막 점을 쓰면 판단하지 못한 시간까지 지속 시간에 들어가, 위 §2.5 원칙이
+        // 열린 채 끝나는 경로에서만 깨진다.
+        //
+        // 유효한 점이 없었으면(전부 null) 구간은 길이 0 이 된다. 덮는 시간이 없으므로 만들지 않는다 —
+        // StateIntervalMerger 가 길이 0 상태 구간을 버리는 것과 같은 판단이다.
+        if (open && sawRatio && lastRatioAt > openedAt) {
+            intervals.add(new DistractionInterval(openedAt, lastRatioAt));
         }
         return mergeAdjacent(intervals, policy);
     }

@@ -124,6 +124,41 @@ class DistractionIntervalDetectorTest {
     }
 
     @Test
+    @DisplayName("열린 채 끝나면 마지막으로 비율이 있었던 점에서 닫는다")
+    void an_open_interval_closes_at_the_last_point_with_a_ratio() {
+        // 30% 로 20초 열린 뒤 시계열 끝(50초)까지 판단 불가다.
+        List<GroupSignalPoint> series = points(concat(repeat(0.35d, 5), nulls(6)));
+
+        // 마지막 점 50초가 아니라 마지막으로 비율이 있었던 20초에서 닫힌다 — 판단하지 못한 30초는
+        // 지속 시간에 들어가지 않는다(§2.5).
+        assertThat(DistractionIntervalDetector.detect(series, POLICY))
+                .containsExactly(new DistractionInterval(0L, 20L));
+    }
+
+    @Test
+    @DisplayName("뒤따르는 판단 불가가 길어도 지속 시간이 부풀지 않는다")
+    void trailing_nulls_do_not_inflate_the_duration() {
+        // 30% 가 30초까지 이어지고 그 뒤 100초가 전부 판단 불가다.
+        List<DistractionInterval> intervals =
+                DistractionIntervalDetector.detect(points(concat(repeat(0.35d, 7), nulls(20))), POLICY);
+
+        // 목록의 마지막 점 130초로 닫았다면 지속 시간이 30초에서 130초로 부푼다.
+        assertThat(intervals).containsExactly(new DistractionInterval(0L, 30L));
+        assertThat(intervals.getFirst().endSeconds() - intervals.getFirst().startSeconds())
+                .isEqualTo(30L);
+    }
+
+    @Test
+    @DisplayName("정상 종료 경로는 그대로다 — 닫힌 뒤 판단 불가가 이어져도 닫힌 시각이 같다")
+    void the_normal_close_path_is_unchanged() {
+        // 30% 20초로 열고 → 10% 로 30초 유지해 25초에서 닫고 → 그 뒤로 판단 불가가 이어진다.
+        List<GroupSignalPoint> series = points(concat(repeat(0.35d, 5), repeat(0.10d, 7), nulls(5)));
+
+        assertThat(DistractionIntervalDetector.detect(series, POLICY))
+                .containsExactly(new DistractionInterval(0L, 25L));
+    }
+
+    @Test
     @DisplayName("점이 없으면 구간도 없다")
     void an_empty_series_has_no_intervals() {
         assertThat(DistractionIntervalDetector.detect(List.of(), POLICY)).isEmpty();
