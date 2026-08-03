@@ -37,6 +37,7 @@ class NoteInactivityTimerTest {
     private static final long INSTRUCTOR_USER = 11L;
     private static final long INSTRUCTOR_PARTICIPANT = 7L;
     private static final Instant CLASS_ENDED_AT = Instant.parse("2026-07-30T09:00:00Z");
+    private static final Instant CLASS_STARTED_AT = CLASS_ENDED_AT.minusSeconds(3600);
     private static final Duration WINDOW = InstructorNote.INACTIVITY_WINDOW;
 
     private final MutableClock clock = new MutableClock(CLASS_ENDED_AT);
@@ -144,7 +145,8 @@ class NoteInactivityTimerTest {
 
         @Override
         public ResolveEndedSessionParticipantResult resolve(ResolveEndedSessionParticipantQuery query) {
-            return new ResolveEndedSessionParticipantResult(INSTRUCTOR_PARTICIPANT, SessionParticipantRole.INSTRUCTOR);
+            return new ResolveEndedSessionParticipantResult(
+                    INSTRUCTOR_PARTICIPANT, SessionParticipantRole.INSTRUCTOR, CLASS_STARTED_AT, CLASS_ENDED_AT);
         }
     }
 

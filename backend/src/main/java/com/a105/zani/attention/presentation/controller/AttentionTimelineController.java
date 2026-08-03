@@ -75,8 +75,10 @@ public class AttentionTimelineController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",
-                description = "해당 세션의 참가자가 아니거나 강사가 아님"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "세션을 찾을 수 없음"),
+                description = "해당 세션의 참가자가 아니거나 강사가 아님. 없는 세션도 참가자가 아니면 이 응답이다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "세션을 찾을 수 없음. 참가자로 기록된 호출자에게만 내려간다 — 비참가자에게는 세션 존재 여부를 알리지 않는다."),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description = "아직 진행 중인 세션. 리포트는 종료 후에만 만든다.")
@@ -126,8 +128,10 @@ public class AttentionTimelineController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",
-                description = "해당 세션의 참가자가 아니거나 학생이 아님"),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "세션을 찾을 수 없음"),
+                description = "해당 세션의 참가자가 아니거나 학생이 아님. 없는 세션도 참가자가 아니면 이 응답이다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "세션을 찾을 수 없음. 참가자로 기록된 호출자에게만 내려간다 — 비참가자에게는 세션 존재 여부를 알리지 않는다."),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description = "아직 진행 중인 세션. 리포트는 종료 후에만 만든다.")

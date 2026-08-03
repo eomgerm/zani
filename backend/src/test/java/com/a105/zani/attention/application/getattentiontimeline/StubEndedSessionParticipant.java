@@ -2,13 +2,13 @@ package com.a105.zani.attention.application.getattentiontimeline;
 
 import java.time.Instant;
 
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessQuery;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessResult;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessUseCase;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantQuery;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantResult;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantUseCase;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /** 접근 판정 대역. 판정 자체는 session 도메인 테스트가 본다. 여기서는 역할과 시각만 정해 준다. */
-class StubEndedSessionAccess implements ResolveEndedSessionAccessUseCase {
+class StubEndedSessionParticipant implements ResolveEndedSessionParticipantUseCase {
 
     Long participantId = 10L;
     SessionParticipantRole role = SessionParticipantRole.INSTRUCTOR;
@@ -18,7 +18,7 @@ class StubEndedSessionAccess implements ResolveEndedSessionAccessUseCase {
     Instant endedAt;
 
     @Override
-    public ResolveEndedSessionAccessResult resolve(ResolveEndedSessionAccessQuery query) {
-        return new ResolveEndedSessionAccessResult(participantId, role, startedAt, endedAt);
+    public ResolveEndedSessionParticipantResult resolve(ResolveEndedSessionParticipantQuery query) {
+        return new ResolveEndedSessionParticipantResult(participantId, role, startedAt, endedAt);
     }
 }

@@ -32,6 +32,7 @@ public class ResolveEndedSessionParticipantService implements ResolveEndedSessio
             throw new SessionNotEndedException();
         }
 
-        return new ResolveEndedSessionParticipantResult(participant.id(), participant.role());
+        return new ResolveEndedSessionParticipantResult(
+                participant.id(), participant.role(), session.startedAt(), session.endedAt());
     }
 }

@@ -293,11 +293,17 @@ class AttentionTimelineControllerTest {
     }
 
     @Test
-    @DisplayName("없는 세션은 404 다")
-    void missing_session_returns_not_found() throws Exception {
+    @DisplayName("없는 세션도 비멤버에게는 403 이다 — 세션이 있는지조차 알려주지 않는다")
+    void a_missing_session_looks_the_same_as_one_you_cannot_see() throws Exception {
+        // 404 가 아니다. 접근 판정이 멤버십을 세션 존재보다 먼저 보기 때문에, 참가자가 아닌 호출자는 없는 세션과
+        // 남의 세션을 구분할 수 없다. 404 를 주면 세션 번호를 훑어 어떤 수업이 열렸는지 알아낼 수 있다.
+        // 되돌리기 전에 ResolveEndedSessionParticipantService 의 판정 순서와 그 테스트를 함께 보라.
+        //
+        // 멤버인데 세션 행만 사라진 경우는 여전히 404 다. session_participants 가 sessions 를 FK 로 걸고 있어
+        // 여기서는 그 상태를 만들 수 없고, ResolveEndedSessionParticipantServiceTest 가 대신 지킨다.
         mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", MISSING_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 
     @Test

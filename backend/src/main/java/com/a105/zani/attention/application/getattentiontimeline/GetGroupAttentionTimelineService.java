@@ -22,9 +22,9 @@ import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsQuery;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsUseCase;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessQuery;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessResult;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessUseCase;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantQuery;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantResult;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantUseCase;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
@@ -39,7 +39,7 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 @RequiredArgsConstructor
 public class GetGroupAttentionTimelineService implements GetGroupAttentionTimelineUseCase {
 
-    private final ResolveEndedSessionAccessUseCase resolveEndedSessionAccess;
+    private final ResolveEndedSessionParticipantUseCase resolveEndedSessionParticipant;
     private final AttentionTimelineQueryPort queryPort;
     private final ListSessionSectionsUseCase listSessionSections;
     private final TimelinePolicy policy;
@@ -47,8 +47,8 @@ public class GetGroupAttentionTimelineService implements GetGroupAttentionTimeli
     @Override
     @Transactional(readOnly = true)
     public GetGroupAttentionTimelineResult get(GetGroupAttentionTimelineQuery query) {
-        ResolveEndedSessionAccessResult access = resolveEndedSessionAccess.resolve(
-                new ResolveEndedSessionAccessQuery(query.sessionId(), query.memberId()));
+        ResolveEndedSessionParticipantResult access = resolveEndedSessionParticipant.resolve(
+                new ResolveEndedSessionParticipantQuery(query.sessionId(), query.memberId()));
         if (access.role() != SessionParticipantRole.INSTRUCTOR) {
             throw new NotSessionInstructorException();
         }

@@ -16,9 +16,9 @@ import com.a105.zani.attention.domain.model.timeline.StateIntervalMerger;
 import com.a105.zani.attention.domain.model.timeline.TimelinePolicy;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsQuery;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsUseCase;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessQuery;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessResult;
-import com.a105.zani.session.application.resolveendedsessionaccess.ResolveEndedSessionAccessUseCase;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantQuery;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantResult;
+import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantUseCase;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 /**
@@ -32,7 +32,7 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 @RequiredArgsConstructor
 public class GetMyAttentionTimelineService implements GetMyAttentionTimelineUseCase {
 
-    private final ResolveEndedSessionAccessUseCase resolveEndedSessionAccess;
+    private final ResolveEndedSessionParticipantUseCase resolveEndedSessionParticipant;
     private final AttentionTimelineQueryPort queryPort;
     private final ListSessionSectionsUseCase listSessionSections;
     private final TimelinePolicy policy;
@@ -40,8 +40,8 @@ public class GetMyAttentionTimelineService implements GetMyAttentionTimelineUseC
     @Override
     @Transactional(readOnly = true)
     public GetMyAttentionTimelineResult get(GetMyAttentionTimelineQuery query) {
-        ResolveEndedSessionAccessResult access = resolveEndedSessionAccess.resolve(
-                new ResolveEndedSessionAccessQuery(query.sessionId(), query.memberId()));
+        ResolveEndedSessionParticipantResult access = resolveEndedSessionParticipant.resolve(
+                new ResolveEndedSessionParticipantQuery(query.sessionId(), query.memberId()));
         if (access.role() != SessionParticipantRole.STUDENT) {
             throw new NotSessionStudentTimelineException();
         }

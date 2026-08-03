@@ -21,7 +21,7 @@ class GetGroupAttentionTimelineServiceTest {
     private static final long MEMBER_ID = 7L;
     private static final TimelinePolicy POLICY = TimelinePolicy.defaults();
 
-    private final StubEndedSessionAccess access = new StubEndedSessionAccess();
+    private final StubEndedSessionParticipant access = new StubEndedSessionParticipant();
     private final FakeAttentionTimelineQueryPort queryPort = new FakeAttentionTimelineQueryPort();
     private final StubListSessionSections listSessionSections = new StubListSessionSections();
 
