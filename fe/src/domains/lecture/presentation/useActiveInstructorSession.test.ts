@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SessionSummary } from "@/domains/lecture/infrastructure/sessionListApi";
+import type { SessionIdentity } from "@/domains/lecture/infrastructure/sessionListApi";
 import { useActiveInstructorSession } from "./useActiveInstructorSession";
 
 const { authState } = vi.hoisted(() => ({
@@ -12,22 +12,16 @@ vi.mock("@/domains/auth", () => ({
   useAuth: () => authState,
 }));
 
-const summary = (over: Partial<SessionSummary> = {}): SessionSummary => ({
+/** 이 훅은 식별에 필요한 부분만 받는다. 픽스처도 그만큼만 둬서 무엇에 의존하는지 드러낸다. */
+const summary = (over: Partial<SessionIdentity> = {}): SessionIdentity => ({
   sessionId: "100",
   inviteCode: "AAAAAAAA",
-  title: "테스트 수업",
-  instructorName: "박강사",
   status: "LIVE",
   role: "INSTRUCTOR",
-  startedAt: "2026-08-03T09:00:00Z",
-  endedAt: null,
-  participantCount: 3,
-  reportStatus: "NONE",
-  rejoinable: true,
   ...over,
 });
 
-const lister = (sessions: SessionSummary[]) => vi.fn().mockResolvedValue(sessions);
+const lister = (sessions: SessionIdentity[]) => vi.fn().mockResolvedValue(sessions);
 
 beforeEach(() => {
   authState.accessToken = "access-token";
@@ -91,7 +85,7 @@ describe("useActiveInstructorSession", () => {
     let reject!: (reason: unknown) => void;
     const requestList = vi.fn(
       (_token: string, signal?: AbortSignal) =>
-        new Promise<SessionSummary[]>((_resolve, promiseReject) => {
+        new Promise<SessionIdentity[]>((_resolve, promiseReject) => {
           reject = promiseReject;
           signal?.addEventListener("abort", () => promiseReject(new Error("aborted")));
         }),
