@@ -11,9 +11,9 @@ livekit-client
 @livekit/components-react
 ```
 
-현재 `mediaTokenApi`, `liveKitRoom`, `RoomProvider`와 관련 테스트가 있어 `/media-token` 호출, `Room.connect`, SDK 재연결 이벤트 반영까지 구현돼 있다. `RoomScreen`도 이 연결 상태를 표시한다.
-
-다만 `CreateSetupScreen`, `PrejoinScreen`, 참가자·미디어 제어 UI는 아직 시연용 로컬 상태와 fixture를 사용한다. 기존 연결 기반을 유지하면서 실제 세션 API, 장치 점검, Track publish/subscribe, 업무 WebSocket을 단계적으로 연결한다.
+프론트엔드 구현 상태는
+[`livekit-integration-context.md` §3](./livekit-integration-context.md#3-현재-구현-상태)이
+단독으로 소유한다. **작업 시작 전에 그 절을 먼저 읽는다.** 이 문서 아래 내용 중 상당 부분은 이미 구현돼 있고, 남은 큰 공백은 업무 WebSocket(§10)이다.
 
 ## 2. 프론트엔드가 결정하면 안 되는 값
 
@@ -70,27 +70,34 @@ CreateSetup
 ```http
 POST /api/v1/sessions/{sessionId}/media-token
 Authorization: Bearer {ZANI_ACCESS_TOKEN}
-Content-Type: application/json
-
-{}
+Accept: application/json
 ```
 
+본문을 보내지 않는다. 보낼 업무 값이 없다.
+
+Bearer 헤더는 생략할 수 없다. 쿠키에는 refresh 토큰만 있고 그마저 `/auth/refresh` 경로 전용이라, 헤더를 빼면 무조건 401이 되어 강의실이 LiveKit에 붙지 못한다.
+
+응답은 공통 `ApiResponse<T>` 봉투의 `data`에 담긴다. 현재 형태다(`mediaTokenApi.ts`).
+
 ```ts
-type MediaTokenResponse = {
-  sessionId: number;
-  roomName: string;
+type MediaToken = {
   liveKitUrl: string;
   accessToken: string;
+  roomName: string;
+  participantIdentity: string;
+  /** LiveKit 토큰 만료 시각(TTL 10분). */
   expiresAt: string;
-  participant: {
-    identity: string;
-    displayName: string;
-    role: "INSTRUCTOR" | "STUDENT";
-    recordingAlias: string;
-  };
+  /** 최대 수업 시간(3시간) 도달로 자동 종료될 시각. 종료 임박 안내의 기준. */
+  sessionExpiresAt: string;
+  /** 강의명. 서버가 안 내려주는 구성도 있어 필수 검증에 넣지 않는다. */
+  sessionTitle: string | null;
 };
 ```
 
+- `participant` 중첩 객체는 없다. `participantIdentity` 평면 필드다.
+- **`role`은 이 응답에 오지 않는다.** LiveKit 토큰 metadata JSON(`{"role":"INSTRUCTOR"}`)에 실려 오므로 `participant.metadata`에서 읽는다. metadata가 없거나 JSON이 깨져도 화면이 죽지 않게 `student`로 폴백한다(`useRoomParticipants.ts`). 역할이 바뀔 수 있으므로 metadata 변경 이벤트를 구독한다.
+- `displayName`도 응답에 없다. LiveKit participant의 `name`을 쓴다.
+- `recordingAlias`는 프론트엔드에 내려오지 않는다. 녹화 대상 결정은 서버 몫이므로 필요하지 않다.
 - 토큰은 React 상태나 Room 인스턴스가 살아 있는 메모리에만 둔다.
 - `localStorage`, `sessionStorage`, 쿠키, 로그에 저장하지 않는다.
 - URL query에 토큰을 직접 넣지 않는다.
@@ -190,7 +197,8 @@ SCREEN_SHARE_AUDIO → 공유 영상과 함께 재생
 
 - 공유 버튼을 항상 표시한다.
 - 공유 시작 전 Spring Boot의 단일 공유 제어로 사용권을 획득한다.
-- 다른 공유자가 있으면 백엔드 결과에 따라 기존 공유를 중지하거나 요청을 거부한다.
+- **선착순이다.** 다른 사람이 이미 공유 중이면 요청이 거부된다. 기존 공유를 밀어낼 수 없으므로 "지금은 다른 참여자가 공유 중입니다"를 안내하고 버튼을 눌러도 시작되지 않게 한다.
+- 강사 화면에서는 진행 중인 학생 공유를 **중지**시킬 수 있다. 중지와 자기 공유 시작은 별개 동작이라 두 번에 걸쳐 조작한다.
 - 종료·중지·서버 회수 시 화면 Track과 화면 오디오 Track을 함께 정리한다.
 - 서버가 `SCREEN_SHARE_STOPPED`를 보내거나 LiveKit `ParticipantPermissionsChanged`로 권한이 내려가면 즉시 공유를 정리한다.
 
@@ -201,23 +209,26 @@ SCREEN_SHARE_AUDIO → 공유 영상과 함께 재생
 다음 이벤트는 LiveKit DataPacket이 아니라 애플리케이션 WebSocket으로 처리한다.
 
 ```text
-SESSION_ENDING
-INSTRUCTOR_DISCONNECTED
-INSTRUCTOR_RECONNECTED
-SCREEN_SHARE_STARTED
-SCREEN_SHARE_STOPPED
 CHAT_MESSAGE
 HAND_RAISED
 HAND_LOWERED
 REACTION
-PARTICIPANT_KICKED
+SCREEN_SHARE_STARTED
+SCREEN_SHARE_STOPPED
+FORCE_MUTED
 ```
+
+봉투 구조와 목적지는 [`livekit-integration-context.md`](./livekit-integration-context.md) §10.1이 소유한다. 모든 종류가 세션 주제 하나(`/topic/sessions/{sessionId}`)로 내려오므로 `type`으로 갈라 처리한다.
 
 - 공개 채팅과 학생-강사 1:1 채팅의 수신 대상을 구분한다.
 - 학생 간 1:1 채팅 UI를 제공하지 않는다.
-- `SESSION_ENDING`을 받으면 새 publish를 중단하고 종료 안내를 표시한다.
-- `PARTICIPANT_KICKED`는 현재 연결만 종료하며 영구 차단으로 표시하지 않는다.
+- 이벤트가 내 것인지 남의 것인지는 `sender.identity`로 판별한다. LiveKit participant identity와 같은 값이라 참가자 타일과 바로 이어 붙일 수 있다.
+- 같은 `eventId`가 두 번 오면 두 번째는 버린다. 재연결 직후 중복 수신이 가능하다.
 - WebSocket 이벤트는 사용자 입력 표현에 사용하되 서버의 최종 권한 결과를 따른다.
+
+**강사 이탈·복귀와 세션 종료 안내는 이 채널이 아니다.** presence 응답의 재연결 상태로 받는다(§6 참고). 종료를 받으면 새 publish를 중단하고 종료 안내를 표시한다.
+
+**강제 퇴장은 없다.** 강사가 할 수 있는 것은 음소거와 화면 공유 중지다.
 
 ## 11. 녹화 표시
 
@@ -237,8 +248,8 @@ PARTICIPANT_KICKED
 
 - 단순 탭 종료·네트워크 단절과 `수업 종료` 버튼을 구분한다.
 - `수업 종료`는 확인 UI 후 `POST /sessions/{id}/end`를 호출한다.
-- `SESSION_ENDING` 이후 Room이 닫히면 강사 메모 화면으로 이동한다.
-- 강사 네트워크 단절 중 학생에게 5분 재연결 대기 상태를 표시한다.
+- 종료가 확정되고 Room이 닫히면 강사 메모 화면으로 이동한다. 종료 사실은 presence 응답의 재연결 상태로 받는다.
+- 강사 네트워크 단절 중 학생에게 5분 재연결 대기 상태를 표시한다. 이 안내도 presence 응답으로 받는다.
 
 ## 13. 오류 처리
 
@@ -247,7 +258,6 @@ PARTICIPANT_KICKED
 | `401` | 로그인 갱신 또는 로그인 화면 |
 | `403` | 참가 관계·역할 오류 안내 |
 | `404` | 유효하지 않은 초대·세션 안내 |
-| `409 SESSION_CAPACITY_REACHED` | 30명 정원 초과 안내 |
 | 종료된 세션 `409/410` | 종료된 수업 안내 |
 | LiveKit 연결 실패 | 네트워크·TURN 안내와 재입장 |
 | 장치 권한 거부 | 브라우저 설정별 해결 안내 |

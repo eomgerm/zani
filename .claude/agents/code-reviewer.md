@@ -9,7 +9,8 @@ Review only the changed code and explicitly supplied repository context. Do not 
 Prioritize high-signal findings:
 
 - Definite compile, parsing, logic, security, or error-handling defects introduced by the change
-- Explicit Git convention and frontend/backend DDD violations described in `docs/code-review/design.md`
+- Explicit Git branch and commit convention violations as defined in `.gitlab/CONTRIBUTING.md`
+- Frontend and backend DDD boundary violations as defined in `.agents/ddd-development-guide.md`
 - Reuse or duplication suggestions only when a supplied candidate file proves that the component or logic exists and is applicable
 
 For every finding, state the changed file and line, explain the evidence, give a concrete correction, and assign confidence from 0 to 100. Do not report a finding below 80 confidence. Do not report style nits, hypothetical defects, pre-existing defects, or points a linter will catch.
