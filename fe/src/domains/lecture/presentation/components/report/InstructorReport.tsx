@@ -1,4 +1,5 @@
-import { Card, FocusFlowChart, EvalDonuts, StatCard } from "@/shared/ui";
+import { Card, EvalDonuts, StatCard } from "@/shared/ui";
+import { GroupAttentionTimeline } from "@/domains/report";
 import {
   evalDonutData,
   improveTips,
@@ -8,17 +9,16 @@ import {
   learnSegments,
 } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
-import { FocusLegend } from "./FocusLegend";
 
 interface Props {
+  /** 참여도 타임라인을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
+  sessionId: string;
   activeSeg: number;
   onSelect: (i: number) => void;
 }
 
-/** 리포트 탭 2 (강사) — 한눈에 보기 · 학습 흐름 · 타임라인 · 인사이트 · AI 수업 피드백. */
-export function InstructorReport({ activeSeg, onSelect }: Props) {
-  const flow = learnSegments.map((s) => ({ range: s.range, score: s.fAll }));
-
+/** 리포트 탭 2 (강사) — 한눈에 보기 · 집중 흐름 · 타임라인 · 인사이트 · AI 수업 피드백. */
+export function InstructorReport({ sessionId, activeSeg, onSelect }: Props) {
   return (
     <>
       <Card className="mb-5 px-6 py-[22px]">
@@ -46,10 +46,9 @@ export function InstructorReport({ activeSeg, onSelect }: Props) {
         </div>
       </Card>
 
-      <Card className="mb-5 px-6 pb-3.5 pt-[22px]">
-        <FocusLegend title="학습 흐름" scope="전체 집중도" />
-        <FocusFlowChart segments={flow} activeSeg={activeSeg} onSelect={onSelect} />
-      </Card>
+      <div className="mb-5">
+        <GroupAttentionTimeline sessionId={sessionId} />
+      </div>
 
       <Card className="mb-5 px-6 py-[22px]">
         <div className="mb-1 flex flex-wrap items-center gap-2">

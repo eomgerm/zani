@@ -13,6 +13,8 @@ export type { UseRoomParticipantsResult } from "./presentation/useRoomParticipan
 export { useRoomMediaControls } from "./presentation/useRoomMediaControls";
 export type { RoomMediaControls } from "./presentation/useRoomMediaControls";
 export { useRoomReconnect } from "./presentation/useRoomReconnect";
+export { useSessionRole } from "./presentation/useSessionRole";
+export type { SessionRole, SessionRoleStatus } from "./presentation/useSessionRole";
 export { useSessionPresence } from "./presentation/useSessionPresence";
 export type { SessionPresenceState } from "./presentation/useSessionPresence";
 export { useSessionTimeWarning, WARNING_THRESHOLD_MINUTES } from "./presentation/useSessionTimeWarning";

@@ -31,6 +31,7 @@ describe("getCurrentMember", () => {
       email: "user@example.com",
       displayName: "테스트 사용자",
       profileImageUrl: "https://example.com/pic.png",
+      reportEmailEnabled: true,
     });
     expect(fetch).toHaveBeenCalledWith(
       "https://api.example.com/api/v1/members/me",
@@ -58,6 +59,29 @@ describe("getCurrentMember", () => {
     );
 
     await expect(getCurrentMember("token")).resolves.toMatchObject({ profileImageUrl: null });
+  });
+
+  it("reads the report email setting when the server sends it off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.example.com");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            isSuccess: true,
+            data: {
+              email: "user@example.com",
+              displayName: "테스트 사용자",
+              profileImageUrl: null,
+              reportEmailEnabled: false,
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(getCurrentMember("token")).resolves.toMatchObject({ reportEmailEnabled: false });
   });
 
   it("throws when the access token is rejected", async () => {

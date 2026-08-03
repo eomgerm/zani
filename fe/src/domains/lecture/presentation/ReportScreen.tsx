@@ -8,6 +8,7 @@ import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
 import { SegmentModal } from "./components/report/SegmentModal";
+import { useSessionRole } from "./useSessionRole";
 
 const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
@@ -20,7 +21,10 @@ const tabCls = (active: boolean) =>
  */
 export function ReportScreen({ lectureId }: { lectureId: string }) {
   const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  const isInstructor = lecture.role === "instructor";
+  // 제목·날짜·클립 탭은 아직 fixture 다(110 범위). 역할만 서버 값으로 판정한다 — 실제 세션 id 는
+  // fixture 에 없어 늘 첫 강의(강사)로 떨어지고, 그러면 학생이 강사용 경로를 불러 403 을 받는다.
+  const { status: roleStatus, role } = useSessionRole(lectureId);
+  const isInstructor = roleStatus === "ready" ? role === "INSTRUCTOR" : lecture.role === "instructor";
   const failed = lecture.status === "FAILED";
 
   // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
@@ -113,10 +117,27 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
 
           {tab === "clip" ? (
             <ReportClipTab title={lecture.title} />
+          ) : roleStatus === "loading" ? (
+            /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
+            <div className="px-5 py-[70px] text-center text-ink-fainter">
+              <div className="mb-3.5 text-[44px]">⏳</div>
+              <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
+            </div>
+          ) : roleStatus === "unknown" ? (
+            <div className="px-5 py-[70px] text-center text-ink-fainter">
+              <div className="mb-3.5 text-[44px]">🔒</div>
+              <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
+              <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
+            </div>
           ) : isInstructor ? (
-            <InstructorReport activeSeg={activeSeg} onSelect={onSelectSeg} />
+            <InstructorReport sessionId={lectureId} activeSeg={activeSeg} onSelect={onSelectSeg} />
           ) : (
-            <StudentReport lectureId={lecture.id} activeSeg={activeSeg} onSelect={onSelectSeg} />
+            <StudentReport
+              lectureId={lecture.id}
+              sessionId={lectureId}
+              activeSeg={activeSeg}
+              onSelect={onSelectSeg}
+            />
           )}
         </>
       )}

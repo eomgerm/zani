@@ -2,3 +2,8 @@
 export { LoginScreen } from "./presentation/LoginScreen";
 export { TermsScreen } from "./presentation/TermsScreen";
 export { AuthProvider, useAuth } from "./presentation/AuthProvider";
+export {
+  getCurrentMember,
+  GetCurrentMemberRequestError,
+  type CurrentMember,
+} from "./infrastructure/getCurrentMemberApi";

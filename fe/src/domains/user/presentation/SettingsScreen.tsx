@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar, CalendarIcon, Card, FileIcon } from "@/shared/ui";
-import { useAuth } from "@/domains/auth";
+import { getCurrentMember, useAuth } from "@/domains/auth";
+import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -51,16 +52,42 @@ function NotifRow({
 
 /**
  * SC-07 계정 설정. 프로필 · 알림 설정 · 계정 관리(회원 탈퇴).
- * 이름 편집·토글·탈퇴는 시연용 로컬 상태로만 동작한다.
+ * "강의 리포트 알림" 토글은 서버 설정(GET·PATCH /api/v1/members/me)에 연결돼 실제 이메일 수신 여부를 바꾼다.
+ * 이름 편집·수업 일정 알림·탈퇴는 아직 시연용 로컬 상태로만 동작한다.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const { member } = useAuth();
+  const { member, accessToken } = useAuth();
   const [name, setName] = useState<string>(member?.displayName ?? "");
   const [notifSchedule, setNotifSchedule] = useState(true);
   const [notifReport, setNotifReport] = useState(true);
+  const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const nameChanged = name.trim() !== (member?.displayName ?? "").trim() && name.trim().length > 0;
+
+  // 저장된 리포트 알림 수신 설정을 서버에서 읽어 토글 초기값을 맞춘다. 토큰이 없으면(비로그인) 건드리지 않는다.
+  useEffect(() => {
+    if (accessToken === null) return;
+    const controller = new AbortController();
+    getCurrentMember(accessToken, controller.signal)
+      .then((current) => setNotifReport(current.reportEmailEnabled))
+      .catch(() => {
+        // 조회 실패는 조용히 무시한다 — 기본값(수신)을 유지하고 사용자가 다시 토글하면 그때 반영된다.
+      });
+    return () => controller.abort();
+  }, [accessToken]);
+
+  // "강의 리포트 알림"을 켜고 끈다. 낙관적으로 먼저 바꾸고, 서버 반영에 실패하면 이전 값으로 되돌린다.
+  const toggleReport = () => {
+    if (accessToken === null || reportPending) return;
+    const next = !notifReport;
+    setNotifReport(next);
+    setReportPending(true);
+    updateReportEmail(accessToken, next)
+      .then((result) => setNotifReport(result.reportEmailEnabled))
+      .catch(() => setNotifReport(!next))
+      .finally(() => setReportPending(false));
+  };
 
   return (
     <>
@@ -124,7 +151,7 @@ export function SettingsScreen() {
             title="강의 리포트 알림"
             desc="수업 리포트가 생성되면 이메일로 알림을 받습니다."
             on={notifReport}
-            onToggle={() => setNotifReport((v) => !v)}
+            onToggle={toggleReport}
           />
         </Card>
 
