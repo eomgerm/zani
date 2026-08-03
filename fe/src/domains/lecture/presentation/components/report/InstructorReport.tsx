@@ -17,7 +17,7 @@ interface Props {
   onSelect: (i: number) => void;
 }
 
-/** 리포트 탭 2 (강사) — 한눈에 보기 · 참여도 흐름 · 타임라인 · 인사이트 · AI 수업 피드백. */
+/** 리포트 탭 2 (강사) — 한눈에 보기 · 집중 흐름 · 타임라인 · 인사이트 · AI 수업 피드백. */
 export function InstructorReport({ sessionId, activeSeg, onSelect }: Props) {
   return (
     <>
