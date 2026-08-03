@@ -3,9 +3,11 @@ package com.a105.zani.session.application.get;
 /**
  * 목록 화면이 보여줄 리포트 처리 상태.
  *
- * <p><b>파이프라인 단계를 그대로 내리지 않는다.</b> {@code pipeline_jobs.status} 는
- * {@code QUEUED·TRANSCRIBING·ANALYZING·VALIDATING·PUBLISHED·FAILED} 여섯 단계인데, 목록 카드가 구분해야 하는 것은 "기다려라 / 볼 수 있다 / 실패했다"
- * 셋뿐이다. 중간 단계를 그대로 노출하면 화면이 파이프라인 구현에 묶여, 단계가 하나 늘 때마다 FE 도 고쳐야 한다.
+ * <p><b>파이프라인 단계를 그대로 내리지 않는다.</b> 사후 처리는 여러 단계를 지나지만 목록 카드가 구분해야 하는 것은 "기다려라 / 볼 수 있다 / 실패했다" 셋뿐이다. 중간 단계를 그대로 노출하면
+ * 화면이 파이프라인 구현에 묶여, 단계가 하나 늘 때마다 FE 도 고쳐야 한다.
+ *
+ * <p>단계를 이 값으로 접는 일은 단계를 아는 쪽(postclass)이 맡는다 — {@code SessionReportStatusPort} 의 구현이다. 그래서 session 은 어떤 단계가 있는지 알지
+ * 않는다.
  */
 public enum SessionReportStatus {
 
@@ -18,22 +20,5 @@ public enum SessionReportStatus {
     /** 발행됐다. 리포트를 열 수 있다. */
     COMPLETED,
 
-    FAILED;
-
-    /**
-     * 파이프라인 단계값을 목록용 상태로 접는다.
-     *
-     * <p>모르는 값은 {@code PROCESSING} 으로 둔다. 단계가 새로 생겼는데 여기에 반영되지 않은 상황인데, 그때 {@code COMPLETED} 로 보이면 아직 없는 리포트를 열려다 실패하고
-     * {@code FAILED} 로 보이면 멀쩡한 처리를 실패로 알린다. "아직 기다리는 중"이 가장 덜 틀린다.
-     */
-    public static SessionReportStatus from(String pipelineJobStatus) {
-        if (pipelineJobStatus == null) {
-            return NONE;
-        }
-        return switch (pipelineJobStatus) {
-            case "PUBLISHED" -> COMPLETED;
-            case "FAILED" -> FAILED;
-            default -> PROCESSING;
-        };
-    }
+    FAILED
 }
