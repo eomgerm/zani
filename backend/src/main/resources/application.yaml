@@ -71,6 +71,23 @@ postclass:
   # 30분 넘게 입력이 없는 강사 메모를 확정하는 주기(ISO-8601 duration).
   # 비활성 기준 30분 자체는 도메인 규칙(InstructorNote.INACTIVITY_WINDOW)이라 설정으로 열지 않는다.
   note-inactivity-sweep-delay: ${POSTCLASS_NOTE_INACTIVITY_SWEEP_DELAY:PT1M}
+  transcription:
+    # 사후 전사가 Track Egress 원본 OGG 를 읽을 루트. recording.base-path 와 값이 같아도 뜻이 다르다 —
+    # 그쪽은 "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 겸용하면 두
+    # 마운트가 갈리는 날 조용히 깨진다. 파일 경로의 정본은 DB recording_files.storage_key 이고, 이 루트는
+    # 그 상대 경로의 기준점일 뿐이다 — 디렉터리를 나열하지 않는다(마운트에 o+r 이 없어 나열도 안 된다).
+    source-root: ${POSTCLASS_SOURCE_ROOT:/srv/zani/recordings/track-egress}
+    # 청크를 만들 작업 디렉터리. 원본 마운트는 read-only 라 산출물은 반드시 여기에 쓴다.
+    # 트랙 하나를 분할·처리·정리한 뒤 다음 트랙으로 넘어가므로 피크는 트랙 하나 크기(3시간이면 약 170MB)다.
+    # 모든 종료 경로에서 삭제한다.
+    work-dir: ${POSTCLASS_WORK_DIR:/tmp/zani-postclass}
+    # ffmpeg 는 OGG stream-copy 분할에, ffprobe 는 산출물 검증에 쓴다. 재인코딩은 하지 않는다.
+    # 이미지에 없으면 Dockerfile 빌드가 실패하므로 여기서는 경로만 연다(PATH 기준).
+    ffmpeg-path: ${POSTCLASS_FFMPEG_PATH:ffmpeg}
+    ffprobe-path: ${POSTCLASS_FFPROBE_PATH:ffprobe}
+    # 외부 프로세스 1회 상한. 초과하면 강제 종료한다. stream copy 는 I/O 뿐이라 3시간 트랙도 초 단위로
+    # 끝나지만, 멈춘 프로세스가 오케스트레이션 스레드를 잡는 것을 막는 안전장치다.
+    process-timeout: ${POSTCLASS_FFMPEG_TIMEOUT:PT60S}
 
 notification:
   email:

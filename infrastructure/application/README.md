@@ -52,6 +52,55 @@ student in a one-to-three-student test; lower it only when the intended scenario
 needs one flagged student out of a larger denominator. Restore the cooldown to
 `PT10M` after testing.
 
+## Required host directories
+
+Track Egress writes recordings to the host; post-class transcription reads them back
+through a read-only bind mount. One directory needs a mode the Egress container does
+not set by itself:
+
+| Path | Required mode | Owner |
+| --- | --- | --- |
+| `/srv/zani/recordings/track-egress` | `0771` | `root:root` |
+
+Each bit is load-bearing, so do not widen or narrow it:
+
+- **owner and group `rwx`** — the Egress container writes session directories here.
+  Removing these stops recording.
+- **other `x`** — the backend container runs as UID 10001 and must traverse the mount
+  root to open a known file path. Without it every read fails with permission denied.
+- **other `r` is deliberately absent** — the backend never lists `/out`. The canonical
+  source of file paths is `recording_files.storage_key` in the database, so listing is
+  not needed and is not granted.
+
+Parent directories stay `0750 root:root`. They are not widened: Docker resolves the
+bind-mount source as root, so the container never traverses `/srv/zani` itself, and
+host users remain locked out.
+
+Applying this requires explicit operator approval, the same as the secret files above:
+
+```bash
+sudo chmod o+x /srv/zani/recordings/track-egress
+```
+
+Re-apply it whenever the directory is recreated — a fresh host, a restore, or a
+manual `mkdir` all produce `0770` and silently break transcription. **The application
+container must not change host permissions at startup**; that would require privileges
+the container deliberately drops.
+
+Verify with a throwaway container rather than a host-side `setpriv` check. A host
+process running as UID 10001 fails on the `0750` parents regardless of this mode, so
+it tests the wrong thing:
+
+```bash
+sudo docker run --rm -u 10001:10001 \
+  -v /srv/zani/recordings/track-egress:/out:ro \
+  --entrypoint sh zani/backend:dev -c \
+  'ls /out; head -c 4 /out/<sessionId>/<storageKey>; touch /out/.probe'
+```
+
+Expected: listing `/out` fails, reading a known file path succeeds, and the write
+fails. Applied and verified on 2026-08-03 (`S15P11A105-95`).
+
 ## Schema policy
 
 The stack preserves the `dev` profile's `spring.jpa.hibernate.ddl-auto=validate` policy. The current `dev` branch has no migration tool or schema migration files, so migrations must be added before deploying persistent entities that require database tables.
