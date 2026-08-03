@@ -19,62 +19,163 @@ vi.mock("recharts", async () => {
 });
 
 import { GroupAttentionTimeline } from "./GroupAttentionTimeline";
-import { AttentionTimelineError } from "../infrastructure/attentionTimelineApi";
+import {
+  AttentionTimelineError,
+  type GroupAttentionTimeline as GroupAttentionTimelineData,
+} from "../infrastructure/attentionTimelineApi";
 
-const timeline = {
-  intervalSeconds: 5,
-  durationSeconds: 20,
-  points: [
-    {
-      offsetSeconds: 0,
-      connectedCount: 10,
-      eligibleCount: 8,
-      checkNeededRatio: 0.25,
-      cameraOffRatio: 0.2,
-      confusedRatio: 0.125,
-      missedRatio: 0.125,
-      nonResponseRatio: 0,
-      unmeasurableRatio: 0,
-    },
-    {
-      offsetSeconds: 5,
-      connectedCount: 4,
-      eligibleCount: 4,
-      checkNeededRatio: null,
-      cameraOffRatio: null,
-      confusedRatio: null,
-      missedRatio: null,
-      nonResponseRatio: null,
-      unmeasurableRatio: null,
-    },
-  ],
-  distractedIntervals: [{ startSeconds: 0, endSeconds: 10 }],
-};
+const groupTimelineWith = (
+  overrides: Partial<GroupAttentionTimelineData> = {},
+): GroupAttentionTimelineData => ({
+  durationSeconds: 60,
+  focusFlow: {
+    intervalSeconds: 30,
+    points: [
+      { offsetSeconds: 0, focusLevel: 3.2, eligibleCount: 28 },
+      { offsetSeconds: 30, focusLevel: 2.4, eligibleCount: 28 },
+    ],
+  },
+  signals: {
+    intervalSeconds: 5,
+    points: [
+      {
+        offsetSeconds: 0,
+        connectedCount: 30,
+        eligibleCount: 28,
+        checkNeededRatio: 0.32,
+        cameraOffRatio: 0.07,
+        confusedRatio: 0.1,
+        missedRatio: 0.1,
+        nonResponseRatio: 0.07,
+        unmeasurableRatio: 0.05,
+      },
+      {
+        offsetSeconds: 5,
+        connectedCount: 30,
+        eligibleCount: 28,
+        checkNeededRatio: 0.28,
+        cameraOffRatio: 0.07,
+        confusedRatio: 0.08,
+        missedRatio: 0.1,
+        nonResponseRatio: 0.1,
+        unmeasurableRatio: 0.05,
+      },
+    ],
+  },
+  distractedIntervals: [],
+  sections: [],
+  ...overrides,
+});
 
 describe("GroupAttentionTimeline", () => {
-  it("shows a shortage notice instead of a ratio below five students", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={vi.fn().mockResolvedValue(timeline)} />);
+  it("카드 제목이 집중 흐름이다", async () => {
+    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
+
+    // 제목 그 자체만 짚는다. 본문 문구에도 "집중 흐름" 이 나오므로 정확히 일치하는 것을 찾는다.
+    expect(await screen.findByText("집중 흐름")).toBeInTheDocument();
+  });
+
+  it("집단 집중 흐름이 주 계열이라 설명 맨 앞에 온다", async () => {
+    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
+
+    const ariaLabel = (await screen.findByRole("img")).getAttribute("aria-label") ?? "";
+
+    expect(ariaLabel.indexOf("집중 흐름")).toBeGreaterThanOrEqual(0);
+    expect(ariaLabel.indexOf("집중 흐름")).toBeLessThan(ariaLabel.indexOf("확인 필요"));
+  });
+
+  it("배열이 둘로 갈라져도 계열 셋을 모두 그린다", async () => {
+    const { container } = render(
+      <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
+    );
+
+    await screen.findByRole("img");
+
+    // 계열마다 자기 data 를 주는 구성이라 하나라도 빠지면 조용히 선이 사라진다.
+    const curves = container.querySelectorAll("path.recharts-line-curve");
+    expect(curves).toHaveLength(3);
+    // 주 계열(집중 흐름)은 굵은 초록 선이다.
+    expect(container.querySelector('path[stroke="#16c582"]')?.getAttribute("d")).toContain("M");
+  });
+
+  it("두 축의 단위가 다르다는 것을 적는다", async () => {
+    const { container } = render(
+      <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
+    );
+
+    await screen.findByRole("img");
+
+    expect(container.textContent).toContain("1~4 단계");
+    expect(container.textContent).toContain("분모가 다릅니다");
+  });
+
+  it("집계 인원이 5명 미만인 30초 칸을 안내한다", async () => {
+    render(
+      <GroupAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          groupTimelineWith({
+            focusFlow: {
+              intervalSeconds: 30,
+              points: [{ offsetSeconds: 0, focusLevel: null, eligibleCount: 4 }],
+            },
+          })
+        }
+      />,
+    );
 
     expect(await screen.findByText(/집계 인원이 부족합니다/)).toBeInTheDocument();
   });
 
-  it("never shows a student name or an individual state", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={vi.fn().mockResolvedValue(timeline)} />);
-    await screen.findByRole("img", { name: /집단/ });
+  it("학생 이름이나 개별 값이 화면에 없다", async () => {
+    const { container } = render(
+      <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
+    );
+
+    await screen.findByRole("img");
 
     // REPORT-I-002. 익명 그래프에서 개인으로 가는 길을 만들지 않는다.
+    for (const forbidden of ["participantId", "memberId", "studentId", "displayName"]) {
+      expect(container.innerHTML).not.toContain(forbidden);
+    }
     expect(screen.queryByText(/학생 \d|님|이름/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /학생/ })).not.toBeInTheDocument();
   });
 
-  it("states that the two ratios use different denominators", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={vi.fn().mockResolvedValue(timeline)} />);
+  it("내용 구간 평균을 함께 보여준다", async () => {
+    render(
+      <GroupAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          groupTimelineWith({
+            sections: [{ startSeconds: 0, endSeconds: 60, title: "함수의 정의", focusLevel: 2.8 }],
+          })
+        }
+      />,
+    );
 
-    expect(await screen.findByText(/분모가 다릅니다|더하지/)).toBeInTheDocument();
+    expect(await screen.findByText("함수의 정의")).toBeInTheDocument();
+  });
+
+  it("관측이 없으면 빈 상태를 안내한다", async () => {
+    render(
+      <GroupAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          groupTimelineWith({
+            durationSeconds: 0,
+            focusFlow: { intervalSeconds: 30, points: [] },
+            signals: { intervalSeconds: 5, points: [] },
+          })
+        }
+      />,
+    );
+
+    expect(await screen.findByText(/기록이 없어요/)).toBeInTheDocument();
   });
 
   it("shows the response mix for the selected interval", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={vi.fn().mockResolvedValue(timeline)} />);
+    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
 
     expect(await screen.findByText(/헷갈림/)).toBeInTheDocument();
     expect(screen.getByText(/놓침/)).toBeInTheDocument();
@@ -87,5 +188,12 @@ describe("GroupAttentionTimeline", () => {
     render(<GroupAttentionTimeline sessionId="s1" request={request} />);
 
     expect(await screen.findByText(/권한/)).toBeInTheDocument();
+  });
+
+  it("offers a retry when the request fails", async () => {
+    const request = vi.fn().mockRejectedValue(new AttentionTimelineError("boom", 0));
+    render(<GroupAttentionTimeline sessionId="s1" request={request} />);
+
+    expect(await screen.findByRole("button", { name: "다시 시도" })).toBeInTheDocument();
   });
 });
