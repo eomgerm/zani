@@ -197,13 +197,19 @@ def _build_features(args: argparse.Namespace) -> int:
     from zani_ai.engagement.representations import (
         LandmarkSequenceRepresentation,
         TokenRepresentation,
+        ZeroPlaceholderLandmarkSequenceRepresentation,
         ZeroPlaceholderTokenRepresentation,
     )
 
     contract = _load_contract(args, require_videos=False)
     representation: representations.Representation
     if args.schema.startswith("landmark_78"):
-        representation = LandmarkSequenceRepresentation.for_sample_fps(args.sample_fps)
+        sequence_type: type[LandmarkSequenceRepresentation] = (
+            ZeroPlaceholderLandmarkSequenceRepresentation
+            if "placeholder" in args.schema
+            else LandmarkSequenceRepresentation
+        )
+        representation = sequence_type.for_sample_fps(args.sample_fps)
         if representation.name != args.schema:
             raise ValueError(
                 f"--schema {args.schema} does not match --sample-fps {args.sample_fps}, "
@@ -476,6 +482,8 @@ def build_parser() -> argparse.ArgumentParser:
             "mediapipe_132_v1",
             "landmark_78_v1",
             "landmark_78_300_v1",
+            "landmark_78_placeholder_v1",
+            "landmark_78_300_placeholder_v1",
         ),
         required=True,
     )
