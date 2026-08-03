@@ -326,10 +326,39 @@ components:
           type: string
         inviteCode:
           type: string
+        title:
+          type: string
         status:
           $ref: "#/components/schemas/SessionStatus"
         role:
           $ref: "#/components/schemas/SessionRole"
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          # 진행 중인 수업에는 종료 시각이 없다.
+          type: string
+          format: date-time
+          nullable: true
+        participantCount:
+          # 들어온 적 있는 사람 수다. 지금 접속 중인 인원이 아니다 — 참가자 행은 퇴장해도 남는다.
+          type: integer
+          format: int64
+        reportStatus:
+          $ref: "#/components/schemas/SessionReportStatus"
+        rejoinable:
+          # 진행 중이면서 내 참가자 행이 있을 때만 true. 프리조인을 다시 거치지 않고 강의실로 들어갈 수 있다.
+          type: boolean
+
+    SessionReportStatus:
+      # pipeline_jobs 의 여섯 단계를 화면이 구분해야 하는 셋으로 접은 값이다.
+      # 중간 단계를 그대로 노출하면 화면이 파이프라인 구현에 묶여, 단계가 늘 때마다 FE 도 고쳐야 한다.
+      type: string
+      enum:
+        - NONE
+        - PROCESSING
+        - COMPLETED
+        - FAILED
 
     SessionListApiResponse:
       type: object
