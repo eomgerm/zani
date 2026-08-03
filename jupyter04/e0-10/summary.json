@@ -1,6 +1,6 @@
 {
   "protocol": "E0-10",
-  "status": "in_progress",
+  "status": "complete",
   "feature_manifest": {
     "path": "/home/j-i15a105/zani/ai/datasets/processed/engagenet/manifest.json",
     "schema": "mediapipe_98_v1",
@@ -546,25 +546,77 @@
           "size_bytes": 305
         }
       }
+    },
+    {
+      "seed": 51,
+      "status": "complete",
+      "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+      "configuration_sha256": "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+      "inputs": {},
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 3,
+      "validation": {
+        "accuracy": 0.6846938775510204,
+        "macro_f1": 0.5752698066393652,
+        "within_one_accuracy": 0.9591836734693877,
+        "quadratic_weighted_kappa": 0.7154883678826831
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-51/best.pt",
+          "sha256": "647ee2f312cd7dfed540fe20f177489135db037fbf99c91f73d47fd451457131",
+          "size_bytes": 12912571
+        },
+        "metrics": {
+          "path": "seed-51/metrics.json",
+          "sha256": "19302081d5a00337103c0cd210da985a592b845c996d3a2a7374c5b4a63a6112",
+          "size_bytes": 7273
+        },
+        "onnx_model": {
+          "path": "seed-51/onnx/engagement.onnx",
+          "sha256": "58497272e6c9e464aedca30a5ce173794c3f81a6f65cf4937f715e4ba8fba1fd",
+          "size_bytes": 13187633
+        },
+        "onnx_metadata": {
+          "path": "seed-51/onnx/engagement.metadata.json",
+          "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+          "size_bytes": 305
+        }
+      }
     }
   ],
   "aggregate": {
-    "completed_seed_count": 9,
+    "completed_seed_count": 10,
     "validation_accuracy": {
-      "mean": 0.6701814058956916,
-      "sample_standard_deviation": 0.013164627537662326
+      "mean": 0.6716326530612245,
+      "sample_standard_deviation": 0.013232997459360896
     },
     "validation_macro_f1": {
-      "mean": 0.5743653016991135,
-      "sample_standard_deviation": 0.011514736130658315
+      "mean": 0.5744557521931387,
+      "sample_standard_deviation": 0.010859964710080527
     },
     "validation_within_one_accuracy": {
-      "mean": 0.958390022675737,
-      "sample_standard_deviation": 0.005321254369783013
+      "mean": 0.958469387755102,
+      "sample_standard_deviation": 0.005023200373904123
     },
     "validation_quadratic_weighted_kappa": {
-      "mean": 0.7025758547748573,
-      "sample_standard_deviation": 0.014378802480522092
+      "mean": 0.7038671060856398,
+      "sample_standard_deviation": 0.014158073399515993
     }
   }
 }
