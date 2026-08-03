@@ -2,6 +2,7 @@ package com.a105.zani.session.application.presence;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,12 +64,23 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         // 유예 만료 여부는 이번 heartbeat가 presence 상태를 바꾸기 전에 판단한다. 그래야 유예가 이미 지난 뒤
         // 강사가 뒤늦게 접속해도 자신의 heartbeat로 종료를 취소하지 못한다(수용 기준: 5분 미복귀 → 종료).
         if (isInstructorGraceExpired(sessionId)) {
-            endSession(sessionId);
+            endSession(sessionId, SessionEndReason.INSTRUCTOR_ABSENT);
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
 
         boolean connected = command.connectionState() == ConnectionState.CONNECTED;
         ReconnectStatus reconnectStatus = applyPresence(sessionId, participantId, participant.role(), connected);
+
+        // 마지막 사람이 나갔으면 수업을 붙잡고 있을 이유가 없다(LIVE-010). 이탈 보고 뒤에만 확인한다 —
+        // 접속 중인 heartbeat 는 방금 자기 presence 를 심었으므로 빈 방일 수 없다.
+        //
+        // 강사 유예 중에는 비어 있어도 끝내지 않는다. 유예는 강사가 돌아올 시간을 주자는 것인데, 여기서 바로
+        // 종료하면 혼자 준비 중이던 강사가 새로고침 한 번에 수업을 잃는다 — 5분 유예(LIVE-009)가 통째로
+        // 무력해진다. 강사가 끝내 돌아오지 않으면 유예 만료가 같은 자리에서 종료를 집는다.
+        if (!connected && !isInstructorGraceRunning(sessionId) && isSessionEmpty(sessionId)) {
+            endSession(sessionId, SessionEndReason.ALL_PARTICIPANTS_LEFT);
+            return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
+        }
         return result(participant, command, reconnectStatus, false);
     }
 
@@ -80,6 +92,12 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                     && presencePort.instructorGraceDeadline(sessionId).isPresent()) {
                 presencePort.clearInstructorGrace(sessionId);
                 return ReconnectStatus.RECONNECTED;
+            }
+            // 학생에게도 강사 유예를 알린다. 강사가 끊긴 동안 수업이 곧 자동 종료된다는 것을 학생 화면이
+            // 보여주려면(SessionPresenceNotice) 이 신호가 필요하다 — 유예를 강사에게만 돌려주면
+            // 학생은 아무 안내 없이 수업이 끝나는 것을 본다.
+            if (presencePort.instructorGraceDeadline(sessionId).isPresent()) {
+                return ReconnectStatus.GRACE_PERIOD;
             }
             return ReconnectStatus.CONNECTED;
         }
@@ -94,6 +112,24 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         return ReconnectStatus.DISCONNECTED;
     }
 
+    /**
+     * 이 세션에 접속 중인 참가자가 하나도 없는지.
+     *
+     * <p>참가자 후보를 DB 에서 받아 그중 presence 키가 살아 있는 사람을 센다 — Redis 키 공간을 훑지 않기
+     * 위해서다({@link SessionPresencePort#connectedSince} 의 계약).
+     */
+    /** 강사 복귀를 기다리는 중인지. 유예가 도는 동안은 방이 비어도 종료하지 않는다. */
+    private boolean isInstructorGraceRunning(long sessionId) {
+        return presencePort.instructorGraceDeadline(sessionId).isPresent();
+    }
+
+    private boolean isSessionEmpty(long sessionId) {
+        List<Long> participantIds = participantRepository.findBySessionId(sessionId).stream()
+                .map(SessionParticipant::id)
+                .toList();
+        return presencePort.connectedSince(sessionId, participantIds).isEmpty();
+    }
+
     /** 이번 heartbeat 시점 기준으로 강사 유예가 이미 지났는지. presence 변경 전에 읽은 마감 시각으로 판단한다. */
     private boolean isInstructorGraceExpired(long sessionId) {
         return presencePort
@@ -102,11 +138,11 @@ public class SessionPresenceService implements RecordPresenceUseCase {
                 .orElse(false);
     }
 
-    private void endSession(long sessionId) {
+    private void endSession(long sessionId, SessionEndReason reason) {
         // 종료는 단일 유스케이스로만 수행한다(가이드 §12: 강사 명시 종료·3시간·강사 미복귀가 같은 경로).
         // DB의 ENDED 상태가 유일한 진실이다. 종료 이후 heartbeat는 위의 isEnded 가드에서 409로 막혀 유예를 다시 평가하지 않으므로,
         // 남은 유예·presence 키는 그대로 두어도 무해하며 각자의 TTL로 자연 소멸한다.
-        endSessionUseCase.end(new EndSessionCommand(sessionId, SessionEndReason.INSTRUCTOR_ABSENT));
+        endSessionUseCase.end(new EndSessionCommand(sessionId, reason));
     }
 
     private PresenceResult result(

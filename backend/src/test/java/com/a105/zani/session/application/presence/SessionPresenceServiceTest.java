@@ -99,6 +99,73 @@ class SessionPresenceServiceTest {
         return service.record(new RecordPresenceCommand(SESSION_ID, userId, clock.instant(), state));
     }
 
+    /**
+     * 강사가 끊긴 동안 학생도 유예를 알아야 한다.
+     *
+     * <p>유예를 강사에게만 돌려주면 학생 화면(SessionPresenceNotice)은 아무 안내도 띄우지 못하고, 학생은 이유 없이 수업이 끝나는 것을 본다.
+     */
+    @Test
+    void tellsStudentsThatTheClassEndsSoonWhileTheInstructorIsAway() {
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+        heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
+
+        PresenceResult student = heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+
+        assertEquals(ReconnectStatus.GRACE_PERIOD, student.reconnectStatus());
+        assertFalse(student.sessionEnded());
+    }
+
+    /** 유예가 없을 때는 평소대로 접속 중이다 — 위 신호가 상시로 새어 나가면 안내가 늘 떠 있다. */
+    @Test
+    void reportsAPlainConnectionWhenNoGraceIsRunning() {
+        assertEquals(
+                ReconnectStatus.CONNECTED,
+                heartbeat(STUDENT_USER, ConnectionState.CONNECTED).reconnectStatus());
+    }
+
+    /** 마지막 사람이 나가면 수업을 붙잡아 둘 이유가 없다(LIVE-010). */
+    @Test
+    void endsTheSessionWhenTheLastParticipantLeaves() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+        // 강사 탭이 죽어 presence 가 TTL 로 사라졌다. 이탈을 보고하지 못했으므로 유예도 시작되지 않았다.
+        presencePort.clearPresence(SESSION_ID, INSTRUCTOR_PARTICIPANT);
+
+        PresenceResult last = heartbeat(STUDENT_USER, ConnectionState.DISCONNECTED);
+
+        assertTrue(last.sessionEnded());
+        assertEquals(ReconnectStatus.SESSION_ENDED, last.reconnectStatus());
+        assertTrue(sessionRepository.session.isEnded());
+    }
+
+    /**
+     * 강사 유예 중에는 방이 비어도 끝내지 않는다.
+     *
+     * <p>혼자 준비 중이던 강사가 새로고침하면 그 순간 방은 비어 있다. 여기서 종료하면 5분 유예(LIVE-009)가 통째로 무력해진다 — 강사는 돌아올 방을 잃는다.
+     */
+    @Test
+    void keepsTheSessionWhileTheInstructorGraceIsStillRunningEvenIfTheRoomIsEmpty() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+
+        PresenceResult dropped = heartbeat(INSTRUCTOR_USER, ConnectionState.DISCONNECTED);
+
+        assertFalse(dropped.sessionEnded());
+        assertEquals(ReconnectStatus.GRACE_PERIOD, dropped.reconnectStatus());
+        assertFalse(sessionRepository.session.isEnded());
+    }
+
+    /** 아직 남은 사람이 있으면 종료하지 않는다 — 한 명이 나갔다고 수업이 끝나면 안 된다. */
+    @Test
+    void keepsTheSessionAliveWhileSomeoneIsStillConnected() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+
+        PresenceResult leaving = heartbeat(STUDENT_USER, ConnectionState.DISCONNECTED);
+
+        assertFalse(leaving.sessionEnded());
+        assertFalse(sessionRepository.session.isEnded());
+    }
+
     @Test
     void throwsForbiddenWhenTheUserIsNotASessionMember() {
         assertThrows(NotSessionMemberException.class, () -> heartbeat(999L, ConnectionState.CONNECTED));
@@ -177,6 +244,8 @@ class SessionPresenceServiceTest {
 
     @Test
     void clearsPresenceAndReportsDisconnectedWhenAStudentLeaves() {
+        // 강사가 남아 있어야 학생 이탈만으로 방이 비지 않는다 — 빈 방은 그 자리에서 종료된다(LIVE-010).
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
         heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
 
         PresenceResult result = heartbeat(STUDENT_USER, ConnectionState.DISCONNECTED);
