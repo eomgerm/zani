@@ -18,6 +18,7 @@ import hashlib
 import json
 from dataclasses import asdict, replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -34,6 +35,7 @@ from zani_ai.engagement.experiment import (
     E0I_SPEC,
     E0J_SPEC,
     E0K_SPEC,
+    E0L_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -46,6 +48,7 @@ from zani_ai.engagement.experiment import (
     _graph_record,
     _reliability_record,
     _seed_is_complete,
+    _stage1_record,
     _validate_inputs_identity,
     stgcn_model_builder,
 )
@@ -83,6 +86,8 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     ("E0-J", "cuda"): "1a01ec49bfeddb104a528f0133161b61373fe1cab8cd1962f6adcb3a9dd0b00c",
     ("E0-K", "cpu"): "16789bf6e095421f52cf81a59c3385dfce576f7234011622e1c39290e87fa4ea",
     ("E0-K", "cuda"): "2bdd0769df956cff3f2787e8b5ab5735a48897dda8683f1f625f415b3be8673b",
+    ("E0-L", "cpu"): "76c7321e20450759a7d7baa494ef8b43da9316db42779f9e4cefdeaa397c3d8b",
+    ("E0-L", "cuda"): "2c6c20aafb133ad95ae44b34f5ccbf17125bb27351009af76b2c337621b6703b",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -104,6 +109,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0I_SPEC,
     E0J_SPEC,
     E0K_SPEC,
+    E0L_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -361,6 +367,108 @@ def test_reliability_file_change_is_rejected_at_training_boundary(tmp_path: Path
 
     with pytest.raises(RuntimeError, match="label_reliability changed before training"):
         _assert_file_record_unchanged(record, "label_reliability", "before training")
+
+
+def test_e0l_differs_from_e0_only_in_its_head_and_the_two_rules_it_needs() -> None:
+    """E0-L replaces the head and freezes the backbone; the schedule stays E0's.
+
+    ``monotonicity`` and ``decoding`` travel with the head because independent
+    binary heads leave both questions open, and either answer changes the numbers
+    a fixed set of weights produces.
+    """
+    base = _build_configuration(E0_SPEC, "cuda")
+
+    variant = _build_configuration(E0L_SPEC, "cuda")
+
+    differing = {key for key in base | variant if base.get(key) != variant.get(key)}
+    assert differing == {"model", "loss", "monotonicity", "decoding"}
+    assert variant["loss"] == "ordinal_binary_bce"
+    assert variant["monotonicity"] == "cumulative_min"
+    assert variant["decoding"] == "argmax_class_probability"
+    for field in ("learning_rate", "batch_size", "max_epochs", "patience", "lr_step"):
+        assert getattr(E0L_SPEC, field) == getattr(E0_SPEC, field)
+    model = cast(dict[str, object], variant["model"])
+    assert model["head"] == "ordinal_binary"
+    assert {key: value for key, value in model.items() if key != "head"} == {
+        key: value for key, value in cast(dict[str, object], base["model"]).items()
+    }
+
+
+def _stage1_directory(path: Path, payload: bytes = b"stage1") -> Path:
+    for seed in E0L_SPEC.seeds:
+        checkpoint = path / f"seed-{seed}" / "best.pt"
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        checkpoint.write_bytes(payload + str(seed).encode())
+    return path
+
+
+def test_stage1_input_is_fingerprinted_per_seed(tmp_path: Path) -> None:
+    """Seed n freezes seed n's backbone, so one shared hash would not locate a
+    mismatch. The top-level hash covers the map so a resume can still be judged
+    by the single-file rule every other input uses."""
+    root = _stage1_directory(tmp_path / "e0-clean")
+
+    record = _stage1_record(E0L_SPEC, root)
+
+    assert record is not None
+    seeds = cast(dict[str, object], record["seeds"])
+    assert set(seeds) == {str(seed) for seed in E0L_SPEC.seeds}
+    checkpoint = root / "seed-42" / "best.pt"
+    assert seeds["42"] == {
+        "path": str(checkpoint.resolve()),
+        "sha256": hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+        "size_bytes": checkpoint.stat().st_size,
+    }
+    assert record["sha256"] == _canonical_hash(seeds)
+
+
+def test_a_missing_stage1_checkpoint_names_the_file(tmp_path: Path) -> None:
+    root = _stage1_directory(tmp_path / "e0-clean")
+    (root / "seed-45" / "best.pt").unlink()
+
+    with pytest.raises(FileNotFoundError, match="stage-1 checkpoint not found"):
+        _stage1_record(E0L_SPEC, root)
+
+
+def test_protocols_without_two_stages_record_no_stage1_input(tmp_path: Path) -> None:
+    assert _stage1_record(E0_SPEC, tmp_path) is None
+
+
+def test_e0l_seed_completion_rejects_a_different_stage1(tmp_path: Path) -> None:
+    configuration = _build_configuration(E0L_SPEC, "cpu")
+    record: dict[str, object] = {
+        "seed": 42,
+        "status": "complete",
+        "feature_manifest_sha256": "feature-hash",
+        "configuration_sha256": _canonical_hash(configuration),
+        "inputs": {"stage1": {"sha256": "old"}},
+        "artifacts": {},
+    }
+
+    complete, reason = _seed_is_complete(
+        record,
+        seed=42,
+        output_dir=tmp_path,
+        manifest_sha256="feature-hash",
+        configuration=configuration,
+        inputs={"stage1": {"sha256": "new"}},
+        spec=E0L_SPEC,
+    )
+
+    assert complete is False
+    assert "stage1" in reason
+
+
+def test_resuming_against_a_different_stage1_is_refused(tmp_path: Path) -> None:
+    root = _stage1_directory(tmp_path / "e0-clean")
+    recorded = _stage1_record(E0L_SPEC, root)
+    summary: dict[str, object] = {"inputs": {"stage1": recorded}}
+    _stage1_directory(tmp_path / "e0-clean", payload=b"retrained")
+
+    with pytest.raises(ValueError, match="used a different stage1"):
+        _validate_inputs_identity(
+            summary, {"stage1": _stage1_record(E0L_SPEC, root)}, E0L_SPEC
+        )
 
 
 def test_target_encoding_enters_the_identity_only_when_it_leaves_one_hot() -> None:

@@ -14,7 +14,10 @@ from numpy.typing import NDArray
 from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.features import SCHEMA_NAME, SCHEMAS, FeatureSchema, get_schema
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION
-from zani_ai.engagement.model import EngagementTransformer
+from zani_ai.engagement.model import (
+    EngagementTransformer,
+    ordinal_binary_class_probabilities,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +106,23 @@ class _CoralClassProbModule(torch.nn.Module):
         return p / p.sum(dim=1, keepdim=True)
 
 
+class _OrdinalBinaryClassProbModule(torch.nn.Module):
+    """Wrap an ordinal-binary-head model so it exports [B,4] class probabilities.
+
+    Calls the same :func:`model.ordinal_binary_class_probabilities` the training
+    objective decodes with, so the monotonicity repair cannot drift between what
+    was measured and what ships. It is an unrolled chain of ``Min`` nodes rather
+    than a ``cummin``, which keeps the graph loop-free.
+    """
+
+    def __init__(self, model: EngagementTransformer) -> None:
+        super().__init__()
+        self.model = model
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        return ordinal_binary_class_probabilities(self.model(tokens))
+
+
 def assert_output_parity(actual: NDArray[np.float32], expected: NDArray[np.float32]) -> None:
     """Fail unless ONNX Runtime reproduces PyTorch's output for the probe input.
 
@@ -161,11 +181,18 @@ def export_onnx(
     # for the 2-dim token form; generalizes to the 3-dim ST-GCN sequence form.
     example = torch.arange(element_count, dtype=torch.float32).reshape(1, *shape_after_batch) / 1000
     model = model.cpu().eval()
-    export_module: torch.nn.Module = (
-        _CoralClassProbModule(model).eval()
-        if getattr(getattr(model, "config", None), "head", None) == "coral"
-        else model
-    )
+    # Both ordinal heads emit K-1 cumulative logits, which no consumer of this
+    # artifact can read; each is wrapped so the graph ends in [B,4] class
+    # probabilities. The softmax head already does and passes through.
+    head = getattr(getattr(model, "config", None), "head", None)
+    export_module: torch.nn.Module = model
+    # Only the Transformer family has these heads, and both wrappers reach into
+    # its `forward`; the isinstance check is what states that to the type checker.
+    if isinstance(model, EngagementTransformer):
+        if head == "coral":
+            export_module = _CoralClassProbModule(model).eval()
+        elif head == "ordinal_binary":
+            export_module = _OrdinalBinaryClassProbModule(model).eval()
     try:
         batch = torch.export.Dim("batch", min=1)
         with warnings.catch_warnings():
