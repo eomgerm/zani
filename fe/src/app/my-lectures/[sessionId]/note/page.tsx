@@ -1,4 +1,4 @@
-import { NoteScreen } from "@/domains/lecture";
+import { InstructorNoteEditor } from "@/domains/report";
 
 export default async function Page({
   params,
@@ -6,5 +6,5 @@ export default async function Page({
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  return <NoteScreen lectureId={sessionId} />;
+  return <InstructorNoteEditor sessionId={sessionId} />;
 }

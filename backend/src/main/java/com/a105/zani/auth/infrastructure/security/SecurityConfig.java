@@ -62,6 +62,11 @@ public class SecurityConfig {
                         // 핸들러가 공유 시크릿으로 검증한다.
                         .requestMatchers("/internal/audio/**")
                         .permitAll()
+                        // 업무 이벤트 STOMP 핸드셰이크. 브라우저 WebSocket 은 핸드셰이크에 Authorization 헤더를 붙일 수 없고,
+                        // 토큰을 쿼리 파라미터로 넘기면 프록시·액세스 로그에 남는다. 그래서 여기서는 열고
+                        // StompAuthChannelInterceptor 가 CONNECT 프레임의 Bearer 토큰으로 인증한다.
+                        .requestMatchers("/ws/**")
+                        .permitAll()
                         .requestMatchers(
                                 "/actuator/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/error")
                         .permitAll()

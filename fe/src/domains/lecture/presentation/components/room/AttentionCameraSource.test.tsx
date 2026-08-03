@@ -166,7 +166,7 @@ describe("AttentionCameraSource", () => {
   });
 
   it("renders no element because frames are read from the track, not the DOM", () => {
-    // 프레임은 Worker 가 트랙에서 직접 읽는다. 화면에 붙일 video 요소가 필요 없다.
+    // 분석용 processor stream은 Worker가 읽는다. 화면에 붙일 video 요소가 필요 없다.
     const { container } = render(<AttentionCameraSource sessionId="55" active />);
     flushInitialSync();
 

@@ -110,10 +110,17 @@ uv run python -m zani_ai engagement export `
   --output web/engagement-demo/public/models
 ```
 
-위 명령은 각 worker process에 독립적인 Face Landmarker를 만들며, 32GB RAM과
-i7-13700H 노트북을 위한 보수적인 기본값도 worker 2개입니다. 중단 후 같은 명령을 다시
-실행하면 원본 영상과 추출 프로토콜 fingerprint가 일치하는 clip별 원자적 `.npz` cache를
-재사용합니다. `manifest.json`은 진행 중에도 원자적으로 갱신되고 `processed/total`, cache,
+위 명령은 **clip 하나마다 Face Landmarker를 새로 만듭니다.** Face Landmarker는 VIDEO
+모드로 동작해 앞 프레임의 추적 상태를 다음 호출에 넘기므로, landmarker를 여러 clip에
+재사용하면 한 clip의 마지막 프레임이 다음 clip의 탐지에 섞여 들어갑니다. 그러면 clip의
+특징값이 worker 수와 처리 순서에 따라 달라지고, 같은 영상으로 두 번 추출해도 서로 다른
+데이터셋이 나옵니다. clip마다 새로 만들면 특징이 그 clip만의 함수가 됩니다. 이 범위는
+`landmarker_scope`로 fingerprint에 들어가므로, **이 규칙 이전에 만든 cache는 재사용되지
+않고 다시 추출됩니다.**
+
+32GB RAM과 i7-13700H 노트북을 위한 보수적인 기본값은 worker 2개입니다. 중단 후 같은
+명령을 다시 실행하면 원본 영상과 추출 프로토콜 fingerprint가 일치하는 clip별 원자적
+`.npz` cache를 재사용합니다. `manifest.json`은 진행 중에도 원자적으로 갱신되고 `processed/total`, cache,
 포함·제외 수, 처리 속도와 ETA를 출력합니다. 최종 manifest에는 MediaPipe/OpenCV 버전,
 Face Landmarker 모델 SHA-256과 크기, sampling/segment/feature schema, worker 수와 실제 제외
 임계값이 기록됩니다. 완료되지 않았거나 제외 임계값을 넘은 manifest로는 학습을 시작하지
@@ -145,8 +152,16 @@ uv run python -m zani_ai engagement build-features `
   --sample-fps 10
 ```
 
-기존 실험 산출물은 삭제하지 않습니다. 새 `manifest.json`의 SHA-256이 달라져 재현성
-identity 검증이 이전 결과의 재사용을 차단합니다.
+`artifacts/engagement/`의 체크포인트와 지표는 건드리지 않습니다. 다만 **특징 캐시는
+보존되지 않습니다.** `extract`와 `build-features`는 특징을
+`<output_root>/mediapipe_98_v1/<split>/`에, `manifest.json`을 `<output_root>/manifest.json`에
+쓰는 경로가 같아서, 같은 `--output`을 주면 뒤에 실행한 쪽이 앞의 산출물을 덮어씁니다.
+`manifest.json`에 어느 쪽이 썼는지 `pipeline` 필드로 기록하고 출처가 다르면 쓰기를
+거부하므로 사고로 덮이지는 않지만, **다른 파이프라인의 결과를 남겨두려면 `--output`을
+다른 경로로 지정해야 합니다.**
+
+새 `manifest.json`의 SHA-256이 달라지므로 재현성 identity 검증이 이전 결과의 재사용을
+차단합니다.
 
 ### E0 5-seed 재현
 
@@ -308,6 +323,37 @@ identity에는 `curriculum=label_reliability_v1`, warmup 10 epoch,
 `ambiguous_target_encoding=adjacent_smoothing`, `ambiguous_neighbor_mass=0.2`가 들어갑니다.
 `inputs.label_reliability`에는 manifest 경로·크기·SHA-256이 기록되며 병렬 seed record도 같은
 SHA를 검증합니다. E0-I 해시는 cpu `2b1c6bc1…`, cuda `0da85a5f…`입니다.
+
+### E0-J 결측 프레임 zero placeholder
+
+E0-J는 PriorNet(arXiv:2605.03615)의 결측 프레임 처리 결정을 E0에 적용합니다. 논문은 얼굴을
+찾지 못한 프레임을 제거하거나 coverage 비율로 요약하지 않고, 고정된 시간 슬롯의 all-zero
+RGB frame으로 남겼습니다. 이에 맞춰 E0-J도 별도 coverage 채널을 추가하지 않습니다. 각
+0.5초 세그먼트의 5개 슬롯 중 `valid_mask=false`인 슬롯을 49D zero vector로 두고, 유효 슬롯과
+함께 mean/std를 계산합니다. 출력 shape은 기존과 같은 `[20, 98]`이며 schema만
+`mediapipe_98_placeholder_v1`로 분리됩니다.
+
+브라우저와 맞춘 총 70 유효 프레임 및 세그먼트별 3 유효 프레임 gate는 그대로입니다. 따라서
+clean raw cache의 10,215개 NPZ만 사용하며 원본 영상 추출이나 MediaPipe 재실행은 필요하지
+않습니다.
+
+```bash
+uv run python -m zani_ai engagement build-features --data-root datasets/raw/engagenet --raw-root datasets/processed/engagenet/raw_frames_v1_clean/raw_frames_v1 --output datasets/processed/engagenet/e0j-placeholder --schema mediapipe_98_placeholder_v1 --sample-fps 10
+uv run python -m zani_ai engagement reproduce-e0j --features datasets/processed/engagenet/e0j-placeholder --output artifacts/engagement/e0j-placeholder --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0j-placeholder --split validation --minimum-accuracy-gain 0.02
+```
+
+5개 seed의 평균 Validation accuracy가 E0-clean보다 2.0%p 이상 높으면 성공입니다. 이 판정은
+Test를 보지 않고 내립니다. 성공 여부를 기록한 뒤 아래처럼 고정 checkpoint로 Test를 한 번만
+평가합니다.
+
+```bash
+uv run python -m zani_ai engagement finalize-e0j --features datasets/processed/engagenet/e0j-placeholder --output artifacts/engagement/e0j-placeholder --device cuda
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-clean --variant artifacts/engagement/e0j-placeholder
+```
+
+feature schema가 달라도 두 manifest가 같은 raw manifest SHA와 동일한 split/clip 집합을
+가리키면 비교기는 유효한 비교로 취급합니다. raw 모집단이나 실행 환경이 다르면 경고합니다.
 
 `reproduce-e1a`는 E1과 학습 조건만 다릅니다. E1이 재현하려는 논문
 (arXiv:2403.17175)은 batch 16, lr 1e-3으로 300 epoch을 완주하며 100·200에서

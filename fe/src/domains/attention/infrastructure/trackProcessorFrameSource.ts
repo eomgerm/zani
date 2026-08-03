@@ -7,8 +7,13 @@ import type {
 export interface TrackProcessorFrameSourceOptions {
   readonly track: MediaStreamTrack;
   createWorker?: () => TrackFrameWorkerPort;
+  createProcessor?: (track: MediaStreamTrack) => TrackProcessorLike;
   onFrame(frame: VideoFrame, timestampMs: number): void;
   onFailure(message: string): void;
+}
+
+export interface TrackProcessorLike {
+  readonly readable: ReadableStream<VideoFrame>;
 }
 
 export interface TrackProcessorFrameSource {
@@ -24,6 +29,19 @@ function spawnWorker(): TrackFrameWorkerPort {
   }) as unknown as TrackFrameWorkerPort;
 }
 
+type TrackProcessorConstructor = new (options: {
+  track: MediaStreamTrack;
+  maxBufferSize?: number;
+}) => TrackProcessorLike;
+
+function createBrowserTrackProcessor(track: MediaStreamTrack): TrackProcessorLike {
+  const constructor = (
+    globalThis as typeof globalThis & { MediaStreamTrackProcessor?: TrackProcessorConstructor }
+  ).MediaStreamTrackProcessor;
+  if (!constructor) throw new Error("MediaStreamTrackProcessor를 지원하지 않는 브라우저입니다.");
+  return new constructor({ track, maxBufferSize: 1 });
+}
+
 function workerErrorMessage(event: unknown): string {
   return typeof event === "object" && event !== null && "message" in event
     ? String((event as { message: unknown }).message)
@@ -33,7 +51,13 @@ function workerErrorMessage(event: unknown): string {
 export function createTrackProcessorFrameSource(
   options: TrackProcessorFrameSourceOptions,
 ): TrackProcessorFrameSource {
-  const { track, createWorker = spawnWorker, onFrame, onFailure } = options;
+  const {
+    track,
+    createWorker = spawnWorker,
+    createProcessor = createBrowserTrackProcessor,
+    onFrame,
+    onFailure,
+  } = options;
   const clonedTrack = track.clone();
   let worker: TrackFrameWorkerPort;
   try {
@@ -56,15 +80,23 @@ export function createTrackProcessorFrameSource(
     worker.terminate();
   }
 
+  function fail(message: string): void {
+    if (stopped) return;
+    stopped = true;
+    clonedTrack.stop();
+    terminate();
+    onFailure(message);
+  }
+
   worker.onmessage = (event: MessageEvent<TrackFrameWorkerResponse>) => {
     const response = event.data;
     if (response.type === "stopped") {
-      // 카메라 트랙이 끊긴 뒤이므로 이제 Worker 를 버려도 된다.
+      // Worker가 정지 요청을 처리했으므로 이제 안전하게 버릴 수 있다.
       terminate();
       return;
     }
     if (response.type === "failure") {
-      if (!stopped) onFailure(response.message);
+      fail(response.message);
       return;
     }
     if (stopped) {
@@ -74,30 +106,29 @@ export function createTrackProcessorFrameSource(
     onFrame(response.frame, response.timestampMs);
   };
   worker.onerror = (event: unknown) => {
-    if (!stopped) onFailure(workerErrorMessage(event));
+    fail(workerErrorMessage(event));
   };
 
   try {
+    const readable = createProcessor(clonedTrack).readable;
     worker.postMessage(
       {
         type: "start",
-        track: clonedTrack,
+        readable,
         sampleIntervalMs: ATTENTION_DETECTION_CONFIG.sampleIntervalMs,
       },
-      [clonedTrack as unknown as Transferable],
+      [readable],
     );
   } catch (error) {
-    // transfer 가 실패했으면 트랙은 아직 이쪽 소유라 직접 끊을 수 있다.
-    clonedTrack.stop();
-    stopped = true;
-    terminate();
-    onFailure(workerErrorMessage(error));
+    fail(workerErrorMessage(error));
   }
 
   return {
     stop(): void {
       if (stopped) return;
       stopped = true;
+      // 분석 전용 clone만 끝낸다. LiveKit이 publish 중인 원본 track은 건드리지 않는다.
+      clonedTrack.stop();
       worker.postMessage({ type: "stop" });
       // Worker 가 보고하지 못해도 영원히 살아 있지 않게 한다.
       stopTimer = setTimeout(terminate, TRACK_FRAME_WORKER_STOP_TIMEOUT_MS);

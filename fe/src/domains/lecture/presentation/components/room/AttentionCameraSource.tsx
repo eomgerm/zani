@@ -69,10 +69,10 @@ export function AttentionCameraSource({
   }, [availability]);
 
   /*
-    프레임은 Worker 가 `MediaStreamTrackProcessor` 로 트랙에서 직접 읽으므로 트랙을 붙일
-    video 요소가 필요 없다. 그래서 아무것도 그리지 않는다. 프레임은 이 기기 안에서만 쓰이고
-    서버로 나가지 않는다. 가용 상태 배지도 여기서 그리지 않고 상위 화면이 상단 바에 놓는다 —
-    띄워 얹으면 수업 조작을 가린다.
+    분석 전용 clone의 processor stream을 Worker가 읽으므로 트랙을 붙일 video 요소가 필요
+    없다. 그래서 아무것도 그리지 않는다. 프레임은 이 기기 안에서만 쓰이고 서버로 나가지
+    않는다. 가용 상태 배지도 여기서 그리지 않고 상위 화면이 상단 바에 놓는다 — 띄워 얹으면
+    수업 조작을 가린다.
   */
   return null;
 }
