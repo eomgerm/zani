@@ -56,11 +56,6 @@ public class BuildFinalizationManifestService implements BuildFinalizationManife
 
     private static Map<Long, ParticipantManifestIdentity> identities(List<SessionRecordingParticipant> participants) {
         Map<Long, ParticipantManifestIdentity> result = new HashMap<>();
-        List<SessionRecordingParticipant> students = participants.stream()
-                .filter(participant -> participant.role() == SessionParticipantRole.STUDENT)
-                .sorted(Comparator.comparingLong(SessionRecordingParticipant::id))
-                .toList();
-
         for (SessionRecordingParticipant participant : participants) {
             if (participant.id() == null || participant.role() == null) {
                 throw new InvalidRecordingManifestException();
@@ -72,6 +67,10 @@ public class BuildFinalizationManifestService implements BuildFinalizationManife
                                 RecordingAlias.instructor().value(), participant.role()));
             }
         }
+        List<SessionRecordingParticipant> students = participants.stream()
+                .filter(participant -> participant.role() == SessionParticipantRole.STUDENT)
+                .sorted(Comparator.comparingLong(SessionRecordingParticipant::id))
+                .toList();
         for (int index = 0; index < students.size(); index++) {
             SessionRecordingParticipant student = students.get(index);
             result.put(

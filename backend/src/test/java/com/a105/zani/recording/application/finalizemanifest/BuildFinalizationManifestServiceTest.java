@@ -91,6 +91,18 @@ class BuildFinalizationManifestServiceTest {
     }
 
     @Test
+    void 학생_ID가_null이면_정렬_NPE가_아니라_manifest_계약_예외로_거절한다() {
+        when(contextUseCase.get(new GetSessionRecordingContextQuery(SESSION_ID)))
+                .thenReturn(new GetSessionRecordingContextResult(
+                        STARTED_AT,
+                        List.of(
+                                participant(null, SessionParticipantRole.STUDENT),
+                                participant(10L, SessionParticipantRole.INSTRUCTOR))));
+
+        assertThrows(InvalidRecordingManifestException.class, () -> service.build(SESSION_ID));
+    }
+
+    @Test
     void 종료가_시작보다_빠르면_거절한다() {
         when(trackFileQueryPort.findBySessionId(SESSION_ID))
                 .thenReturn(List.of(file(1L, 10L, TrackSource.CAMERA, "raw/camera.webm", 2_000L, 1_000L)));
