@@ -12,6 +12,15 @@ type PictoProps = {
   className?: string;
 };
 
+/**
+ * 내비게이션용 픽토그램 인자. 사이드바 아이콘은 같은 도형을 선택 여부에 따라 다른 색으로 쓴다
+ * (시안 navIcon: 활성 #10b981 · 비활성 #8388a6). 그래서 이 세 개만 색을 열어 둔다.
+ */
+type NavPictoProps = PictoProps & {
+  /** 도형 색. 기본값은 카탈로그 색이고, `currentColor` 를 주면 글자 색을 따라간다. */
+  tone?: string;
+};
+
 /** 모든 픽토그램이 공유하는 svg 속성. 내부 도형 색은 각 아이콘에 고정되어 있다. */
 const pictoProps = (size: number, className?: string) => ({
   width: size,
@@ -113,13 +122,13 @@ export function PictoCamera({ size = 22, className }: PictoProps) {
   );
 }
 
-export function PictoCards({ size = 22, className }: PictoProps) {
+export function PictoCards({ size = 22, className, tone = "#10b981" }: NavPictoProps) {
   return (
     <svg {...pictoProps(size, className)}>
-      <rect x="3.5" y="3.5" width="8" height="8" rx="2" fill="#10b981" />
-      <rect x="12.9" y="3.5" width="7.6" height="8" rx="2" fill="#10b981" opacity=".55" />
-      <rect x="3.5" y="12.9" width="8" height="7.6" rx="2" fill="#10b981" opacity=".55" />
-      <rect x="12.9" y="12.9" width="7.6" height="7.6" rx="2" fill="#10b981" />
+      <rect x="3.5" y="3.5" width="8" height="8" rx="2" fill={tone} />
+      <rect x="12.9" y="3.5" width="7.6" height="8" rx="2" fill={tone} opacity=".55" />
+      <rect x="3.5" y="12.9" width="8" height="7.6" rx="2" fill={tone} opacity=".55" />
+      <rect x="12.9" y="12.9" width="7.6" height="7.6" rx="2" fill={tone} />
     </svg>
   );
 }
@@ -203,13 +212,19 @@ export function PictoFlask({ size = 22, className }: PictoProps) {
   );
 }
 
-export function PictoGear({ size = 22, className }: PictoProps) {
+/**
+ * 톱니. 시안 SVG 의 톱니 경로는 y 2.5~23.9 로 그려져 가운데가 13.2 인데 구멍은 12 에 있다 —
+ * 구멍이 1.2 어긋나고 아래쪽이 뷰박스에 붙는다. 여기서 1.2 올려 두 중심을 맞춘다(시안 파일도 고쳐야 함).
+ */
+export function PictoGear({ size = 22, className, tone = "#10b981" }: NavPictoProps) {
   return (
     <svg {...pictoProps(size, className)}>
-      <path
-        d="M10.3 2.5h3.4l.5 2.4 2 .9 2.1-1.3 2.4 2.4-1.3 2.1.9 2 2.4.5v3.4l-2.4.5-.9 2 1.3 2.1-2.4 2.4-2.1-1.3-2 .9-.5 2.4h-3.4l-.5-2.4-2-.9-2.1 1.3-2.4-2.4 1.3-2.1-.9-2-2.4-.5v-3.4l2.4-.5.9-2-1.3-2.1 2.4-2.4 2.1 1.3 2-.9z"
-        fill="#10b981"
-      />
+      <g transform="translate(0 -1.2)">
+        <path
+          d="M10.3 2.5h3.4l.5 2.4 2 .9 2.1-1.3 2.4 2.4-1.3 2.1.9 2 2.4.5v3.4l-2.4.5-.9 2 1.3 2.1-2.4 2.4-2.1-1.3-2 .9-.5 2.4h-3.4l-.5-2.4-2-.9-2.1 1.3-2.4-2.4 1.3-2.1-.9-2-2.4-.5v-3.4l2.4-.5.9-2-1.3-2.1 2.4-2.4 2.1 1.3 2-.9z"
+          fill={tone}
+        />
+      </g>
       <circle cx="12" cy="12" r="3.2" fill="#fff" />
     </svg>
   );
@@ -226,10 +241,10 @@ export function PictoGrid4({ size = 22, className }: PictoProps) {
   );
 }
 
-export function PictoHome({ size = 22, className }: PictoProps) {
+export function PictoHome({ size = 22, className, tone = "#10b981" }: NavPictoProps) {
   return (
     <svg {...pictoProps(size, className)}>
-      <path d="M4 10.4L12 4l8 6.4V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill="#10b981" />
+      <path d="M4 10.4L12 4l8 6.4V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" fill={tone} />
       <rect x="9.7" y="13.6" width="4.6" height="7.4" rx="1.2" fill="#fff" />
     </svg>
   );

@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-import { MenuIcon, PictoInbox } from "@/shared/ui";
+import { PictoInbox } from "@/shared/ui";
 import type { TranscriptSegment } from "../infrastructure/studentReportApi";
-import { formatOffset } from "./TimelineStatusBar";
+import { formatOffset } from "./offsetTime";
 import { activeSegmentIndex } from "./transcriptCursor";
 
 export interface TranscriptTimelineProps {
@@ -42,8 +42,7 @@ export function TranscriptTimeline({ segments, currentSeconds, onSeek }: Transcr
 
   return (
     <div className="z-card flex h-full min-h-0 flex-col overflow-hidden rounded-2xl">
-      <div className="z-section-title shrink-0 border-b border-line-light px-[18px] py-[15px] text-[15px]">
-        <MenuIcon className="text-primary" />
+      <div className="z-section-title shrink-0 border-b border-line-light px-[18px] py-[15px]">
         수업 내용
       </div>
 

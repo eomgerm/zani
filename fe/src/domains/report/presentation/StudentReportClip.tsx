@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import type { StudentReportRequester } from "../infrastructure/studentReportApi";
@@ -27,11 +27,23 @@ const Notice = ({
   </div>
 );
 
+/**
+ * 바깥에서 들어오는 이동 요청. 리포트 탭의 구간 상세가 "클립 바로가기"로 보낸다.
+ *
+ * <p>같은 시각을 연달아 눌러도 두 번째가 묻히지 않도록 부르는 쪽이 nonce 를 올려 준다.
+ */
+export interface ClipSeekRequest {
+  readonly seconds: number;
+  readonly nonce: number;
+}
+
 export interface StudentReportClipProps {
   readonly sessionId: string;
   readonly title: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: StudentReportRequester;
+  /** 리포트 탭에서 넘어온 이동 요청. 전사 행 클릭과 같은 `seekTo` 로 합류한다. */
+  readonly seekRequest?: ClipSeekRequest | null;
 }
 
 /**
@@ -45,7 +57,12 @@ export interface StudentReportClipProps {
  * 오는데, 세 시간 수업의 전사는 수천 행이라 그 빈도로 목록을 다시 그리면 재생이 버벅인다.
  * 행 강조는 초 단위보다 촘촘할 이유가 없다.
  */
-export function StudentReportClip({ sessionId, title, request }: StudentReportClipProps) {
+export function StudentReportClip({
+  sessionId,
+  title,
+  request,
+  seekRequest = null,
+}: StudentReportClipProps) {
   const { status, report, retry, reissueRecordingUrl } = useStudentReport({ sessionId, request });
 
   const [seek, setSeek] = useState<SeekRequest | null>(null);
@@ -54,6 +71,12 @@ export function StudentReportClip({ sessionId, title, request }: StudentReportCl
     nonceRef.current += 1;
     setSeek({ seconds, nonce: nonceRef.current });
   }, []);
+
+  // 바깥 요청도 같은 문으로 들여보낸다 — nonce 를 여기서 다시 찍어 증가가 한 곳에서만 일어난다.
+  useEffect(() => {
+    if (seekRequest === null) return;
+    seekTo(seekRequest.seconds);
+  }, [seekRequest, seekTo]);
 
   const [cursorSeconds, setCursorSeconds] = useState(0);
   const handleTimeChange = useCallback((seconds: number) => {
