@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   sectionBounds,
   sectionColorOf,
+  sectionLevelLabel,
   sectionIndexAt,
   sectionKeyOf,
   sectionMidpoint,
@@ -111,5 +112,22 @@ describe("sectionIndexAt", () => {
 
   it("어느 구간에도 없으면 아무것도 고르지 않는다", () => {
     expect(sectionIndexAt([section(0, 30)], 100)).toBeNull();
+  });
+});
+
+/** 색과 문구가 같은 경계를 쓰지 않으면 노란 구간에 "높음"이 붙는다. */
+describe("단계 경계", () => {
+  it("색과 문구가 같은 자리에서 바뀐다", () => {
+    const bands = [3.4, 2.4, 1.4];
+    const colors = bands.map((level) => sectionColorOf(level));
+    const labels = bands.map((level) => sectionLevelLabel(level));
+
+    expect(new Set(colors).size).toBe(3);
+    expect(new Set(labels).size).toBe(3);
+    // 경계 바로 위·아래에서 색과 문구가 함께 바뀐다.
+    expect(sectionColorOf(3) === sectionColorOf(2.9)).toBe(false);
+    expect(sectionLevelLabel(3) === sectionLevelLabel(2.9)).toBe(false);
+    expect(sectionColorOf(2) === sectionColorOf(1.9)).toBe(false);
+    expect(sectionLevelLabel(2) === sectionLevelLabel(1.9)).toBe(false);
   });
 });

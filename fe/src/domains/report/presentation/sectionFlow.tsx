@@ -114,12 +114,16 @@ export function sectionBounds(sections: readonly FlowSection[]): number[] {
 export const sectionMidpoint = (section: FlowSection): number =>
   (section.startSeconds + section.endSeconds) / 2;
 
-/** 단계 평균을 사람이 읽는 말로. 값이 없으면 낮은 것이 아니라 기록이 없는 것이다. */
+/**
+ * 단계 평균을 사람이 읽는 말로. 값이 없으면 낮은 것이 아니라 기록이 없는 것이다.
+ *
+ * <p>경계는 색과 같은 값(3·2)을 쓴다. 색이 노란데 글자가 "높음"이면 같은 구간을 두 가지로
+ * 말하는 셈이 된다.
+ */
 export const sectionLevelLabel = (focusLevel: number | null): string => {
   if (focusLevel === null) return "기록 없음";
-  if (focusLevel >= 3.5) return "매우 높음";
-  if (focusLevel >= 2.5) return "높음";
-  if (focusLevel >= 1.5) return "보통";
+  if (focusLevel >= 3) return "높음";
+  if (focusLevel >= 2) return "보통";
   return "낮음";
 };
 
@@ -129,9 +133,8 @@ export const sectionLevelLabel = (focusLevel: number | null): string => {
  */
 export const sectionLevelNote = (focusLevel: number | null): string => {
   if (focusLevel === null) return "이 구간에는 관측 기록이 없어요. 집중이 낮았다는 뜻은 아니에요.";
-  if (focusLevel >= 3.5) return "흐름이 끝까지 안정적이었던 구간이에요.";
-  if (focusLevel >= 2.5) return "대체로 흐름을 잘 따라간 구간이에요.";
-  if (focusLevel >= 1.5) return "흐름이 오르내린 구간이에요. 한 번 더 보면 도움이 돼요.";
+  if (focusLevel >= 3) return "대체로 흐름을 잘 따라간 구간이에요.";
+  if (focusLevel >= 2) return "흐름이 오르내린 구간이에요. 한 번 더 보면 도움이 돼요.";
   return "집중 흐름이 크게 흔들린 구간이에요. 다시 볼 것을 추천해요.";
 };
 
