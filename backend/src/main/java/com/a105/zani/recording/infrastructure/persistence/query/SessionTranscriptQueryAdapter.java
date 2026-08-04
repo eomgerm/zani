@@ -26,6 +26,9 @@ import com.a105.zani.recording.infrastructure.persistence.repository.TranscriptJ
  * 값싸고, 보장을 여기서 한 번 더 확인하는 편이 뒤에서 원인을 찾는 것보다 싸다.
  *
  * <p>모양이 어긋난 세그먼트는 건너뛰고 수를 남긴다. 문서 하나 때문에 전사 전체를 버리면 그 수업은 리포트를 받지 못한다.
+ *
+ * <p><b>읽을 수 없는 문서와 무음 수업을 구분한다.</b> 둘 다 "줄이 없다"로 돌려주면 소비자가 무음 수업으로 착각해 "발화 없음" 리포트를 만들고, 그 리포트는 세션당 1회 멱등에 걸려 다시 고쳐지지
+ * 않는다. {@code segments} 가 빈 배열인 것만 무음이고, 키가 없거나 모든 세그먼트가 형식에 걸려 버려진 것은 읽지 못한 것이라 빈 값으로 돌려준다 — 소비자는 그것을 전사 미완료로 다룬다.
  */
 @Slf4j
 @Component
@@ -42,20 +45,16 @@ public class SessionTranscriptQueryAdapter implements GetSessionTranscriptQueryP
 
     @Override
     public Optional<GetSessionTranscriptResult> findBySessionId(Long sessionId) {
-        return transcriptJpaRepository.findBySessionId(sessionId).map(entity -> {
-            Map<String, Object> document = entity.getTranscriptDocument();
-            return new GetSessionTranscriptResult(readPartial(document), readLines(document, sessionId));
-        });
+        return transcriptJpaRepository
+                .findBySessionId(sessionId)
+                .flatMap(entity -> readDocument(entity.getTranscriptDocument(), sessionId));
     }
 
-    private boolean readPartial(Map<String, Object> document) {
-        return document != null && Boolean.TRUE.equals(document.get(PARTIAL_KEY));
-    }
-
-    private List<TranscriptLine> readLines(Map<String, Object> document, Long sessionId) {
+    /** 읽지 못한 문서는 빈 값이다. 무음 수업({@code segments: []})은 줄이 없는 결과로 돌려준다. */
+    private Optional<GetSessionTranscriptResult> readDocument(Map<String, Object> document, Long sessionId) {
         if (document == null || !(document.get(SEGMENTS_KEY) instanceof List<?> segments)) {
-            log.warn("전사 문서에 segments 가 없습니다. sessionId={}", sessionId);
-            return List.of();
+            log.error("전사 문서에 segments 가 없어 읽지 못했습니다. sessionId={}", sessionId);
+            return Optional.empty();
         }
 
         List<TranscriptLine> lines = new ArrayList<>(segments.size());
@@ -71,9 +70,16 @@ public class SessionTranscriptQueryAdapter implements GetSessionTranscriptQueryP
         if (skipped > 0) {
             log.warn("전사 세그먼트 {}건을 형식 불일치로 건너뜁니다. sessionId={}", skipped, sessionId);
         }
+        if (lines.isEmpty() && !segments.isEmpty()) {
+            // 세그먼트가 있는데 하나도 읽지 못했다. 무음 수업이 아니라 계약이 어긋난 문서다 —
+            // 여기서 빈 목록으로 돌려주면 소비자가 "발화 없음" 리포트를 영구히 저장한다.
+            log.error("전사 세그먼트 {}건을 모두 읽지 못했습니다. sessionId={}", segments.size(), sessionId);
+            return Optional.empty();
+        }
         lines.sort(
                 Comparator.comparingLong(TranscriptLine::startOffsetMs).thenComparingLong(TranscriptLine::endOffsetMs));
-        return List.copyOf(lines);
+        return Optional.of(
+                new GetSessionTranscriptResult(Boolean.TRUE.equals(document.get(PARTIAL_KEY)), List.copyOf(lines)));
     }
 
     private TranscriptLine readLine(Object segment) {

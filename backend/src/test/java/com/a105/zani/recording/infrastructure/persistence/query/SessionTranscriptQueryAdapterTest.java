@@ -121,6 +121,39 @@ class SessionTranscriptQueryAdapterTest {
         assertEquals("살아남는 줄", lines.getFirst().text());
     }
 
+    /**
+     * 세그먼트가 있는데 하나도 읽지 못하면 무음 수업이 아니라 읽지 못한 문서다.
+     *
+     * <p>빈 목록으로 돌려주면 소비자가 "발화 없음" 리포트를 만들고, 그 리포트는 세션당 1회 멱등에 걸려 다시 고쳐지지 않는다. 계약이 바뀌어 키 이름이 어긋나면 정확히 이 경로로 들어온다.
+     */
+    @Test
+    void returnsEmptyWhenEverySegmentIsUnreadable() {
+        Map<String, Object> legacyKeys = segment(2_000, 32_000, "구 계약 키를 쓰는 세그먼트");
+        legacyKeys.remove("startOffsetMs");
+        legacyKeys.remove("endOffsetMs");
+        legacyKeys.put("startedOffsetMs", 2_000);
+        legacyKeys.put("endedOffsetMs", 32_000);
+
+        givenDocument(false, List.of(legacyKeys));
+
+        assertTrue(adapter.findBySessionId(SESSION_ID).isEmpty());
+    }
+
+    /** segments 키 자체가 없으면 읽지 못한 것이다. */
+    @Test
+    void returnsEmptyWhenTheDocumentHasNoSegmentsKey() {
+        Map<String, Object> document = new LinkedHashMap<>();
+        document.put("schemaVersion", 1);
+        document.put("language", "ko");
+        given(transcriptJpaRepository.findBySessionId(SESSION_ID))
+                .willReturn(Optional.of(TranscriptJpaEntity.builder()
+                        .sessionId(SESSION_ID)
+                        .transcriptDocument(document)
+                        .build()));
+
+        assertTrue(adapter.findBySessionId(SESSION_ID).isEmpty());
+    }
+
     /** 전사가 아직 없는 세션은 빈 값이다. 전사 단계가 끝나지 않은 것과 무음 수업은 다르게 다뤄야 한다. */
     @Test
     void returnsEmptyWhenTheSessionHasNoTranscriptYet() {

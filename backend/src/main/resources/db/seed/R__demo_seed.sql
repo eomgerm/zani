@@ -273,28 +273,30 @@ VALUES
     (1000000005006, @s1, 'Zustand 실습', '실습으로 개념을 굳힌 구간이다. 참여도가 가장 높았다.', 2520000, 3079000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
     (1000000005007, @s1, '정리와 질문', '핵심 개념을 정리하고 마무리한 구간이다.', 3080000, 4440000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
--- transcript_document 의 구조는 아직 계약 문서가 없다. 전사 파이프라인(후행 일감)이 정본을 정하기 전까지
--- 리포트 화면이 읽을 최소 형태(화자 + 구간 + 문장)로 둔다. 형태가 정해지면 이 시드도 함께 고친다.
+-- transcript_document 는 S15P11A105-247 이 확정한 계약(schemaVersion 1)을 따른다. 화자는 실명이 아니라
+-- session_participants.id 이고, 오프셋 키는 startOffsetMs/endOffsetMs(수업 시작 기준 ms)다.
+-- 공통 분석(S15P11A105-248)이 이 문서를 읽어 구간을 만들므로 키 이름이 어긋나면 구간이 만들어지지 않는다.
 INSERT INTO `transcripts` (`id`, `session_id`, `transcript_document`, `created_at`, `updated_at`)
 VALUES (1000000006001, @s1, CAST('{
-  "version": 1,
+  "schemaVersion": 1,
   "language": "ko",
+  "partial": false,
   "segments": [
-    {"startedOffsetMs": 2000, "endedOffsetMs": 32000, "speaker": "박서준", "text": "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다."},
-    {"startedOffsetMs": 195000, "endedOffsetMs": 226000, "speaker": "박서준", "text": "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요."},
-    {"startedOffsetMs": 400000, "endedOffsetMs": 431000, "speaker": "박서준", "text": "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다."},
-    {"startedOffsetMs": 520000, "endedOffsetMs": 551000, "speaker": "박서준", "text": "먼저 Context API의 리렌더링 이슈를 이해해야 합니다."},
-    {"startedOffsetMs": 730000, "endedOffsetMs": 745000, "speaker": "정하윤", "text": "Context랑 Redux는 어떤 기준으로 골라야 하나요?"},
-    {"startedOffsetMs": 755000, "endedOffsetMs": 790000, "speaker": "박서준", "text": "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다."},
-    {"startedOffsetMs": 922000, "endedOffsetMs": 940000, "speaker": "김도현", "text": "선생님, Context 값이 바뀌면 왜 하위 전체가 리렌더되나요?"},
-    {"startedOffsetMs": 948000, "endedOffsetMs": 980000, "speaker": "박서준", "text": "좋은 질문이에요. Provider value의 참조가 바뀌기 때문입니다."},
-    {"startedOffsetMs": 1145000, "endedOffsetMs": 1180000, "speaker": "박서준", "text": "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요."},
-    {"startedOffsetMs": 1450000, "endedOffsetMs": 1490000, "speaker": "박서준", "text": "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다."},
-    {"startedOffsetMs": 1650000, "endedOffsetMs": 1662000, "speaker": "이지은", "text": "useCallback도 같이 써야 하나요?"},
-    {"startedOffsetMs": 1672000, "endedOffsetMs": 1705000, "speaker": "박서준", "text": "함수를 props로 넘길 때만 필요하니 상황에 맞게 쓰면 됩니다."},
-    {"startedOffsetMs": 1865000, "endedOffsetMs": 1900000, "speaker": "박서준", "text": "다음으로 외부 상태 관리 라이브러리를 비교해볼게요."},
-    {"startedOffsetMs": 2520000, "endedOffsetMs": 2560000, "speaker": "박서준", "text": "Zustand로 같은 예제를 다시 구현하면 훨씬 간결해집니다."},
-    {"startedOffsetMs": 3080000, "endedOffsetMs": 3125000, "speaker": "박서준", "text": "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요."}
+    {"startOffsetMs": 2000, "endOffsetMs": 32000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다."},
+    {"startOffsetMs": 195000, "endOffsetMs": 226000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요."},
+    {"startOffsetMs": 400000, "endOffsetMs": 431000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다."},
+    {"startOffsetMs": 520000, "endOffsetMs": 551000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "먼저 Context API의 리렌더링 이슈를 이해해야 합니다."},
+    {"startOffsetMs": 730000, "endOffsetMs": 745000, "sessionParticipantId": 1000000003002, "source": "MICROPHONE", "text": "Context랑 Redux는 어떤 기준으로 골라야 하나요?"},
+    {"startOffsetMs": 755000, "endOffsetMs": 790000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다."},
+    {"startOffsetMs": 922000, "endOffsetMs": 940000, "sessionParticipantId": 1000000003003, "source": "MICROPHONE", "text": "선생님, Context 값이 바뀌면 왜 하위 전체가 리렌더되나요?"},
+    {"startOffsetMs": 948000, "endOffsetMs": 980000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "좋은 질문이에요. Provider value의 참조가 바뀌기 때문입니다."},
+    {"startOffsetMs": 1145000, "endOffsetMs": 1180000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요."},
+    {"startOffsetMs": 1450000, "endOffsetMs": 1490000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다."},
+    {"startOffsetMs": 1650000, "endOffsetMs": 1662000, "sessionParticipantId": 1000000003004, "source": "MICROPHONE", "text": "useCallback도 같이 써야 하나요?"},
+    {"startOffsetMs": 1672000, "endOffsetMs": 1705000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "함수를 props로 넘길 때만 필요하니 상황에 맞게 쓰면 됩니다."},
+    {"startOffsetMs": 1865000, "endOffsetMs": 1900000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "다음으로 외부 상태 관리 라이브러리를 비교해볼게요."},
+    {"startOffsetMs": 2520000, "endOffsetMs": 2560000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "Zustand로 같은 예제를 다시 구현하면 훨씬 간결해집니다."},
+    {"startOffsetMs": 3080000, "endOffsetMs": 3125000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요."}
   ]
 }' AS JSON), '2026-07-14 02:40:00.000000', '2026-07-14 02:40:00.000000');
 
