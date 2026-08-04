@@ -19,8 +19,8 @@ export function ReportClipTab({ title }: { title: string }) {
               <div className="mt-0.5 text-xs text-panel-dim">강의 다시보기</div>
             </div>
           </div>
-          <div className="h-1 bg-[#2f344f]">
-            <div className="h-full w-[34%] bg-violet" />
+          <div className="h-1 bg-[#2f3a37]">
+            <div className="h-full w-[34%] bg-primary" />
           </div>
           <div className="flex items-center gap-4 px-4 py-3 text-[#c7ccf0]">
             <span className="text-[15px]">▶</span>

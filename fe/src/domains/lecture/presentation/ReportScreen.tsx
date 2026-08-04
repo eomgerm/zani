@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DownloadIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
+import {
+  ChevronLeftIcon,
+  DownloadIcon,
+  PictoClockMuted,
+  PictoLock,
+  PictoWarn,
+} from "@/shared/ui";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -44,14 +50,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
 
   return (
     <>
-      <Link
-        href="/my-lectures"
-        className="mb-4 inline-flex items-center gap-[7px] text-sm font-extrabold text-ink-sub no-underline"
-      >
-        ← {isInstructor ? "진행강의" : "참여강의"}
-      </Link>
-
       <div className="mb-5 flex items-center gap-4">
+        {/* 돌아갈 목록이 하나뿐이라 아이콘만 둔다. 어디로 가는지는 이름으로 알린다. */}
+        <Link
+          href="/my-lectures"
+          aria-label={`${isInstructor ? "진행강의" : "참여강의"} 목록으로 돌아가기`}
+          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-shell-toggle bg-surface text-ink-sub no-underline hover:bg-[#f3f5f3]"
+        >
+          <ChevronLeftIcon size={17} />
+        </Link>
         <div className="min-w-0 flex-1">
           <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
@@ -69,8 +76,8 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
       </div>
 
       {failed && (
-        <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-line-muted bg-primary-softer px-[22px] py-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft">
+        <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-shell-line bg-shell px-[22px] py-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface">
             <PictoWarn size={22} />
           </span>
           <div className="flex-1">
