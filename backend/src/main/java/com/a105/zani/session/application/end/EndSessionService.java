@@ -5,7 +5,7 @@ import java.time.Clock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase;
 import com.a105.zani.recording.application.stoprecording.StopSessionRecordingUseCase;
@@ -29,9 +29,24 @@ public class EndSessionService implements EndSessionUseCase {
     /** 종료 시각의 출처. 도메인이 시계를 읽지 않도록 서비스가 주입받아 넘긴다. */
     private final Clock clock;
 
+    /** DB 상태 전이만 트랜잭션으로 묶기 위한 템플릿. LiveKit 정리(최대 60초 HTTP)를 트랜잭션 밖에 두려는 것이다. */
+    private final TransactionTemplate transactionTemplate;
+
     @Override
-    @Transactional
     public EndSessionResult end(EndSessionCommand command) {
+        EndSessionResult result = transactionTemplate.execute(status -> endInTransaction(command));
+        if (result.ended()) {
+            log.info("Session {} ended: reason={}", result.sessionId(), command.reason());
+            // LiveKit 호출(egress 클라이언트 callTimeout 60초)은 커밋과 커넥션 반납이 끝난 뒤에 한다.
+            // 트랜잭션 안에서 하면 미디어 서버가 앓는 동안 DB 커넥션이 그만큼 붙잡히고, 커밋이 실패했는데
+            // 녹화·room 만 먼저 정리되는 역전도 생긴다. 정리 실패가 종료를 되돌리지 않는 계약은 그대로다.
+            releaseMediaRoom(result.sessionId());
+        }
+        return result;
+    }
+
+    /** 세션 종료의 DB 상태 전이. 빠른 메모리·Redis 반납까지만 여기 두고, 외부 HTTP 는 {@link #end}가 커밋 뒤에 한다. */
+    private EndSessionResult endInTransaction(EndSessionCommand command) {
         Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
         if (session.isEnded()) {
             // 이미 종료된 세션은 그대로 둔다(중복 종료 요청·재시도에 멱등).
@@ -43,13 +58,12 @@ public class EndSessionService implements EndSessionUseCase {
         // 실패해도 종료를 되돌릴 이유가 없고, 되돌아가더라도 스트림이 다시 채운다.
         releaseInstructorAudioUseCase.release(ended.id());
         releaseActivationLock(ended.instructorId());
-        releaseMediaRoom(ended.id());
-        log.info("Session {} ended: reason={}", ended.id(), command.reason());
         return new EndSessionResult(ended.id(), ended.status(), true);
     }
 
     /**
-     * 미디어 쪽 뒷정리: 녹화를 멈추고 room 을 닫는다(LIVE-009·LIVE-010).
+     * 미디어 쪽 뒷정리: 녹화를 멈추고 room 을 닫는다(LIVE-009·LIVE-010). {@link #end}의 트랜잭션이 커밋된 뒤에 불린다 — 여기의 LiveKit 호출을 DB 트랜잭션 안에 가두지
+     * 않는다(녹화 도메인과 같은 경계).
      *
      * <p><b>순서가 중요하다.</b> room 을 먼저 닫으면 아직 도는 Egress 가 입력을 잃은 채 끝나 파일이 온전히 닫히지 않는다. 녹화를 먼저 멈춘 뒤 room 을 닫는다.
      *

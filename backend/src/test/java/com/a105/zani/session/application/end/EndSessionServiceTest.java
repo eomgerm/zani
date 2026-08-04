@@ -8,6 +8,11 @@ import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.a105.zani.session.application.exception.SessionNotFoundException;
 import com.a105.zani.session.application.port.SessionActivationLockPort;
@@ -42,7 +47,26 @@ class EndSessionServiceTest {
             activationLock,
             stopRecording,
             mediaRoomControl,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            commitRecordingTransactions());
+
+    /** 커밋 시점을 callOrder 에 남기는 템플릿. 미디어 정리가 커밋 뒤에 오는지 순서로 검증할 수 있게 한다. */
+    private TransactionTemplate commitRecordingTransactions() {
+        return new TransactionTemplate(new PlatformTransactionManager() {
+            @Override
+            public TransactionStatus getTransaction(TransactionDefinition definition) {
+                return new SimpleTransactionStatus();
+            }
+
+            @Override
+            public void commit(TransactionStatus status) {
+                callOrder.add("commit");
+            }
+
+            @Override
+            public void rollback(TransactionStatus status) {}
+        });
+    }
 
     /**
      * 수업이 끝나면 미디어 쪽도 정리돼야 한다.
@@ -60,17 +84,18 @@ class EndSessionServiceTest {
     }
 
     /**
-     * 녹화를 먼저 멈추고 room 을 닫는지.
+     * 커밋이 끝난 뒤에야 미디어를 정리하고, 그 안에서는 녹화를 먼저 멈추고 room 을 닫는지.
      *
-     * <p>순서가 뒤집히면 아직 도는 Egress 가 입력을 잃은 채 끝나 녹화 파일이 온전히 닫히지 않는다.
+     * <p>커밋 전에 정리하면 LiveKit 호출(callTimeout 60초)이 DB 트랜잭션·커넥션을 그만큼 붙들고, 커밋이 실패했는데 녹화·room 만 먼저 정리되는 역전이 생긴다. 정리 안에서 순서가
+     * 뒤집히면 아직 도는 Egress 가 입력을 잃은 채 끝나 녹화 파일이 온전히 닫히지 않는다.
      */
     @Test
-    void stopsTheRecordingBeforeClosingTheRoom() {
+    void cleansUpMediaAfterCommitStoppingTheRecordingBeforeClosingTheRoom() {
         sessionRepository.session = sessionWith(SessionStatus.LIVE);
 
         service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
 
-        assertEquals(List.of("stopRecording", "closeRoom"), callOrder);
+        assertEquals(List.of("commit", "stopRecording", "closeRoom"), callOrder);
     }
 
     /** 미디어 정리가 실패해도 종료는 남아야 한다 — 되돌리면 수업이 계속 살아 있는 것으로 남는다. */
