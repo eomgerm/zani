@@ -34,7 +34,19 @@ public enum PostClassTranscriptionErrorCode implements ErrorCode {
             "POSTCLASS_TRANSCRIPTION_008",
             "Transcript document violates the stored document contract"),
     TRANSCRIPT_NOT_READY(
-            ErrorType.CONFLICT, "POSTCLASS_TRANSCRIPTION_009", "Some transcription chunks have not finished yet");
+            ErrorType.CONFLICT, "POSTCLASS_TRANSCRIPTION_009", "Some transcription chunks have not finished yet"),
+    TRANSCRIPTION_SOURCE_INVALID(
+            ErrorType.INTERNAL_SERVER_ERROR,
+            "POSTCLASS_TRANSCRIPTION_010",
+            "Recorded track path cannot be resolved under the source root"),
+    SESSION_RECORDING_NOT_SETTLED(
+            ErrorType.CONFLICT,
+            "POSTCLASS_TRANSCRIPTION_011",
+            "Session recordings have not settled yet, more track files may arrive"),
+    SESSION_RECORDING_BROKEN(
+            ErrorType.CONFLICT,
+            "POSTCLASS_TRANSCRIPTION_012",
+            "Session recordings did not complete, some speech was never captured");
 
     private final ErrorType type;
     private final String code;

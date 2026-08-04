@@ -16,6 +16,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param processTimeout 외부 프로세스 1회 상한. 멈춘 프로세스가 오케스트레이션 스레드를 잡는 것을 막는다
  * @param pollDelay 전사 대기 작업을 훑는 주기
  * @param chunkDuration 청크 목표 길이. 25 MiB 한도가 아니라 힙과 timeout 예측 가능성으로 정한 값이다
+ * @param leaseDuration 청크 선점의 유효 기간. 이 시간이 지나면 선점한 실행이 죽은 것으로 보고 다른 실행이 회수한다. <b>GMS timeout(180초)보다 넉넉해야 한다</b> — 호출이
+ *     상한까지 걸린 뒤 결과를 기록할 여유가 없으면, 살아 있는 작업의 청크를 다른 실행이 가져가고 원래 작업의 쓰기는 fencing 에 걸려 버려진다. 그러면 같은 청크를 두 번 호출하게 된다. 반대로 너무
+ *     길면 실제로 죽은 실행의 청크가 그만큼 묶여 있는다
  * @param maxUploadBytes 실질 업로드 상한(24 MiB). 목표 시간으로 자른 뒤 이 값을 넘는 청크만 반으로 다시 자른다 — 파일 내부에서도 비트레이트가 변해 평균 역산을 믿을 수 없다
  * @param concurrency GMS 청크 호출 동시성. 오케스트레이션 자체는 항상 1이고 이 값은 업로드에만 적용된다
  * @param silencePrefilterEnabled 무음 사전 판별. 기본 OFF(S15P11A105-292)
@@ -29,6 +32,7 @@ public record PostClassTranscriptionProperties(
         @DefaultValue("PT60S") Duration processTimeout,
         @DefaultValue("PT10S") Duration pollDelay,
         @DefaultValue("PT10M") Duration chunkDuration,
+        @DefaultValue("PT5M") Duration leaseDuration,
         @DefaultValue("25165824") long maxUploadBytes,
         @DefaultValue("2") int concurrency,
         @DefaultValue("false") boolean silencePrefilterEnabled) {
@@ -45,6 +49,9 @@ public record PostClassTranscriptionProperties(
         }
         if (processTimeout == null || processTimeout.isZero() || processTimeout.isNegative()) {
             throw new IllegalArgumentException("프로세스 상한은 양수여야 합니다: " + processTimeout);
+        }
+        if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
+            throw new IllegalArgumentException("lease 기간은 양수여야 합니다: " + leaseDuration);
         }
     }
 }

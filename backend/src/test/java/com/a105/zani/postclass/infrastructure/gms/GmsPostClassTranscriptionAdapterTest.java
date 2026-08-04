@@ -87,6 +87,7 @@ class GmsPostClassTranscriptionAdapterTest {
                 Duration.ofSeconds(30),
                 Duration.ofSeconds(10),
                 Duration.ofMinutes(10),
+                Duration.ofMinutes(5),
                 MAX_UPLOAD_BYTES,
                 2,
                 false);

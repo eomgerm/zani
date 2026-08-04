@@ -56,6 +56,12 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
 
     @Override
     public Optional<PipelineJobState> findForUpdate(Long sessionId) {
+        return find(sessionId);
+    }
+
+    @Override
+    public Optional<PipelineJobState> find(Long sessionId) {
+        // 인메모리 대역에는 잠금이 없으므로 둘이 같다. 잠금 유무가 만드는 차이는 실제 DB 통합 테스트가 본다.
         return Optional.ofNullable(rows.get(sessionId))
                 .map(row -> new PipelineJobState(row.status, row.attemptCount, row.queuedAt, row.nextAttemptAt));
     }

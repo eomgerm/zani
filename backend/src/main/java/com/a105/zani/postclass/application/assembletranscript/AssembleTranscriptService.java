@@ -64,14 +64,15 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
     @Transactional
     public AssembleTranscriptResult assemble(AssembleTranscriptCommand command) {
         Map<Long, TranscriptionTrack> tracks = indexTracks(command);
-        Set<String> seenChunks = new HashSet<>();
-        List<TranscriptDocumentSegment> segments = new ArrayList<>();
+        // 단계 검사는 전체를 두 번 훑는다. 순서대로 확인하며 첫 예외에서 멈추면 안 된다 — 상세한 이유는
+        // requireNoPermanentFailure 에 적었다.
+        requireStructurallySound(command, tracks);
+        requireNoPermanentFailure(command);
+        requireEveryChunkFinished(command);
 
+        List<TranscriptDocumentSegment> segments = new ArrayList<>();
         for (TranscriptionChunk chunk : command.chunks()) {
-            requireSameSession(command.sessionId(), chunk);
-            requireFinishedAndUsable(chunk);
-            requireDistinct(seenChunks, chunk);
-            TranscriptionTrack track = requireTrack(tracks, chunk);
+            TranscriptionTrack track = tracks.get(chunk.recordingFileId());
             for (TranscriptSegment segment : chunk.segments()) {
                 segments.add(toDocumentSegment(track, chunk, segment));
             }
@@ -131,70 +132,92 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         return indexed;
     }
 
-    /** 다른 세션의 청크가 섞이면 그 발화가 남의 수업 리포트에 실린다. 조회 실수를 여기서 끊는다. */
-    private void requireSameSession(Long sessionId, TranscriptionChunk chunk) {
-        if (!sessionId.equals(chunk.sessionId())) {
-            log.error(
-                    "Chunk belongs to another session: expected={}, actual={}, chunkId={}",
-                    sessionId,
-                    chunk.sessionId(),
-                    chunk.id());
-            throw new TranscriptAssemblyInvalidException();
+    /**
+     * 데이터 자체가 틀린 것을 먼저 거른다 — 남의 세션 청크, 중복 청크, 트랙 없는 청크.
+     *
+     * <p>모두 재시도 불가이므로 단계 검사보다 앞에 둔다. 뒤에 두면 아직 처리 중인 청크가 하나 있을 때 재시도 가능으로 판정돼, 잘못된 데이터가 재시도 예산을 다 쓴 뒤에야 드러난다.
+     */
+    private void requireStructurallySound(AssembleTranscriptCommand command, Map<Long, TranscriptionTrack> tracks) {
+        Set<String> seen = new HashSet<>();
+        for (TranscriptionChunk chunk : command.chunks()) {
+            if (!command.sessionId().equals(chunk.sessionId())) {
+                log.error(
+                        "Chunk belongs to another session: expected={}, actual={}, chunkId={}",
+                        command.sessionId(),
+                        chunk.sessionId(),
+                        chunk.id());
+                throw new TranscriptAssemblyInvalidException();
+            }
+            if (!seen.add(chunk.recordingFileId() + ":" + chunk.chunkIndex())) {
+                log.error(
+                        "Duplicate chunk in the assembly input: recordingFileId={}, chunkIndex={}",
+                        chunk.recordingFileId(),
+                        chunk.chunkIndex());
+                throw new TranscriptAssemblyInvalidException();
+            }
+            if (!tracks.containsKey(chunk.recordingFileId())) {
+                log.error(
+                        "No track for a chunk, cannot resolve its speaker: chunkId={}, recordingFileId={}",
+                        chunk.id(),
+                        chunk.recordingFileId());
+                throw new TranscriptAssemblyInvalidException();
+            }
         }
     }
 
     /**
-     * 끝나지 않았거나 결과를 실을 수 없는 청크를 거른다.
+     * 영구 실패한 청크를 <b>전체에서</b> 먼저 찾는다.
      *
-     * <p><b>두 경우를 다른 예외로 올린다.</b> 지금 {@code ANALYZING} 으로 넘기지 않는 것은 같지만 이후가 다르다 — 아직 처리 중인 것은 기다리면 끝나고, 영구 실패한 것은 기다려도
-     * 달라지지 않는다. 합치면 오케스트레이션이 {@code retryable} 을 정할 근거를 잃고, 영구 실패를 상한까지 재시도하거나 처리 중인 세션을 너무 일찍 최종 실패로 굳힌다.
+     * <p>청크를 하나씩 보며 그 자리에서 던지면 판정이 순서에 좌우된다. {@code chunk 0 = PENDING}, {@code chunk 1 = FAILED} 인 경우 0 번에서 먼저
+     * {@link TranscriptNotReadyException} 이 나가 {@code retryable=true} 로 기록되고, 뒤의 영구 실패는 보이지 않는다. 그러면 재시도 예산을 다 쓸 때까지 매번
+     * 같은 자리에서 멈추고, 8시간 뒤에야 최종 실패가 된다 — "하나라도 영구 실패면 전체 비재시도" 규칙이 청크 순서에 따라 깨지는 것이다.
+     *
+     * <p>그래서 전체를 훑어 영구 실패가 있는지 먼저 판정한다. 몇 개인지도 함께 남긴다 — 하나가 실패한 것과 트랙 하나가 통째로 실패한 것은 운영에서 다르게 대응할 일이다.
      */
-    private void requireFinishedAndUsable(TranscriptionChunk chunk) {
-        if (!chunk.status().isTerminal()) {
-            // 데이터는 멀쩡하므로 재시도 가능이지만, 종결을 기다리지 않고 조립을 부른 것 자체가
-            // 오케스트레이션 버그일 수 있어 ERROR 로 남긴다.
-            log.error(
-                    "Assembly called before every chunk finished: chunkId={}, recordingFileId={}, chunkIndex={},"
-                            + " status={}",
-                    chunk.id(),
-                    chunk.recordingFileId(),
-                    chunk.chunkIndex(),
-                    chunk.status());
-            throw new TranscriptNotReadyException();
+    private void requireNoPermanentFailure(AssembleTranscriptCommand command) {
+        List<TranscriptionChunk> failed = command.chunks().stream()
+                .filter(chunk -> chunk.status().isTerminal() && !chunk.status().contributesToTranscript())
+                .toList();
+        if (failed.isEmpty()) {
+            return;
         }
-        if (!chunk.status().contributesToTranscript()) {
-            log.error(
-                    "Refusing to store an incomplete transcript, chunk permanently failed: chunkId={},"
-                            + " recordingFileId={}, chunkIndex={}, attemptCount={}",
-                    chunk.id(),
-                    chunk.recordingFileId(),
-                    chunk.chunkIndex(),
-                    chunk.attemptCount());
-            throw new TranscriptIncompleteException();
-        }
+        log.error(
+                "Refusing to store an incomplete transcript, {} of {} chunks permanently failed: sessionId={},"
+                        + " firstFailed=(recordingFileId={}, chunkIndex={}, attemptCount={})",
+                failed.size(),
+                command.chunks().size(),
+                command.sessionId(),
+                failed.get(0).recordingFileId(),
+                failed.get(0).chunkIndex(),
+                failed.get(0).attemptCount());
+        throw new TranscriptIncompleteException();
     }
 
-    /** 같은 {@code (recordingFileId, chunkIndex)} 가 두 번 오면 그 구간의 발화가 문서에 두 번 실린다. */
-    private void requireDistinct(Set<String> seen, TranscriptionChunk chunk) {
-        if (!seen.add(chunk.recordingFileId() + ":" + chunk.chunkIndex())) {
-            log.error(
-                    "Duplicate chunk in the assembly input: recordingFileId={}, chunkIndex={}",
-                    chunk.recordingFileId(),
-                    chunk.chunkIndex());
-            throw new TranscriptAssemblyInvalidException();
+    /**
+     * 아직 종결되지 않은 청크가 있는지 본다. 영구 실패 검사를 통과한 뒤에만 부른다.
+     *
+     * <p>이쪽만 재시도 가능이다. 기다리면 끝나므로 파이프라인을 최종 실패로 만들지 않는다.
+     */
+    private void requireEveryChunkFinished(AssembleTranscriptCommand command) {
+        List<TranscriptionChunk> unfinished = command.chunks().stream()
+                .filter(chunk -> !chunk.status().isTerminal())
+                .toList();
+        if (unfinished.isEmpty()) {
+            return;
         }
-    }
-
-    private TranscriptionTrack requireTrack(Map<Long, TranscriptionTrack> tracks, TranscriptionChunk chunk) {
-        TranscriptionTrack track = tracks.get(chunk.recordingFileId());
-        if (track == null) {
-            log.error(
-                    "No track for a chunk, cannot resolve its speaker: chunkId={}, recordingFileId={}",
-                    chunk.id(),
-                    chunk.recordingFileId());
-            throw new TranscriptAssemblyInvalidException();
-        }
-        return track;
+        // 데이터는 멀쩡하므로 재시도 가능이지만, 종결을 기다리지 않고 조립을 부른 것 자체가
+        // 오케스트레이션 버그일 수 있어 ERROR 로 남긴다.
+        log.error(
+                "Assembly called before every chunk finished: sessionId={}, unfinished={} of {}, first=(chunkId={},"
+                        + " recordingFileId={}, chunkIndex={}, status={})",
+                command.sessionId(),
+                unfinished.size(),
+                command.chunks().size(),
+                unfinished.get(0).id(),
+                unfinished.get(0).recordingFileId(),
+                unfinished.get(0).chunkIndex(),
+                unfinished.get(0).status());
+        throw new TranscriptNotReadyException();
     }
 
     /** 세 겹을 더해 수업 기준 절대 시각으로 옮긴다. */

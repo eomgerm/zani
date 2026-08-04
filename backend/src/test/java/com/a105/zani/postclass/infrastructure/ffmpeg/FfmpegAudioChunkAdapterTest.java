@@ -48,6 +48,7 @@ class FfmpegAudioChunkAdapterTest {
                 Duration.ofSeconds(30),
                 Duration.ofSeconds(10),
                 Duration.ofMinutes(10),
+                Duration.ofMinutes(5),
                 25_165_824L,
                 2,
                 false));

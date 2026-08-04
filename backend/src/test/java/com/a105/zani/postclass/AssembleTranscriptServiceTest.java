@@ -224,6 +224,43 @@ class AssembleTranscriptServiceTest {
     }
 
     @Test
+    void 앞_청크가_대기_중이어도_뒤_청크의_영구_실패를_먼저_판정한다() {
+        // 회귀 테스트. 청크를 하나씩 보며 그 자리에서 던지면 0번의 대기 상태가 먼저 걸려 NotReady(재시도
+        // 가능)가 나가고, 1번의 영구 실패는 보이지 않는다. 그러면 "하나라도 영구 실패면 전체 비재시도" 가
+        // 청크 순서에 따라 깨진다.
+        List<TranscriptionChunk> chunks = List.of(
+                chunk(INSTRUCTOR_FILE, 0, TranscriptionChunkStatus.PENDING, List.of()),
+                chunk(INSTRUCTOR_FILE, 1, TranscriptionChunkStatus.FAILED, List.of()));
+
+        assertThrows(
+                TranscriptIncompleteException.class,
+                () -> assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks));
+    }
+
+    @Test
+    void 데이터가_틀린_것은_대기보다_먼저_판정한다() {
+        // 잘못된 데이터도 재시도 불가다. 대기 상태에 가려지면 재시도 예산을 다 쓴 뒤에야 드러난다.
+        TranscriptionChunk foreign = new TranscriptionChunk(
+                1L,
+                SESSION_ID + 1,
+                INSTRUCTOR_FILE,
+                1,
+                CHUNK_MS,
+                CHUNK_MS * 2,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of());
+        List<TranscriptionChunk> chunks =
+                List.of(chunk(INSTRUCTOR_FILE, 0, TranscriptionChunkStatus.PROCESSING, List.of()), foreign);
+
+        assertThrows(
+                TranscriptAssemblyInvalidException.class,
+                () -> assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks));
+    }
+
+    @Test
     void 선점되지_않은_청크도_대기로_본다() {
         List<TranscriptionChunk> pending = List.of(
                 chunk(INSTRUCTOR_FILE, 0, TranscriptionChunkStatus.SUCCEEDED, List.of(segment(0, 5_000, "시작합니다"))),

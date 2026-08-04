@@ -115,6 +115,13 @@ class RecordingWebhookServiceTest {
             public boolean existsByStorageKey(String storageKey) {
                 return savedFiles.stream().anyMatch(saved -> saved.storageKey().equals(storageKey));
             }
+
+            @Override
+            public List<RecordingFile> findBySessionId(Long sessionId) {
+                return savedFiles.stream()
+                        .filter(saved -> sessionId.equals(saved.sessionId()))
+                        .toList();
+            }
         };
         SessionRepository sessionRepository = new SessionRepository() {
             @Override

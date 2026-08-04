@@ -67,6 +67,14 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     Optional<PipelineJobJpaEntity> findForUpdate(@Param("sessionId") Long sessionId);
 
     /**
+     * 잠금 없이 읽는다. 전이 판단에는 쓰지 않는다.
+     *
+     * <p>사후 전사가 8시간 마감의 기준점({@code created_at})을 얻는 데 쓴다. 수십 분 걸리는 작업이 {@link #findForUpdate} 의 잠금을 붙잡으면 SLA 경보와 다른 단계의
+     * 전이가 잠금 대기로 실패한다.
+     */
+    Optional<PipelineJobJpaEntity> findBySessionId(Long sessionId);
+
+    /**
      * 단계를 바꾸고 재시도 예산을 초기화한다. 갈 수 있는 단계인지는 잠금 읽기 뒤 호출자가 이미 판단했으므로 조건을 두지 않는다.
      *
      * <p>last_error 는 지우지 않는다. 그 값은 "마지막 실패 사유" 이력이라 단계가 넘어갔다고 사라질 이유가 없고, 무엇보다 FAILED 로 옮기는 것도 이 쿼리다 — 여기서 지우면 실패 사유를

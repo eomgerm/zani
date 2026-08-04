@@ -13,6 +13,7 @@ import com.a105.zani.postclass.application.exception.PipelineJobUnavailableExcep
 import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.application.port.PipelineJobState;
 import com.a105.zani.postclass.domain.model.PipelineStatus;
+import com.a105.zani.postclass.infrastructure.persistence.entity.PipelineJobJpaEntity;
 import com.a105.zani.postclass.infrastructure.persistence.repository.PipelineJobJpaRepository;
 
 /** pipeline_jobs 영속 어댑터. 등록은 INSERT IGNORE 로 session_id UNIQUE 충돌을 호출자 트랜잭션 오염 없이 흡수한다. */
@@ -37,16 +38,27 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
     @Override
     public Optional<PipelineJobState> findForUpdate(Long sessionId) {
         try {
-            return pipelineJobJpaRepository
-                    .findForUpdate(sessionId)
-                    .map(job -> new PipelineJobState(
-                            PipelineStatus.valueOf(job.getStatus()),
-                            job.getAttemptCount(),
-                            job.getCreatedAt(),
-                            job.getNextAttemptAt()));
+            return pipelineJobJpaRepository.findForUpdate(sessionId).map(PipelineJobPersistenceAdapter::toState);
         } catch (DataAccessException exception) {
             throw new PipelineJobUnavailableException(exception);
         }
+    }
+
+    @Override
+    public Optional<PipelineJobState> find(Long sessionId) {
+        try {
+            return pipelineJobJpaRepository.findBySessionId(sessionId).map(PipelineJobPersistenceAdapter::toState);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    private static PipelineJobState toState(PipelineJobJpaEntity job) {
+        return new PipelineJobState(
+                PipelineStatus.valueOf(job.getStatus()),
+                job.getAttemptCount(),
+                job.getCreatedAt(),
+                job.getNextAttemptAt());
     }
 
     @Override

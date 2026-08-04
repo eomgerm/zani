@@ -36,6 +36,18 @@ public interface PipelineJobPort {
     Optional<PipelineJobState> findForUpdate(Long sessionId);
 
     /**
+     * 세션의 작업 상태를 잠그지 않고 읽는다. 작업이 없으면 빈 값.
+     *
+     * <p>사후 전사 오케스트레이션이 {@code queuedAt} 을 얻는 데 쓴다 — 청크마다 재시도 여부를 정할 때 8시간 마감의 기준점이 필요하다. {@link #findForUpdate} 를 쓰면 안
+     * 된다: 그 잠금은 전이 트랜잭션 안에서만 의미가 있고, 수십 분 걸리는 전사가 그것을 붙잡으면 SLA 경보와 다른 단계의 전이가 잠금 대기로 실패한다.
+     *
+     * <p>전이 판단에 쓰지 않는다. 잠금이 없으므로 읽은 값이 곧바로 낡을 수 있다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    Optional<PipelineJobState> find(Long sessionId);
+
+    /**
      * 세션의 작업 단계를 바꾸고 <b>재시도 예산을 초기화한다</b>(시도 횟수 0, 대기 해제).
      *
      * <p>재시도 예산을 단계마다 새로 주기 위해서다. 초기화하지 않으면 앞 단계에서 쓴 시도 횟수가 남아, 다음 단계는 첫 실패에서 곧바로 상한에 걸린다.
