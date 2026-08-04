@@ -14,12 +14,10 @@ function tabCls(active: boolean) {
   }`;
 }
 
-/** 리스트/캘린더 보기 토글. 활성일 때 흰 배경 + 그림자로 떠 보이게 둔다. */
+/** 리스트/캘린더 보기 토글. 참여/진행 토글과 같은 방식으로 활성 쪽을 초록으로 채운다. */
 function viewCls(active: boolean) {
   return `flex h-8 w-10 cursor-pointer items-center justify-center rounded-full border-0 transition-colors ${
-    active
-      ? "bg-surface text-primary shadow-[0_2px_8px_rgba(24,74,62,.12)]"
-      : "bg-transparent text-ink-fainter"
+    active ? "bg-primary text-white" : "bg-transparent text-ink-fainter"
   }`;
 }
 
@@ -56,7 +54,7 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
       </p>
 
       <div className="mb-9 flex flex-wrap items-center gap-2.5">
-        <div className="inline-flex rounded-full border border-line-mint bg-primary-softer p-1">
+        <div className="inline-flex rounded-full border border-shell-toggle bg-surface p-1">
           {(["student", "instructor"] as const).map((k) => (
             <button key={k} type="button" onClick={() => setTab(k)} className={tabCls(tab === k)}>
               {k === "student" ? "참여강의" : "진행강의"}
@@ -85,7 +83,7 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
           {sortDesc ? "최신순" : "오래된순"}
         </button>
 
-        <div className="inline-flex gap-0.5 rounded-full border border-line-mint bg-primary-softer p-1">
+        <div className="inline-flex gap-0.5 rounded-full border border-shell-toggle bg-surface p-1">
           <button
             type="button"
             onClick={() => setView("list")}

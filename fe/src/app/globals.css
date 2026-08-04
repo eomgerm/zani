@@ -24,6 +24,8 @@
   --color-shell: #f7f8f7;
   --color-shell-line: #eef1ef;
   --color-shell-icon: #e9f4ee;
+  /* 흰 배경 위 세그먼트 토글의 테두리 */
+  --color-shell-toggle: #e6eae8;
 
   /* text */
   --color-ink: #2c3049;
