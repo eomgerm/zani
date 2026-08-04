@@ -135,6 +135,13 @@ public class FfmpegAudioChunkAdapter implements AudioChunkPort {
      * <p>산출물마다 확인하는 것: 파일이 실제로 있는지, 크기가 0 이 아닌지, 구간이 앞 청크의 종료 시각에서 이어지는지. 마지막 검사가 없으면 구간에 구멍이나 겹침이 생겼을 때 시간축이 조용히 밀린
      * 전사가 그대로 저장된다.
      *
+     * <p><b>구간 길이도 여기서 본다.</b> {@link AudioChunk} 생성자가 {@code endMs <= startMs} 를 거부하는데, 그것은
+     * {@link IllegalArgumentException} 이라 포트 계약({@link AudioChunkFailedException}) 밖이다. 그대로 새어 나가면 호출자의 재시도 판정에서 "모르는
+     * 예외" 로 분류돼 세션이 첫 시도에 영구 실패하고, 사유도 {@code IllegalArgumentException} 으로만 남는다. CSV 형식 위반은 전부 이 예외로 모아야 한다.
+     *
+     * <p>다만 길이 0 은 형식 위반이 아니다. 시각을 밀리초로 반올림하므로({@link #toMillis}) 1ms 미만의 꼬리 세그먼트는 시작과 종료가 같은 값이 된다. 오디오가 없는 것이지 CSV 가
+     * 깨진 것이 아니라서, 실패시키지 않고 청크를 만들지 않는다. 거꾸로 된 구간은 반올림으로 설명되지 않으므로 실패로 둔다.
+     *
      * <p>package-private 인 이유: 실제 로직이 있는 부분은 여기이고, 이것만 따로 검증할 수 있어야 한다. 외부 프로세스 실행은 플랫폼에 따라 결과가 달라져(로컬 Windows 에는
      * ffmpeg 이 없다) 단위 테스트로 고정할 수 없다. 그쪽 정합은 EC2 에서 실제 바이너리로 확인했다.
      */
@@ -164,6 +171,16 @@ public class FfmpegAudioChunkAdapter implements AudioChunkPort {
             if (startMs != previousEndMs) {
                 log.error("청크 구간이 이어지지 않습니다. expectedStartMs={}, actualStartMs={}", previousEndMs, startMs);
                 throw new AudioChunkFailedException();
+            }
+            if (endMs < startMs) {
+                log.error("청크 구간이 거꾸로입니다. startMs={}, endMs={}", startMs, endMs);
+                throw new AudioChunkFailedException();
+            }
+            if (endMs == startMs) {
+                // 밀리초로 반올림하면 사라지는 꼬리 세그먼트다. 전사할 오디오가 없으므로 청크를 만들지 않는다.
+                // 건너뛰어도 시간축은 이어진다 — previousEndMs 가 그대로라 다음 세그먼트의 연속성 검사가 통과한다.
+                log.warn("길이가 0 인 세그먼트를 건너뜁니다. file={}, atMs={}", chunkFile.getFileName(), startMs);
+                continue;
             }
             chunks.add(new AudioChunk(index++, chunkFile, startMs, endMs, sizeOf(chunkFile)));
             previousEndMs = endMs;

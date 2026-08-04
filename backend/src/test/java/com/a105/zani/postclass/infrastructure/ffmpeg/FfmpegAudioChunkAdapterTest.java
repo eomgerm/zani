@@ -159,6 +159,59 @@ class FfmpegAudioChunkAdapterTest {
     }
 
     @Test
+    void 길이가_0_으로_반올림된_꼬리_세그먼트는_건너뛴다() throws IOException {
+        // 시각을 밀리초로 반올림하므로 1ms 미만 세그먼트는 시작과 종료가 같아진다.
+        // 240.000100초·240.000400초 → 둘 다 240000ms. AudioChunk 생성자는 이것을 거부하고
+        // 그 예외는 IllegalArgumentException 이라 포트 계약 밖이다 — 그대로 새어 나가면
+        // 호출자가 "모르는 예외" 로 보고 세션을 첫 시도에 영구 실패시킨다.
+        writeCsv("""
+                chunk-000.ogg,0.000000,120.000000
+                chunk-001.ogg,120.000000,240.000100
+                chunk-002.ogg,240.000400,240.000400
+                """);
+        writeChunks("chunk-000.ogg", "chunk-001.ogg", "chunk-002.ogg");
+
+        List<AudioChunk> chunks = adapter.readSegmentList(workDir);
+
+        // 꼬리 세그먼트만 빠지고 앞의 두 개는 그대로 남는다.
+        assertEquals(2, chunks.size());
+        assertEquals(240_000, chunks.get(1).sourceEndMs());
+        // 순번은 실제로 만든 청크에만 붙으므로 비어 있는 자리가 생기지 않는다.
+        assertEquals(0, chunks.get(0).index());
+        assertEquals(1, chunks.get(1).index());
+    }
+
+    @Test
+    void 길이가_0_인_세그먼트_뒤에도_시간축이_이어진다() throws IOException {
+        // 건너뛴 세그먼트가 연속성 검사를 깨지 않는다는 것을 고정한다.
+        // previousEndMs 가 그대로이므로 다음 세그먼트가 같은 시각에서 시작해도 통과한다.
+        writeCsv("""
+                chunk-000.ogg,0.000000,120.000000
+                chunk-001.ogg,120.000000,120.000000
+                chunk-002.ogg,120.000000,240.000000
+                """);
+        writeChunks("chunk-000.ogg", "chunk-001.ogg", "chunk-002.ogg");
+
+        List<AudioChunk> chunks = adapter.readSegmentList(workDir);
+
+        assertEquals(2, chunks.size());
+        assertEquals(120_000, chunks.get(1).sourceStartMs());
+        assertEquals(240_000, chunks.get(1).sourceEndMs());
+    }
+
+    @Test
+    void 거꾸로_된_구간은_거부한다() throws IOException {
+        // 반올림으로 설명되지 않는 값이다. CSV 가 깨졌다고 보고 포트 계약대로 실패시킨다.
+        writeCsv("""
+                chunk-000.ogg,0.000000,120.000000
+                chunk-001.ogg,120.000000,119.000000
+                """);
+        writeChunks("chunk-000.ogg", "chunk-001.ogg");
+
+        assertThrows(AudioChunkFailedException.class, () -> adapter.readSegmentList(workDir));
+    }
+
+    @Test
     void CSV_가_없으면_거부한다() {
         assertThrows(AudioChunkFailedException.class, () -> adapter.readSegmentList(workDir));
     }
