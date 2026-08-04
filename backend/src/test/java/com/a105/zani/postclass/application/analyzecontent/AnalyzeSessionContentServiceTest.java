@@ -18,6 +18,7 @@ import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
 import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
+import com.a105.zani.report.application.exception.InvalidSessionAnalysisException;
 import com.a105.zani.report.application.exception.SessionAnalysisAlreadyStoredException;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
@@ -182,8 +183,9 @@ class AnalyzeSessionContentServiceTest {
                         new AnalyzedSection("뒤 구간", "앞 구간과 겹친다.", 300_000, 900_000))));
         AnalyzeSessionContentService rejecting = new AnalyzeSessionContentService(
                 getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
-                    // 실제 적재 유스케이스와 같은 계약: 애그리거트가 구간 계약 위반을 거절한다.
-                    throw new InvalidSessionReportException(SessionReportErrorCode.INVALID_SESSION_REPORT);
+                    // 실제 적재 유스케이스와 같은 계약: 애그리거트의 거절을 애플리케이션 경계 예외로 바꿔 올린다.
+                    throw new InvalidSessionAnalysisException(
+                            new InvalidSessionReportException(SessionReportErrorCode.INVALID_SESSION_REPORT));
                 });
 
         ContentAnalysisFailedException thrown = assertThrows(
