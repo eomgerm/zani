@@ -37,8 +37,10 @@ public class QuizPersistenceAdapter implements QuizRepository {
             """;
 
     private static final String INSERT_QUESTION = """
-            INSERT INTO quiz_questions (id, quiz_id, question_text, explanation, question_order, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+            INSERT INTO quiz_questions
+                (id, quiz_id, question_text, explanation, section_started_offset_ms, question_order,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
             """;
 
     private static final String INSERT_OPTION = """
@@ -70,7 +72,12 @@ public class QuizPersistenceAdapter implements QuizRepository {
         for (QuizQuestion question : quiz.questions()) {
             long questionId = TsidGenerator.generate();
             questionRows.add(new Object[] {
-                questionId, quizId, question.questionText(), question.explanation(), question.questionOrder()
+                questionId,
+                quizId,
+                question.questionText(),
+                question.explanation(),
+                question.sectionStartedOffsetMs(),
+                question.questionOrder()
             });
             for (QuizOption option : question.options()) {
                 optionRows.add(new Object[] {

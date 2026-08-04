@@ -33,12 +33,13 @@ class StudentAnalysisPersister {
 
     /** 저장했으면 true, 다른 실행이 리포트를 먼저 넣었으면 false(그때는 퀴즈도 넣지 않는다). */
     @Transactional
-    boolean persist(SaveStudentAnalysisCommand reportCommand, StudentAnalysis.QuizDraft quiz) {
+    boolean persist(
+            SaveStudentAnalysisCommand reportCommand, StudentAnalysis.QuizDraft quiz, List<ConceptSection> sections) {
         Optional<Long> reportId = saveStudentAnalysisUseCase.save(reportCommand);
         if (reportId.isEmpty()) {
             return false;
         }
-        boolean created = createGeneratedQuizUseCase.create(quizCommand(reportId.get(), quiz));
+        boolean created = createGeneratedQuizUseCase.create(quizCommand(reportId.get(), quiz, sections));
         if (!created) {
             // 리포트를 우리가 넣었으면 그 리포트에 퀴즈가 있을 수 없다. 있었다면 UK 전제가 깨진 것이라 남겨 둔다.
             log.warn("Quiz already existed for a report this run inserted: reportId={}", reportId.get());
@@ -46,13 +47,29 @@ class StudentAnalysisPersister {
         return true;
     }
 
-    private CreateGeneratedQuizCommand quizCommand(long reportId, StudentAnalysis.QuizDraft quiz) {
+    private CreateGeneratedQuizCommand quizCommand(
+            long reportId, StudentAnalysis.QuizDraft quiz, List<ConceptSection> sections) {
         List<StudentAnalysis.QuestionDraft> givenQuestions = quiz.questions() == null ? List.of() : quiz.questions();
         List<CreateGeneratedQuizCommand.Question> questions = givenQuestions.stream()
                 .map(question -> new CreateGeneratedQuizCommand.Question(
-                        question.questionText(), question.explanation(), options(question.options())))
+                        question.questionText(),
+                        question.explanation(),
+                        sectionStartedOffsetMs(question.sectionIndex(), sections),
+                        options(question.options())))
                 .toList();
         return new CreateGeneratedQuizCommand(reportId, quiz.title(), quiz.description(), questions);
+    }
+
+    /**
+     * 모델이 답한 구간 번호를 그 구간의 시작 시각으로 되돌린다. 추천과 같은 규칙이다 — 모델이 준 숫자를 시각으로 쓰지 않는다(FRD §17.6).
+     *
+     * <p>범위 밖 번호는 {@code null} 이 된다. 추천은 항목을 버리면 되지만 문항을 버리면 3~5개 불변식이 깨지므로, 문항은 살리고 다시 보기 링크만 뜨지 않게 한다.
+     */
+    private Long sectionStartedOffsetMs(int sectionIndex, List<ConceptSection> sections) {
+        if (sectionIndex < 1 || sectionIndex > sections.size()) {
+            return null;
+        }
+        return sections.get(sectionIndex - 1).startedOffsetMs();
     }
 
     private List<CreateGeneratedQuizCommand.Option> options(List<StudentAnalysis.OptionDraft> given) {

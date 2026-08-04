@@ -9,7 +9,12 @@ import java.util.List;
  *
  * <p>감정·성격·역량을 담는 필드는 없다(FRD §17.4).
  */
-public record StudentAnalysis(String participationSummary, List<RecommendationDraft> recommendations, QuizDraft quiz) {
+/**
+ * @param questionCount 학생이 남긴 질문 수. 서버가 채팅 행을 세지 않고 모델이 판단한다 — 공개 채팅에는 질문만 있지 않고("네", "감사합니다"), 물음표 없는 질문과 완곡한 요청("다시
+ *     설명해주실 수 있나요")도 있어 문장을 읽어야 가려낼 수 있다
+ */
+public record StudentAnalysis(
+        String participationSummary, int questionCount, List<RecommendationDraft> recommendations, QuizDraft quiz) {
 
     /**
      * 서버가 인정하는 추천 근거 유형. {@code report} 도메인의 enum 과 값이 같지만 문자열로 둔다 — 도메인 경계를 원시 타입으로 유지하고, LLM 스키마의 enum 목록과 한 자리에서
@@ -25,7 +30,11 @@ public record StudentAnalysis(String participationSummary, List<RecommendationDr
 
     public record QuizDraft(String title, String description, List<QuestionDraft> questions) {}
 
-    public record QuestionDraft(String questionText, String explanation, List<OptionDraft> options) {}
+    /**
+     * @param sectionIndex 이 문항의 근거가 되는 개념 구간 번호(1부터). 서버가 구간의 시작 시각으로 되돌려 "관련 강의 구간 다시 보기" 링크를 만든다. 범위 밖이면 그 문항의 구간만
+     *     비운다 — 문항을 버리면 3~5개 불변식이 깨진다
+     */
+    public record QuestionDraft(int sectionIndex, String questionText, String explanation, List<OptionDraft> options) {}
 
     public record OptionDraft(String optionText, boolean correct) {}
 }

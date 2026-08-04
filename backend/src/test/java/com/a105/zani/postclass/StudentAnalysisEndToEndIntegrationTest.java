@@ -75,6 +75,19 @@ class StudentAnalysisEndToEndIntegrationTest {
                         Long.class,
                         sessionId))
                 .containsExactly(0L);
+        // 질문 수는 모델이 판단한 값이 그대로 저장된다(Mock 어댑터는 2 를 낸다).
+        assertThat(jdbcTemplate.queryForList(
+                        "SELECT question_count FROM student_reports WHERE session_id = ?", Integer.class, sessionId))
+                .containsOnly(2);
+        // 문항마다 근거 구간 시작 시각이 붙는다. Mock 은 구간 1 을 가리키므로 그 시작 시각이다.
+        assertThat(jdbcTemplate.queryForList(
+                        "SELECT DISTINCT qq.section_started_offset_ms FROM quiz_questions qq"
+                                + " JOIN quizzes q ON q.id = qq.quiz_id"
+                                + " JOIN student_reports r ON r.id = q.student_report_id"
+                                + " WHERE r.session_id = ?",
+                        Long.class,
+                        sessionId))
+                .containsExactly(0L);
         // 공개는 249 의 범위 밖이다. 저장만 하고 published_at 은 비워 둔다.
         assertThat(jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM student_reports WHERE session_id = ? AND published_at IS NOT NULL",

@@ -43,6 +43,10 @@ class StudentReportPersistenceAdapterTest {
         assertThat(jdbcTemplate.queryForObject(
                         "SELECT published_at FROM student_reports WHERE id = ?", Instant.class, reportId.get()))
                 .isNull();
+        // 질문 수는 모델이 판단한 값이다 — 서버가 채팅 행을 세지 않는다.
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT question_count FROM student_reports WHERE id = ?", Integer.class, reportId.get()))
+                .isEqualTo(3);
         assertThat(jdbcTemplate.queryForList(
                         "SELECT priority FROM review_recommendations WHERE student_report_id = ? ORDER BY priority",
                         Integer.class,
@@ -99,7 +103,7 @@ class StudentReportPersistenceAdapterTest {
                         new SaveStudentAnalysisCommand.Recommendation("CONFUSED", "이차방정식", "다시 보기", 0L, 30_000L),
                         new SaveStudentAnalysisCommand.Recommendation("LOW_ENGAGEMENT", "인수분해", "복습", 60_000L, 90_000L))
                 .subList(0, recommendationCount);
-        return new SaveStudentAnalysisCommand(sessionId, participantId, "참여도 요약", recommendations);
+        return new SaveStudentAnalysisCommand(sessionId, participantId, "참여도 요약", 3, recommendations);
     }
 
     private long insertSession() {

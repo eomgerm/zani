@@ -65,6 +65,9 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
             - observations 의 영문 코드값(CONFUSED, MISSED, NO_RESPONSE, OK, NOT_ENGAGED, BARELY_ENGAGED,
               ENGAGED, HIGHLY_ENGAGED, UNMEASURABLE, CAMERA_OFF)을 문장에 그대로 쓰지 않는다. 학생이 읽어
               뜻이 통하는 한국어로 풀어 쓴다.
+            - questionCount 는 observations 의 채팅 중 질문인 발화만 센 수다. 채팅 수가 아니다 —
+              "네", "감사합니다", "잘 들려요" 같은 반응은 세지 않는다. 물음표가 없어도 묻는 문장이면 세고,
+              "다시 설명해주실 수 있나요" 처럼 완곡한 요청도 센다. 질문이 없으면 0 이다.
             - recommendations 는 0개부터 5개까지다. 근거가 없으면 넣지 않는다.
             - observations 에 단서가 한 건뿐인 구간은 추천하지 않는다. 같은 구간에 근거가 겹칠 때만 넣는다.
             - recommendations 의 sectionIndex 는 sections 에 있는 번호만 쓴다. 같은 구간을 두 번 넣지 않는다.
@@ -79,6 +82,8 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
             - 유형별로 개수를 배분하지 않는다. 다섯 개가 한 유형에 몰려도 되고 한 유형도 안 나와도 된다.
             - quiz 의 questions 는 3개부터 5개까지다. 문항마다 보기 4개이고 정답은 정확히 1개다.
             - 퀴즈는 sections 의 내용에서만 낸다. 수업에 없던 내용을 묻지 않는다.
+            - 문항마다 sectionIndex 에 그 문항의 근거가 된 구간 번호를 넣는다. sections 에 있는 번호만 쓴다.
+              학생이 그 구간을 다시 보게 만드는 링크가 이 값으로 만들어진다.
             - 모든 문장은 학생에게 직접 말하는 한국어 존댓말로 쓴다.""";
 
     private static final Map<String, Object> RESPONSE_FORMAT = responseFormat();
@@ -159,13 +164,15 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
                 List.of("optionText", "correct"));
         Map<String, Object> question = object(
                 Map.of(
+                        "sectionIndex",
+                        Map.of("type", "integer", "minimum", 1),
                         "questionText",
                         Map.of("type", "string"),
                         "explanation",
                         Map.of("type", "string"),
                         "options",
                         array(option, REQUIRED_OPTIONS, REQUIRED_OPTIONS)),
-                List.of("questionText", "explanation", "options"));
+                List.of("sectionIndex", "questionText", "explanation", "options"));
         Map<String, Object> quiz = object(
                 Map.of(
                         "title",
@@ -190,11 +197,13 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
                 Map.of(
                         "participationSummary",
                         Map.of("type", "string", "maxLength", SUMMARY_MAX_LENGTH),
+                        "questionCount",
+                        Map.of("type", "integer", "minimum", 0),
                         "recommendations",
                         array(recommendation, 0, MAX_RECOMMENDATIONS),
                         "quiz",
                         quiz),
-                List.of("participationSummary", "recommendations", "quiz"));
+                List.of("participationSummary", "questionCount", "recommendations", "quiz"));
         return Map.of(
                 "type",
                 "json_schema",
@@ -268,10 +277,15 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
                 parsed.quiz().questions() == null ? List.of() : parsed.quiz().questions();
         List<StudentAnalysis.QuestionDraft> questions = givenQuestions.stream()
                 .map(question -> new StudentAnalysis.QuestionDraft(
-                        question.questionText(), question.explanation(), options(question.options())))
+                        question.sectionIndex() == null ? 0 : question.sectionIndex(),
+                        question.questionText(),
+                        question.explanation(),
+                        options(question.options())))
                 .toList();
         return new StudentAnalysis(
                 parsed.participationSummary(),
+                // 음수는 스키마가 막지만 강제 여부가 미확인이라(가이드 §6) 서버에서 한 번 더 접는다.
+                parsed.questionCount() == null ? 0 : Math.max(0, parsed.questionCount()),
                 recommendations,
                 new StudentAnalysis.QuizDraft(
                         parsed.quiz().title(), parsed.quiz().description(), questions));
@@ -299,13 +313,17 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
 
     /** 모델이 스키마대로 낸 본문. 검증 전 값이라 포트 타입과 분리한다. 박싱 타입으로 두어 필드 누락과 0·false 를 구분한다. */
     private record AnalysisResponse(
-            String participationSummary, List<RecommendationResponse> recommendations, QuizResponse quiz) {}
+            String participationSummary,
+            Integer questionCount,
+            List<RecommendationResponse> recommendations,
+            QuizResponse quiz) {}
 
     private record RecommendationResponse(Integer sectionIndex, String type, String title, String description) {}
 
     private record QuizResponse(String title, String description, List<QuestionResponse> questions) {}
 
-    private record QuestionResponse(String questionText, String explanation, List<OptionResponse> options) {}
+    private record QuestionResponse(
+            Integer sectionIndex, String questionText, String explanation, List<OptionResponse> options) {}
 
     private record OptionResponse(String optionText, Boolean correct) {}
 }

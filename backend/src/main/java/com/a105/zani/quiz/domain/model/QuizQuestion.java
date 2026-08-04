@@ -11,7 +11,12 @@ import com.a105.zani.quiz.domain.exception.QuizErrorCode;
  *
  * <p>해설은 없어도 된다(스키마 NULL 허용). 빈 문자열은 NULL 로 접어 "해설이 있다"와 "빈 해설"이 갈라지지 않게 한다.
  */
-public record QuizQuestion(String questionText, String explanation, int questionOrder, List<QuizOption> options) {
+public record QuizQuestion(
+        String questionText,
+        String explanation,
+        Long sectionStartedOffsetMs,
+        int questionOrder,
+        List<QuizOption> options) {
 
     static final int UNSET_ORDER = 0;
 
@@ -24,6 +29,7 @@ public record QuizQuestion(String questionText, String explanation, int question
         if (questionText == null
                 || questionText.isEmpty()
                 || questionOrder < UNSET_ORDER
+                || (sectionStartedOffsetMs != null && sectionStartedOffsetMs < 0)
                 || options.size() != REQUIRED_OPTION_COUNT
                 || options.stream().filter(QuizOption::correct).count() != 1) {
             throw new InvalidQuizException(QuizErrorCode.INVALID_QUIZ_QUESTION);
@@ -35,11 +41,13 @@ public record QuizQuestion(String questionText, String explanation, int question
                 .toList();
     }
 
-    public static QuizQuestion of(String questionText, String explanation, List<QuizOption> options) {
-        return new QuizQuestion(questionText, explanation, UNSET_ORDER, options);
+    /** @param sectionStartedOffsetMs 문항이 가리키는 개념 구간의 시작 시각. 근거 구간을 특정하지 못했으면 {@code null} 이고, 그때는 다시 보기 링크만 뜨지 않는다 */
+    public static QuizQuestion of(
+            String questionText, String explanation, Long sectionStartedOffsetMs, List<QuizOption> options) {
+        return new QuizQuestion(questionText, explanation, sectionStartedOffsetMs, UNSET_ORDER, options);
     }
 
     QuizQuestion withOrder(int questionOrder) {
-        return new QuizQuestion(questionText, explanation, questionOrder, options);
+        return new QuizQuestion(questionText, explanation, sectionStartedOffsetMs, questionOrder, options);
     }
 }

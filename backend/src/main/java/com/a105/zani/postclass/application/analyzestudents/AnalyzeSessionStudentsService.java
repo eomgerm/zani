@@ -110,9 +110,12 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
                 sessionId,
                 target.sessionParticipantId(),
                 analysis.get().participationSummary(),
+                analysis.get().questionCount(),
                 ground(analysis.get().recommendations(), context.sections()));
         try {
-            return persister.persist(reportCommand, analysis.get().quiz()) ? Outcome.ANALYZED : Outcome.SKIPPED;
+            return persister.persist(reportCommand, analysis.get().quiz(), context.sections())
+                    ? Outcome.ANALYZED
+                    : Outcome.SKIPPED;
         } catch (RuntimeException exception) {
             // 퀴즈 구조 위반·요약 규칙 위반이 여기로 온다. 부분 저장은 없다 — 한 트랜잭션이라 함께 롤백된다.
             log.warn("Student analysis persist failed for {}: {}", alias, exception.toString());

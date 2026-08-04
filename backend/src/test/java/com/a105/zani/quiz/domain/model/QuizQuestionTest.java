@@ -13,7 +13,7 @@ class QuizQuestionTest {
 
     @Test
     void numbersOptionsFromOne() {
-        QuizQuestion question = QuizQuestion.of("문항", "해설", options());
+        QuizQuestion question = QuizQuestion.of("문항", "해설", 60_000L, options());
 
         assertThat(question.options()).extracting(QuizOption::optionOrder).containsExactly(1, 2, 3, 4);
         assertThat(question.options()).extracting(QuizOption::correct).containsExactly(true, false, false, false);
@@ -21,12 +21,13 @@ class QuizQuestionTest {
 
     @Test
     void normalizesBlankExplanationToNull() {
-        assertThat(QuizQuestion.of("문항", "   ", options()).explanation()).isNull();
+        assertThat(QuizQuestion.of("문항", "   ", 60_000L, options()).explanation())
+                .isNull();
     }
 
     @Test
     void rejectsOptionCountOtherThanFour() {
-        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", options().subList(0, 3)))
+        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", 60_000L, options().subList(0, 3)))
                 .isInstanceOf(InvalidQuizException.class);
     }
 
@@ -43,13 +44,16 @@ class QuizQuestionTest {
                 QuizOption.of("3", false),
                 QuizOption.of("4", false));
 
-        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", noCorrect)).isInstanceOf(InvalidQuizException.class);
-        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", twoCorrect)).isInstanceOf(InvalidQuizException.class);
+        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", 60_000L, noCorrect))
+                .isInstanceOf(InvalidQuizException.class);
+        assertThatThrownBy(() -> QuizQuestion.of("문항", "해설", 60_000L, twoCorrect))
+                .isInstanceOf(InvalidQuizException.class);
     }
 
     @Test
     void rejectsBlankQuestionTextOrOptionText() {
-        assertThatThrownBy(() -> QuizQuestion.of("   ", "해설", options())).isInstanceOf(InvalidQuizException.class);
+        assertThatThrownBy(() -> QuizQuestion.of("   ", "해설", 60_000L, options()))
+                .isInstanceOf(InvalidQuizException.class);
         assertThatThrownBy(() -> QuizOption.of("   ", true)).isInstanceOf(InvalidQuizException.class);
     }
 

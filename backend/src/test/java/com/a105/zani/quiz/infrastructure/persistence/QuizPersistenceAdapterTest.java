@@ -47,6 +47,13 @@ class QuizPersistenceAdapterTest {
                         Integer.class,
                         quizId))
                 .containsExactly(1, 2, 3);
+        // 근거 구간 시각이 문항마다 저장되고, 특정하지 못한 문항은 NULL 로 남는다.
+        assertThat(jdbcTemplate.queryForList(
+                        "SELECT section_started_offset_ms FROM quiz_questions WHERE quiz_id = ?"
+                                + " ORDER BY question_order",
+                        Long.class,
+                        quizId))
+                .containsExactly(0L, 60_000L, null);
         assertThat(jdbcTemplate.queryForObject(
                         "SELECT COUNT(*) FROM quiz_options o JOIN quiz_questions q ON q.id = o.quiz_question_id"
                                 + " WHERE q.quiz_id = ?",
@@ -86,6 +93,8 @@ class QuizPersistenceAdapterTest {
                 .mapToObj(index -> new CreateGeneratedQuizCommand.Question(
                         "문항 " + index,
                         "해설",
+                        // 마지막 문항은 근거 구간을 특정하지 못한 경우다 — NULL 이 저장되는지 함께 본다.
+                        index == questionCount - 1 ? null : index * 60_000L,
                         List.of(
                                 new CreateGeneratedQuizCommand.Option("정답", true),
                                 new CreateGeneratedQuizCommand.Option("오답1", false),

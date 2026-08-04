@@ -26,8 +26,9 @@ public class StudentReportPersistenceAdapter implements StudentReportRepository 
 
     private static final String INSERT_REPORT = """
             INSERT INTO student_reports
-                (id, session_id, session_participant_id, participation_summary, created_at, updated_at)
-            VALUES (?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                (id, session_id, session_participant_id, participation_summary, question_count,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
             ON DUPLICATE KEY UPDATE id = id
             """;
 
@@ -55,7 +56,8 @@ public class StudentReportPersistenceAdapter implements StudentReportRepository 
                 reportId,
                 report.sessionId(),
                 report.sessionParticipantId(),
-                report.participationSummary());
+                report.participationSummary(),
+                report.questionCount());
 
         Long storedId = jdbcTemplate.queryForObject(
                 SELECT_REPORT_ID, Long.class, report.sessionId(), report.sessionParticipantId());

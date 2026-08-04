@@ -23,23 +23,28 @@ public final class StudentReport {
     private final Long sessionId;
     private final Long sessionParticipantId;
     private final String participationSummary;
+    private final int questionCount;
     private final List<ReviewRecommendation> recommendations;
 
     private StudentReport(
             Long sessionId,
             Long sessionParticipantId,
             String participationSummary,
+            int questionCount,
             List<ReviewRecommendation> recommendations) {
         this.sessionId = sessionId;
         this.sessionParticipantId = sessionParticipantId;
         this.participationSummary = participationSummary;
+        this.questionCount = questionCount;
         this.recommendations = recommendations;
     }
 
+    /** @param questionCount 학생이 남긴 질문 수. 채팅 행 수가 아니라 질문인 발화만 센 값이고, 그 판단은 호출부가 한다. 음수는 거절한다 */
     public static StudentReport create(
             Long sessionId,
             Long sessionParticipantId,
             String participationSummary,
+            int questionCount,
             List<ReviewRecommendation> recommendations) {
         String summary = participationSummary == null ? null : participationSummary.strip();
         List<ReviewRecommendation> given = recommendations == null ? List.of() : recommendations;
@@ -48,13 +53,14 @@ public final class StudentReport {
                 || summary == null
                 || summary.isEmpty()
                 || summary.length() > SUMMARY_MAX_LENGTH
+                || questionCount < 0
                 || given.size() > MAX_RECOMMENDATIONS) {
             throw new InvalidStudentReportException(StudentReportErrorCode.INVALID_STUDENT_REPORT);
         }
         List<ReviewRecommendation> prioritized = IntStream.range(0, given.size())
                 .mapToObj(index -> given.get(index).withPriority(index + 1))
                 .toList();
-        return new StudentReport(sessionId, sessionParticipantId, summary, prioritized);
+        return new StudentReport(sessionId, sessionParticipantId, summary, questionCount, prioritized);
     }
 
     public Long sessionId() {
@@ -67,6 +73,10 @@ public final class StudentReport {
 
     public String participationSummary() {
         return participationSummary;
+    }
+
+    public int questionCount() {
+        return questionCount;
     }
 
     public List<ReviewRecommendation> recommendations() {

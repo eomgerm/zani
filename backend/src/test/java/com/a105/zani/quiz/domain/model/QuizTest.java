@@ -63,7 +63,8 @@ class QuizTest {
 
     private List<QuizQuestion> questions(int count) {
         return IntStream.range(0, count)
-                .mapToObj(index -> QuizQuestion.of("문항 " + index, "해설", QuizQuestionTest.options()))
+                .mapToObj(index ->
+                        QuizQuestion.of("문항 " + index, "해설", (long) index * 60_000L, QuizQuestionTest.options()))
                 .toList();
     }
 }

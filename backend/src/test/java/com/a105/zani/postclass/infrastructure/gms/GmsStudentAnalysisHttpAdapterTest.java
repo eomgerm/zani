@@ -67,6 +67,10 @@ class GmsStudentAnalysisHttpAdapterTest {
 
         assertThat(analysis).isPresent();
         assertThat(analysis.get().participationSummary()).isEqualTo("참여도 요약");
+        assertThat(analysis.get().questionCount()).isEqualTo(2);
+        assertThat(analysis.get().quiz().questions())
+                .extracting(StudentAnalysis.QuestionDraft::sectionIndex)
+                .containsOnly(1);
         assertThat(analysis.get().recommendations())
                 .extracting(
                         StudentAnalysis.RecommendationDraft::sectionIndex, StudentAnalysis.RecommendationDraft::type)
@@ -185,9 +189,9 @@ class GmsStudentAnalysisHttpAdapterTest {
                 option.formatted("오답1", "false"),
                 option.formatted("오답2", "false"),
                 option.formatted("오답3", "false"));
-        String question =
-                "{\\\"questionText\\\":\\\"문항\\\",\\\"explanation\\\":\\\"해설\\\",\\\"options\\\":[" + options + "]}";
-        return "{\\\"participationSummary\\\":\\\"참여도 요약\\\","
+        String question = "{\\\"sectionIndex\\\":1,\\\"questionText\\\":\\\"문항\\\",\\\"explanation\\\":\\\"해설\\\","
+                + "\\\"options\\\":[" + options + "]}";
+        return "{\\\"participationSummary\\\":\\\"참여도 요약\\\",\\\"questionCount\\\":2,"
                 + "\\\"recommendations\\\":[{\\\"sectionIndex\\\":1,\\\"type\\\":\\\"CONFUSED\\\","
                 + "\\\"title\\\":\\\"근의 공식\\\",\\\"description\\\":\\\"다시 보기\\\"}],"
                 + "\\\"quiz\\\":{\\\"title\\\":\\\"퀴즈\\\",\\\"description\\\":\\\"설명\\\",\\\"questions\\\":["

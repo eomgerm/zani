@@ -139,6 +139,28 @@ class AnalyzeSessionStudentsServiceTest {
     }
 
     @Test
+    void resolvesQuizQuestionSectionsAndLeavesOutOfRangeEmpty() {
+        queryPort.targets = List.of(target(11L, 1));
+
+        service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        // 문항 1·2 는 구간 1·2 의 시작 시각으로, 범위 밖 번호를 답한 문항 3 은 null 로 간다.
+        assertThat(quizUseCase.commands.getFirst().questions())
+                .extracting(CreateGeneratedQuizCommand.Question::sectionStartedOffsetMs)
+                .containsExactly(0L, 60_000L, null);
+    }
+
+    @Test
+    void carriesTheModelsQuestionCount() {
+        queryPort.targets = List.of(target(11L, 1));
+
+        service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        // 서버가 채팅 행을 세지 않는다 — 모델이 판단한 값을 그대로 저장 요청에 넘긴다.
+        assertThat(saveUseCase.commands.getFirst().questionCount()).isEqualTo(2);
+    }
+
+    @Test
     void replacesModelTimesWithSectionTimes() {
         queryPort.targets = List.of(target(11L, 1));
         analysisPort.analysis = analysis(List.of(new StudentAnalysis.RecommendationDraft(2, "MISSED", "2구간", "설명")));
@@ -264,8 +286,10 @@ class AnalyzeSessionStudentsServiceTest {
     }
 
     private static StudentAnalysis analysis(List<StudentAnalysis.RecommendationDraft> recommendations) {
+        // 마지막 문항만 범위 밖 구간 번호다 — 그 문항의 구간만 비고 문항은 살아남아야 한다.
         List<StudentAnalysis.QuestionDraft> questions = IntStream.rangeClosed(1, 3)
                 .mapToObj(number -> new StudentAnalysis.QuestionDraft(
+                        number == 3 ? 99 : number,
                         "문항 " + number,
                         "해설",
                         List.of(
@@ -274,7 +298,7 @@ class AnalyzeSessionStudentsServiceTest {
                                 new StudentAnalysis.OptionDraft("오답2", false),
                                 new StudentAnalysis.OptionDraft("오답3", false))))
                 .toList();
-        return new StudentAnalysis("참여도 요약", recommendations, new StudentAnalysis.QuizDraft("퀴즈", "설명", questions));
+        return new StudentAnalysis("참여도 요약", 2, recommendations, new StudentAnalysis.QuizDraft("퀴즈", "설명", questions));
     }
 
     private static final class FakeQueryPort implements StudentAnalysisContextQueryPort {

@@ -36,6 +36,7 @@ public class GmsStudentAnalysisMockAdapter implements StudentAnalysisPort {
                 List.of(new StudentAnalysis.RecommendationDraft(1, "CONFUSED", "예시 복습 구간", "이 구간을 다시 확인해 보세요."));
         List<StudentAnalysis.QuestionDraft> questions = IntStream.rangeClosed(1, 3)
                 .mapToObj(number -> new StudentAnalysis.QuestionDraft(
+                        1,
                         "예시 문항 " + number,
                         "예시 해설",
                         List.of(
@@ -46,6 +47,6 @@ public class GmsStudentAnalysisMockAdapter implements StudentAnalysisPort {
                 .toList();
         log.info("Mock student analysis returned for {}", request.studentAlias());
         return Optional.of(new StudentAnalysis(
-                "예시 참여도 요약입니다.", recommendations, new StudentAnalysis.QuizDraft("예시 복습 퀴즈", "예시 설명", questions)));
+                "예시 참여도 요약입니다.", 2, recommendations, new StudentAnalysis.QuizDraft("예시 복습 퀴즈", "예시 설명", questions)));
     }
 }

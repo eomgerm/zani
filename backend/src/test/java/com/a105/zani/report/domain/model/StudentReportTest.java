@@ -20,8 +20,10 @@ class StudentReportTest {
                 SESSION_ID,
                 PARTICIPANT_ID,
                 "요약",
+                2,
                 List.of(recommendation("첫째", 0L), recommendation("둘째", 60_000L), recommendation("셋째", 120_000L)));
 
+        assertThat(report.questionCount()).isEqualTo(2);
         assertThat(report.recommendations())
                 .extracting(ReviewRecommendation::priority)
                 .containsExactly(1, 2, 3);
@@ -32,7 +34,7 @@ class StudentReportTest {
 
     @Test
     void allowsNoRecommendations() {
-        StudentReport report = StudentReport.create(SESSION_ID, PARTICIPANT_ID, "요약", List.of());
+        StudentReport report = StudentReport.create(SESSION_ID, PARTICIPANT_ID, "요약", 0, List.of());
 
         assertThat(report.recommendations()).isEmpty();
     }
@@ -47,13 +49,19 @@ class StudentReportTest {
                 recommendation("5", 240_000L),
                 recommendation("6", 300_000L));
 
-        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, "요약", six))
+        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, "요약", 0, six))
+                .isInstanceOf(InvalidStudentReportException.class);
+    }
+
+    @Test
+    void rejectsNegativeQuestionCount() {
+        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, "요약", -1, List.of()))
                 .isInstanceOf(InvalidStudentReportException.class);
     }
 
     @Test
     void rejectsBlankSummary() {
-        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, "   ", List.of()))
+        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, "   ", 0, List.of()))
                 .isInstanceOf(InvalidStudentReportException.class);
     }
 
@@ -61,7 +69,7 @@ class StudentReportTest {
     void rejectsSummaryLongerThanTwoThousandCharacters() {
         String tooLong = "가".repeat(2_001);
 
-        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, tooLong, List.of()))
+        assertThatThrownBy(() -> StudentReport.create(SESSION_ID, PARTICIPANT_ID, tooLong, 0, List.of()))
                 .isInstanceOf(InvalidStudentReportException.class);
     }
 

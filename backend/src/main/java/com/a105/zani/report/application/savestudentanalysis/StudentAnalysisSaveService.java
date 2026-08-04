@@ -32,7 +32,11 @@ public class StudentAnalysisSaveService implements SaveStudentAnalysisUseCase {
                         recommendation.endedOffsetMs()))
                 .toList();
         StudentReport report = StudentReport.create(
-                command.sessionId(), command.sessionParticipantId(), command.participationSummary(), recommendations);
+                command.sessionId(),
+                command.sessionParticipantId(),
+                command.participationSummary(),
+                command.questionCount(),
+                recommendations);
         return studentReportRepository.saveIfAbsent(report);
     }
 }

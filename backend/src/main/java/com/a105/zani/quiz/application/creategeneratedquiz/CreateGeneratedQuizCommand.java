@@ -10,7 +10,12 @@ import java.util.List;
 public record CreateGeneratedQuizCommand(
         Long studentReportId, String title, String description, List<Question> questions) {
 
-    public record Question(String questionText, String explanation, List<Option> options) {}
+    /**
+     * @param sectionStartedOffsetMs 문항이 가리키는 개념 구간의 시작 시각. 호출 도메인이 구간 번호를 이미 시각으로 되돌려 넘긴다. 근거 구간을 특정하지 못했으면
+     *     {@code null}
+     */
+    public record Question(
+            String questionText, String explanation, Long sectionStartedOffsetMs, List<Option> options) {}
 
     public record Option(String optionText, boolean correct) {}
 }
