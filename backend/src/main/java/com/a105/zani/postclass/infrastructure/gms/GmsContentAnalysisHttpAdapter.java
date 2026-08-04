@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -37,7 +36,6 @@ import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
  * <p>재시도하지 않는다. 다시 시도할지는 파이프라인 재시도 정책이 정한다(S15P11A105-107).
  */
 @Component
-@EnableConfigurationProperties(ContentAnalysisProperties.class)
 @ConditionalOnProperty(prefix = "gms", name = "mock-enabled", havingValue = "false")
 public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
 
