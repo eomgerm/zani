@@ -11,9 +11,9 @@ import com.a105.zani.report.infrastructure.persistence.entity.SessionSectionJpaE
 import com.a105.zani.report.infrastructure.persistence.repository.SessionSectionJpaRepository;
 
 /**
- * 저장된 내용 구간을 읽어 경계와 제목만 옮긴다.
+ * 저장된 내용 구간을 읽어 경계·제목·nullable 요약을 옮긴다.
  *
- * <p>엔티티가 밖으로 나가는 지점을 이 클래스 하나로 좁힌다. 요약({@code summary})은 여기서 버려지므로 타임라인 응답이 실수로 요약을 실을 통로가 없다.
+ * <p>엔티티가 밖으로 나가는 지점을 이 클래스 하나로 좁힌다. 학생 응답만 요약을 노출하고 강사 그룹 응답은 필드를 만들지 않는다.
  */
 @Component
 @RequiredArgsConstructor
