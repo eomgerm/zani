@@ -47,12 +47,23 @@ describe("toSectionRows", () => {
   });
 
   /** 구간 사이가 1초라도 벌어지면 그 틈에 점이 없어 선이 끊긴다. */
-  it("구간 사이가 떨어져 있어도 이음매에서 선이 이어진다", () => {
+  it("경계 시각에 두 구간이 공유하는 점을 끼워 선을 잇는다", () => {
     const rows = toSectionRows([point(0, 2), point(60, 4)], [section(0, 30), section(31, 90)]);
 
-    // 앞 구간의 마지막 점에 뒤 구간의 첫 값이, 그 반대도 한 번씩 얹힌다.
-    expect(rows[0][sectionKeyOf(1)]).toBe(4);
-    expect(rows[1][sectionKeyOf(0)]).toBe(2);
+    const seam = rows.find((row) => row.offsetSeconds === 31);
+    expect(seam).toBeDefined();
+    // 같은 x 에서 두 계열이 같은 값을 가리켜야 겹치지도, 계단으로 튀지도 않는다.
+    expect(seam?.[sectionKeyOf(0)]).toBe(seam?.[sectionKeyOf(1)]);
+    // 값은 앞뒤 관측(0초 2단계 · 60초 4단계)을 안분한 것이라 그 사이에 있다.
+    expect(seam?.[sectionKeyOf(0)]).toBeGreaterThan(2);
+    expect(seam?.[sectionKeyOf(0)]).toBeLessThan(4);
+  });
+
+  it("끼운 점을 넣어도 시각 순서가 유지된다 — 순서가 흐트러지면 선이 되돌아간다", () => {
+    const rows = toSectionRows([point(0, 2), point(60, 4)], [section(0, 30), section(31, 90)]);
+
+    const offsets = rows.map((row) => row.offsetSeconds);
+    expect(offsets).toEqual([...offsets].sort((a, b) => (a ?? 0) - (b ?? 0)));
   });
 
   /** 경계 점을 한쪽에만 두면 구간이 바뀌는 자리에서 그림이 끊긴다. */

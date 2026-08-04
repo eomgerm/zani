@@ -63,16 +63,15 @@ export function EvalDonuts({ data }: { data: EvalDatum[] }) {
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              <span className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
-                <span className="text-[12.5px] font-extrabold text-ink-label">{d.name}</span>
-                <span className="flex items-baseline gap-0.5">
-                  <span className="text-[22px] font-extrabold tracking-[-.5px] text-ink">
-                    {d.value}
-                  </span>
-                  <span className="text-[10.5px] font-extrabold text-ink-ghost">점</span>
+              <span className="absolute inset-0 flex items-baseline justify-center gap-0.5">
+                <span className="text-[22px] font-extrabold tracking-[-.5px] text-ink">
+                  {d.value}
                 </span>
+                <span className="text-[10.5px] font-extrabold text-ink-ghost">점</span>
               </span>
             </button>
+
+            <span className="mt-1.5 text-[12.5px] font-extrabold text-ink-label">{d.name}</span>
 
             {d.desc !== undefined && (
               <span

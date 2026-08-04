@@ -113,7 +113,7 @@ export const recommendations = [
 /** 리포트(강사) - 분야별 평가 도넛 */
 export const evalDonutData = [
   { name: "전달력", value: 88, color: "#10b981", desc: "말의 속도·명료함과 핵심 개념을 짚어주는 정도를 평가했어요." },
-  { name: "구성·흐름", value: 84, color: "#15bd7d", desc: "수업 순서와 주제 전환이 자연스럽게 이어졌는지 평가했어요." },
+  { name: "수업 구성", value: 84, color: "#15bd7d", desc: "수업 순서와 주제 전환이 자연스럽게 이어졌는지 평가했어요." },
   { name: "상호작용", value: 71, color: "#f4c325", desc: "질문 응답, 채팅·반응 대응 등 학생과의 소통을 평가했어요." },
   { name: "난이도 조절", value: 76, color: "#e0714f", desc: "학생 이해도에 맞춰 설명 깊이와 속도를 조절했는지 평가했어요." },
 ];
@@ -136,12 +136,12 @@ export const quizData: QuizQuestion[] = [
   { concept: "useCallback", t: "27:52", q: "useCallback이 실제로 필요한 경우는?", opts: ["모든 함수에 항상", "메모이즈된 자식에 함수를 props로 넘길 때", "상태를 만들 때", "렌더링을 완전히 막을 때"], answer: 1, explain: "React.memo된 자식에게 함수를 props로 넘길 때 참조 안정화를 위해 필요합니다." },
 ];
 
-/** 강사 리포트 개선 TIP. icon 은 시안 카탈로그 키(shared/ui PICTOGRAMS)다 — 색은 시안에 박혀 있다. */
-export const improveTips: { icon: PictogramName; title: string; obs: string; tip: string }[] = [
-  { icon: "book", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
-  { icon: "qbubble", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
-  { icon: "camera", title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "· 다이어그램, 플로우차트 활용을 늘려보세요." },
-  { icon: "target", title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "· 개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
+/** 강사 리포트 수업 인사이트. 관찰(obs)과 해 볼 것(tip)을 나눠 둔다. */
+export const improveTips: { title: string; obs: string; tip: string }[] = [
+  { title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "추가 예시 코드와 실습 시간을 늘려보세요." },
+  { title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "중간중간 질문 시간을 명시적으로 확보해보세요." },
+  { title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "다이어그램, 플로우차트 활용을 늘려보세요." },
+  { title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
 ];
 
 export const instructorGlance: {
@@ -152,9 +152,9 @@ export const instructorGlance: {
 }[] = [
   { icon: "people", label: "총 수강생", value: "32명" },
   { icon: "clock", label: "수업 시간", value: "2시간 5분" },
-  { icon: "chat", label: "채팅 수", value: "184개" },
-  { icon: "bars", label: "평균 집중도", value: "78%", badge: "보통" },
-  { icon: "bell", label: "이해도 알림 발생", value: "7회" },
+  { icon: "chat", label: "질문 수", value: "184개" },
+  { icon: "bars", label: "집중 구간 비율", value: "78%", badge: "보통" },
+  { icon: "bell", label: "이해도 알림", value: "7회" },
 ];
 
 export const studentGlance: { icon: PictogramName; label: string; value: string }[] = [

@@ -47,43 +47,60 @@ export function InstructorReport({ sessionId, onJumpToClip }: Props) {
 
       <div className="z-report-head">
         <div className="z-section-title">AI 수업 피드백</div>
-        <div className="z-report-sub">AI가 수업 전체를 읽고 정리한 내용이에요.</div>
       </div>
       <div className="z-report-box mb-[22px] px-5 py-4">
         <div className="mb-2 text-[13.5px] font-extrabold">종합 포인트</div>
         <p className="text-[13px] leading-[1.75] text-ink-sub">{instructorSummary}</p>
       </div>
 
-      <div className="grid grid-cols-2 items-start gap-[26px]">
-        <div>
-          <div className="mb-3.5 flex items-center gap-2">
-            <span className="text-sm font-extrabold">분야별 평가</span>
-            <span className="text-[11.5px] text-ink-fainter">AI가 4개 항목으로 평가했어요.</span>
-          </div>
-          <div className="z-report-box px-4 py-[18px]">
+      {/* 두 블록은 같은 평가의 두 면이라 높이를 맞춰 나란히 둔다. */}
+      <div className="grid grid-cols-2 items-stretch gap-[26px]">
+        <div className="flex flex-col">
+          <div className="mb-3.5 text-sm font-extrabold">분야별 평가</div>
+          <div className="z-report-box flex flex-1 items-center px-4 py-[18px]">
             <EvalDonuts data={evalDonutData} />
           </div>
         </div>
 
-        <div>
-          <div className="mb-3.5 text-sm font-extrabold">수업 개선 TIP</div>
-          <div className="flex flex-col gap-3">
-            {improveTips.map((t) => {
-              const Icon = PICTOGRAMS[t.icon];
-              return (
-                <div key={t.title} className="z-report-box px-4 py-3.5">
-                  <div className="mb-1.5 flex items-center gap-[7px] text-[12.5px] font-extrabold">
-                    <Icon size={15} />
-                    {t.title}
-                  </div>
-                  <p className="mb-1.5 text-[11.5px] leading-[1.5] text-ink-faint">{t.obs}</p>
-                  <div className="text-[11px] leading-[1.5] text-ink-sub">{t.tip}</div>
+        <div className="flex flex-col">
+          <div className="mb-3.5 text-sm font-extrabold">수업 인사이트</div>
+          <div className="flex flex-1 flex-col gap-3">
+            {improveTips.map((t) => (
+              <div key={t.title} className="z-report-box flex-1 px-4 py-3.5">
+                <div className="mb-1.5 text-[12.5px] font-extrabold">{t.title}</div>
+                <p className="mb-2 text-[11.5px] leading-[1.5] text-ink-faint">{t.obs}</p>
+                {/* 해 볼 것은 관찰과 달리 행동이라 초록으로 짚어 준다. */}
+                <div className="flex items-start gap-1.5 text-[11.5px] font-bold leading-[1.5] text-primary-dark">
+                  <CheckMark />
+                  <span>{t.tip}</span>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </>
+  );
+}
+
+/** 해 볼 것 앞의 체크. 카탈로그에 체크가 없어 같은 굵기로 그려 둔다. */
+function CheckMark() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="mt-[3px] shrink-0"
+    >
+      <path
+        d="M5 12.8l4.4 4.2L19 7.4"
+        stroke="currentColor"
+        strokeWidth="2.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

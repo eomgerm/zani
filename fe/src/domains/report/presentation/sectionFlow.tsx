@@ -42,11 +42,29 @@ export const sectionColorOf = (focusLevel: number | null): string => {
   return "#e0455f";
 };
 
+/** 두 점 사이의 값을 시각으로 안분한다. 한쪽이라도 값이 없으면 지어내지 않는다. */
+const valueAt = (
+  at: number,
+  before: FlowPoint | undefined,
+  after: FlowPoint | undefined,
+): number | null => {
+  if (before === undefined) return after?.focusLevel ?? null;
+  if (after === undefined) return before.focusLevel;
+  if (before.focusLevel === null || after.focusLevel === null) return null;
+  const span = after.offsetSeconds - before.offsetSeconds;
+  if (span <= 0) return before.focusLevel;
+  const ratio = (at - before.offsetSeconds) / span;
+  return before.focusLevel + (after.focusLevel - before.focusLevel) * ratio;
+};
+
 /**
  * 관측 점들을 구간별 계열로 흩는다.
  *
- * <p>경계 시각의 점은 앞뒤 두 구간에 모두 넣는다. 한쪽에만 두면 구간이 바뀌는 자리에서 그림이
- * 끊겨 실제로는 이어진 흐름이 빈 것처럼 보인다.
+ * <p>구간이 갈리는 시각에 두 계열이 공유하는 점을 하나 끼운다. 그 점의 값은 앞뒤 관측을 안분한
+ * 값이라 앞 구간은 거기서 끝나고 뒤 구간은 거기서 시작한다 — 겹치지도, 계단으로 튀지도 않는다.
+ *
+ * <p>남의 구간에 값을 얹어 잇는 방식은 쓰지 않는다. 그러면 같은 x 에 두 계열이 서로 다른 값을
+ * 갖게 되어 경계에서 면이 겹치고 값이 꺾인다.
  */
 export function toSectionRows(
   points: readonly FlowPoint[],
@@ -62,20 +80,29 @@ export function toSectionRows(
     return row;
   });
 
-  // 구간 사이가 1초라도 벌어져 있으면 그 틈에 점이 없어 그림이 끊긴다. 앞 구간의 마지막 값을
-  // 뒤 구간의 첫 점에, 뒤 구간의 첫 값을 앞 구간의 마지막 점에 한 번씩 얹어 선을 잇는다.
-  sections.forEach((_, index) => {
+  sections.forEach((section, index) => {
     if (index === 0) return;
-    const previous = sectionKeyOf(index - 1);
-    const current = sectionKeyOf(index);
-    const firstOfCurrent = rows.find((row) => row[current] !== undefined);
-    const lastOfPrevious = [...rows].reverse().find((row) => row[previous] !== undefined);
-    if (firstOfCurrent === undefined || lastOfPrevious === undefined) return;
-    if (firstOfCurrent[previous] === undefined) firstOfCurrent[previous] = lastOfPrevious[previous];
-    if (lastOfPrevious[current] === undefined) lastOfPrevious[current] = firstOfCurrent[current];
+    const at = section.startSeconds;
+    const before = [...points].reverse().find((point) => point.offsetSeconds < at);
+    const after = points.find((point) => point.offsetSeconds >= at);
+    const shared = valueAt(at, before, after);
+    const seam: Record<string, number | null> = {
+      offsetSeconds: at,
+      [sectionKeyOf(index - 1)]: shared,
+      [sectionKeyOf(index)]: shared,
+    };
+
+    const existing = rows.find((row) => row.offsetSeconds === at);
+    if (existing === undefined) {
+      rows.push(seam);
+      return;
+    }
+    // 이미 그 시각에 관측이 있으면 값은 그대로 두고 앞 구간에만 같은 값을 얹는다.
+    existing[sectionKeyOf(index - 1)] = existing[sectionKeyOf(index)] ?? shared;
   });
 
-  return rows;
+  // recharts 는 준 순서대로 잇는다. 끼운 점 때문에 순서가 흐트러지면 선이 되돌아간다.
+  return rows.sort((a, b) => (a.offsetSeconds ?? 0) - (b.offsetSeconds ?? 0));
 }
 
 /** 구간이 갈리는 시각. 첫 구간의 시작은 축의 왼쪽 끝이라 선을 그리지 않는다. */
