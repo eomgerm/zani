@@ -10,8 +10,13 @@ from typing import Any, cast
 import numpy as np
 import torch
 
-from zani_ai.engagement.contracts import LABELS
+from zani_ai.engagement.contracts import (
+    LABELS,
+    LOW_ENGAGEMENT_CLASSES,
+    low_engagement_metrics,
+)
 from zani_ai.engagement.experiment import E0_SPEC, ExperimentSpec
+from zani_ai.engagement.model import deployment_view
 from zani_ai.engagement.runtime import parse_device
 from zani_ai.engagement.training import (
     TrainingConfig,
@@ -105,11 +110,24 @@ def _aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             for metric in ("precision", "recall", "f1-score")
         }
         per_class[label]["support_per_seed"] = int(reports[0]["support"])
+    # The product acts on "are the bottom two grades likely", not on the 4-class
+    # label, so the binary collapse of the same matrices is what a deployment
+    # decision reads. Per seed *and* pooled: the per-seed spread is what a
+    # two-protocol comparison needs, and the pooled matrix is the larger sample.
+    per_seed_low = [low_engagement_metrics(item["test"]["confusion_matrix"]) for item in records]
+    low_engagement: dict[str, Any] = {
+        "classes": [LABELS[index] for index in LOW_ENGAGEMENT_CLASSES],
+        "pooled": low_engagement_metrics(pooled.tolist()),
+        "per_seed": {
+            key: _summarize([item[key] for item in per_seed_low]) for key in per_seed_low[0]
+        },
+    }
     result: dict[str, Any] = {
         "completed_seed_count": len(records),
         "test_accuracy": _summarize(accuracies),
         "test_macro_f1": _summarize(macro_f1s),
         "pooled_confusion_matrix": pooled.tolist(),
+        "test_low_engagement": low_engagement,
         "per_class": per_class,
     }
     # `metrics.to_dict()` picks the new fields up automatically, so finalize
@@ -215,7 +233,9 @@ def evaluate_frozen_checkpoints(
             array_key=spec.array_key,
             array_shape=spec.array_shape,
         )
-        model = load_checkpoint(checkpoint_path, device)
+        # `deployment_view` decodes the dual head as the mixed probabilities the
+        # browser reads; every other head is returned untouched.
+        model = deployment_view(load_checkpoint(checkpoint_path, device))
         metrics = evaluate_model(
             model,
             _loader(datasets.test, config, shuffle=False),
