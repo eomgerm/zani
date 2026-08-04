@@ -284,7 +284,12 @@ class GmsContentAnalysisHttpAdapterTest {
         assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
-    /** 응답이 잘리면 JSON 이 깨진다. finish_reason 을 보고 사유를 남긴다. */
+    /**
+     * 응답이 잘리면 모델 본문 JSON 이 깨진다. 그때 사유는 파싱 실패가 아니라 {@code finish_reason} 이어야 한다 — 상한을 올려야 풀리는 문제라 재시도 대상이 아니다.
+     *
+     * <p><b>봉투는 정상 JSON 이다.</b> {@code content} 값이 잘린 조각을 흉내 내는 {@code "{"} 한 글자라, 세어 보면 중괄호가 하나 빠진 것처럼 보인다. 그것은 문자열 <b>안</b>의
+     * 글자이고 구조적 중괄호가 아니다. 봉투가 깨져 있으면 어댑터가 파싱 예외를 잡아 {@code UNAVAILABLE} 을 돌려주므로, 아래 단정이 그 착각을 잡아 준다.
+     */
     @Test
     void rejectsAnIncompleteResponse() {
         Fixture fixture = fixture();
