@@ -44,8 +44,8 @@ class GmsContentAnalysisLiveCheckTest {
     private static final String DEFAULT_BASE_URL = "https://gms.ssafy.io/gmsapi/api.openai.com";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
 
-    /** 45분 수업. 모의 전사의 오프셋이 이 안에 들어 있어야 구간 검증이 의미를 갖는다. */
-    private static final long CLASS_DURATION_MS = 45 * 60 * 1_000L;
+    /** 60분 수업. 모의 전사의 마지막 발화가 52분 지점이라 그것을 덮는 길이를 쓴다 — 짧게 잡으면 모델이 정직하게 답해도 범위 검증에 걸린다. */
+    private static final long CLASS_DURATION_MS = 60 * 60 * 1_000L;
 
     private static String env(String name, String fallback) {
         String value = System.getenv(name);

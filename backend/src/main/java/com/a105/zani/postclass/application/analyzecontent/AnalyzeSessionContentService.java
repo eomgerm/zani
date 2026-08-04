@@ -18,6 +18,7 @@ import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptQuery;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
+import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
@@ -57,15 +58,16 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         GetPostClassContextResult context = getPostClassContextUseCase.get(new GetPostClassContextQuery(sessionId));
         long classDurationMs = classDurationMs(context, sessionId);
         GetSessionTranscriptResult transcript = readTranscript(sessionId);
+        long rangeMs = analysisRangeMs(classDurationMs, transcript);
 
         String classSummary;
         List<SessionSectionDraft> sections;
         if (transcript.lines().isEmpty()) {
             // 무음 수업. GMS 를 부르지 않는다 — 보낼 내용이 없고, 빈 전사로 물으면 모델이 없는 내용을 지어낸다.
             classSummary = SILENT_CLASS_SUMMARY;
-            sections = List.of(new SessionSectionDraft(SILENT_CLASS_TITLE, SILENT_CLASS_SUMMARY, 0, classDurationMs));
+            sections = List.of(new SessionSectionDraft(SILENT_CLASS_TITLE, SILENT_CLASS_SUMMARY, 0, rangeMs));
         } else {
-            ContentAnalysis analysis = requestAnalysis(sessionId, context.title(), classDurationMs, transcript);
+            ContentAnalysis analysis = requestAnalysis(sessionId, context.title(), rangeMs, transcript);
             classSummary = analysis.classSummary();
             sections = analysis.sections().stream()
                     .map(section -> new SessionSectionDraft(
@@ -73,8 +75,25 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
                     .toList();
         }
 
-        SaveSessionAnalysisResult saved = save(sessionId, classSummary, sections, classDurationMs);
+        SaveSessionAnalysisResult saved = save(sessionId, classSummary, sections, rangeMs);
         return new AnalyzeSessionContentResult(sessionId, saved.saved(), saved.sectionCount());
+    }
+
+    /**
+     * 구간이 들어가야 하는 범위. 수업 길이와 <b>전사가 실제로 덮는 구간</b> 중 더 긴 쪽이다.
+     *
+     * <p>수업 길이만 쓰면 안 된다. 세션 종료는 DB 상태 전이로 확정되고 Egress 중지는 그 뒤에 일어나므로(S15P11A105-265), 녹화와 전사는 {@code endedAt} 을 몇 초 넘길
+     * 수 있다. 그때 모델은 전사에 있는 값을 정직하게 돌려주는데 수업 길이로 자르면 그 응답 전체가 계약 위반이 되고, 스키마 위반은 재시도 대상이 아니라서 그 세션은 리포트를 영영 받지 못한다.
+     *
+     * <p>전사 범위를 상한으로 인정해도 검증이 헐거워지지 않는다 — 모델에게는 전사에 있는 오프셋만 보여 주므로, 그보다 큰 값은 여전히 거절된다. 구간이 가리키는 지점도 녹화가 실제로 덮는 구간이라 재생할
+     * 수 있다.
+     */
+    private long analysisRangeMs(long classDurationMs, GetSessionTranscriptResult transcript) {
+        long transcriptEndMs = transcript.lines().stream()
+                .mapToLong(TranscriptLine::endOffsetMs)
+                .max()
+                .orElse(0);
+        return Math.max(classDurationMs, transcriptEndMs);
     }
 
     /**

@@ -98,6 +98,32 @@ class AnalyzeSessionContentServiceTest {
         assertEquals("React 상태 관리", analysisRequests.getFirst().lectureTitle());
     }
 
+    /**
+     * 전사가 세션 종료 시각을 넘겨도 그 범위를 인정한다.
+     *
+     * <p>세션 종료는 DB 전이로 확정되고 Egress 중지는 그 뒤에 일어나므로(S15P11A105-265) 녹화·전사는 {@code endedAt} 을 몇 초 넘길 수 있다. 수업 길이로 자르면 모델이
+     * 전사에 있는 값을 정직하게 답해도 계약 위반이 되고, 스키마 위반은 재시도 대상이 아니라 그 세션은 리포트를 영영 받지 못한다.
+     */
+    @Test
+    void acceptsATranscriptThatRunsPastTheSessionEnd() {
+        long pastTheEndMs = CLASS_DURATION_MS + 8_000;
+        transcript = Optional.of(new GetSessionTranscriptResult(
+                false,
+                List.of(
+                        new TranscriptLine(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."),
+                        new TranscriptLine(CLASS_DURATION_MS - 2_000, pastTheEndMs, "마지막 정리까지 녹화가 조금 더 돌았습니다."))));
+        analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
+                "React 상태 관리를 다뤘다.",
+                List.of(new AnalyzedSection("상태 관리", "useState 와 useReducer 를 비교했다.", 0, pastTheEndMs))));
+
+        AnalyzeSessionContentResult result = analyze();
+
+        assertTrue(result.analyzed());
+        // 어댑터에게도, 적재에게도 넓혀진 범위를 넘긴다 — 둘이 다른 상한을 쓰면 한쪽만 통과한다.
+        assertEquals(pastTheEndMs, analysisRequests.getFirst().classDurationMs());
+        assertEquals(pastTheEndMs, savedCommands.getFirst().classDurationMs());
+    }
+
     /** 무음 수업은 단일 구간으로 폴백한다. 구간이 비면 뒤 단계가 읽을 경계가 사라진다. */
     @Test
     void fallsBackToASingleSectionForASilentClass() {

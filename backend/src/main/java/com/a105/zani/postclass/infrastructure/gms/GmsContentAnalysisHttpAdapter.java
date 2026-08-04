@@ -75,9 +75,12 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
 
             [구간 분할 규칙]
             - 고정 길이로 자르지 않는다. 다루는 내용이 바뀌는 지점에서 나눈다.
-            - 구간은 시간순이고 서로 겹치지 않는다. 앞 구간의 endOffsetMs 는 다음 구간의 startOffsetMs 보다 크지 않다.
-            - startOffsetMs 와 endOffsetMs 는 transcript 에 있는 값의 범위 안에서 고른다. classDurationMs 를 넘지 않는다.
-            - endOffsetMs 는 startOffsetMs 보다 커야 한다. 길이가 0 인 구간은 만들지 않는다.
+            - 구간은 수업 전체를 빈틈없이 덮는다. 첫 구간은 0 에서 시작하고, 각 구간의 endOffsetMs 는
+              다음 구간의 startOffsetMs 와 같은 값이며, 마지막 구간은 classDurationMs 에서 끝난다.
+              발화가 없는 시간도 앞 구간에 포함시킨다 — 어느 시점으로 이동해도 속한 구간이 있어야 한다.
+            - 발화 한 줄마다 구간을 만들지 않는다. 같은 주제를 다루는 연속된 발화는 한 구간으로 묶는다.
+            - 구간은 시간순이고 서로 겹치지 않는다. endOffsetMs 는 startOffsetMs 보다 커야 한다.
+            - 오프셋은 classDurationMs 를 넘지 않는다.
             - 인사, 출석 확인, 공지만 있는 시간은 앞뒤 구간에 붙인다. 별도 구간으로 만들지 않는다.
             - 구간 수는 %d개를 넘지 않는다.
 
@@ -278,7 +281,20 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
         for (SectionResponse section : parsed.sections()) {
             AnalyzedSection converted = convert(section, request.classDurationMs());
             if (converted == null) {
-                log.warn("Content analysis section out of contract after {}ms", elapsedMs);
+                // 어느 값이 걸렸는지 남긴다. 사유 없이 "계약 위반"만 남기면 프롬프트를 고칠 단서가 없다.
+                log.warn(
+                        "Content analysis section out of contract after {}ms:"
+                                + " start={} end={} classDuration={} titleLength={} summaryLength={}",
+                        elapsedMs,
+                        section == null ? null : section.startOffsetMs(),
+                        section == null ? null : section.endOffsetMs(),
+                        request.classDurationMs(),
+                        section == null || section.title() == null
+                                ? null
+                                : section.title().strip().length(),
+                        section == null || section.summary() == null
+                                ? null
+                                : section.summary().strip().length());
                 return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
             }
             sections.add(converted);
