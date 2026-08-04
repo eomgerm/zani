@@ -1,0 +1,136 @@
+{
+  "seed": 43,
+  "status": "complete",
+  "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+  "configuration_sha256": "03a82ac7eaf05d46a9af018ae9eb468d8edc69e9f3df7c0bb2470553cc3dd03e",
+  "inputs": {
+    "stage1": {
+      "protocol_output": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10",
+      "seeds": {
+        "42": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-42/best.pt",
+          "sha256": "bed2a064a7bad212f9f1d48255c9524d892d62acdbe684056577699141fea976",
+          "size_bytes": 12912571
+        },
+        "43": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-43/best.pt",
+          "sha256": "9b718b4c21034b741d5f0044c4f195e1b320e70b6d33559ed024c3f7271582bb",
+          "size_bytes": 12912571
+        },
+        "44": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-44/best.pt",
+          "sha256": "cb602805b0fe1caa33a33cf1eb373451b249043c8b974a094ccedcf1348d6e53",
+          "size_bytes": 12912571
+        },
+        "45": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-45/best.pt",
+          "sha256": "cd1be8c429d9253ac4be4564a0a83f098973ac8e3764747071da5afb5baf78c2",
+          "size_bytes": 12912571
+        },
+        "46": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-46/best.pt",
+          "sha256": "7e9b7bc4f4bf3c8b35fa6ba3c52fc1de9e13c48f40cc0ae1b5ee5adddcf39ada",
+          "size_bytes": 12912571
+        },
+        "47": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-47/best.pt",
+          "sha256": "c0a38552aed934c735890e2f8d7e61b9231b92f8818135906cb702d2c938b51a",
+          "size_bytes": 12912571
+        },
+        "48": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-48/best.pt",
+          "sha256": "96c2086d5de7ef6d7e71e279f5aea4b1e95b76a3aa09b0923bd55ce48086a125",
+          "size_bytes": 12912571
+        },
+        "49": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-49/best.pt",
+          "sha256": "b72fcd611c86ce684ae96ec9a260b6c99611f0b8b7a3450cc2a18df1167f79cc",
+          "size_bytes": 12912571
+        },
+        "50": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-50/best.pt",
+          "sha256": "e379f46fdfdacbecf2dfa060065d41f2e2d329e91cd22bb8b72c1e0bc1442ba9",
+          "size_bytes": 12912571
+        },
+        "51": {
+          "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-51/best.pt",
+          "sha256": "647ee2f312cd7dfed540fe20f177489135db037fbf99c91f73d47fd451457131",
+          "size_bytes": 12912571
+        }
+      },
+      "sha256": "e0b8fd74d5b89daa7a6747f8ec8bef1d5e5fa46589e485489a3e9e65718c37bf"
+    }
+  },
+  "environment": {
+    "python": "3.12.6",
+    "pytorch": "2.11.0+cu128",
+    "cuda_runtime": "12.8",
+    "cuda_available": true,
+    "requested_device": "cuda",
+    "cuda_device": {
+      "index": 0,
+      "name": "NVIDIA L40S",
+      "capability": [
+        8,
+        9
+      ]
+    },
+    "cublas_workspace_config": ":4096:8"
+  },
+  "best_epoch": 4,
+  "validation": {
+    "accuracy": 0.6775510204081633,
+    "macro_f1": 0.5816793013349013,
+    "within_one_accuracy": 0.9622448979591837,
+    "quadratic_weighted_kappa": 0.7048094416196296
+  },
+  "artifacts": {
+    "checkpoint": {
+      "path": "seed-43/best.pt",
+      "sha256": "5524c58b9ef9ab53398b2e5ec9728946394cc89a9988c8f6efd51022fc84837a",
+      "size_bytes": 13312819
+    },
+    "metrics": {
+      "path": "seed-43/metrics.json",
+      "sha256": "e3b28bfe95ddefdd979442eaca0477128406fd0e105c9f4832fe88e0f739b3f2",
+      "size_bytes": 28676
+    },
+    "onnx_model": {
+      "path": "seed-43/onnx/engagement.onnx",
+      "sha256": "63f0d2946523b03a5f1febb44e524bd72bd9f7f453e0d79c6b1d9f2a2d029c15",
+      "size_bytes": 13631137
+    },
+    "onnx_metadata": {
+      "path": "seed-43/onnx/engagement.metadata.json",
+      "sha256": "1b0391177ad98764c24b643b49b1313f8494ecfb123d5ef4eccb2b474caba1c2",
+      "size_bytes": 305
+    }
+  },
+  "probability_mixing": {
+    "selected": {
+      "alpha": 0.0,
+      "temperature_softmax": 1.0,
+      "temperature_ordinal": 1.5,
+      "epsilon": 1e-06
+    },
+    "constraints_satisfied": true,
+    "validation_low_engagement": {
+      "recall": 0.5792682926829268,
+      "false_positive_rate": 0.05392156862745098,
+      "precision": 0.6834532374100719,
+      "f1": 0.627062706270627,
+      "consecutive_detection_rate": 0.1943744921721971,
+      "false_alarms_per_90min": 0.08466059434154286
+    },
+    "reference_low_engagement": {
+      "recall": 0.5121951219512195,
+      "false_positive_rate": 0.03308823529411765,
+      "precision": 0.7567567567567568,
+      "f1": 0.610909090909091,
+      "consecutive_detection_rate": 0.13437123663324677,
+      "false_alarms_per_90min": 0.019562059523203747
+    },
+    "validation_accuracy": 0.676530612244898,
+    "reference_validation_accuracy": 0.6673469387755102
+  }
+}
