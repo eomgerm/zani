@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { MenuIcon } from "@/shared/ui";
+import { MenuIcon, PictoInbox } from "@/shared/ui";
 import type { TranscriptSegment } from "../infrastructure/studentReportApi";
 import { formatOffset } from "./TimelineStatusBar";
 import { activeSegmentIndex } from "./transcriptCursor";
@@ -49,7 +49,7 @@ export function TranscriptTimeline({ segments, currentSeconds, onSeek }: Transcr
 
       {segments.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-5 py-10 text-center text-ink-fainter">
-          <div className="text-[32px]">📭</div>
+          <PictoInbox size={36} />
           <div className="text-[13px] font-bold text-ink-muted">전사가 아직 없어요</div>
           <div className="text-xs">분석이 끝나면 수업 내용이 여기에 채워져요.</div>
         </div>

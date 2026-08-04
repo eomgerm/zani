@@ -177,6 +177,62 @@ public class LiveKitTrackEgressAdapter implements TrackEgressPort {
     }
 
     /**
+     * 세션 room 의 살아 있는 Egress 를 모두 멈춘다.
+     *
+     * <p>다른 조회들과 달리 실패를 예외로 올리지 않는다. 이 호출은 세션 종료의 뒷정리이고, 여기서 예외를 올리면 미디어 서버가 앓을 때 종료 자체가 되돌아간다 — 수업이 계속 살아 있는 것으로 남는 쪽이
+     * 더 나쁘다. 멈추지 못한 Egress 는 room 이 닫히면서 입력을 잃고 스스로 끝난다.
+     */
+    @Override
+    public int stopLiveEgress(Long sessionId) {
+        MediaServerCredentials credentials = mediaRoomPort.credentials();
+        if (!credentials.isConfigured()) {
+            return 0;
+        }
+        String roomName = mediaRoomPort.roomName(sessionId);
+        try {
+            Response<java.util.List<LivekitEgress.EgressInfo>> response =
+                    egressClient(credentials).listEgress(roomName, null, false).execute();
+            if (!response.isSuccessful() || response.body() == null) {
+                log.warn("LiveKit 이 Egress 목록 조회를 거절했습니다. sessionId={} code={}", sessionId, response.code());
+                return 0;
+            }
+            int stopped = 0;
+            for (LivekitEgress.EgressInfo info : response.body()) {
+                if (!isLive(info.getStatus()) || info.getEgressId().isBlank()) {
+                    continue;
+                }
+                if (stop(credentials, info.getEgressId(), sessionId)) {
+                    stopped++;
+                }
+            }
+            return stopped;
+        } catch (IOException | RuntimeException unavailable) {
+            log.warn("LiveKit 을 쓰지 못해 Egress 를 멈추지 못했습니다. sessionId={}", sessionId, unavailable);
+            return 0;
+        }
+    }
+
+    /** Egress 하나를 멈춘다. 한 건이 실패해도 나머지는 계속 시도한다 — 남은 실행이 많을수록 방치 비용이 크다. */
+    private boolean stop(MediaServerCredentials credentials, String egressId, Long sessionId) {
+        try {
+            Response<LivekitEgress.EgressInfo> stopped =
+                    egressClient(credentials).stopEgress(egressId).execute();
+            if (!stopped.isSuccessful()) {
+                log.warn(
+                        "LiveKit 이 Egress 중지를 거절했습니다. sessionId={} egressId={} code={}",
+                        sessionId,
+                        egressId,
+                        stopped.code());
+                return false;
+            }
+            return true;
+        } catch (IOException | RuntimeException unavailable) {
+            log.warn("Egress 를 멈추지 못했습니다. sessionId={} egressId={}", sessionId, egressId, unavailable);
+            return false;
+        }
+    }
+
+    /**
      * 프레임을 아직 흘려보낼 수 있는 상태인지. ENDING 도 포함한다 — 종료 중인 실행 위에 새 실행을 얹으면 두 스트림이 뒤섞여 링버퍼의 벽시계 정렬이 영구히 어긋난다. 반대로 ENDING 을 채택해서
      * 잃는 것은 그 세션의 코칭 오디오뿐이라(수업·녹화는 정상) 이쪽이 안전하다.
      */

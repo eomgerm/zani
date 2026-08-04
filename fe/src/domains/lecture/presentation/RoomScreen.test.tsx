@@ -994,7 +994,7 @@ describe("RoomScreen attention wiring", () => {
       lastProps()?.onDetection?.(lowOutput);
     });
 
-    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+    expect(screen.getByText("잠깐 확인할게요")).toBeVisible();
   });
 
   it("pauses both counters while a prompt is visible and resets them when it closes", async () => {
@@ -1010,14 +1010,14 @@ describe("RoomScreen attention wiring", () => {
     act(() => {
       for (let count = 0; count < 3; count += 1) capturedDetectionCallback?.(lowOutput);
     });
-    expect(screen.getByText("잠깐 확인할게요 ✋")).toBeVisible();
+    expect(screen.getByText("잠깐 확인할게요")).toBeVisible();
 
     act(() => {
       for (let count = 0; count < 3; count += 1) {
         capturedDetectionCallback?.(unmeasurable);
       }
     });
-    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요")).not.toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /이해했어요/ }));
@@ -1027,9 +1027,9 @@ describe("RoomScreen attention wiring", () => {
         lastProps()?.onDetection?.(unmeasurable);
       }
     });
-    expect(screen.queryByText("얼굴이 잘 보이지 않아요 🙂")).not.toBeInTheDocument();
+    expect(screen.queryByText("얼굴이 잘 보이지 않아요")).not.toBeInTheDocument();
 
     act(() => lastProps()?.onDetection?.(unmeasurable));
-    expect(screen.getByText("얼굴이 잘 보이지 않아요 🙂")).toBeVisible();
+    expect(screen.getByText("얼굴이 잘 보이지 않아요")).toBeVisible();
   });
 });

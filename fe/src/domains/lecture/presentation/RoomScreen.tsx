@@ -11,6 +11,7 @@ import {
   MicIcon,
   MicOffIcon,
   PeopleIcon,
+  PictoBars,
   ScreenShareIcon,
 } from "@/shared/ui";
 import {
@@ -81,15 +82,15 @@ const ENDED_KICK_DELAY_MS = 4_000;
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
   disabled: {
-    title: "카메라를 켜주세요 📷",
+    title: "카메라를 켜주세요",
     body: "수업 참여도를 확인하려면 카메라가 필요해요. 지금 켜실 수 있나요?",
   },
   denied: {
-    title: "카메라 권한이 필요해요 🔒",
+    title: "카메라 권한이 필요해요",
     body: "브라우저에서 카메라 권한을 허용해주세요. 주소창 옆 자물쇠 아이콘에서 바꿀 수 있어요.",
   },
   muted: {
-    title: "카메라를 사용할 수 없어요 ⚠️",
+    title: "카메라를 사용할 수 없어요",
     body: "다른 앱이 카메라를 사용 중인지 확인해주세요.",
   },
 };
@@ -720,9 +721,12 @@ function RoomScreenContent({
                           ? `강의: ${stageName} 선생님`
                           : `발표: ${stageName}`}
                       </div>
-                      <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                        📶 {stageName}
-                        {stageParticipant?.role === "instructor" ? " 선생님" : ""}
+                      <div className="z-stage-chip absolute bottom-4 left-4 flex items-center gap-1.5 font-bold">
+                        <PictoBars size={12} />
+                        <span>
+                          {stageName}
+                          {stageParticipant?.role === "instructor" ? " 선생님" : ""}
+                        </span>
                       </div>
                     </>
                   )}
@@ -803,7 +807,7 @@ function RoomScreenContent({
       {/* 확인 프롬프트 (학생 전용 — 강사는 판정 대상이 아니다) */}
       {!isInstructor && understandingCheck.prompt && (
         <CoachingPromptPanel
-          title="잠깐 확인할게요 ✋"
+          title="잠깐 확인할게요"
           body="방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요."
           remainingMs={understandingCheck.prompt.remainingMs}
           durationMs={understandingCheck.prompt.durationMs}
@@ -833,7 +837,7 @@ function RoomScreenContent({
       {/* 자세 안내 (학생 전용) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
       {!isInstructor && postureGuide.prompt && (
         <CoachingPromptPanel
-          title="얼굴이 잘 보이지 않아요 🙂"
+          title="얼굴이 잘 보이지 않아요"
           body="카메라에 얼굴이 나오도록 조정해주세요."
           remainingMs={postureGuide.prompt.remainingMs}
           durationMs={postureGuide.prompt.durationMs}

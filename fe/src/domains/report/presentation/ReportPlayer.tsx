@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { PictoClockMuted, PictoWarn } from "@/shared/ui";
 import { formatOffset } from "./TimelineStatusBar";
 
 /**
@@ -42,9 +43,9 @@ const safePlay = (video: HTMLVideoElement) => {
   }
 };
 
-const DarkNotice = ({ icon, title, detail }: { icon: string; title: string; detail: string }) => (
+const DarkNotice = ({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) => (
   <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-[linear-gradient(120deg,#1c2036,#20263f_55%,#1a1f34)] px-6 text-center">
-    <div className="text-[38px]">{icon}</div>
+    <div className="flex justify-center">{icon}</div>
     <div className="text-[15px] font-extrabold text-white">{title}</div>
     <div className="text-xs text-panel-dim">{detail}</div>
   </div>
@@ -195,7 +196,7 @@ export function ReportPlayer({
     if (url === null) {
       return (
         <DarkNotice
-          icon="🎞️"
+          icon={<PictoClockMuted size={38} />}
           title="녹화가 아직 준비되지 않았어요"
           detail="분석이 끝나면 다시 보기가 열려요."
         />
@@ -205,7 +206,7 @@ export function ReportPlayer({
     if (failed) {
       return (
         <DarkNotice
-          icon="⚠️"
+          icon={<PictoWarn size={38} />}
           title="녹화를 재생하지 못했어요"
           detail="네트워크를 확인하고 잠시 후 다시 시도해 주세요."
         />
@@ -264,6 +265,8 @@ export function ReportPlayer({
           className="h-1 w-full cursor-pointer appearance-auto bg-[#2f344f] accent-violet"
         />
 
+        {/* 재생 컨트롤 글리프는 시안 그대로 둔다 — 픽토그램 카탈로그(258)에 재생·정지·볼륨·
+            전체화면 아이콘이 없다. 스크린리더는 각 버튼의 aria-label 을 읽는다. */}
         <div className="flex items-center gap-4 px-4 py-3 text-[#c7ccf0]">
           <button
             type="button"

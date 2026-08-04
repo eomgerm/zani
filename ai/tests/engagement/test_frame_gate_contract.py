@@ -368,3 +368,56 @@ def test_feature_manifest_rebuild_excludes_raw_clip_below_runtime_gate(
             cached["representation_fingerprint"].item() == provenance["representation_fingerprint"]
         )
         assert cached["raw_manifest_sha256"].item() == provenance["raw_manifest_sha256"]
+
+
+def _no_frames(_: Path) -> Iterator[VideoFrame]:
+    return iter(())
+
+
+def test_keep_low_coverage_caches_the_clip_the_gate_drops(tmp_path: Path) -> None:
+    """arXiv:2403.17175 §5 classifies absent-face samples, so it trained on them.
+
+    The gate drops exactly those clips, and they are predominantly Not-Engaged,
+    which is where the per-class shortfall against the paper's split sits. With
+    the gate off the clip is cached with its gaps intact, so the representation
+    and the protocol -- not the cache -- decide what to do with them.
+    """
+    clip = _process_raw_clip(
+        tmp_path / "clip.mp4",
+        _SixtyNineFaceLandmarker(),
+        frame_source=_hundred_frames,
+        require_coverage=False,
+    )
+
+    assert clip.timestamps_ms.shape[0] == 100
+    assert int(clip.valid_mask.sum()) == 69
+
+
+def test_undecodable_clip_is_excluded_under_either_policy(tmp_path: Path) -> None:
+    """A zero-frame npz can never satisfy the cache check, so it must not be cached.
+
+    Caching one would make every later run re-extract the clip forever.
+    """
+    for require_coverage in (True, False):
+        with pytest.raises(InsufficientRawCoverageError) as error:
+            _process_raw_clip(
+                tmp_path / "clip.mp4",
+                _SeventyFaceLandmarker(),
+                frame_source=_no_frames,
+                require_coverage=require_coverage,
+            )
+        assert str(error.value) == "no frames could be decoded from the clip"
+
+
+def test_coverage_policy_is_part_of_the_extraction_identity(tmp_path: Path) -> None:
+    """Two policies must never share a fingerprint, or their caches would mix."""
+    model = tmp_path / "face_landmarker.task"
+    model.write_bytes(b"model")
+    gated = _build_raw_provenance(model, workers=2, max_excluded_fraction=0.1)
+    ungated = _build_raw_provenance(
+        model, workers=2, max_excluded_fraction=0.1, require_coverage=False
+    )
+
+    assert gated.require_coverage is True
+    assert ungated.require_coverage is False
+    assert gated.extraction_fingerprint != ungated.extraction_fingerprint

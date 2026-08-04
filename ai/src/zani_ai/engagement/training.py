@@ -880,10 +880,21 @@ def _save_checkpoint(
         payload["feature_mean"] = statistics.mean
         payload["feature_std"] = statistics.std
     else:
-        # ST-GCN's adjacency `partitions` buffer is fixed but not learned, so it
-        # is not part of `model_state`'s gradient-bearing parameters logically;
-        # store it explicitly so the checkpoint is self-contained.
-        payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
+        from zani_ai.engagement.stgcn import PaperEngagementSTGCN
+
+        # An ST-GCN's graph buffer is fixed but not learned, so it is not part of
+        # `model_state`'s gradient-bearing parameters logically; store it
+        # explicitly so the checkpoint is self-contained.
+        #
+        # The two ST-GCN families hold different graphs -- E1's three
+        # spatial-configuration partitions `[3,V,V]` and the paper's single
+        # `A+I` `[V,V]` -- so each gets its own key. That key is what
+        # `load_checkpoint` dispatches on: sharing one would let a checkpoint
+        # load and come back as the wrong model.
+        if isinstance(model, PaperEngagementSTGCN):
+            payload["adjacency"] = model.adjacency.detach().cpu().numpy()
+        else:
+            payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
     payload.update(
         {
             "epoch": epoch,
@@ -905,12 +916,28 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     model_family = checkpoint.get("model_family", "transformer")
     cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
     if model_family == "stgcn":
-        from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+        from zani_ai.engagement.stgcn import (
+            EngagementSTGCN,
+            PaperEngagementSTGCN,
+            PaperSTGCNConfig,
+            STGCNConfig,
+        )
 
         if "channels" in cfg_dict:
             cfg_dict["channels"] = tuple(cfg_dict["channels"])
-        stgcn_config = STGCNConfig(**cfg_dict)
-        stgcn_model = EngagementSTGCN(torch.as_tensor(checkpoint["partitions"]), stgcn_config)
+        # Which graph the checkpoint carries decides which model it is. See the
+        # note in `_save_checkpoint`: `model_family` is "stgcn" for both
+        # families, because it is part of the reproducibility identity and
+        # splitting it would rewrite E1's configuration hash.
+        stgcn_model: nn.Module
+        if "adjacency" in checkpoint:
+            stgcn_model = PaperEngagementSTGCN(
+                torch.as_tensor(checkpoint["adjacency"]), PaperSTGCNConfig(**cfg_dict)
+            )
+        else:
+            stgcn_model = EngagementSTGCN(
+                torch.as_tensor(checkpoint["partitions"]), STGCNConfig(**cfg_dict)
+            )
         stgcn_model.load_state_dict(checkpoint["model_state"])
         return stgcn_model.to(device)
     if model_family != "transformer":
@@ -1125,23 +1152,36 @@ def train_model(
     best_epoch = -1
     stale_epochs = 0
     best_validation: EvaluationMetrics | None = None
-    # Selection stays on macro-F1, but QWK is recorded per epoch so "would QWK
-    # have picked another epoch?" can be answered after the fact, without
-    # retraining and without making the selection metric itself ambiguous.
+    # Selection stays on macro-F1, but QWK and accuracy are recorded per epoch
+    # so "would another metric have picked another epoch?" can be answered after
+    # the fact, without retraining and without making the selection metric itself
+    # ambiguous. Accuracy matters for arXiv:2403.17175, which reports accuracy
+    # and does not state how it picked a checkpoint: with the full history, the
+    # final-epoch and best-accuracy readings are both recoverable and stay
+    # separable from the macro-F1 selection.
+    #
+    # The learning rate is recorded alongside so a decay schedule can be
+    # verified from the artifact rather than assumed from the configuration.
     validation_history: list[dict[str, object]] = []
+
+    def history_entry(epoch: int, validation: EvaluationMetrics) -> dict[str, object]:
+        return {
+            "epoch": epoch,
+            "accuracy": validation.accuracy,
+            "macro_f1": validation.macro_f1,
+            "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+            "learning_rate": optimizer.param_groups[0]["lr"],
+        }
+
     if curriculum_ambiguity is None:
         train_loader = _loader(datasets.train, config, shuffle=True)
         valid_loader = _loader(datasets.valid, config, shuffle=False)
         for epoch in range(config.max_epochs):
             _train_epoch(model, train_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
-            validation_history.append(
-                {
-                    "epoch": epoch,
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
-            )
+            # Before `scheduler.step()`: the entry has to name the rate this
+            # epoch trained at, not the one the next epoch will use.
+            validation_history.append(history_entry(epoch, validation))
             if progress is not None:
                 progress(epoch, validation)
             if scheduler is not None:
@@ -1184,12 +1224,7 @@ def train_model(
             _train_epoch(model, warmup_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {
-                    "epoch": epoch,
-                    "curriculum_stage": "reliable_warmup",
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
+                {**history_entry(epoch, validation), "curriculum_stage": "reliable_warmup"}
             )
             if progress is not None:
                 progress(epoch, validation)
@@ -1199,12 +1234,7 @@ def train_model(
             _train_curriculum_epoch(model, mixed_loader, optimizer, curriculum_objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {
-                    "epoch": epoch,
-                    "curriculum_stage": "mixed",
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
+                {**history_entry(epoch, validation), "curriculum_stage": "mixed"}
             )
             if progress is not None:
                 progress(epoch, validation)

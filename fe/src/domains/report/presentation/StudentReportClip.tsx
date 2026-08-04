@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
+import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import type { StudentReportRequester } from "../infrastructure/studentReportApi";
 import { ReportPlayer, type SeekRequest } from "./ReportPlayer";
 import { TranscriptTimeline } from "./TranscriptTimeline";
@@ -13,13 +14,13 @@ const Notice = ({
   detail,
   action,
 }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   detail?: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
 }) => (
   <div className="z-card rounded-2xl px-5 py-[70px] text-center text-ink-fainter">
-    <div className="mb-3.5 text-[44px]">{icon}</div>
+    <div className="mb-3.5 flex justify-center">{icon}</div>
     <div className="mb-1 font-bold text-ink-muted">{title}</div>
     {detail !== undefined && <div className="text-[13.5px]">{detail}</div>}
     {action}
@@ -63,13 +64,13 @@ export function StudentReportClip({ sessionId, title, request }: StudentReportCl
   }, []);
 
   if (status === "loading") {
-    return <Notice icon="⏳" title="다시 보기를 불러오는 중이에요" />;
+    return <Notice icon={<PictoClockMuted size={44} />} title="다시 보기를 불러오는 중이에요" />;
   }
 
   if (status === "forbidden") {
     return (
       <Notice
-        icon="🔒"
+        icon={<PictoLock size={44} />}
         title="이 수업의 다시 보기를 볼 수 없어요"
         detail="내가 참여한 수업이 맞는지 확인해 주세요."
       />
@@ -79,7 +80,7 @@ export function StudentReportClip({ sessionId, title, request }: StudentReportCl
   if (status === "notReady") {
     return (
       <Notice
-        icon="⏳"
+        icon={<PictoClockMuted size={44} />}
         title="아직 분석이 끝나지 않았어요"
         detail="분석이 완료되면 녹화와 전사를 볼 수 있어요."
       />
@@ -89,7 +90,7 @@ export function StudentReportClip({ sessionId, title, request }: StudentReportCl
   if (status === "failed" || report === null) {
     return (
       <Notice
-        icon="⚠️"
+        icon={<PictoWarn size={44} />}
         title="다시 보기를 불러오지 못했어요"
         action={
           <button type="button" onClick={retry} className="z-btn z-btn-outline z-btn-md mt-3">
