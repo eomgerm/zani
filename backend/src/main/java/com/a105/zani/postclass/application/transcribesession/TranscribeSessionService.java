@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
 
 import lombok.extern.slf4j.Slf4j;
@@ -128,14 +130,24 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
                 // 그대로인가" 를 알 수 없으므로 남긴다.
                 log.warn("Silence prefilter is enabled but not implemented yet, transcribing every chunk");
             }
-            for (SessionTrackFile track : tracks) {
-                processTrack(sessionId, track, queuedAt);
+            try {
+                for (SessionTrackFile track : tracks) {
+                    processTrack(sessionId, track, queuedAt);
+                }
+                assembleAndAdvance(sessionId, tracks);
+            } finally {
+                // 트랙별 정리는 processTrack 이 하지만 세션 디렉터리 자체는 남는다. 실행마다 빈 디렉터리가
+                // 하나씩 쌓이면 몇 달 뒤 inode 를 먹는다 — 지우는 비용이 없으므로 여기서 접는다.
+                deleteRecursively(sessionWorkDir(sessionId));
             }
-            assembleAndAdvance(sessionId, tracks);
         } catch (RuntimeException failure) {
             // 실행 한 번에 실패 보고도 한 번이다. 청크별 실패는 이미 체크포인트 행에 각각 남아 있다.
             recordFailure(sessionId, failure);
         }
+    }
+
+    private Path sessionWorkDir(Long sessionId) {
+        return settings.workDir().resolve("session-" + sessionId);
     }
 
     /** 8시간 마감의 기준점. 청크마다 재시도 여부를 정할 때 쓴다. */
@@ -191,8 +203,7 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
      */
     private void processTrack(Long sessionId, SessionTrackFile track, Instant queuedAt) {
         Path source = resolveSource(track);
-        Path trackWorkDir =
-                settings.workDir().resolve("session-" + sessionId).resolve("file-" + track.recordingFileId());
+        Path trackWorkDir = sessionWorkDir(sessionId).resolve("file-" + track.recordingFileId());
         try {
             Files.createDirectories(trackWorkDir);
             List<AudioChunk> chunks = audioChunkPort.split(source, trackWorkDir);
@@ -408,12 +419,21 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
      * 실패를 재시도 여부로 가른다. 조립·저장 계층이 예외 종류로 이미 판정해 둔 것을 그대로 옮긴다.
      *
      * <p>모르는 예외는 재시도하지 않는다. 정체를 모르는 실패는 대개 버그이고, 버그는 기다려도 낫지 않는다 — 재시도로 두면 8시간 예산을 태운 뒤에야 드러난다.
+     *
+     * <p>{@link CompletionException} 은 껍데기라 벗긴다. 청크를 병렬로 돌리므로 {@code join()} 이 원인을 이것으로 감싸는데, 그대로 보면 무엇이든 "모르는 예외" 가 되어
+     * 재시도 가능한 실패까지 최종 실패로 굳는다.
      */
     private boolean isRetryable(RuntimeException failure) {
+        if (failure instanceof CompletionException wrapper && wrapper.getCause() instanceof RuntimeException cause) {
+            return isRetryable(cause);
+        }
         if (failure instanceof PostClassTranscriptionFailedException gmsFailure) {
             return gmsFailure.retryable();
         }
-        return failure instanceof TranscriptNotReadyException
+        // 실행기 포화는 정상 동작이라 재시도 대상이다. 지금 구성(오케스트레이션 1개, 묶음마다 join)에서는
+        // 나올 수 없지만, 동시성 설정이 바뀌면 나올 수 있고 그때 최종 실패로 굳으면 원인을 찾기 어렵다.
+        return failure instanceof RejectedExecutionException
+                || failure instanceof TranscriptNotReadyException
                 || failure instanceof SessionRecordingNotSettledException
                 || failure instanceof TranscriptStoreUnavailableException
                 || failure instanceof TranscriptionChunkStoreUnavailableException
@@ -425,8 +445,13 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
      * 실패 사유 문자열.
      *
      * <p>오류 코드나 예외 이름만 남긴다. 예외 메시지를 그대로 넣지 않는 이유는 그 안에 전사 원문이나 요청 URL 이 섞일 수 있기 때문이다 — 이 값은 DB 에 남고 운영 화면에 보인다.
+     *
+     * <p>{@link CompletionException} 은 껍데기라 벗긴다. 그대로 두면 사유가 전부 {@code CompletionException} 으로 기록돼 아무것도 구분하지 못한다.
      */
     private String reason(RuntimeException failure) {
+        if (failure instanceof CompletionException wrapper && wrapper.getCause() instanceof RuntimeException cause) {
+            return reason(cause);
+        }
         if (failure instanceof BusinessException business) {
             return business.errorCode().code();
         }

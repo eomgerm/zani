@@ -450,6 +450,52 @@ class TranscribeSessionServiceTest {
     }
 
     @Test
+    void 실행기_포화는_재시도_가능_실패로_보고한다() {
+        // CompletionException 껍데기를 벗기지 않으면 "모르는 예외" 가 되어 비재시도로 굳는다. 포화는
+        // 정상 동작이므로 그렇게 되면 잠깐 붐빈 것 때문에 세션이 최종 실패한다.
+        tracks.add(track(MIC_FILE, INSTRUCTOR, TrackSource.MICROPHONE, "raw/instructor/mic.ogg"));
+        Executor saturated = command -> {
+            throw new java.util.concurrent.RejectedExecutionException("saturated");
+        };
+        TranscribeSessionService service = new TranscribeSessionService(
+                saturated,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                new PostClassTranscriptionSettings(sourceRoot, workDir, Duration.ofMinutes(5), 2, "ko", false),
+                sessionId -> new SessionRecordingSnapshot(tracks, readiness),
+                new FakeAudioChunkPort(1),
+                chunkPort,
+                transcriptionPort,
+                new AssembleTranscriptService(
+                        new TranscriptPort() {
+                            @Override
+                            public void save(Long sessionId, TranscriptDocument document, Instant now) {
+                                savedDocuments.add(document);
+                            }
+
+                            @Override
+                            public Optional<TranscriptDocument> findBySessionId(Long sessionId) {
+                                return Optional.empty();
+                            }
+                        },
+                        Clock.fixed(NOW, ZoneOffset.UTC)),
+                command -> {
+                    advanced.add(command.targetStatus());
+                    return new AdvancePipelineJobResult(command.targetStatus(), true);
+                },
+                command -> {
+                    pipelineFailures.add(command);
+                    return new RecordPipelineFailureResult(PipelineStatus.TRANSCRIBING, NOW.plusSeconds(120), null);
+                },
+                new InMemoryQueuedAtPort());
+
+        service.transcribe(SESSION_ID);
+
+        assertEquals(1, pipelineFailures.size());
+        assertTrue(pipelineFailures.get(0).retryable(), "포화는 기다리면 풀리므로 재시도 가능이다");
+        assertTrue(advanced.isEmpty());
+    }
+
+    @Test
     void 어떤_종료_경로에서도_임시_파일을_지운다() throws IOException {
         tracks.add(track(MIC_FILE, INSTRUCTOR, TrackSource.MICROPHONE, "raw/instructor/mic.ogg"));
         transcriptionPort.failures.put("chunk-0.ogg", new PostClassTranscriptionFailedException(true));
@@ -457,6 +503,9 @@ class TranscribeSessionServiceTest {
         service(2).transcribe(SESSION_ID);
 
         assertEquals(0, workFiles(), "실패해도 청크 파일이 남지 않아야 한다");
+        assertFalse(
+                Files.exists(workDir.resolve("session-" + SESSION_ID)),
+                "세션 디렉터리도 남기지 않는다. 실행마다 빈 디렉터리가 쌓이면 몇 달 뒤 inode 를 먹는다");
     }
 
     @Test
