@@ -114,7 +114,8 @@ class FinalizationManifestFileAdapterTest {
     }
 
     private FinalizationManifestFileAdapter adapter() {
-        return new FinalizationManifestFileAdapter(new RecordingFinalizationProperties(tempDir.toString()));
+        return new FinalizationManifestFileAdapter(new RecordingFinalizationProperties(
+                "/out", tempDir.toString(), "/app/media/finalize-recording.sh", java.time.Duration.ofHours(4)));
     }
 
     private static RecordingManifest manifest(String relativePath) {
