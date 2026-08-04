@@ -64,10 +64,7 @@ export function ReportClipTab({
                   <span className="w-[42px] shrink-0 font-mono text-xs font-bold text-primary">
                     {t.t}
                   </span>
-                  <div className="text-[13px] leading-[1.55] text-ink-sub">
-                    <span className="mr-1.5 font-bold text-ink-label">{t.speaker}</span>
-                    {t.text}
-                  </div>
+                  <div className="text-[13px] leading-[1.55] text-ink-sub">{t.text}</div>
                 </div>
               ))}
             </div>

@@ -1,12 +1,6 @@
 import { EvalDonuts, PICTOGRAMS } from "@/shared/ui";
 import { GroupAttentionTimeline } from "@/domains/report";
-import {
-  evalDonutData,
-  improveTips,
-  insights,
-  instructorGlance,
-  instructorSummary,
-} from "../../fixtures";
+import { evalDonutData, improveTips, instructorGlance, instructorSummary } from "../../fixtures";
 
 interface Props {
   /** 참여도 타임라인을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
@@ -16,7 +10,7 @@ interface Props {
 }
 
 /**
- * 리포트 탭 2 (강사) — 한눈에 보기 · 집중 흐름 · 타임라인 · 인사이트 · AI 수업 피드백.
+ * 리포트 탭 2 (강사) — 한눈에 보기 · 집중 흐름 · 타임라인 · AI 수업 피드백.
  *
  * <p>제목은 박스 밖에 두고 내용만 박스에 담는다(디자인 문서 §6). 집중 흐름과 타임라인은 한
  * 응답에서 나오므로 report 도메인 컴포넌트가 두 블록을 함께 그린다.
@@ -50,28 +44,6 @@ export function InstructorReport({ sessionId, onJumpToClip }: Props) {
       </div>
 
       <GroupAttentionTimeline sessionId={sessionId} onJumpToClip={onJumpToClip} />
-
-      <div className="z-report-head">
-        <div className="z-section-title">인사이트</div>
-      </div>
-      <div className="grid grid-cols-4 gap-3.5">
-        {insights.map((it, i) => {
-          const Icon = PICTOGRAMS[it.icon];
-          return (
-            <div key={i} className="z-report-box p-4">
-              <div
-                className="mb-[11px] flex size-[34px] items-center justify-center rounded-[10px]"
-                style={{ background: it.bg }}
-              >
-                <Icon size={18} />
-              </div>
-              <div className="text-[12.5px] font-semibold leading-[1.55] text-ink-label">
-                {it.text}
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
       <div className="z-report-head">
         <div className="z-section-title">AI 수업 피드백</div>

@@ -28,6 +28,12 @@ export interface SectionTimelineProps {
   readonly scopeLabel: string;
   /** 클립 탭으로 옮겨 그 구간을 재생한다. 배선이 없으면 상세에 버튼을 내지 않는다. */
   readonly onJumpToClip?: (offsetSeconds: number) => void;
+  /**
+   * 열려 있는 상세의 구간. 차트의 구간 이름표도 같은 상세를 열기 때문에 바깥이 들고 있을 수 있다.
+   * 주지 않으면 이 컴포넌트가 스스로 들고 있는다.
+   */
+  readonly detailIndex?: number | null;
+  readonly onDetailChange?: (index: number | null) => void;
 }
 
 export function SectionTimeline({
@@ -36,9 +42,13 @@ export function SectionTimeline({
   onSelect,
   scopeLabel,
   onJumpToClip,
+  detailIndex: controlledDetailIndex,
+  onDetailChange,
 }: SectionTimelineProps) {
   const listRef = useRef<HTMLUListElement | null>(null);
-  const [detailIndex, setDetailIndex] = useState<number | null>(null);
+  const [ownDetailIndex, setOwnDetailIndex] = useState<number | null>(null);
+  const detailIndex = onDetailChange === undefined ? ownDetailIndex : (controlledDetailIndex ?? null);
+  const setDetailIndex = onDetailChange ?? setOwnDetailIndex;
 
   useEffect(() => {
     const list = listRef.current;
@@ -68,7 +78,7 @@ export function SectionTimeline({
   const selected = sections[Math.min(selectedIndex, sections.length - 1)];
   const labelOf = (section: SectionAverage, index: number) =>
     `구간 ${index + 1} · ${section.title} · ${formatOffset(section.startSeconds)}~${formatOffset(section.endSeconds)} · ` +
-    (section.focusLevel === null ? "값 없음" : `${section.focusLevel.toFixed(2)}단계`);
+    (section.focusLevel === null ? "값 없음" : `${Math.round(section.focusLevel)}단계`);
 
   return (
     <div>
@@ -111,7 +121,7 @@ export function SectionTimeline({
                         borderColor: color,
                       }}
                     >
-                      {section.focusLevel.toFixed(1)}
+                      {Math.round(section.focusLevel)}
                     </span>
                   )}
                 </span>

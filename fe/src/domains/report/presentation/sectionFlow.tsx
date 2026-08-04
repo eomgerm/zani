@@ -52,7 +52,7 @@ export function toSectionRows(
   points: readonly FlowPoint[],
   sections: readonly FlowSection[],
 ): Record<string, number | null>[] {
-  return points.map((point) => {
+  const rows = points.map((point) => {
     const row: Record<string, number | null> = { offsetSeconds: point.offsetSeconds };
     sections.forEach((section, index) => {
       const inside =
@@ -61,6 +61,21 @@ export function toSectionRows(
     });
     return row;
   });
+
+  // 구간 사이가 1초라도 벌어져 있으면 그 틈에 점이 없어 그림이 끊긴다. 앞 구간의 마지막 값을
+  // 뒤 구간의 첫 점에, 뒤 구간의 첫 값을 앞 구간의 마지막 점에 한 번씩 얹어 선을 잇는다.
+  sections.forEach((_, index) => {
+    if (index === 0) return;
+    const previous = sectionKeyOf(index - 1);
+    const current = sectionKeyOf(index);
+    const firstOfCurrent = rows.find((row) => row[current] !== undefined);
+    const lastOfPrevious = [...rows].reverse().find((row) => row[previous] !== undefined);
+    if (firstOfCurrent === undefined || lastOfPrevious === undefined) return;
+    if (firstOfCurrent[previous] === undefined) firstOfCurrent[previous] = lastOfPrevious[previous];
+    if (lastOfPrevious[current] === undefined) lastOfPrevious[current] = firstOfCurrent[current];
+  });
+
+  return rows;
 }
 
 /** 구간이 갈리는 시각. 첫 구간의 시작은 축의 왼쪽 끝이라 선을 그리지 않는다. */
@@ -110,19 +125,31 @@ export function sectionIndexAt(
  * <p>고른 구간만 진하게 둔다. 모두 진하면 어디를 보고 있는지 알 수 없고, 모두 옅으면 상태 막대의
  * 선택이 차트와 이어지지 않는다.
  */
-export const sectionCallout = (n: number, active: boolean) => {
-  const Callout = ({ viewBox }: { viewBox?: { x?: number } }) => (
-    <text
-      x={viewBox?.x ?? 0}
-      y={14}
-      textAnchor="middle"
-      fill={active ? "#10b981" : "#8a90b4"}
-      fontSize={11.5}
-      fontWeight={800}
-    >
-      구간 {n}
-    </text>
-  );
+export const sectionCallout = (n: number, active: boolean, onClick?: () => void) => {
+  const Callout = ({ viewBox }: { viewBox?: { x?: number } }) => {
+    const x = viewBox?.x ?? 0;
+    return (
+      <g
+        onClick={onClick}
+        style={{ cursor: onClick === undefined ? undefined : "pointer" }}
+        aria-hidden="true"
+      >
+        {/* 글자만으로는 누를 자리가 좁다. 보이지 않는 판을 깔아 클릭을 받는다. */}
+        <rect x={x - 28} y={0} width={56} height={22} fill="transparent" />
+        <text
+          x={x}
+          y={14}
+          textAnchor="middle"
+          fill={active ? "#10b981" : "#8a90b4"}
+          fontSize={11.5}
+          fontWeight={800}
+          style={{ pointerEvents: "none" }}
+        >
+          구간 {n}
+        </text>
+      </g>
+    );
+  };
   Callout.displayName = `SectionCallout${n}`;
   return Callout;
 };

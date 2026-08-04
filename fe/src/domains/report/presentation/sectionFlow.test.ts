@@ -33,13 +33,26 @@ describe("sectionColorOf", () => {
 });
 
 describe("toSectionRows", () => {
-  it("점을 자기 구간 계열에만 넣는다", () => {
-    const rows = toSectionRows([point(0, 2), point(60, 4)], [section(0, 30), section(31, 90)]);
+  it("점을 자기 구간 계열에 넣는다", () => {
+    const rows = toSectionRows(
+      [point(0, 2), point(10, 3), point(60, 4), point(70, 4)],
+      [section(0, 30), section(31, 90)],
+    );
 
     expect(rows[0][sectionKeyOf(0)]).toBe(2);
+    expect(rows[3][sectionKeyOf(1)]).toBe(4);
+    // 이음매(구간의 첫·마지막 점)가 아닌 자리는 남의 구간에 끼지 않는다.
     expect(rows[0][sectionKeyOf(1)]).toBeUndefined();
-    expect(rows[1][sectionKeyOf(1)]).toBe(4);
-    expect(rows[1][sectionKeyOf(0)]).toBeUndefined();
+    expect(rows[3][sectionKeyOf(0)]).toBeUndefined();
+  });
+
+  /** 구간 사이가 1초라도 벌어지면 그 틈에 점이 없어 선이 끊긴다. */
+  it("구간 사이가 떨어져 있어도 이음매에서 선이 이어진다", () => {
+    const rows = toSectionRows([point(0, 2), point(60, 4)], [section(0, 30), section(31, 90)]);
+
+    // 앞 구간의 마지막 점에 뒤 구간의 첫 값이, 그 반대도 한 번씩 얹힌다.
+    expect(rows[0][sectionKeyOf(1)]).toBe(4);
+    expect(rows[1][sectionKeyOf(0)]).toBe(2);
   });
 
   /** 경계 점을 한쪽에만 두면 구간이 바뀌는 자리에서 그림이 끊긴다. */

@@ -112,10 +112,10 @@ export const recommendations = [
 
 /** 리포트(강사) - 분야별 평가 도넛 */
 export const evalDonutData = [
-  { name: "전달력", value: 88, color: "#10b981" },
-  { name: "구성·흐름", value: 84, color: "#15bd7d" },
-  { name: "상호작용", value: 71, color: "#f4c325" },
-  { name: "난이도 조절", value: 76, color: "#e0714f" },
+  { name: "전달력", value: 88, color: "#10b981", desc: "말의 속도·명료함과 핵심 개념을 짚어주는 정도를 평가했어요." },
+  { name: "구성·흐름", value: 84, color: "#15bd7d", desc: "수업 순서와 주제 전환이 자연스럽게 이어졌는지 평가했어요." },
+  { name: "상호작용", value: 71, color: "#f4c325", desc: "질문 응답, 채팅·반응 대응 등 학생과의 소통을 평가했어요." },
+  { name: "난이도 조절", value: 76, color: "#e0714f", desc: "학생 이해도에 맞춰 설명 깊이와 속도를 조절했는지 평가했어요." },
 ];
 
 /** AI 이해도 퀴즈 문제 */
@@ -142,14 +142,6 @@ export const improveTips: { icon: PictogramName; title: string; obs: string; tip
   { icon: "qbubble", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
   { icon: "camera", title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "· 다이어그램, 플로우차트 활용을 늘려보세요." },
   { icon: "target", title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "· 개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
-];
-
-/** 강사 리포트 인사이트 */
-export const insights: { icon: PictogramName; bg: string; text: string }[] = [
-  { icon: "bell", bg: "#ffe7ea", text: "어려움 구간(예외 처리·응답 코드)에서 이해도 알림이 집중적으로 발생했어요." },
-  { icon: "flask", bg: "#ebf8f3", text: "실습 전후 구간의 집중도가 상대적으로 높았습니다." },
-  { icon: "bars", bg: "#f0faf6", text: "전반적으로 후반부로 갈수록 집중도가 회복되는 흐름입니다." },
-  { icon: "chat", bg: "#fdf8e7", text: "질문이 몰린 구간의 응답 시간이 짧아 아쉬움이 있었어요." },
 ];
 
 export const instructorGlance: {

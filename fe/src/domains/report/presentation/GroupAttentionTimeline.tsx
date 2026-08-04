@@ -114,6 +114,7 @@ export function GroupAttentionTimeline({
 }: GroupAttentionTimelineProps) {
   const { status, timeline, retry } = useAttentionTimeline({ sessionId, enabled: true, request });
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
 
   const body = () => {
     if (status === "loading") {
@@ -381,7 +382,10 @@ export function GroupAttentionTimeline({
                   yAxisId="level"
                   x={sectionMidpoint(section)}
                   stroke="transparent"
-                  label={sectionCallout(index + 1, index === activeSection)}
+                  label={sectionCallout(index + 1, index === activeSection, () => {
+                    setSelectedIndex(index);
+                    setDetailIndex(index);
+                  })}
                 />
               ))}
             </ComposedChart>
@@ -494,6 +498,8 @@ export function GroupAttentionTimeline({
               onSelect={setSelectedIndex}
               scopeLabel="전체 집중도"
               onJumpToClip={onJumpToClip}
+              detailIndex={detailIndex}
+              onDetailChange={setDetailIndex}
             />
 
             {selectedPoint !== undefined && (

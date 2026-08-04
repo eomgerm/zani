@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { Badge, PICTOGRAMS } from "@/shared/ui";
+import {
+  Badge,
+  Card,
+  PICTOGRAMS,
+  PictoClock,
+  PictoDoc,
+  PictoPen,
+  PictoStar,
+} from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
 import { recommendations, studentGlance, studentSummary } from "../../fixtures";
 
@@ -52,21 +60,23 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
 
       {/*
         복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 추천은 개수가 늘 수 있어
-        퀴즈 띠 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
+        퀴즈 카드 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
       */}
-      <div className="grid grid-cols-2 gap-5">
-        <div className="flex min-w-0 flex-col">
-          <div className="z-report-head">
+      <div className="mt-[26px] grid grid-cols-2 items-start gap-5">
+        <Card className="flex flex-col px-6 py-[22px]">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             <div className="z-section-title">나의 복습 추천</div>
-            <div className="z-report-sub">복습이 필요한 구간을 확인하고 다시 학습해 보세요.</div>
+            <span className="text-[11.5px] text-ink-fainter">
+              자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
+            </span>
           </div>
-          <ul className="flex max-h-[320px] list-none flex-col gap-3 overflow-y-auto p-0 pr-1">
+          <ul className="flex max-h-[400px] list-none flex-col gap-3 overflow-y-auto p-0">
             {recommendations.map((r) => (
               <li key={r.t}>
                 <button
                   type="button"
                   onClick={() => onJumpToClip(offsetSecondsOf(r.t))}
-                  className="z-report-box flex w-full cursor-pointer gap-3.5 px-3.5 py-[13px] text-left hover:border-line-primary hover:bg-[#fbfdfc]"
+                  className="flex w-full cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 text-left hover:border-line-primary hover:bg-faint"
                 >
                   <span className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
                     <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
@@ -74,14 +84,14 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
                     </span>
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="mb-[5px] block text-sm font-extrabold text-primary">
-                      {r.t}
-                    </span>
-                    <span className="mb-[5px] flex flex-wrap items-center gap-[7px]">
-                      <span className="text-sm font-extrabold">{r.title}</span>
+                    <span className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[11.5px] font-extrabold text-primary">
+                        {r.t}
+                      </span>
                       <Badge bg={`${r.color}22`} fg={r.color}>
                         {r.tag}
                       </Badge>
+                      <span className="text-[13.5px] font-extrabold">{r.title}</span>
                     </span>
                     <span className="block text-xs leading-[1.5] text-ink-faint">{r.reason}</span>
                   </span>
@@ -89,38 +99,42 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
               </li>
             ))}
           </ul>
-        </div>
+        </Card>
 
-        {/* AI 퀴즈는 카드가 아니라 띠다 — 다음 할 일이라 눈에 걸려야 한다. */}
-        <div className="relative mt-[26px] flex flex-wrap items-center gap-5 overflow-hidden rounded-[18px] bg-primary px-7 py-8">
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -left-[14%] -top-[58%] w-[52%] rounded-full bg-white/[.13] pb-[52%]"
-        />
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-[72%] -right-[6%] w-[60%] rounded-full bg-white/10 pb-[60%]"
-        />
-          <div className="relative z-10 min-w-[200px] flex-1">
-            <h3 className="mb-1.5 text-lg font-extrabold tracking-[-.6px] text-white">
-              AI 이해도 퀴즈
-            </h3>
-            <p className="text-[13px] font-bold leading-[1.55] text-[#e6f7ef]">
-              수업 중 어려웠던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
-            </p>
-          </div>
-          <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2.5">
-            <Link
-              href={`/my-lectures/${lectureId}/quiz`}
-              className="z-btn rounded-[11px] bg-surface px-[26px] py-[11px] text-sm text-[#0e7f5b]"
-            >
-              퀴즈 풀어보기
-            </Link>
-            <span className="rounded-[11px] bg-white/20 px-5 py-[11px] text-[13px] font-extrabold text-white">
-              총 5문제 · 약 3분
+        <Card className="px-6 py-[22px]">
+          <div className="mb-4 flex items-center gap-2">
+            <div className="z-section-title">AI 이해도 퀴즈</div>
+            <span className="text-[11.5px] text-ink-fainter">
+              강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
             </span>
           </div>
-        </div>
+          <div className="mb-[18px] flex items-center gap-[18px]">
+            <div className="flex h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
+              <PictoPen size={44} />
+            </div>
+            <div className="flex flex-1 flex-col gap-2.5">
+              {[
+                { icon: <PictoDoc size={16} />, text: "총 5문제" },
+                { icon: <PictoClock size={16} />, text: "약 3분" },
+                { icon: <PictoStar size={16} />, text: "주요 개념 3개" },
+              ].map((t) => (
+                <div
+                  key={t.text}
+                  className="flex items-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
+                >
+                  {t.icon}
+                  {t.text}
+                </div>
+              ))}
+            </div>
+          </div>
+          <Link
+            href={`/my-lectures/${lectureId}/quiz`}
+            className="z-btn z-btn-primary z-btn-block"
+          >
+            퀴즈 풀어보기 ›
+          </Link>
+        </Card>
       </div>
     </>
   );
