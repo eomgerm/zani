@@ -1,6 +1,7 @@
 package com.a105.zani.postclass.application.analyzestudents;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,9 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
     private static final int MAX_REQUEST_DATA_BYTES = 92_160;
 
     private static final int MAX_RECOMMENDATIONS = 5;
+
+    /** 앞쪽에서 같은 유형이 차지할 수 있는 최대 개수. 넘는 항목은 버리지 않고 뒤로 밀린다. */
+    private static final int SAME_TYPE_SOFT_CAP = 2;
 
     private final StudentAnalysisContextQueryPort queryPort;
     private final StudentAnalysisPort analysisPort;
@@ -130,13 +134,10 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
      */
     private List<SaveStudentAnalysisCommand.Recommendation> ground(
             List<StudentAnalysis.RecommendationDraft> drafts, List<ConceptSection> sections) {
-        List<SaveStudentAnalysisCommand.Recommendation> grounded = new ArrayList<>();
+        List<StudentAnalysis.RecommendationDraft> survivors = new ArrayList<>();
         Set<Integer> usedSections = new HashSet<>();
         for (StudentAnalysis.RecommendationDraft draft :
                 drafts == null ? List.<StudentAnalysis.RecommendationDraft>of() : drafts) {
-            if (grounded.size() == MAX_RECOMMENDATIONS) {
-                break;
-            }
             if (draft.sectionIndex() < 1 || draft.sectionIndex() > sections.size()) {
                 continue;
             }
@@ -146,15 +147,44 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
             if (!usedSections.add(draft.sectionIndex())) {
                 continue;
             }
-            ConceptSection section = sections.get(draft.sectionIndex() - 1);
-            grounded.add(new SaveStudentAnalysisCommand.Recommendation(
-                    draft.type(),
-                    draft.title(),
-                    draft.description(),
-                    section.startedOffsetMs(),
-                    section.endedOffsetMs()));
+            survivors.add(draft);
         }
-        return grounded;
+        return spreadTypes(survivors).stream()
+                .limit(MAX_RECOMMENDATIONS)
+                .map(draft -> {
+                    ConceptSection section = sections.get(draft.sectionIndex() - 1);
+                    return new SaveStudentAnalysisCommand.Recommendation(
+                            draft.type(),
+                            draft.title(),
+                            draft.description(),
+                            section.startedOffsetMs(),
+                            section.endedOffsetMs());
+                })
+                .toList();
+    }
+
+    /**
+     * 같은 유형이 목록을 덮지 않게 순서를 다시 짠다. 유형당 {@value #SAME_TYPE_SOFT_CAP} 개까지 먼저 고르고, 남은 자리를 나머지로 채운다.
+     *
+     * <p>버리지 않고 순서만 바꾸는 이유: 상한을 넘는 항목을 지우면 근거가 한 유형에 몰린 학생만 추천을 덜 받는다. 자리가 남으면 그 항목도 들어가고, 앞쪽이 유형별로 고르게 채워질 뿐이다.
+     *
+     * <p>모델에게도 같은 상한을 요구하지만 실측에서 지키지 않았다(2026-08-04, 세 번 시도). 셀 수 있는 규칙이라 서버가 결정적으로 처리한다.
+     */
+    private List<StudentAnalysis.RecommendationDraft> spreadTypes(List<StudentAnalysis.RecommendationDraft> survivors) {
+        List<StudentAnalysis.RecommendationDraft> spread = new ArrayList<>();
+        List<StudentAnalysis.RecommendationDraft> overflow = new ArrayList<>();
+        Map<String, Integer> perType = new HashMap<>();
+        for (StudentAnalysis.RecommendationDraft draft : survivors) {
+            int taken = perType.getOrDefault(draft.type(), 0);
+            if (taken < SAME_TYPE_SOFT_CAP) {
+                perType.put(draft.type(), taken + 1);
+                spread.add(draft);
+            } else {
+                overflow.add(draft);
+            }
+        }
+        spread.addAll(overflow);
+        return spread;
     }
 
     /**
@@ -164,9 +194,13 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
      * 바꾼다" 뿐이라 입력도 출력도 이 서비스가 이미 들고 있다.
      */
     private boolean fits(StudentAnalysisRequest request) {
-        byte[] serialized = objectMapper.writeValueAsBytes(
-                Map.of("sections", request.sections(), "observations", request.observationPayload()));
-        return serialized.length <= MAX_REQUEST_DATA_BYTES;
+        Map<String, Object> data = new HashMap<>();
+        data.put("sections", request.sections());
+        data.put("sectionSignals", request.signals());
+        if (request.observations() != null) {
+            data.put("observations", request.observations());
+        }
+        return objectMapper.writeValueAsBytes(data).length <= MAX_REQUEST_DATA_BYTES;
     }
 
     private enum Outcome {

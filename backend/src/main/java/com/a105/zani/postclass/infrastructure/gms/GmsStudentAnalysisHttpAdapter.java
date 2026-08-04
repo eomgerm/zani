@@ -1,5 +1,6 @@
 package com.a105.zani.postclass.infrastructure.gms;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,13 +74,21 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
             - recommendations 의 sectionIndex 는 sections 에 있는 번호만 쓴다. 같은 구간을 두 번 넣지 않는다.
             - recommendations 는 서로 다른 내용이어야 한다. 같은 제목이나 같은 설명을 sectionIndex 만 바꿔
               반복하지 않는다. 5개를 채우려 하지 말고 근거가 있는 만큼만 넣는다.
-            - type 은 그 구간에서 가장 강한 근거 하나를 고른다. 다섯 가지뿐이다.
+            - type 은 sectionSignals 에서 그 구간의 집계만 보고 정한다. 시각을 직접 구간 경계와 비교하지 않는다 —
+              sectionSignals 는 서버가 이미 구간별로 센 값이고, sectionIndex 로 짝이 맞는다.
+              confusedCount 가 있으면 CONFUSED, missedCount 는 MISSED, noResponseCount 는 NO_RESPONSE,
+              chatCount 는 QUESTION, lowEngagementCount 가 두드러지면 LOW_ENGAGEMENT 다.
+            - 학생이 그 개념을 물었더라도 그 구간의 chatCount 가 0 이면 이 구간의 근거는 질문이 아니다.
+            - type 은 그 구간의 집계 중 가장 큰 근거 하나를 고른다. 다섯 가지뿐이다.
               CONFUSED       확인 프롬프트에 "헷갈려요" 로 응답한 구간
               MISSED         확인 프롬프트에 "놓쳤어요" 로 응답한 구간
               NO_RESPONSE    확인 프롬프트에 응답하지 않은 구간
               LOW_ENGAGEMENT 참여도 판정이 낮게 이어진 구간
               QUESTION       학생이 질문을 남긴 구간
-            - 유형별로 개수를 배분하지 않는다. 다섯 개가 한 유형에 몰려도 되고 한 유형도 안 나와도 된다.
+            - 같은 type 은 최대 두 개까지만 넣는다. 세 번째부터는 아직 나오지 않은 유형의 근거가 있는 구간을
+              넣고, 그런 구간이 없으면 추천 개수를 줄인다. 5개를 채우는 것보다 유형이 고르게 보이는 것이 낫다.
+            - 없는 근거를 만들어 유형을 채우지는 않는다. 상한은 구간을 고르는 순서를 정할 뿐이고, 붙이는
+              유형은 그 구간의 관측이 정한다.
             - quiz 의 questions 는 3개부터 5개까지다. 문항마다 보기 4개이고 정답은 정확히 1개다.
             - 퀴즈는 sections 의 내용에서만 낸다. 수업에 없던 내용을 묻지 않는다.
             - 문항마다 sectionIndex 에 그 문항의 근거가 된 구간 번호를 넣는다. sections 에 있는 번호만 쓴다.
@@ -143,19 +152,22 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
                         Map.of("role", "user", "content", userPrompt(request))));
     }
 
-    /** 데이터를 JSON 으로 감싼다. 평문으로 이어 붙이면 채팅 문장이 지시처럼 보인다. */
+    /**
+     * 데이터를 JSON 으로 감싼다. 평문으로 이어 붙이면 채팅 문장이 지시처럼 보인다.
+     *
+     * <p>{@code sectionSignals} 는 서버가 관측을 구간별로 집계한 값이고 항상 실린다. {@code observations} 는 길이 가드가 발동하면 빠진다.
+     */
     private String userPrompt(StudentAnalysisRequest request) {
-        return objectMapper.writeValueAsString(Map.of(
-                "student",
-                request.studentAlias(),
-                "lectureTitle",
-                request.lectureTitle() == null ? "" : request.lectureTitle(),
-                "classSummary",
-                request.classSummary() == null ? "" : request.classSummary(),
-                "sections",
-                request.sections(),
-                "observations",
-                request.observationPayload()));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("student", request.studentAlias());
+        payload.put("lectureTitle", request.lectureTitle() == null ? "" : request.lectureTitle());
+        payload.put("classSummary", request.classSummary() == null ? "" : request.classSummary());
+        payload.put("sections", request.sections());
+        payload.put("sectionSignals", request.signals());
+        if (request.observations() != null) {
+            payload.put("observations", request.observations());
+        }
+        return objectMapper.writeValueAsString(payload);
     }
 
     private static Map<String, Object> responseFormat() {

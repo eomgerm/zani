@@ -139,6 +139,40 @@ class AnalyzeSessionStudentsServiceTest {
     }
 
     @Test
+    void pushesTheThirdOfTheSameTypeBehindOtherTypes() {
+        queryPort.targets = List.of(target(11L, 1));
+        queryPort.context = Optional.of(new SessionAnalysisContext("수업", "요약", sections(5)));
+        analysisPort.analysis = analysis(List.of(
+                new StudentAnalysis.RecommendationDraft(1, "QUESTION", "질문1", "설명"),
+                new StudentAnalysis.RecommendationDraft(2, "QUESTION", "질문2", "설명"),
+                new StudentAnalysis.RecommendationDraft(3, "QUESTION", "질문3", "설명"),
+                new StudentAnalysis.RecommendationDraft(4, "CONFUSED", "헷갈림", "설명"),
+                new StudentAnalysis.RecommendationDraft(5, "MISSED", "놓침", "설명")));
+
+        service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        // 같은 유형 셋째는 다른 유형 뒤로 밀린다. 버리지 않으므로 다섯 개가 그대로 남는다 —
+        // 지우면 근거가 한 유형에 몰린 학생만 추천을 덜 받는다.
+        assertThat(saveUseCase.commands.getFirst().recommendations())
+                .extracting(SaveStudentAnalysisCommand.Recommendation::title)
+                .containsExactly("질문1", "질문2", "헷갈림", "놓침", "질문3");
+    }
+
+    @Test
+    void keepsEveryRecommendationWhenOnlyOneTypeHasEvidence() {
+        queryPort.targets = List.of(target(11L, 1));
+        queryPort.context = Optional.of(new SessionAnalysisContext("수업", "요약", sections(4)));
+        analysisPort.analysis = analysis(IntStream.rangeClosed(1, 4)
+                .mapToObj(index -> new StudentAnalysis.RecommendationDraft(index, "QUESTION", "질문 " + index, "설명"))
+                .toList());
+
+        service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        // 다른 유형의 근거가 없으면 상한이 개수를 깎지 않는다. 순서만 정하는 규칙이다.
+        assertThat(saveUseCase.commands.getFirst().recommendations()).hasSize(4);
+    }
+
+    @Test
     void resolvesQuizQuestionSectionsAndLeavesOutOfRangeEmpty() {
         queryPort.targets = List.of(target(11L, 1));
 
