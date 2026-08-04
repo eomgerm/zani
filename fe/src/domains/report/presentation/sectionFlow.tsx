@@ -72,7 +72,28 @@ export function sectionBounds(sections: readonly FlowSection[]): number[] {
 export const sectionMidpoint = (section: FlowSection): number =>
   (section.startSeconds + section.endSeconds) / 2;
 
-/** 주어진 시각이 든 구간. 상태 막대에서 고른 자리를 차트에서도 짚어 주는 데 쓴다. */
+/** 단계 평균을 사람이 읽는 말로. 값이 없으면 낮은 것이 아니라 기록이 없는 것이다. */
+export const sectionLevelLabel = (focusLevel: number | null): string => {
+  if (focusLevel === null) return "기록 없음";
+  if (focusLevel >= 3.5) return "매우 높음";
+  if (focusLevel >= 2.5) return "높음";
+  if (focusLevel >= 1.5) return "보통";
+  return "낮음";
+};
+
+/**
+ * 구간 한 줄 평. 서버가 구간별 평가 문구를 주기 전까지는 단계 평균에서 끌어낸다 —
+ * 없는 내용을 지어내지 않고, 값이 말해 주는 것만 옮긴다(110·112 가 실제 문구를 채운다).
+ */
+export const sectionLevelNote = (focusLevel: number | null): string => {
+  if (focusLevel === null) return "이 구간에는 관측 기록이 없어요. 집중이 낮았다는 뜻은 아니에요.";
+  if (focusLevel >= 3.5) return "흐름이 끝까지 안정적이었던 구간이에요.";
+  if (focusLevel >= 2.5) return "대체로 흐름을 잘 따라간 구간이에요.";
+  if (focusLevel >= 1.5) return "흐름이 오르내린 구간이에요. 한 번 더 보면 도움이 돼요.";
+  return "집중 흐름이 크게 흔들린 구간이에요. 다시 볼 것을 추천해요.";
+};
+
+/** 주어진 시각이 든 구간. 다른 화면이 시각으로 구간을 짚을 때 쓴다. */
 export function sectionIndexAt(
   sections: readonly FlowSection[],
   offsetSeconds: number,

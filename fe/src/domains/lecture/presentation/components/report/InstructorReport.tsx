@@ -11,6 +11,8 @@ import {
 interface Props {
   /** 참여도 타임라인을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
   sessionId: string;
+  /** 구간 상세에서 클립 탭으로 옮긴다. */
+  onJumpToClip: (offsetSeconds: number) => void;
 }
 
 /**
@@ -19,7 +21,7 @@ interface Props {
  * <p>제목은 박스 밖에 두고 내용만 박스에 담는다(디자인 문서 §6). 집중 흐름과 타임라인은 한
  * 응답에서 나오므로 report 도메인 컴포넌트가 두 블록을 함께 그린다.
  */
-export function InstructorReport({ sessionId }: Props) {
+export function InstructorReport({ sessionId, onJumpToClip }: Props) {
   return (
     <>
       <div className="z-report-head">
@@ -47,7 +49,7 @@ export function InstructorReport({ sessionId }: Props) {
         })}
       </div>
 
-      <GroupAttentionTimeline sessionId={sessionId} />
+      <GroupAttentionTimeline sessionId={sessionId} onJumpToClip={onJumpToClip} />
 
       <div className="z-report-head">
         <div className="z-section-title">인사이트</div>

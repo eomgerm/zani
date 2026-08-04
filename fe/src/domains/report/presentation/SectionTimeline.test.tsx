@@ -10,18 +10,18 @@ const sections = [
 
 describe("SectionTimeline", () => {
   it("구간마다 번호·제목·시각·평균을 보여준다", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
 
     expect(screen.getByText("구간 1")).toBeInTheDocument();
     expect(screen.getByText("구간 2")).toBeInTheDocument();
     expect(screen.getByText("함수의 정의")).toBeInTheDocument();
-    expect(screen.getByText("3.21")).toBeInTheDocument();
-    expect(screen.getByText("2.50")).toBeInTheDocument();
+    expect(screen.getByText("3.2")).toBeInTheDocument();
+    expect(screen.getByText("2.5")).toBeInTheDocument();
   });
 
   /** 경계가 10분 같은 고정 길이가 아니라 서버가 준 실제 시각이어야 한다. */
   it("고정 길이가 아닌 실제 시각을 쓴다", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
 
     // 372초 = 06:12
     expect(screen.getAllByText(/06:12/).length).toBeGreaterThan(0);
@@ -33,30 +33,31 @@ describe("SectionTimeline", () => {
         sections={[{ startSeconds: 0, endSeconds: 90, title: "쉬는 시간", focusLevel: null }]}
         selectedIndex={0}
         onSelect={() => {}}
+        scopeLabel="내 집중도"
       />,
     );
 
     expect(screen.getAllByText("값 없음").length).toBeGreaterThan(0);
-    expect(screen.queryByText("1.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0")).not.toBeInTheDocument();
   });
 
   it("퍼센트 기호를 쓰지 않는다 — 1~4 척도다", () => {
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} />,
+      <SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />,
     );
 
     expect(container.textContent).not.toContain("%");
   });
 
   it("구간이 없으면 그 사실을 알린다 — 248 미완 세션", () => {
-    render(<SectionTimeline sections={[]} selectedIndex={0} onSelect={() => {}} />);
+    render(<SectionTimeline sections={[]} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
 
     expect(screen.getByText(/수업 내용 구간이 아직 없어요/)).toBeInTheDocument();
   });
 
   it("구간을 누르면 그 번호를 알린다", () => {
     const onSelect = vi.fn();
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" />);
 
     fireEvent.click(screen.getByRole("button", { name: /구간 2/ }));
 
@@ -67,7 +68,7 @@ describe("SectionTimeline", () => {
   it("화살표·Home·End 로 구간을 옮긴다", () => {
     const onSelect = vi.fn();
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} />,
+      <SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" />,
     );
     const list = container.querySelector("ul");
 
@@ -79,7 +80,7 @@ describe("SectionTimeline", () => {
   });
 
   it("고른 구간만 탭 순서에 남긴다 — roving tabindex", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} />);
+    render(<SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" />);
 
     expect(screen.getByRole("button", { name: /구간 2/ })).toHaveAttribute("tabindex", "0");
     expect(screen.getByRole("button", { name: /구간 1/ })).toHaveAttribute("tabindex", "-1");
@@ -87,17 +88,62 @@ describe("SectionTimeline", () => {
 
   it("고른 구간을 읽어 준다", () => {
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} />,
+      <SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" />,
     );
 
     const live = container.querySelector("[aria-live='polite']");
     expect(live?.textContent).toContain("합성 함수");
   });
 
-  /** 이 문구가 없으면 학생이 성적표로 읽는다(NFR-UX-006). */
-  it("참고용 지표라는 것을 적는다", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} />);
+  /** 카드를 누르면 그 구간의 점수와 한 줄 평을 상세로 보여준다. */
+  it("구간을 누르면 상세가 열리고 점수를 4 만점으로 읽는다", () => {
+    render(
+      <SectionTimeline
+        sections={sections}
+        selectedIndex={0}
+        onSelect={() => {}}
+        scopeLabel="내 집중도"
+      />,
+    );
 
-    expect(screen.getByText(/1~4 단계 평균/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /구간 1/ }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("구간 1 · 00:00~06:12");
+    expect(dialog.textContent).toContain("/ 4");
+    expect(dialog.textContent).toContain("높음");
+  });
+
+  it("상세의 클립 바로가기는 구간 시작 시각을 넘긴다", () => {
+    const onJumpToClip = vi.fn();
+    render(
+      <SectionTimeline
+        sections={sections}
+        selectedIndex={0}
+        onSelect={() => {}}
+        scopeLabel="내 집중도"
+        onJumpToClip={onJumpToClip}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /구간 2/ }));
+    fireEvent.click(screen.getByRole("button", { name: /복습 클립 바로가기/ }));
+
+    expect(onJumpToClip).toHaveBeenCalledWith(372);
+  });
+
+  it("배선이 없으면 클립 바로가기를 내지 않는다", () => {
+    render(
+      <SectionTimeline
+        sections={sections}
+        selectedIndex={0}
+        onSelect={() => {}}
+        scopeLabel="내 집중도"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /구간 1/ }));
+
+    expect(screen.queryByRole("button", { name: /복습 클립 바로가기/ })).not.toBeInTheDocument();
   });
 });

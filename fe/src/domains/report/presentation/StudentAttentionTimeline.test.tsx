@@ -60,8 +60,9 @@ describe("StudentAttentionTimeline", () => {
 
     await screen.findByRole("img");
 
+    const chart = screen.getByRole("img");
     expect(container.textContent).not.toContain("이동창");
-    expect(container.textContent).toContain("30초 구간");
+    expect(chart.getAttribute("aria-label")).toContain("30초 구간");
   });
 
   it("빈 값 구간을 공백으로 알린다 — 0% 도 1단계도 아니다", async () => {
@@ -189,7 +190,7 @@ describe("StudentAttentionTimeline", () => {
   it("labels the metric as a reference-only derived value", async () => {
     render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
 
-    // NFR-UX-006. 이 문구가 없으면 학생이 성적표로 읽는다.
+    // NFR-UX-006. 이 고지가 없으면 학생이 성적표로 읽는다. 긴 문장은 걷어내고 범례 칩에 남겼다.
     expect(await screen.findByText(/참고용/)).toBeInTheDocument();
   });
 

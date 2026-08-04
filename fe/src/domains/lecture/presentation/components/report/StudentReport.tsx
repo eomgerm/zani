@@ -7,6 +7,8 @@ interface Props {
   lectureId: string;
   /** 집중 흐름을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
   sessionId: string;
+  /** 구간 상세에서 클립 탭으로 옮긴다. */
+  onJumpToClip: (offsetSeconds: number) => void;
 }
 
 /**
@@ -17,7 +19,7 @@ interface Props {
  *
  * <p>집중 흐름과 타임라인은 한 응답에서 나오므로 report 도메인 컴포넌트가 두 블록을 함께 그린다.
  */
-export function StudentReport({ lectureId, sessionId }: Props) {
+export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
   return (
     <>
       <div className="z-report-head">
@@ -46,39 +48,51 @@ export function StudentReport({ lectureId, sessionId }: Props) {
         <p className="text-[13px] leading-[1.75] text-ink-sub">{studentSummary}</p>
       </div>
 
-      <StudentAttentionTimeline sessionId={sessionId} />
+      <StudentAttentionTimeline sessionId={sessionId} onJumpToClip={onJumpToClip} />
 
-      <div className="z-report-head">
-        <div className="z-section-title">나의 복습 추천</div>
-        <div className="z-report-sub">복습이 필요한 구간을 확인하고 다시 학습해 보세요.</div>
-      </div>
-      <div className="flex flex-col gap-3">
-        {recommendations.map((r) => (
-          <div
-            key={r.t}
-            className="z-report-box flex cursor-pointer gap-3.5 px-3.5 py-[13px] hover:border-line-primary hover:bg-[#fbfdfc]"
-          >
-            <div className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
-              <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
-                ▶
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="mb-[5px] text-sm font-extrabold text-primary">{r.t}</div>
-              <div className="mb-[5px] flex flex-wrap items-center gap-[7px]">
-                <span className="text-sm font-extrabold">{r.title}</span>
-                <Badge bg={`${r.color}22`} fg={r.color}>
-                  {r.tag}
-                </Badge>
-              </div>
-              <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
-            </div>
+      {/*
+        복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 추천은 개수가 늘 수 있어
+        퀴즈 띠 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
+      */}
+      <div className="grid grid-cols-2 gap-5">
+        <div className="flex min-w-0 flex-col">
+          <div className="z-report-head">
+            <div className="z-section-title">나의 복습 추천</div>
+            <div className="z-report-sub">복습이 필요한 구간을 확인하고 다시 학습해 보세요.</div>
           </div>
-        ))}
-      </div>
+          <ul className="flex max-h-[320px] list-none flex-col gap-3 overflow-y-auto p-0 pr-1">
+            {recommendations.map((r) => (
+              <li key={r.t}>
+                <button
+                  type="button"
+                  onClick={() => onJumpToClip(offsetSecondsOf(r.t))}
+                  className="z-report-box flex w-full cursor-pointer gap-3.5 px-3.5 py-[13px] text-left hover:border-line-primary hover:bg-[#fbfdfc]"
+                >
+                  <span className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
+                    <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
+                      ▶
+                    </span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="mb-[5px] block text-sm font-extrabold text-primary">
+                      {r.t}
+                    </span>
+                    <span className="mb-[5px] flex flex-wrap items-center gap-[7px]">
+                      <span className="text-sm font-extrabold">{r.title}</span>
+                      <Badge bg={`${r.color}22`} fg={r.color}>
+                        {r.tag}
+                      </Badge>
+                    </span>
+                    <span className="block text-xs leading-[1.5] text-ink-faint">{r.reason}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-      {/* AI 퀴즈는 카드가 아니라 화면 폭을 쓰는 띠다 — 다음 할 일이라 눈에 걸려야 한다. */}
-      <div className="relative mt-[26px] flex flex-wrap items-center gap-5 overflow-hidden rounded-[18px] bg-primary px-7 py-8">
+        {/* AI 퀴즈는 카드가 아니라 띠다 — 다음 할 일이라 눈에 걸려야 한다. */}
+        <div className="relative mt-[26px] flex flex-wrap items-center gap-5 overflow-hidden rounded-[18px] bg-primary px-7 py-8">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute -left-[14%] -top-[58%] w-[52%] rounded-full bg-white/[.13] pb-[52%]"
@@ -87,26 +101,36 @@ export function StudentReport({ lectureId, sessionId }: Props) {
           aria-hidden="true"
           className="pointer-events-none absolute -bottom-[72%] -right-[6%] w-[60%] rounded-full bg-white/10 pb-[60%]"
         />
-        <div className="relative z-10 min-w-[240px] flex-1">
-          <h3 className="mb-1.5 text-lg font-extrabold tracking-[-.6px] text-white">
-            AI 이해도 퀴즈
-          </h3>
-          <p className="text-[13px] font-bold leading-[1.55] text-[#e6f7ef]">
-            수업 중 어려웠던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
-          </p>
-        </div>
-        <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2.5">
-          <Link
-            href={`/my-lectures/${lectureId}/quiz`}
-            className="z-btn rounded-[11px] bg-surface px-[26px] py-[11px] text-sm text-[#0e7f5b]"
-          >
-            퀴즈 풀어보기
-          </Link>
-          <span className="rounded-[11px] bg-white/20 px-5 py-[11px] text-[13px] font-extrabold text-white">
-            총 5문제 · 약 3분
-          </span>
+          <div className="relative z-10 min-w-[200px] flex-1">
+            <h3 className="mb-1.5 text-lg font-extrabold tracking-[-.6px] text-white">
+              AI 이해도 퀴즈
+            </h3>
+            <p className="text-[13px] font-bold leading-[1.55] text-[#e6f7ef]">
+              수업 중 어려웠던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
+            </p>
+          </div>
+          <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2.5">
+            <Link
+              href={`/my-lectures/${lectureId}/quiz`}
+              className="z-btn rounded-[11px] bg-surface px-[26px] py-[11px] text-sm text-[#0e7f5b]"
+            >
+              퀴즈 풀어보기
+            </Link>
+            <span className="rounded-[11px] bg-white/20 px-5 py-[11px] text-[13px] font-extrabold text-white">
+              총 5문제 · 약 3분
+            </span>
+          </div>
         </div>
       </div>
     </>
   );
+}
+
+/** `24:10` · `1:12:05` 같은 fixture 시각을 초로 읽는다. 110 이 실데이터를 주면 사라진다. */
+function offsetSecondsOf(label: string): number {
+  const parts = label.split(":").map(Number);
+  if (parts.some(Number.isNaN)) return 0;
+  return parts.length === 3
+    ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+    : parts[0] * 60 + (parts[1] ?? 0);
 }

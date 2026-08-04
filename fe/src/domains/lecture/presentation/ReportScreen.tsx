@@ -38,6 +38,19 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
 
   const [tab, setTab] = useState<"clip" | "report">("clip");
 
+  /**
+   * 구간 상세의 "복습 클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린다.
+   *
+   * <p>실제 재생 위치 이동은 플레이어가 붙는 S15P11A105-113·257 이 맡는다. 여기서는 넘겨받은
+   * 시각을 그대로 들고 있다 — 값을 버리면 그때 다시 배선해야 한다.
+   */
+  const [pendingSeekSeconds, setPendingSeekSeconds] = useState<number | null>(null);
+  const jumpToClip = (offsetSeconds: number) => {
+    setPendingSeekSeconds(offsetSeconds);
+    setTab("clip");
+    window.scrollTo({ top: 0 });
+  };
+
   const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
 
   return (
@@ -117,7 +130,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           </div>
 
           {tab === "clip" ? (
-            <ReportClipTab title={lecture.title} />
+            <ReportClipTab title={lecture.title} seekSeconds={pendingSeekSeconds} />
           ) : roleStatus === "loading" ? (
             /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
             <div className="px-5 py-[70px] text-center text-ink-fainter">
@@ -135,9 +148,13 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
               <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
             </div>
           ) : isInstructor ? (
-            <InstructorReport sessionId={lectureId} />
+            <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           ) : (
-            <StudentReport lectureId={lecture.id} sessionId={lectureId} />
+            <StudentReport
+              lectureId={lecture.id}
+              sessionId={lectureId}
+              onJumpToClip={jumpToClip}
+            />
           )}
         </>
       )}

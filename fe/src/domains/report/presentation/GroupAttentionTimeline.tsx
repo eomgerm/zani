@@ -103,11 +103,14 @@ export interface GroupAttentionTimelineProps {
   readonly sessionId: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: GroupTimelineRequester;
+  /** 구간 상세에서 클립 탭으로 옮길 때 쓴다. 배선이 없으면 상세에 버튼이 나오지 않는다. */
+  readonly onJumpToClip?: (offsetSeconds: number) => void;
 }
 
 export function GroupAttentionTimeline({
   sessionId,
   request = requestGroupAttentionTimeline,
+  onJumpToClip,
 }: GroupAttentionTimelineProps) {
   const { status, timeline, retry } = useAttentionTimeline({ sessionId, enabled: true, request });
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -454,7 +457,7 @@ export function GroupAttentionTimeline({
         <div className="z-section-title">집중 흐름</div>
         <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
           <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
-            전체 집중도
+            전체 집중도 · 참고용
           </span>
           {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
           <span className="flex items-center gap-[7px]">
@@ -463,6 +466,13 @@ export function GroupAttentionTimeline({
               className="h-2 w-9 rounded-full bg-[linear-gradient(90deg,#e0455f,#f4c325,#16c582)]"
             />
             1 낮음 → 4 높음
+          </span>
+          <span className="flex items-center gap-[7px]">
+            <span
+              aria-hidden="true"
+              className="h-2 w-4 rounded-[3px] border border-line-light bg-[#c9cdde]/[.55]"
+            />
+            회색은 인원 부족
           </span>
         </div>
       </div>
@@ -482,6 +492,8 @@ export function GroupAttentionTimeline({
               sections={sections}
               selectedIndex={activeSectionIndex}
               onSelect={setSelectedIndex}
+              scopeLabel="전체 집중도"
+              onJumpToClip={onJumpToClip}
             />
 
             {selectedPoint !== undefined && (

@@ -1,7 +1,25 @@
 import { summarySections, transcript } from "../../fixtures";
 
-/** 리포트 탭 1 (수업 클립 / 복습 클립): 강의 영상 + 수업 내용 전사 + AI 요약 문서. */
-export function ReportClipTab({ title }: { title: string }) {
+/**
+ * 리포트 탭 1 (수업 클립 / 복습 클립): 강의 영상 + 수업 내용 전사 + AI 요약 문서.
+ *
+ * <p>`seekSeconds` 는 리포트 탭의 구간 상세가 "복습 클립 바로가기"로 넘긴 시각이다. 아직 영상이
+ * 목업이라 재생 위치를 옮기지는 못하고 어디로 가려 했는지만 보여 준다 — 실제 이동은 플레이어가
+ * 붙는 S15P11A105-113·257 이 맡는다.
+ */
+export function ReportClipTab({
+  title,
+  seekSeconds = null,
+}: {
+  title: string;
+  seekSeconds?: number | null;
+}) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const seekLabel =
+    seekSeconds === null
+      ? null
+      : `${Math.floor(seekSeconds / 60)}:${pad(Math.round(seekSeconds % 60))}`;
+
   return (
     <>
       <div className="mb-5 grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
@@ -15,7 +33,9 @@ export function ReportClipTab({ title }: { title: string }) {
               <div className="truncate text-base font-extrabold text-white [text-shadow:0_2px_8px_rgba(0,0,0,.4)]">
                 {title}
               </div>
-              <div className="mt-0.5 text-xs text-panel-dim">강의 다시보기</div>
+              <div className="mt-0.5 text-xs text-panel-dim">
+                {seekLabel === null ? "강의 다시보기" : `${seekLabel} 구간으로 이어서 보기`}
+              </div>
             </div>
           </div>
           <div className="h-1 bg-[#2f3a37]">
