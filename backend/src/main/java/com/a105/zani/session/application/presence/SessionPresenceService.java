@@ -68,8 +68,8 @@ public class SessionPresenceService implements RecordPresenceUseCase {
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
 
-        boolean connected = command.connectionState() == ConnectionState.CONNECTED;
-        ReconnectStatus reconnectStatus = applyPresence(sessionId, participantId, participant.role(), connected);
+        ReconnectStatus reconnectStatus =
+                applyPresence(sessionId, participantId, participant.role(), command.connectionState());
 
         // 마지막 사람이 나갔으면 수업을 붙잡고 있을 이유가 없다(LIVE-010). DISCONNECTED 보고에서만 확인한다 —
         // 접속 중인 heartbeat 는 방금 자기 presence 를 심었으므로 빈 방일 수 없고, RECONNECTING 은 복구를
@@ -81,7 +81,7 @@ public class SessionPresenceService implements RecordPresenceUseCase {
         // 종료하면 혼자 준비 중이던 강사가 새로고침 한 번에 수업을 잃는다 — 5분 유예(LIVE-009)가 통째로
         // 무력해진다. 강사가 끝내 돌아오지 않으면 유예 만료가 같은 자리에서 종료를 집는다.
         boolean departed = command.connectionState() == ConnectionState.DISCONNECTED;
-        if (departed && !isInstructorGraceRunning(sessionId) && isSessionEmpty(sessionId)) {
+        if (departed && !isInstructorGraceRunning(sessionId) && isSessionEmpty(sessionId, participantId)) {
             endSession(sessionId, SessionEndReason.ALL_PARTICIPANTS_LEFT);
             return result(participant, command, ReconnectStatus.SESSION_ENDED, true);
         }
@@ -89,8 +89,8 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     }
 
     private ReconnectStatus applyPresence(
-            long sessionId, long participantId, SessionParticipantRole role, boolean connected) {
-        if (connected) {
+            long sessionId, long participantId, SessionParticipantRole role, ConnectionState state) {
+        if (state == ConnectionState.CONNECTED) {
             presencePort.recordHeartbeat(sessionId, participantId, clock.instant(), PRESENCE_TTL);
             if (role == SessionParticipantRole.INSTRUCTOR
                     && presencePort.instructorGraceDeadline(sessionId).isPresent()) {
@@ -106,8 +106,16 @@ public class SessionPresenceService implements RecordPresenceUseCase {
             return ReconnectStatus.CONNECTED;
         }
 
-        // RECONNECTING / DISCONNECTED: 현재 접속 상태가 아니다.
+        // RECONNECTING / DISCONNECTED: 현재 접속 상태가 아니다. 두 경우 모두 presence 를 지운다 —
+        // 재연결 구간은 참여 판정을 만들지 않아 집계 분모에서 빠져야 한다(FRD §11.6: 연결 불가는 분자에
+        // 들어갈 수 없다. 분모에만 남으면 이탈이 늘수록 트리거가 안 뜬다).
         presencePort.clearPresence(sessionId, participantId);
+        if (state == ConnectionState.RECONNECTING) {
+            // 집계에서는 빠지지만 방을 나간 것은 아니다. 빈 방 판정이 이 사람을 볼 수 있게 따로 표시한다.
+            // 표시가 없으면 A 가 복구하는 동안 B 가 탭을 닫는 것만으로 수업이 끝나 A 는 돌아올 방을 잃는다.
+            // TTL 은 presence 와 같다 — heartbeat 주기보다 넉넉해, 복구 중 heartbeat 마다 갱신된다.
+            presencePort.markReconnecting(sessionId, participantId, PRESENCE_TTL);
+        }
         if (role == SessionParticipantRole.INSTRUCTOR) {
             // 유예 시작은 포트가 원자적으로 "없을 때만" 처리한다(반복·동시 이탈로 마감 시각이 갱신되지 않도록).
             presencePort.startInstructorGrace(sessionId, clock.instant().plus(INSTRUCTOR_GRACE), GRACE_KEY_TTL);
@@ -122,16 +130,28 @@ public class SessionPresenceService implements RecordPresenceUseCase {
     }
 
     /**
-     * 이 세션에 접속 중인 참가자가 하나도 없는지.
+     * 이 세션에 남아 있는 참가자가 하나도 없는지.
      *
      * <p>참가자 후보를 DB 에서 받아 그중 presence 키가 살아 있는 사람을 센다 — Redis 키 공간을 훑지 않기
      * 위해서다({@link SessionPresencePort#connectedSince} 의 계약).
+     *
+     * <p><b>복구 중인 사람도 남아 있는 것으로 본다.</b> 그 사람은 집계 분모에서는 빠지지만 방을 나간 것은 아니다. 여기서 빼면 A 가 복구하는 동안 B 가 탭을 닫는 것만으로 수업이 끝나고, A
+     * 는 돌아왔을 때 종료된 세션을 만난다.
+     *
+     * @param reportingParticipantId 방금 이탈을 보고한 참가자. 이 사람의 복구 표시는 무시한다 — 조금 전 RECONNECTING 이었다가 이제 포기한 경우 그 표시가 아직 남아
+     *     있어, 그대로 두면 마지막 사람의 이탈이 자기 표시에 막혀 수업이 3시간 만료까지 살아 있게 된다
      */
-    private boolean isSessionEmpty(long sessionId) {
+    private boolean isSessionEmpty(long sessionId, long reportingParticipantId) {
         List<Long> participantIds = participantRepository.findBySessionId(sessionId).stream()
                 .map(SessionParticipant::id)
                 .toList();
-        return presencePort.connectedSince(sessionId, participantIds).isEmpty();
+        if (!presencePort.connectedSince(sessionId, participantIds).isEmpty()) {
+            return false;
+        }
+        List<Long> others = participantIds.stream()
+                .filter(id -> id != reportingParticipantId)
+                .toList();
+        return !presencePort.anyReconnecting(sessionId, others);
     }
 
     /** 이번 heartbeat 시점 기준으로 강사 유예가 이미 지났는지. presence 변경 전에 읽은 마감 시각으로 판단한다. */

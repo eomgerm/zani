@@ -40,8 +40,12 @@ class SessionPresenceServiceTest {
     private static final long SESSION_ID = 100L;
     private static final long INSTRUCTOR_USER = 7L;
     private static final long STUDENT_USER = 8L;
+    /** 복구 중인 학생과 이탈하는 학생을 나눠 봐야 하는 경우가 있어 학생을 둘 둔다. */
+    private static final long SECOND_STUDENT_USER = 9L;
+
     private static final long INSTRUCTOR_PARTICIPANT = 1L;
     private static final long STUDENT_PARTICIPANT = 2L;
+    private static final long SECOND_STUDENT_PARTICIPANT = 3L;
     private static final Instant T0 = Instant.parse("2026-07-24T00:00:00Z");
 
     private final MutableClock clock = new MutableClock(T0);
@@ -80,6 +84,15 @@ class SessionPresenceServiceTest {
                 STUDENT_USER,
                 SessionParticipant.reconstitute(
                         STUDENT_PARTICIPANT, SESSION_ID, STUDENT_USER, SessionParticipantRole.STUDENT, T0, T0));
+        participantRepository.byUserId.put(
+                SECOND_STUDENT_USER,
+                SessionParticipant.reconstitute(
+                        SECOND_STUDENT_PARTICIPANT,
+                        SESSION_ID,
+                        SECOND_STUDENT_USER,
+                        SessionParticipantRole.STUDENT,
+                        T0,
+                        T0));
     }
 
     private static Session liveSession() {
@@ -135,6 +148,48 @@ class SessionPresenceServiceTest {
 
         assertTrue(last.sessionEnded());
         assertEquals(ReconnectStatus.SESSION_ENDED, last.reconnectStatus());
+        assertTrue(sessionRepository.session.isEnded());
+    }
+
+    /**
+     * 다른 사람이 복구 중이면 마지막 이탈에도 수업을 끝내지 않는다.
+     *
+     * <p>복구 중인 참가자는 presence 에서 지워진다 — 재연결 구간은 집계 분모에서 빠져야 하기 때문이다(FRD §11.6). 그 신호로 빈 방까지 판단하면, A 가 와이파이 복구를 시도하는 동안 B
+     * 가 탭을 닫는 것만으로 수업이 끝나고 A 는 돌아왔을 때 종료된 세션을 만난다.
+     */
+    @Test
+    void keepsTheSessionWhenAnotherParticipantIsStillReconnecting() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+        heartbeat(SECOND_STUDENT_USER, ConnectionState.CONNECTED);
+        // 강사 탭이 죽어 presence 가 TTL 로 사라졌다. 이탈을 보고하지 못했으므로 유예도 시작되지 않았다.
+        presencePort.clearPresence(SESSION_ID, INSTRUCTOR_PARTICIPANT);
+        // 학생 A 가 복구를 시도하는 중이다.
+        heartbeat(STUDENT_USER, ConnectionState.RECONNECTING);
+
+        // 그 사이 학생 B 가 탭을 닫는다.
+        PresenceResult last = heartbeat(SECOND_STUDENT_USER, ConnectionState.DISCONNECTED);
+
+        assertFalse(last.sessionEnded());
+        assertFalse(sessionRepository.session.isEnded());
+    }
+
+    /**
+     * 복구를 포기한 사람의 이탈은 자기 표시에 막히지 않는다.
+     *
+     * <p>A 가 RECONNECTING 뒤 DISCONNECTED 를 보내면 A 의 복구 표시는 아직 TTL 안에 남아 있다. 그 표시를 자기 이탈 판정에도 세면 마지막 사람이 나가도 방이 비지 않은 것으로
+     * 읽혀, 수업이 3시간 만료까지 살아 있게 된다.
+     */
+    @Test
+    void endsTheSessionWhenTheReconnectingParticipantFinallyGivesUp() {
+        heartbeat(INSTRUCTOR_USER, ConnectionState.CONNECTED);
+        heartbeat(STUDENT_USER, ConnectionState.CONNECTED);
+        presencePort.clearPresence(SESSION_ID, INSTRUCTOR_PARTICIPANT);
+        heartbeat(STUDENT_USER, ConnectionState.RECONNECTING);
+
+        PresenceResult gaveUp = heartbeat(STUDENT_USER, ConnectionState.DISCONNECTED);
+
+        assertTrue(gaveUp.sessionEnded());
         assertTrue(sessionRepository.session.isEnded());
     }
 
@@ -307,6 +362,17 @@ class SessionPresenceServiceTest {
         private final Set<String> presence = new HashSet<>();
         private final Map<String, Instant> connectedSince = new HashMap<>();
         private final Map<Long, Instant> grace = new HashMap<>();
+        private final Set<String> reconnecting = new HashSet<>();
+
+        @Override
+        public void markReconnecting(long sessionId, long participantId, Duration ttl) {
+            reconnecting.add(sessionId + ":" + participantId);
+        }
+
+        @Override
+        public boolean anyReconnecting(long sessionId, Collection<Long> participantIds) {
+            return participantIds.stream().anyMatch(id -> reconnecting.contains(sessionId + ":" + id));
+        }
 
         @Override
         public Instant recordHeartbeat(long sessionId, long participantId, Instant now, Duration ttl) {
