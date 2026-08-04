@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   Badge,
-  BookmarkIcon,
   Card,
   PICTOGRAMS,
   PictoClock,
@@ -106,7 +105,6 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
                   </div>
                   <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
                 </div>
-                <BookmarkIcon className="shrink-0 text-[#c2c7dc]" />
               </div>
             ))}
           </div>

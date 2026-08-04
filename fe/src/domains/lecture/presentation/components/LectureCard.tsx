@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarIcon, ClockIcon } from "@/shared/ui";
+import { PictoCalendarMuted, PictoClockMuted } from "@/shared/ui";
 import { type MyLecture } from "../myLectures";
 import { isLectureOpenable, statusInfo } from "../status";
 
@@ -67,12 +67,12 @@ function Body({ lecture }: { lecture: MyLecture }) {
       <div className="mx-1.5 my-3.5 h-px bg-line-light" />
       <div className="flex items-center gap-3.5 px-1.5 text-[13px] text-ink-fainter">
         <span className="flex items-center gap-1.5">
-          <ClockIcon />
+          <PictoClockMuted size={14} />
           {lecture.dur}
         </span>
         <span className="h-3 w-px bg-line-muted" />
         <span className="flex items-center gap-1.5">
-          <CalendarIcon size={15} />
+          <PictoCalendarMuted size={14} />
           {lecture.date.replace(/-/g, ".")}
         </span>
       </div>
