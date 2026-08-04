@@ -58,24 +58,35 @@ class DeploymentMetadata:
         )
 
     @classmethod
-    def for_stgcn(cls) -> DeploymentMetadata:
-        """Deployment metadata for the E1 ST-GCN landmark-sequence model.
+    def for_stgcn(
+        cls, schema: str = GRAPH_VERSION, steps: int = 100
+    ) -> DeploymentMetadata:
+        """Deployment metadata for an ST-GCN landmark-sequence model.
 
-        Input is a fixed ``[batch, 3, 100, 78]`` landmark-sequence tensor
+        Input is a fixed ``[batch, 3, steps, 78]`` landmark-sequence tensor
         (channel, time, node) -- see ``representations.LandmarkSequenceRepresentation``
         and ``stgcn.EngagementSTGCN`` -- rather than the Transformer family's
         ``[batch, 20, D]`` token sequence, so this does not go through
         ``for_schema``/``SCHEMAS`` (which are token-schema-only).
+
+        ``steps`` and ``schema`` are parameters because the landmark-sequence
+        family now has more than one member: 100 steps at 10 FPS
+        (``landmark_78_v1``) and the paper's 300 at 30 FPS. Their defaults keep
+        E1's exported metadata byte-identical.
         """
+        if steps <= 0:
+            raise ValueError(f"steps must be positive, got {steps}")
         return cls(
-            schema=GRAPH_VERSION,
+            schema=schema,
             input_name="sequence",
-            input_shape=("batch", 3, 100, 78),
+            input_shape=("batch", 3, steps, 78),
             output_name="logits",
             labels=LABELS,
+            # A landmark sequence has no 500ms segments; the step count is the
+            # only temporal structure it has, so it goes here.
             window_seconds=10.0,
-            segment_count=100,
-            sample_fps=10.0,
+            segment_count=steps,
+            sample_fps=steps / 10.0,
         )
 
 
@@ -151,14 +162,19 @@ def export_onnx(
 
     ``model`` is either an ``EngagementTransformer`` (token schemas, e.g.
     E0/E0-A/E0-B; ``metadata.input_shape`` is ``("batch", 20, D)``) or an
-    ``EngagementSTGCN`` (E1's landmark-sequence schema, produced by
+    ``EngagementSTGCN`` (a landmark-sequence schema, produced by
     :meth:`DeploymentMetadata.for_stgcn`; ``metadata.input_shape`` is
-    ``("batch", 3, 100, 78)``). The example tensor and ONNX/ORT parity check
+    ``("batch", 3, steps, 78)``). The example tensor and ONNX/ORT parity check
     below are shape-generic and apply identically to both; only the
     declared-schema validation branches on which family ``metadata`` names.
     """
-    if metadata.schema == GRAPH_VERSION:
-        if metadata.input_shape != ("batch", 3, 100, 78):
+    if metadata.schema.startswith("landmark_78"):
+        # The step count varies across this family (100 at 10 FPS, 300 at 30),
+        # so only the channel and node axes are fixed. `segment_count` has to
+        # agree with the shape, or the metadata would describe a different
+        # window than the tensor it ships with.
+        channels, steps, nodes = metadata.input_shape[1:]
+        if (channels, nodes) != (3, 78) or steps != metadata.segment_count:
             raise ValueError("deployment metadata does not match the ST-GCN landmark schema")
     else:
         if metadata.schema not in SCHEMAS:

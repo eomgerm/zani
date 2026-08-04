@@ -495,9 +495,26 @@ seed를 여러 개 동시에 돌리는 것은 **카드가 여러 장일 때만**
 그대로 Validation Macro-F1 최고점입니다.
 
 `reproduce-e1b`는 E1-A에 논문의 시간 해상도를 더합니다. 논문은 10초 클립의 30fps
-300프레임을 전부 쓰는데 우리는 10fps로 3프레임 중 하나만 씁니다. 논문 Table 5는
-2프레임마다로만 성겨져도 0.7124 → 0.6813으로 3.1%p 떨어진다고 보고하므로, 이것이
-남은 차이 중 가장 큽니다.
+300프레임을 전부 쓰는데 우리는 10fps로 3프레임 중 하나만 씁니다.
+
+**이전 판의 "Table 5는 2프레임마다로 0.7124 → 0.6813, 3.1%p 하락"은 틀린 비교였습니다.**
+해당 표는 Table 3이고, 0.7124는 **ordinal** 모델의 headline이며 0.6813은 **non-ordinal**
+모델을 2프레임마다로 성기게 한 값입니다. 서로 다른 모델을 비교한 숫자입니다. non-ordinal
+기준으로 다시 읽으면 이렇습니다.
+
+| 프레임 선택 | Validation accuracy |
+|---|---|
+| 전체 프레임 | 0.6937 |
+| 2프레임마다 | 0.6813 |
+| 4프레임마다 | 0.6907 |
+| 8프레임마다 | 0.6907 |
+| 16프레임마다 | 0.6841 |
+
+곡선이 단조롭지 않습니다. 4·8프레임마다가 2프레임마다보다 **높습니다.** 우리 10fps는
+3프레임마다에 해당해 0.6813~0.6907 구간에 놓이므로, 시간 해상도로 설명되는 폭은 전체
+프레임 대비 최대 1.2%p입니다. 논문 본문도 "a trade-off between accuracy and computation"
+이라고만 적습니다. **30fps 작업은 문헌을 그대로 재현하기 위한 것이고, 남은 정확도 격차의
+주원인이라는 근거는 없습니다.**
 
 `SAMPLE_FPS`가 **추출 단계에서** 프레임을 버리므로 `raw_frames_v1`로는 300스텝을 만들
 수 없습니다. 원본 영상에서 30fps로 다시 추출해야 합니다. `sample_fps`는 해시되는
@@ -505,12 +522,27 @@ extraction fingerprint에 포함되어 있어 rate가 다른 캐시가 조용히
 10fps는 `raw_frames_v1`/`landmark_78_v1` 이름을 그대로 유지하므로 기존 캐시와
 체크포인트가 살아 있습니다.
 
+`--keep-low-coverage`와 `--max-excluded-fraction 0.1`을 반드시 함께 넘깁니다. 둘 다
+실측에서 나온 값입니다. 30fps 추출은 구간 커버리지 규칙에 865클립(7.72%)이 걸리는데
+기본 임계값이 0.05라서 `exclusion_threshold_exceeded`로 죽습니다 — 같은 규칙에서
+10fps clean 캐시는 8.84%를 제외하고도 0.1 기준으로 통과했습니다. **30fps가 제외를 더
+적게 하는데 더 엄격한 기준으로 재진 것입니다.** 최소 3장이 fps와 무관한 절대값이라
+구간당 기대 프레임이 5장인 10fps에서는 60%를, 15장인 30fps에서는 20%를 요구합니다.
+
+`--keep-low-coverage`는 그 규칙 자체를 끕니다. arXiv:2403.17175 §5가 "samples with
+occluded or absent faces, i.e., no facial landmarks"를 Not-Engaged로 분류한다고 보고하므로
+논문은 규칙이 떨어뜨리는 클립들을 학습에 썼고, 그 클립은 대부분 Not-Engaged입니다 —
+문헌 대비 Train 부족분 748건 중 496건이 그 한 클래스에서 나온 이유입니다. 정책은
+extraction fingerprint에 함께 해시되므로 두 정책의 캐시가 섞이지 않습니다. 디코드 실패와
+0프레임 클립은 정책과 무관하게 계속 제외됩니다.
+
 ```bash
 uv run python -m zani_ai engagement extract-raw \
   --data-root datasets/raw/engagenet \
   --face-landmarker-model models/face_landmarker.task \
   --output datasets/processed/engagenet \
-  --sample-fps 30 --workers 64
+  --sample-fps 30 --workers 64 \
+  --keep-low-coverage --max-excluded-fraction 0.1 --progress-every 200
 
 uv run python -m zani_ai engagement build-features \
   --data-root datasets/raw/engagenet \
@@ -518,6 +550,12 @@ uv run python -m zani_ai engagement build-features \
   --output datasets/processed/engagenet/e1b \
   --schema landmark_78_300_v1 --sample-fps 30
 ```
+
+> ⚠️ **두 번째 명령은 아직 돌지 않습니다.** `build_feature_manifest`가 raw manifest의
+> schema를 `raw_frames_v1`과 정확히 비교해(`representations.py`) `raw_frames_30fps_v1`을
+> 거부하고, provenance에 `EXPECTED_FRAME_COUNT`(100)와 `MINIMUM_VALID_FRAMES`를 상수로
+> 박습니다. raw manifest의 provenance에서 읽어오도록 고쳐야 하며, 추출이 도는 동안 하면
+> 됩니다. 첫 명령은 이 제약과 무관하게 정상 동작합니다.
 
 `landmark_78_v1_graph.npz`는 재사용합니다. 노드 평균 위치는 프레임 수와 무관하게
 사실상 같고, 변수를 하나로 묶어두는 편이 비교에 유리합니다.
@@ -701,6 +739,132 @@ seed도 200 epoch 예산에 닿지 않았으므로 일정이 병목도 아니었
 넘지 못했습니다. **순서 구조 축은 닫힌 것으로 봅니다.** 남은 후보는 용량·특징·라벨
 잡음이며, 순서 품질(QWK·within-1)을 목표로 삼는 결정이 내려진다면 그때 이 결과가 근거가
 됩니다.
+
+### E1-P 문헌 정합 재구현 — 기각
+
+`reproduce-e1p`는 arXiv:2403.17175의 non-ordinal ST-GCN을 문헌 기준으로 다시 만든
+프로토콜입니다. 그래프를 단일 `A+I`(K=1)로, 공간 projection을 shared `W_spatial`로,
+edge weight를 layer별 learnable `M`으로 바꾸고, canonical 구현의 block 순서·input
+`BatchNorm1d(C*V)`·`Conv2d(256,4,1×1)` head를 적용했습니다. 입력은 30fps 300스텝이고
+결측 프레임은 forward-fill 없이 0으로 둡니다. 학습은 Adam / batch 16 / lr 1e-3 /
+300 epoch / 100·200에서 ×0.1입니다.
+
+**결론부터: 문헌 재현에 실패했고, 제품 후보로도 기각합니다.** 아래가 근거입니다.
+
+#### 파라미터 수는 문헌과 대조됐습니다
+
+| 항목 | 개수 |
+| --- | --- |
+| 이 모델 (4-class) | 879,844 |
+| learnable `M` 3개 (3 × 78 × 78) | −18,252 |
+| edge importance 제외 | **861,592** |
+| 논문 보고값 | **861,688** |
+| 잔차 | 96 (0.011%) |
+
+논문은 수식에 `M`을 넣었지만 **보고한 파라미터 수에는 넣지 않았습니다.** 포함하면 2.1%
+벗어납니다. 독립적인 근거가 둘 있습니다. 논문의 ordinal 861,431과 non-ordinal 861,688의
+차이 257이 `Conv2d(256,4,1)`과 `Conv2d(256,3,1)`의 차이 257과 정확히 일치하므로 head
+형태가 확인되고 그 앞단이 두 변형에서 공유됩니다. 그리고 공개된 세부의 어떤 구조적
+해석도 `A+I` 비영 원소 크기의 layer별 `M`으로는 861,688에 닿지 않습니다 — 가장 가까운
+해가 layer당 442개를 요구하는데 78노드 얼굴 삼각분할은 약 494개(hull 23점)를 만들고,
+442는 hull이 49점이어야 하는 값입니다.
+
+남은 96개는 논문 미공개 세부에 있습니다. **목표에 맞춰 플래그를 역으로 맞추지
+않았습니다** — input BN 축과 bias 조합을 흔들면 −6까지 붙일 수 있지만, 맞추려고 만든
+수치는 일치의 증거가 아닙니다.
+
+#### 표본 수는 문헌과 일치시켰습니다
+
+커버리지 게이트(구간당 유효 프레임 3장)가 논문이 학습에 쓴 클립을 떨어뜨리고 있었습니다.
+논문 §5는 "samples with occluded or absent faces, i.e., no facial landmarks"를
+Not-Engaged로 분류한다고 보고하므로 그 표본을 버리지 않았고, 그 클립은 대부분
+Not-Engaged입니다. `--keep-low-coverage`로 게이트를 끈 결과:
+
+| | 이전 E1 | E1-P | 문헌 |
+| --- | --- | --- | --- |
+| Train 전체 | 7,235 | 7,879 | 7,983 |
+| Train Not-Engaged | 1,054 | 1,446 | 1,550 |
+| Validation 전체 | 980 | **1,071** | 1,071 |
+
+**Validation은 4개 클래스가 전부 정확히 일치합니다**(132 / 97 / 273 / 569). Train에 남은
+−104는 전부 Not-Engaged 한 클래스이고, 우리 EngageNet 사본에 없는 파일입니다 — 논문
+전체가 11,311개인데 contract가 훑은 것이 11,206개입니다.
+
+#### 학습 일정은 최고점을 올리지 못했습니다
+
+seed 42가 300 epoch을 완주하고 학습률이 `1e-3 → 1e-4 → 1e-5`로 epoch 100·200에서 정확히
+꺾인 것을 `validation_history`가 기록합니다.
+
+```
+epoch   0- 99   평균 0.6379   최고 0.6676   ← 최고점 (epoch 69)
+epoch 100-199   평균 0.6468   최고 0.6564
+epoch 200-299   평균 0.6480   최고 0.6583
+```
+
+감쇠는 평균을 올리고 진동을 줄였지만 **감쇠 전 최고점을 한 번도 넘지 못했습니다.**
+E0-K의 "300 epoch 중 296이 낭비"와 같은 계열이지만 결이 다릅니다 — 여기서 감쇠가 사는
+값은 최고 정확도가 아니라 최종 모델의 안정성입니다.
+
+#### 기각 근거: E0가 세 축에서 모두 낫습니다
+
+| 프로토콜 | Validation accuracy | macro-F1 | 논문(0.6937) 대비 |
+| --- | --- | --- | --- |
+| **E0-10** (Transformer, 10 seed) | **0.6716 ± 0.0132** | 0.5745 ± 0.0109 | **−2.21%p** |
+| **E0-L** (순서형 K-1, 5 seed) | 0.6688 ± 0.0171 | **0.5944 ± 0.0162** | −2.49%p |
+| E1-P (seed 42, macro-F1 선택) | 0.6527 | 0.5449 | −4.10%p |
+| E1-P (seed 42, best-accuracy) | 0.6676 | — | −2.61%p |
+| E1-A (5 seed) | 0.6412 ± 0.0121 | ~0.53 | −5.25%p |
+| E1 (5 seed) | 0.6088 ± 0.0318 | ~0.50 | −8.49%p |
+
+95% CI는 E0-10 `[0.6634, 0.6798]`, E0-L `[0.6538, 0.6838]`입니다.
+
+**이미 배포 중인 Transformer가 우리 ST-GCN 재구현보다 문헌 수치에 더 가깝습니다.** E1-P의
+단일 seed 0.6527은 E0-10의 95% CI 아래쪽(0.6634)에도 못 미치고, 가장 유리하게 읽은
+best-accuracy 0.6676조차 E0-10 평균보다 낮습니다.
+
+macro-F1은 격차가 더 큽니다(E0-L 0.5944 → E0-10 0.5745 → E1-P 0.5449). confusion matrix가
+이유를 말해줍니다. 행이 실제, 열이 예측입니다.
+
+```
+Not-Engaged      91  19  13   9   재현율 68.9%
+Barely-Engaged   12  24  38  23   재현율 24.7%
+Engaged           9  22  88 154   재현율 32.2%   <- 154개가 Highly 로
+Highly-Engaged    4  10  59 496   재현율 87.2%
+```
+
+가운데 두 클래스가 무너져 다수 클래스로 흘러가므로 accuracy를 벌고 macro-F1을 잃습니다.
+Highly 예측이 682개인데 실제는 569개입니다. 한편 **Not-Engaged 재현율 68.9%는 게이트를
+끈 결정을 뒷받침합니다** — 논문 §5가 말한 그 클래스이고 496건을 되살린 자리입니다.
+
+여기에 지연이 겹칩니다. E0는 WebGPU 5.4ms / WASM 9.5ms, E1은 84ms / 1,080ms이며 300스텝은
+그 3배입니다. **정확도·클래스 균형·속도 세 축에서 모두 E0가 낫습니다.**
+
+#### 남은 미공개 변수
+
+격차가 1%p를 넘으므로 재현 성공으로 표시하지 않습니다. 단일 seed로는 −2.61%p가 실재하는지도
+확정되지 않습니다 — 이 계열 seed 표준편차가 0.010~0.012이므로 약 2.4σ이고, 성공 판정 폭이
+한 seed의 노이즈보다 좁습니다. seed를 더 쌓지 않은 이유는 E0-10과의 1.9%p 열세가 seed로
+뒤집히는 종류가 아니기 때문입니다.
+
+남은 변수를 측정된 기여도 순으로 남깁니다.
+
+| 변수 | 관측된 기여 | 비고 |
+| --- | --- | --- |
+| checkpoint 선택 규칙 | **1.49%p** | epoch 69(0.6676) vs epoch 95(0.6527). 논문은 accuracy를 보고하면서 선택 규칙을 밝히지 않음. 재학습 불필요 |
+| 68개 index 대응 | 미측정 | 논문이 exact index를 공개하지 않아 그래프 노드가 다름 |
+| input BN 축 | 미측정 | 논문은 "input batch normalization"만 명시 |
+
+**논문의 중심 주장 하나가 우리 손에서 재현되지 않았습니다.** 논문은 ST-GCN이 Transformer
+기반 SOTA를 이겼다고 보고하는데 우리 데이터에서는 Transformer가 우리 ST-GCN을 이깁니다.
+다만 이것을 "논문이 틀렸다"로 읽지 않습니다 — 우리 ST-GCN이 논문보다 4.1%p 낮으므로,
+순서가 뒤집힌 원인은 위 미공개 변수 쪽일 가능성이 더 큽니다.
+
+#### 남는 값
+
+기각하지만 이 작업이 남긴 것은 유효합니다. 커버리지 게이트가 Not-Engaged 496건을 조용히
+버리고 있었다는 사실은 **E1 계열 전체에 걸려 있던 체계적 편향**이고, Validation split이
+이제 문헌과 정확히 일치합니다. `E1`/`E1-A`/`E1-B`의 프로토콜·스키마·체크포인트는 손대지
+않았으므로 그 결과는 같은 identity로 계속 조회·재현됩니다.
 
 ### seed 수와 검출력
 

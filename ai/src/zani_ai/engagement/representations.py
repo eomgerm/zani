@@ -56,7 +56,7 @@ from zani_ai.engagement.features import (
     extract_frame_features,
 )
 from zani_ai.engagement.landmark_graph import LANDMARK_78_INDICES
-from zani_ai.engagement.raw_cache import RAW_SCHEMA_NAME, RawClip
+from zani_ai.engagement.raw_cache import RawClip
 from zani_ai.engagement.segments import (
     EXPECTED_FRAME_COUNT,
     MINIMUM_VALID_FRAME_RATIO,
@@ -79,6 +79,19 @@ def landmark_sequence_name(step_count: int) -> str:
     if step_count == LANDMARK_SEQUENCE_SHAPE[1]:
         return LANDMARK_SEQUENCE_NAME
     return f"landmark_78_{step_count}_v1"
+
+
+def landmark_sequence_placeholder_name(step_count: int) -> str:
+    """The zero-placeholder landmark-sequence schema for a step count.
+
+    Its own name, and therefore its own cache directory, because it holds
+    different tensors than the forward-filled representation of the same length
+    -- following how ``mediapipe_98_placeholder_v1`` sits beside
+    ``mediapipe_98_v1``.
+    """
+    if step_count == LANDMARK_SEQUENCE_SHAPE[1]:
+        return "landmark_78_placeholder_v1"
+    return f"landmark_78_{step_count}_placeholder_v1"
 
 
 class Representation(Protocol):
@@ -260,6 +273,56 @@ class LandmarkSequenceRepresentation:
         return np.ascontiguousarray(sequence.transpose(2, 0, 1), dtype=np.float32)
 
 
+@dataclass(frozen=True, slots=True)
+class ZeroPlaceholderLandmarkSequenceRepresentation(LandmarkSequenceRepresentation):
+    """Landmark sequence that leaves missing-face steps at zero instead of filling.
+
+    arXiv:2403.17175 §5 reports classifying "samples with occluded or absent
+    faces, i.e., no facial landmarks" as Not-Engaged, so absence is a signal the
+    paper's model learns from. Forward-filling erases exactly that signal: it
+    turns "no face for three seconds" into "a face that held perfectly still",
+    which is a different -- and confidently wrong -- observation.
+
+    Zeros carry it instead. MediaPipe landmark coordinates are never all-zero
+    for a detected face, so an all-zero step is unambiguous. The three channels
+    stay x/y/z: a fourth validity channel would change the first convolution's
+    shape and with it the parameter count this reproduction is measured against.
+
+    A clip with no valid frame at all yields an all-zero tensor rather than an
+    exclusion, because that clip is one the paper trained on.
+    """
+
+    name: str = landmark_sequence_placeholder_name(LANDMARK_SEQUENCE_SHAPE[1])
+
+    @classmethod
+    def for_sample_fps(
+        cls, sample_fps: float, *, window_seconds: float = WINDOW_SECONDS
+    ) -> ZeroPlaceholderLandmarkSequenceRepresentation:
+        step_count = round(window_seconds * sample_fps)
+        _, _, node_count = LANDMARK_SEQUENCE_SHAPE
+        return cls(
+            name=landmark_sequence_placeholder_name(step_count),
+            output_shape=(3, step_count, node_count),
+            sample_fps=sample_fps,
+        )
+
+    def build(self, raw_clip: RawClip) -> NDArray[np.float32]:
+        _, step_count, node_count = self.output_shape
+        landmark_indices = np.asarray(LANDMARK_78_INDICES, dtype=np.intp)
+        frame_index_by_step: dict[int, int] = {}
+        for frame_index in range(raw_clip.timestamps_ms.shape[0]):
+            if not raw_clip.valid_mask[frame_index]:
+                continue
+            step = round(float(raw_clip.timestamps_ms[frame_index]) * self.sample_fps / 1000.0)
+            if 0 <= step < step_count and step not in frame_index_by_step:
+                frame_index_by_step[step] = frame_index
+
+        sequence = np.zeros((step_count, node_count, 3), dtype=np.float32)
+        for step, frame_index in frame_index_by_step.items():
+            sequence[step] = raw_clip.landmarks[frame_index][landmark_indices, :3]
+        return np.ascontiguousarray(sequence.transpose(2, 0, 1), dtype=np.float32)
+
+
 def _representation_dependencies_sha256(representation: Representation) -> str:
     """Hash values and source code that can change derived feature contents."""
     payload: dict[str, object] = {
@@ -382,8 +445,9 @@ def build_feature_manifest(
     raw_payload = json.loads(raw_manifest_bytes.decode("utf-8"))
     if not isinstance(raw_payload, dict):
         raise ValueError("raw manifest must be a JSON object")
-    if raw_payload.get("schema") != RAW_SCHEMA_NAME:
-        raise ValueError(f"raw manifest schema must be {RAW_SCHEMA_NAME}")
+    raw_schema = raw_payload.get("schema")
+    if not isinstance(raw_schema, str) or not raw_schema.startswith("raw_frames_"):
+        raise ValueError(f"not a raw frame cache manifest: schema={raw_schema!r}")
     if raw_payload.get("status") != "complete" or raw_payload.get("complete") is not True:
         raise ValueError(
             f"raw manifest is incomplete (status={raw_payload.get('status')!r}); "
@@ -393,6 +457,34 @@ def build_feature_manifest(
     raw_excluded = raw_payload.get("excluded")
     if not isinstance(raw_included, list) or not isinstance(raw_excluded, list):
         raise ValueError("raw manifest must contain included and excluded lists")
+
+    # The frame gate the raw cache was actually built under, not this module's
+    # 10 FPS constants. A 30 FPS cache expects 300 frames per window, and
+    # stamping 100 into a 300-step cache's identity would make the two caches
+    # look interchangeable. Missing on caches written before provenance
+    # existed, where the constants are the values that were used.
+    raw_provenance = raw_payload.get("provenance")
+    if not isinstance(raw_provenance, dict):
+        raw_provenance = {}
+    raw_expected_frame_count = int(raw_provenance.get("expected_frame_count", EXPECTED_FRAME_COUNT))
+    raw_minimum_valid_frames = int(raw_provenance.get("minimum_valid_frames", MINIMUM_VALID_FRAMES))
+    raw_minimum_valid_frame_ratio = float(
+        raw_provenance.get("minimum_valid_frame_ratio", MINIMUM_VALID_FRAME_RATIO)
+    )
+    # A landmark sequence samples the raw timestamps on its own grid, so a rate
+    # mismatch does not fail -- it silently leaves two out of every three steps
+    # empty. Refuse instead.
+    representation_sample_fps = getattr(representation, "sample_fps", None)
+    raw_sample_fps = raw_provenance.get("sample_fps")
+    if (
+        representation_sample_fps is not None
+        and raw_sample_fps is not None
+        and float(raw_sample_fps) != float(representation_sample_fps)
+    ):
+        raise ValueError(
+            f"{representation.name} samples at {representation_sample_fps} FPS but "
+            f"{raw_schema} was extracted at {raw_sample_fps} FPS"
+        )
 
     representation_source_sha256 = sha256(
         inspect.getsource(type(representation)).encode("utf-8")
@@ -407,14 +499,14 @@ def build_feature_manifest(
         inspect.getsource(segment_aggregation).encode("utf-8")
     ).hexdigest()
     provenance_payload: dict[str, object] = {
-        "raw_schema": RAW_SCHEMA_NAME,
+        "raw_schema": raw_schema,
         "raw_manifest_sha256": sha256(raw_manifest_bytes).hexdigest(),
         "representation_name": representation.name,
-        "expected_frame_count": EXPECTED_FRAME_COUNT,
-        "minimum_valid_frame_ratio": MINIMUM_VALID_FRAME_RATIO,
+        "expected_frame_count": raw_expected_frame_count,
+        "minimum_valid_frame_ratio": raw_minimum_valid_frame_ratio,
         "window_seconds": WINDOW_SECONDS,
         "segment_count": SEGMENT_COUNT,
-        "minimum_valid_frames": MINIMUM_VALID_FRAMES,
+        "minimum_valid_frames": raw_minimum_valid_frames,
         "representation_source_sha256": representation_source_sha256,
         "representation_dependencies_sha256": representation_dependencies_sha256,
         "segment_aggregation_source_sha256": segment_aggregation_source_sha256,
@@ -427,14 +519,14 @@ def build_feature_manifest(
         ).encode("utf-8")
     ).hexdigest()
     provenance = DerivedFeatureProvenance(
-        raw_schema=RAW_SCHEMA_NAME,
+        raw_schema=raw_schema,
         raw_manifest_sha256=sha256(raw_manifest_bytes).hexdigest(),
         representation_name=representation.name,
-        expected_frame_count=EXPECTED_FRAME_COUNT,
-        minimum_valid_frame_ratio=MINIMUM_VALID_FRAME_RATIO,
+        expected_frame_count=raw_expected_frame_count,
+        minimum_valid_frame_ratio=raw_minimum_valid_frame_ratio,
         window_seconds=WINDOW_SECONDS,
         segment_count=SEGMENT_COUNT,
-        minimum_valid_frames=MINIMUM_VALID_FRAMES,
+        minimum_valid_frames=raw_minimum_valid_frames,
         representation_source_sha256=representation_source_sha256,
         representation_dependencies_sha256=representation_dependencies_sha256,
         segment_aggregation_source_sha256=segment_aggregation_source_sha256,
@@ -515,8 +607,10 @@ __all__ = [
     "LandmarkSequenceRepresentation",
     "Representation",
     "TokenRepresentation",
+    "ZeroPlaceholderLandmarkSequenceRepresentation",
     "ZeroPlaceholderTokenRepresentation",
     "build_feature_manifest",
     "landmark_sequence_name",
+    "landmark_sequence_placeholder_name",
     "load_raw_clip",
 ]
