@@ -145,6 +145,27 @@ class RecordingFinalizationJobPersistenceAdapterTest {
     }
 
     @Test
+    void preflight_실패도_시도_횟수를_소모하고_상한에서_최종_실패한다() {
+        long sessionId = queuedSession();
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            Instant claimAt = NOW.plusSeconds(attempt * 2L);
+            FinalizationJobLease lease =
+                    port.tryClaim(sessionId, claimAt.plusSeconds(300), claimAt).orElseThrow();
+
+            assertTrue(port.markPreflightFailure(lease, "preflight", claimAt.plusSeconds(1), 3, claimAt));
+            assertEquals(attempt, integer(sessionId, "attempt_count"));
+            assertEquals(
+                    attempt == 3
+                            ? RecordingFinalizationStatus.FAILED.name()
+                            : RecordingFinalizationStatus.PENDING.name(),
+                    text(sessionId, "status"));
+        }
+
+        assertFalse(port.findDueSessionIds(NOW.plusSeconds(100), 100).contains(sessionId));
+    }
+
+    @Test
     void 재기동은_RUNNING_작업을_즉시_재대기시키고_이전_실행의_결과를_막는다() {
         long sessionId = queuedSession();
         FinalizationJobLease claimed =

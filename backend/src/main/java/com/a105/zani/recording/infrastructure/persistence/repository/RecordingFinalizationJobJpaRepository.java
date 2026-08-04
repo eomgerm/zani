@@ -208,6 +208,40 @@ public interface RecordingFinalizationJobJpaRepository extends JpaRepository<Rec
     }
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update recording_finalization_jobs
+               set status = case when attempt_count + 1 >= :maxAttempts then :failed else :pending end,
+                   next_attempt_at = case when attempt_count + 1 >= :maxAttempts then null else :nextAttemptAt end,
+                   attempt_count = attempt_count + 1, lease_until = null,
+                   last_error = :error, updated_at = :now
+             where session_id = :sessionId and status = :running and lease_token = :leaseToken
+            """, nativeQuery = true)
+    int markPreflightFailure(
+            @Param("sessionId") Long sessionId,
+            @Param("pending") String pending,
+            @Param("running") String running,
+            @Param("failed") String failed,
+            @Param("leaseToken") int leaseToken,
+            @Param("error") String error,
+            @Param("nextAttemptAt") Instant nextAttemptAt,
+            @Param("maxAttempts") int maxAttempts,
+            @Param("now") Instant now);
+
+    default int markPreflightFailure(
+            Long sessionId, int leaseToken, String error, Instant nextAttemptAt, int maxAttempts, Instant now) {
+        return markPreflightFailure(
+                sessionId,
+                RecordingFinalizationStatus.PENDING.name(),
+                RecordingFinalizationStatus.RUNNING.name(),
+                RecordingFinalizationStatus.FAILED.name(),
+                leaseToken,
+                error,
+                nextAttemptAt,
+                maxAttempts,
+                now);
+    }
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update RecordingFinalizationJobJpaEntity job
                set job.status = :failed, job.leaseUntil = null, job.nextAttemptAt = null,

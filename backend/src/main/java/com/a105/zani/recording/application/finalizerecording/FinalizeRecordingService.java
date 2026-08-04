@@ -56,7 +56,13 @@ public class FinalizeRecordingService implements FinalizeRecordingUseCase {
             attempted = jobPort.beginAttempt(claimedLease, clock.instant()).orElse(null);
         } catch (RuntimeException preflightFailure) {
             log.warn("Recording finalization preflight failed: sessionId={}", sessionId, preflightFailure);
-            retryOrFail(claimedLease, "finalization_preflight_failed");
+            Instant now = clock.instant();
+            jobPort.markPreflightFailure(
+                    claimedLease,
+                    "finalization_preflight_failed",
+                    now.plus(properties.retryDelay()),
+                    properties.maxAttempts(),
+                    now);
             return;
         }
         if (attempted == null) {

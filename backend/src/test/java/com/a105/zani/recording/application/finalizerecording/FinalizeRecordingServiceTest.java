@@ -101,7 +101,7 @@ class FinalizeRecordingServiceTest {
 
         service.finalizeRecording(CLAIMED);
 
-        verify(jobPort).markRetry(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), NOW);
+        verify(jobPort).markPreflightFailure(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), 3, NOW);
         verify(jobPort, never()).beginAttempt(any(), any());
     }
 
@@ -112,7 +112,7 @@ class FinalizeRecordingServiceTest {
 
         service.finalizeRecording(CLAIMED);
 
-        verify(jobPort).markRetry(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), NOW);
+        verify(jobPort).markPreflightFailure(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), 3, NOW);
         verify(workerPort, never()).finalizeRecording(any());
     }
 

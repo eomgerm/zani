@@ -133,6 +133,20 @@ public class RecordingFinalizationJobPersistenceAdapter implements RecordingFina
 
     @Override
     @Transactional
+    public boolean markPreflightFailure(
+            FinalizationJobLease lease, String error, Instant nextAttemptAt, int maxAttempts, Instant now) {
+        try {
+            return checkLease(
+                    lease,
+                    repository.markPreflightFailure(
+                            lease.sessionId(), lease.leaseToken(), truncate(error), nextAttemptAt, maxAttempts, now));
+        } catch (DataAccessException failure) {
+            throw new FinalizationJobStoreException(failure);
+        }
+    }
+
+    @Override
+    @Transactional
     public boolean markFailed(FinalizationJobLease lease, String error, Instant now) {
         try {
             return checkLease(

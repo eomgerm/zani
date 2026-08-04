@@ -33,6 +33,10 @@ public interface RecordingFinalizationJobPort {
 
     boolean markRetry(FinalizationJobLease lease, String error, Instant nextAttemptAt, Instant now);
 
+    /** worker 시작 전 예외도 시도 횟수를 소모하고, 상한에 도달하면 최종 실패로 전환한다. */
+    boolean markPreflightFailure(
+            FinalizationJobLease lease, String error, Instant nextAttemptAt, int maxAttempts, Instant now);
+
     boolean markFailed(FinalizationJobLease lease, String error, Instant now);
 
     boolean markCompleted(
