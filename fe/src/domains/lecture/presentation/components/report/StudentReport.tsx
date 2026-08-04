@@ -1,5 +1,14 @@
 import Link from "next/link";
-import { Badge, BookmarkIcon, Card } from "@/shared/ui";
+import {
+  Badge,
+  BookmarkIcon,
+  Card,
+  PICTOGRAMS,
+  PictoClock,
+  PictoDoc,
+  PictoPen,
+  PictoStar,
+} from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
 import { learnSegments, recommendations, studentGlance, studentSummary } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
@@ -17,24 +26,26 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
   return (
     <div className="flex flex-col gap-5">
       <Card className="px-6 py-[22px]">
-        <div className="z-section-title mb-4">
-          <span className="text-primary">📊</span>한눈에 보기
-        </div>
+        <div className="z-section-title mb-4">한눈에 보기</div>
         <div className="grid grid-cols-4 gap-3">
-          {studentGlance.map((g) => (
-            <div key={g.label} className="z-box p-4">
-              <div className="mb-[9px] text-xs text-ink-faint">{g.label}</div>
-              <div className="text-2xl font-black tracking-[-.5px]">{g.value}</div>
-            </div>
-          ))}
+          {studentGlance.map((g) => {
+            const Icon = PICTOGRAMS[g.icon];
+            return (
+              <div key={g.label} className="z-box p-4">
+                <div className="mb-[9px] flex items-center gap-1.5 text-xs text-ink-faint">
+                  <Icon size={15} />
+                  {g.label}
+                </div>
+                <div className="text-2xl font-black tracking-[-.5px]">{g.value}</div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 
       <Card className="px-6 py-[22px]">
         <div className="mb-3.5 flex items-center gap-2">
-          <div className="z-section-title">
-            <span className="text-primary">✨</span>수업 참여도 요약
-          </div>
+          <div className="z-section-title">수업 참여도 요약</div>
           <span className="text-[11.5px] text-ink-fainter">
             AI가 분석한 전반적인 수업 참여도예요.
           </span>
@@ -48,9 +59,7 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
 
       <Card className="px-6 py-[22px]">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <div className="z-section-title">
-            <span className="text-primary">🎬</span>타임라인
-          </div>
+          <div className="z-section-title">타임라인</div>
           <span className="text-[11.5px] text-ink-fainter">
             구간을 누르면 집중도 평가와 설명, 복습 클립 바로가기가 열려요.
           </span>
@@ -69,9 +78,7 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
       <div className="grid grid-cols-2 items-start gap-5">
         <Card className="px-6 py-[22px]">
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="z-section-title">
-              <span className="text-danger">🎯</span>나의 복습 추천
-            </div>
+            <div className="z-section-title">나의 복습 추천</div>
             <span className="text-[11.5px] text-ink-fainter">
               자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
             </span>
@@ -107,24 +114,27 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
 
         <Card className="px-6 py-[22px]">
           <div className="mb-4 flex items-center gap-2">
-            <div className="z-section-title">
-              <span className="text-primary">📋</span>AI 이해도 퀴즈
-            </div>
+            <div className="z-section-title">AI 이해도 퀴즈</div>
             <span className="text-[11.5px] text-ink-fainter">
               강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
             </span>
           </div>
           <div className="mb-[18px] flex items-center gap-[18px]">
             <div className="flex h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
-              <span className="text-[44px]">📝</span>
+              <PictoPen size={44} />
             </div>
             <div className="flex flex-1 flex-col gap-2.5">
-              {["📄 총 5문제", "🕐 약 3분", "⭐ 주요 개념 3개"].map((t) => (
+              {[
+                { icon: <PictoDoc size={16} />, text: "총 5문제" },
+                { icon: <PictoClock size={16} />, text: "약 3분" },
+                { icon: <PictoStar size={16} />, text: "주요 개념 3개" },
+              ].map((t) => (
                 <div
-                  key={t}
+                  key={t.text}
                   className="flex items-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
                 >
-                  {t}
+                  {t.icon}
+                  {t.text}
                 </div>
               ))}
             </div>

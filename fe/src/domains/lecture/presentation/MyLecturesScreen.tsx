@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarIcon, ListIcon, SearchIcon, SortIcon } from "@/shared/ui";
+import { CalendarIcon, ListIcon, PictoInbox, SearchIcon, SortIcon } from "@/shared/ui";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
 import { useMyLectures } from "./useMyLectures";
 import { LectureCard } from "./components/LectureCard";
@@ -121,7 +121,9 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
       ) : view === "list" ? (
         visible.length === 0 ? (
           <div className="px-5 py-[70px] text-center text-ink-fainter">
-            <div className="mb-3.5 text-[44px]">📭</div>
+            <div className="mb-3.5 flex justify-center">
+              <PictoInbox size={44} />
+            </div>
             <div className="mb-1 font-bold text-ink-muted">
               {tab === "student" ? "아직 참여한 수업이 없습니다." : "아직 진행한 수업이 없습니다."}
             </div>

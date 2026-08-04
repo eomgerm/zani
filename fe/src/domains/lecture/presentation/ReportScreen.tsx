@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DownloadIcon } from "@/shared/ui";
+import { DownloadIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -70,8 +70,8 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
 
       {failed && (
         <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-line-muted bg-primary-softer px-[22px] py-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-xl text-danger">
-            ⚠️
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft">
+            <PictoWarn size={22} />
           </span>
           <div className="flex-1">
             <div className="font-extrabold">결과를 생성하지 못했어요</div>
@@ -90,7 +90,9 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
            왜 볼 것이 없는지만 짧게 알린다. */
         !failed && (
           <div className="mt-[22px] px-5 py-[70px] text-center text-ink-fainter">
-            <div className="mb-3.5 text-[44px]">⏳</div>
+            <div className="mb-3.5 flex justify-center">
+              <PictoClockMuted size={44} />
+            </div>
             <div className="mb-1 font-bold text-ink-muted">아직 분석이 끝나지 않았어요</div>
             <div className="text-[13.5px]">분석이 완료되면 리포트를 확인할 수 있어요.</div>
           </div>
@@ -120,12 +122,16 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           ) : roleStatus === "loading" ? (
             /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
             <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 text-[44px]">⏳</div>
+              <div className="mb-3.5 flex justify-center">
+                <PictoClockMuted size={44} />
+              </div>
               <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
             </div>
           ) : roleStatus === "unknown" ? (
             <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 text-[44px]">🔒</div>
+              <div className="mb-3.5 flex justify-center">
+                <PictoLock size={44} />
+              </div>
               <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
               <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
             </div>
