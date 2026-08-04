@@ -40,21 +40,23 @@ public record GmsProperties(
     /** record 기본 구현은 apiKey 를 그대로 출력한다. 설정 덤프·예외 메시지로 키가 새지 않도록 마스킹한다. */
     @Override
     public String toString() {
-        return "GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s,"
-                + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s, tipModel=%s, tipTimeout=%s,"
-                + " analysisModel=%s, analysisTimeout=%s]"
-                        .formatted(
-                                baseUrl,
-                                apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
-                                mockEnabled,
-                                readTimeout,
-                                connectTimeout,
-                                sttModel,
-                                transcribeTimeout,
-                                transcribeLanguage,
-                                tipModel,
-                                tipTimeout,
-                                analysisModel,
-                                analysisTimeout);
+        // 괄호가 필요하다. 메서드 호출이 + 보다 먼저 묶여 formatted 가 마지막 리터럴에만 걸리면, 앞 두 조각은
+        // %s 가 그대로 남고 마지막 조각에 엉뚱한 값이 들어간다.
+        return ("GmsProperties[baseUrl=%s, apiKey=%s, mockEnabled=%s, readTimeout=%s, connectTimeout=%s,"
+                        + " sttModel=%s, transcribeTimeout=%s, transcribeLanguage=%s, tipModel=%s, tipTimeout=%s,"
+                        + " analysisModel=%s, analysisTimeout=%s]")
+                .formatted(
+                        baseUrl,
+                        apiKey == null || apiKey.isBlank() ? "(unset)" : "****",
+                        mockEnabled,
+                        readTimeout,
+                        connectTimeout,
+                        sttModel,
+                        transcribeTimeout,
+                        transcribeLanguage,
+                        tipModel,
+                        tipTimeout,
+                        analysisModel,
+                        analysisTimeout);
     }
 }
