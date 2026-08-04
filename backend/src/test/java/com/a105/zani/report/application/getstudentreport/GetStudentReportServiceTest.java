@@ -60,7 +60,7 @@ class GetStudentReportServiceTest {
 
         assertThat(result)
                 .isEqualTo(new GetStudentReportResult(
-                        new GetStudentReportResult.Activity(4L, 1L, 0L),
+                        new GetStudentReportResult.Activity(4L, 1L, 0L, 2),
                         "공개 채팅으로 질문하고 놓친 구간을 복습했다.",
                         List.of(new GetStudentReportResult.Recommendation(
                                 "CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1))));
@@ -146,6 +146,7 @@ class GetStudentReportServiceTest {
                 4L,
                 1L,
                 0L,
+                2,
                 "공개 채팅으로 질문하고 놓친 구간을 복습했다.",
                 List.of(new StudentReportView.Recommendation("CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1)));
     }

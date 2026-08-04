@@ -19,6 +19,7 @@ import org.springframework.web.context.WebApplicationContext;
 import com.a105.zani.auth.application.port.TokenProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,8 +75,8 @@ class StudentReportApiTest {
     @Test
     @DisplayName("학생은 본인의 활동·참여 요약·정렬된 추천 5개만 조회한다")
     void returns_only_the_calling_students_report() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", NOW);
-        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", 9, NOW);
         seedActivity();
         seedRecommendations();
         insertRecommendation(9_112_607L, OTHER_REPORT_ID, "MISSED", "다른 학생 제목", 0L, 1_000L, 0);
@@ -85,6 +86,7 @@ class StudentReportApiTest {
                 .andExpect(jsonPath("$.data.activity.publicChatCount").value(4))
                 .andExpect(jsonPath("$.data.activity.confusedCount").value(1))
                 .andExpect(jsonPath("$.data.activity.missedCount").value(0))
+                .andExpect(jsonPath("$.data.activity.questionCount").value(2))
                 .andExpect(jsonPath("$.data.participationSummary").value("참여 요약"))
                 .andExpect(jsonPath("$.data.recommendations.length()").value(5))
                 .andExpect(
@@ -103,6 +105,20 @@ class StudentReportApiTest {
                         String.valueOf(OTHER_PARTICIPANT_ID),
                         "다른 학생 요약",
                         "다른 학생 제목");
+    }
+
+    @Test
+    @DisplayName("질문 수 판정이 없으면 0이 아니라 null로 내린다")
+    void sends_a_null_question_count_when_the_analysis_has_none() throws Exception {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", null, NOW);
+        seedActivity();
+
+        // 0 으로 내리면 화면이 "0개" 를 적어 질문을 안 한 학생과 구분되지 않는다. 세는 값이 아니라
+        // 모델이 판단한 값이므로 판정이 없다는 사실을 그대로 전한다.
+        fetchReport(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.activity.publicChatCount").value(4))
+                .andExpect(jsonPath("$.data.activity.questionCount").value(nullValue()));
     }
 
     @Test
@@ -220,14 +236,21 @@ class StudentReportApiTest {
                 NOW);
     }
 
+    /** 질문 수는 모델이 채우는 값이라 없는 리포트가 정상이다. 따로 주지 않으면 비워 둔다. */
     private void insertStudentReport(long id, long participantId, String summary, LocalDateTime publishedAt) {
+        insertStudentReport(id, participantId, summary, null, publishedAt);
+    }
+
+    private void insertStudentReport(
+            long id, long participantId, String summary, Integer questionCount, LocalDateTime publishedAt) {
         jdbcTemplate.update(
                 "INSERT INTO student_reports (id, session_id, session_participant_id, participation_summary,"
-                        + " published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        + " question_count, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 id,
                 SESSION_ID,
                 participantId,
                 summary,
+                questionCount,
                 publishedAt,
                 NOW,
                 NOW);

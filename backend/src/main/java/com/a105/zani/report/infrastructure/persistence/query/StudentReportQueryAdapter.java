@@ -65,6 +65,8 @@ public class StudentReportQueryAdapter implements StudentReportQueryPort {
                 publicChatCount,
                 responseCounts.confusedCount(),
                 responseCounts.missedCount(),
+                // 세지 않고 저장된 판정을 그대로 읽는다. 없으면 null 이며 0 으로 낮추지 않는다.
+                report.getQuestionCount(),
                 report.getParticipationSummary(),
                 recommendations);
     }

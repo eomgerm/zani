@@ -32,7 +32,8 @@ public class GetStudentReportService implements GetStudentReportUseCase {
                 .orElseThrow(ReportNotReadyException::new);
 
         return new GetStudentReportResult(
-                new GetStudentReportResult.Activity(view.publicChatCount(), view.confusedCount(), view.missedCount()),
+                new GetStudentReportResult.Activity(
+                        view.publicChatCount(), view.confusedCount(), view.missedCount(), view.questionCount()),
                 view.participationSummary(),
                 view.recommendations().stream()
                         .map(recommendation -> new GetStudentReportResult.Recommendation(

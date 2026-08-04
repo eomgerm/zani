@@ -731,13 +731,20 @@ VALUES
     (1000000023004, 1000000020001, 'PARTICIPATION', '학생 참여 유도', '개념 설명 뒤 짧은 확인 질문을 넣어 참여를 끌어올려 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
 -- 리포트 요약은 학생 전원에게 채운다. 참가자 ID 에서 리포트 ID 를 계산한다(1000000003002 → 1000000024002).
+-- question_count 는 세 번째 학생만 NULL 로 둔다. 분석이 질문 수를 내지 못한 리포트에서 화면이
+-- "0개" 가 아니라 빈 자리를 그리는지 시연으로 확인할 수 있어야 한다.
 INSERT INTO `student_reports` (`id`, `session_id`, `session_participant_id`, `participation_summary`,
-                               `published_at`, `created_at`, `updated_at`)
+                               `question_count`, `published_at`, `created_at`, `updated_at`)
 SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
        CASE (p.`id` - 1000000003001) % 3
            WHEN 0 THEN '수업 전반에 걸쳐 안정적으로 참여했습니다. Context 리렌더링 구간에서 잠깐 집중이 흔들렸지만 실습 구간에서 다시 끌어올렸습니다.'
            WHEN 1 THEN '도입과 실습 구간의 참여도가 특히 높았습니다. 개념 설명이 이어진 중반 구간은 다시 확인해 두면 좋겠습니다.'
            ELSE '질문과 반응으로 수업에 활발히 참여했습니다. 메모이제이션 구간에서 확인이 필요한 신호가 반복됐습니다.'
+       END,
+       CASE (p.`id` - 1000000003001) % 3
+           WHEN 0 THEN 1
+           WHEN 1 THEN 3
+           ELSE NULL
        END,
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
 FROM `session_participants` p

@@ -62,8 +62,8 @@ class StudentReportQueryAdapterTest {
     @Test
     @DisplayName("본인의 공개 채팅·응답·게시 리포트와 정렬된 추천 5개만 조회한다")
     void projects_only_the_students_published_report() {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", NOW);
-        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", 9, NOW);
 
         for (int index = 0; index < 4; index++) {
             insertChat(9_112_100L + index, STUDENT_PARTICIPANT_ID, null, "PUBLIC");
@@ -91,6 +91,7 @@ class StudentReportQueryAdapterTest {
                         4L,
                         1L,
                         0L,
+                        2,
                         "참여 요약",
                         List.of(
                                 recommendation("CUSTOM", 10L, 20L, 1),
@@ -101,12 +102,14 @@ class StudentReportQueryAdapterTest {
     }
 
     @Test
-    @DisplayName("활동 행이 없어도 집계값은 0이다")
+    @DisplayName("활동 행이 없으면 집계값은 0이고, 질문 수 판정이 없으면 0이 아니라 비어 있다")
     void returns_zero_activity_counts_when_no_rows_exist() {
         insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", NOW);
 
+        // 앞의 셋은 행을 센 값이라 0 이 맞다. 질문 수는 저장된 판정이라 없으면 null 이다 —
+        // 0 으로 낮추면 "질문을 안 했다"는 뜻이 되어 판정이 없는 것과 구분되지 않는다.
         assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
-                .contains(new StudentReportView(0L, 0L, 0L, "참여 요약", List.of()));
+                .contains(new StudentReportView(0L, 0L, 0L, null, "참여 요약", List.of()));
     }
 
     @Test
@@ -151,14 +154,21 @@ class StudentReportQueryAdapterTest {
                 NOW);
     }
 
+    /** 질문 수는 모델이 채우는 값이라 없는 리포트가 정상이다. 따로 주지 않으면 비워 둔다. */
     private void insertStudentReport(long id, long participantId, String summary, LocalDateTime publishedAt) {
+        insertStudentReport(id, participantId, summary, null, publishedAt);
+    }
+
+    private void insertStudentReport(
+            long id, long participantId, String summary, Integer questionCount, LocalDateTime publishedAt) {
         jdbcTemplate.update(
                 "INSERT INTO student_reports (id, session_id, session_participant_id, participation_summary,"
-                        + " published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        + " question_count, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 id,
                 SESSION_ID,
                 participantId,
                 summary,
+                questionCount,
                 publishedAt,
                 NOW,
                 NOW);
