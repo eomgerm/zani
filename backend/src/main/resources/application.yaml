@@ -76,7 +76,11 @@ postclass:
     # 그쪽은 "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 겸용하면 두
     # 마운트가 갈리는 날 조용히 깨진다. 파일 경로의 정본은 DB recording_files.storage_key 이고, 이 루트는
     # 그 상대 경로의 기준점일 뿐이다 — 디렉터리를 나열하지 않는다(마운트에 o+r 이 없어 나열도 안 된다).
-    source-root: ${POSTCLASS_SOURCE_ROOT:/srv/zani/recordings/track-egress}
+    #
+    # 기본값은 호스트 경로가 아니라 컨테이너 안의 마운트 지점(/out)이다. compose 가 호스트
+    # /srv/zani/recordings/track-egress 를 여기에 붙인다. 호스트 경로를 기본값으로 두면 환경변수를
+    # 빠뜨린 배포가 컨테이너에 없는 경로를 보며 조용히 파일을 못 찾는다.
+    source-root: ${POSTCLASS_SOURCE_ROOT:/out}
     # 청크를 만들 작업 디렉터리. 원본 마운트는 read-only 라 산출물은 반드시 여기에 쓴다.
     # 트랙 하나를 분할·처리·정리한 뒤 다음 트랙으로 넘어가므로 피크는 트랙 하나 크기(3시간이면 약 170MB)다.
     # 모든 종료 경로에서 삭제한다.
@@ -88,6 +92,36 @@ postclass:
     # 외부 프로세스 1회 상한. 초과하면 강제 종료한다. stream copy 는 I/O 뿐이라 3시간 트랙도 초 단위로
     # 끝나지만, 멈춘 프로세스가 오케스트레이션 스레드를 잡는 것을 막는 안전장치다.
     process-timeout: ${POSTCLASS_FFMPEG_TIMEOUT:PT60S}
+    # 전사 대기 작업을 훑는 주기. 스케줄 스레드는 디스패치만 하고 즉시 반환하므로 짧게 둘 수 있다.
+    poll-delay: ${POSTCLASS_TRANSCRIPTION_POLL_DELAY:PT10S}
+    # 청크 목표 길이. 25 MiB 한도가 아니라 힙(요청 버퍼링)과 timeout 예측 가능성 때문에 이 값이다.
+    # 실측 비트레이트(104.8~127 kbps)로 10분이면 7.9~9.5 MB 라 한도에 여유가 크다. 짧게 쪼개면 호출당
+    # 고정 오버헤드가 곱해진다 — 2분 청크의 처리시간/길이 비율이 5분 파일의 약 2배였다(실측).
+    chunk-duration: ${POSTCLASS_CHUNK_DURATION:PT10M}
+    # 한 주기에 훑을 대기 작업 수. 오케스트레이션 실행기가 크기 1·큐 0 이라 실제로 시작되는 것은 하나뿐이고
+    # 나머지는 제출이 거부돼 다음 주기로 넘어간다(거부는 실패가 아니다). 1 보다 크게 두는 이유는 앞선 세션이
+    # 이미 다른 실행에 넘어간 경우 같은 주기에 다음 후보를 시도할 수 있게 하려는 것이다.
+    dispatch-batch-size: ${POSTCLASS_DISPATCH_BATCH_SIZE:5}
+    # 배경 디스패치 스위치. 테스트는 이 값을 끄고 유스케이스를 직접 부른다(S15P11A105-276 교훈).
+    enabled: ${POSTCLASS_TRANSCRIPTION_ENABLED:true}
+    # 청크 선점의 유효 기간. 지나면 선점한 실행이 죽은 것으로 보고 다른 실행이 회수한다.
+    # gms.postclass-transcribe-timeout(180초)보다 넉넉해야 한다 — 호출이 상한까지 걸린 뒤 결과를
+    # 기록할 여유가 없으면, 살아 있는 작업의 청크를 다른 실행이 가져가고 원래 작업의 쓰기는 fencing 에
+    # 걸려 버려진다. 그러면 같은 청크를 두 번 호출한다. 180초 + 기록 여유로 5분을 둔다.
+    lease-duration: ${POSTCLASS_TRANSCRIPTION_LEASE_DURATION:PT5M}
+    # 실질 업로드 상한. GMS 멀티파트 한도는 25 MiB(26,214,400 B) 실측이고 여유를 두어 24 MiB 로 잡는다.
+    #
+    # 이 값은 업로드 직전 가드다 — 넘는 청크는 GMS 를 호출하지 않고 비재시도 실패로 끊는다. 크기 초과
+    # 청크를 자동으로 반분하는 동작은 없다(S15P11A105-247 범위 밖). 실측 비트레이트(104.8~127 kbps)로
+    # 10분이면 7.9~9.5 MB 라 한도에 세 배 넘는 여유가 있어, 걸린다면 chunk-duration 을 낮춰 대응한다.
+    max-upload-bytes: ${POSTCLASS_MAX_UPLOAD_BYTES:25165824}
+    # GMS 청크 호출 동시성. 오케스트레이션은 1개(세션 직렬)이고 이 값은 그 안의 업로드에만 적용된다.
+    # 힙은 청크 크기 × 이 값보다 크다(byte[] 복사·multipart 조립). 올릴 때 peak heap 을 함께 본다.
+    concurrency: ${POSTCLASS_TRANSCRIPTION_CONCURRENCY:2}
+    # 무음 사전 판별. 기본 OFF 다(S15P11A105-292 로 분리). GMS 응답의 no_speech_prob 는 호출 후 값이라
+    # 호출 수를 줄이지 못하고, 마이크 ON 상태의 침묵(-30.3 dB)은 발화(-24.0 dB)와 6 dB 차이라 음량만으로
+    # 가릴 수 없다. 잘못 건너뛰어 발화를 잃는 것이 호출 낭비보다 나쁘다.
+    silence-prefilter-enabled: ${POSTCLASS_SILENCE_PREFILTER_ENABLED:false}
 
 notification:
   email:
@@ -118,6 +152,11 @@ gms:
   # 효용이 떨어진다. 운영 데이터가 쌓이면 팀에서 재조정한다.
   transcribe-timeout: ${GMS_TRANSCRIBE_TIMEOUT:20s}
   transcribe-language: ${GMS_TRANSCRIBE_LANGUAGE:ko}
+  # 사후 배치 전사 전용 timeout. 위의 transcribe-timeout(20s) 을 재사용하면 안 된다 — 그 값은 실시간
+  # 코칭용이고 "느린 응답을 끊는 쪽이 낫다" 는 판단이 들어 있다. 배치는 반대로 기다려야 한다.
+  # 실측 최악 비율(처리시간/오디오길이 0.198)을 10분 청크에 적용하면 약 119초다. 10분은 미실측이라
+  # 여유를 두어 180초로 시작하고, timeout 이 나도 S15P11A105-107 의 재시도 정책을 그대로 쓴다.
+  postclass-transcribe-timeout: ${GMS_POSTCLASS_TRANSCRIBE_TIMEOUT:180s}
   tip-model: ${GMS_TIP_MODEL:gpt-5.4-mini}
   # 팁 문구 전용 timeout. 실측에서 슬롯 1개 응답이 1.2~1.5초였다(프롬프트 100토큰 기준).
   # 전사 뒤에 붙는 단계라 여유를 크게 둘 이유가 없다.

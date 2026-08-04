@@ -56,8 +56,14 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
 
     @Override
     public Optional<PipelineJobState> findForUpdate(Long sessionId) {
+        return find(sessionId);
+    }
+
+    @Override
+    public Optional<PipelineJobState> find(Long sessionId) {
+        // 인메모리 대역에는 잠금이 없으므로 둘이 같다. 잠금 유무가 만드는 차이는 실제 DB 통합 테스트가 본다.
         return Optional.ofNullable(rows.get(sessionId))
-                .map(row -> new PipelineJobState(row.status, row.attemptCount, row.queuedAt));
+                .map(row -> new PipelineJobState(row.status, row.attemptCount, row.queuedAt, row.nextAttemptAt));
     }
 
     @Override
@@ -83,6 +89,42 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
     public void markFailed(Long sessionId, String error, Instant changedAt) {
         Row row = rows.get(sessionId);
         row.lastError = error;
+        row.nextAttemptAt = null;
+        row.changedAt = changedAt;
+    }
+
+    @Override
+    public List<Long> findDueTranscriptionSessionIds(Instant now, int limit) {
+        // 실제 쿼리와 같은 조건: QUEUED 전체 + 재시도 기한이 지난 TRANSCRIBING. 실행 중(대기 시각 없음)은 빼야 한다.
+        return rows.entrySet().stream()
+                .filter(entry -> entry.getValue().status == PipelineStatus.QUEUED
+                        || (entry.getValue().status == PipelineStatus.TRANSCRIBING
+                                && entry.getValue().nextAttemptAt != null
+                                && !entry.getValue().nextAttemptAt.isAfter(now)))
+                .sorted(java.util.Comparator.comparing(entry -> entry.getValue().queuedAt))
+                .map(java.util.Map.Entry::getKey)
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public int requeueStalledTranscriptions(Instant now) {
+        int recovered = 0;
+        for (Row row : rows.values()) {
+            // 실제 쿼리와 같은 조건이다: TRANSCRIBING 인데 재시도 대기가 없는 행만 되살린다.
+            if (row.status == PipelineStatus.TRANSCRIBING && row.nextAttemptAt == null) {
+                row.nextAttemptAt = now;
+                row.changedAt = now;
+                recovered++;
+            }
+        }
+        return recovered;
+    }
+
+    @Override
+    public void clearRetryWait(Long sessionId, Instant changedAt) {
+        Row row = rows.get(sessionId);
+        // 단계와 시도 횟수는 그대로 둔다. 대기만 푸는 것이 이 계약의 전부다.
         row.nextAttemptAt = null;
         row.changedAt = changedAt;
     }

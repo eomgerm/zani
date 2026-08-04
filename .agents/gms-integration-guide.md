@@ -174,6 +174,13 @@ mono — 8,000 bytes per second):
 Leave headroom for ID3 frames and the multipart envelope; 45-minute chunks are
 a safe working figure. A three-hour track needs four uploads.
 
+**This figure applies only to the real-time MP3 path.** Post-class transcription
+(`S15P11A105-247`) uploads the Track Egress OGG/Opus original unchanged — no MP3
+re-encode — so the bitrate above does not apply. It chunks at **10 minutes**, a
+figure chosen for heap and timeout predictability rather than the 25 MiB limit,
+and re-splits any chunk that still exceeds 24 MiB. Measured: a 290.7-second
+128 kbps OGG chunk of 815 KB returned HTTP 200 in one call.
+
 For LLM calls, 100 KiB of Korean transcript is about 34,000 characters, roughly
 102 minutes of speech at the measured density. After the system prompt, events,
 and notes are added, plan for **80–90 minutes of transcript per call**. A

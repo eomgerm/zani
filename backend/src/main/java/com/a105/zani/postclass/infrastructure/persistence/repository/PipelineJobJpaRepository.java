@@ -67,6 +67,14 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     Optional<PipelineJobJpaEntity> findForUpdate(@Param("sessionId") Long sessionId);
 
     /**
+     * 잠금 없이 읽는다. 전이 판단에는 쓰지 않는다.
+     *
+     * <p>사후 전사가 8시간 마감의 기준점({@code created_at})을 얻는 데 쓴다. 수십 분 걸리는 작업이 {@link #findForUpdate} 의 잠금을 붙잡으면 SLA 경보와 다른 단계의
+     * 전이가 잠금 대기로 실패한다.
+     */
+    Optional<PipelineJobJpaEntity> findBySessionId(Long sessionId);
+
+    /**
      * 단계를 바꾸고 재시도 예산을 초기화한다. 갈 수 있는 단계인지는 잠금 읽기 뒤 호출자가 이미 판단했으므로 조건을 두지 않는다.
      *
      * <p>last_error 는 지우지 않는다. 그 값은 "마지막 실패 사유" 이력이라 단계가 넘어갔다고 사라질 이유가 없고, 무엇보다 FAILED 로 옮기는 것도 이 쿼리다 — 여기서 지우면 실패 사유를
@@ -111,6 +119,61 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
             """)
     int markFailed(
             @Param("sessionId") Long sessionId, @Param("error") String error, @Param("changedAt") Instant changedAt);
+
+    /** 현재 단계를 유지한 채 재시도 대기만 푼다. 시도 횟수는 건드리지 않는다 — 재시도 선점 전용(S15P11A105-247). */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.nextAttemptAt = null, job.updatedAt = :changedAt
+             where job.sessionId = :sessionId
+            """)
+    int clearRetryWait(@Param("sessionId") Long sessionId, @Param("changedAt") Instant changedAt);
+
+    /**
+     * 워커 없이 남은 {@code TRANSCRIBING} 작업에 대기 시각을 채워 다시 발견되게 한다.
+     *
+     * <p>조건이 {@code next_attempt_at is null} 인 것이 핵심이다. 재시도 대기 중인 작업은 이미 발견 대상이므로 건드리지 않고, "실행 중" 으로 보이는 행만 되살린다. <b>시도
+     * 횟수는 올리지 않는다</b> — 크래시는 단계 실패가 아니다.
+     *
+     * <p>기동 시점 전용이다. 그때는 이 인스턴스의 워커가 없으므로 조건에 걸리는 행은 모두 고아다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.nextAttemptAt = :now, job.updatedAt = :now
+             where job.status = :transcribingStatus and job.nextAttemptAt is null
+            """)
+    int requeueStalledTranscriptions(@Param("transcribingStatus") String transcribingStatus, @Param("now") Instant now);
+
+    default int requeueStalledTranscriptions(Instant now) {
+        return requeueStalledTranscriptions(PipelineStatus.TRANSCRIBING.name(), now);
+    }
+
+    /**
+     * 전사를 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터.
+     *
+     * <p>{@code QUEUED} 전체와, 재시도 기한이 지난 {@code TRANSCRIBING} 만 고른다. {@code next_attempt_at} 이 {@code null} 인
+     * {@code TRANSCRIBING} 은 <b>실행 중</b>이므로 빼야 한다 — 넣으면 진행 중인 세션이 매 주기마다 다시 발견된다.
+     *
+     * <p>단계 리터럴을 파라미터로 받는 이유는 {@link #findOverdueSessionIds} 와 같다. 단계 이름을 바꿀 때 쿼리 문자열을 놓치지 않도록 호출부가 enum 에서 넘긴다.
+     */
+    @Query("""
+            select job.sessionId from PipelineJobJpaEntity job
+             where job.status = :queuedStatus
+                or (job.status = :transcribingStatus
+                    and job.nextAttemptAt is not null and job.nextAttemptAt <= :now)
+             order by job.createdAt asc
+            """)
+    List<Long> findDueTranscriptionSessionIds(
+            @Param("queuedStatus") String queuedStatus,
+            @Param("transcribingStatus") String transcribingStatus,
+            @Param("now") Instant now,
+            Pageable pageable);
+
+    default List<Long> findDueTranscriptionSessionIds(Instant now, int limit) {
+        return findDueTranscriptionSessionIds(
+                PipelineStatus.QUEUED.name(), PipelineStatus.TRANSCRIBING.name(), now, Pageable.ofSize(limit));
+    }
 
     /**
      * 아직 끝나지 않았는데 기준 시각보다 먼저 등록된 작업의 세션 ID. 오래 밀린 것부터.

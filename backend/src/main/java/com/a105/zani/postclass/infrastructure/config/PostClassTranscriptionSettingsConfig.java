@@ -1,0 +1,30 @@
+package com.a105.zani.postclass.infrastructure.config;
+
+import java.nio.file.Path;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import com.a105.zani.common.infrastructure.gms.GmsProperties;
+import com.a105.zani.postclass.application.port.PostClassTranscriptionSettings;
+
+/**
+ * 설정을 application 계층 타입으로 옮긴다.
+ *
+ * <p>전사 언어만 {@code gms} 설정에서 온다. 사후 전사가 자기 언어 설정을 따로 두지 않는 이유는 값이 갈리면 요청과 문서에 적히는 언어가 달라지기 때문이다 — GMS 로 보내는 값이 정본이다.
+ */
+@Configuration
+public class PostClassTranscriptionSettingsConfig {
+
+    @Bean
+    public PostClassTranscriptionSettings postClassTranscriptionSettings(
+            PostClassTranscriptionProperties properties, GmsProperties gmsProperties) {
+        return new PostClassTranscriptionSettings(
+                Path.of(properties.sourceRoot()),
+                Path.of(properties.workDir()),
+                properties.leaseDuration(),
+                properties.concurrency(),
+                gmsProperties.transcribeLanguage(),
+                properties.silencePrefilterEnabled());
+    }
+}
