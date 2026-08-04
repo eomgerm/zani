@@ -62,6 +62,11 @@ public class SecurityConfig {
                         // 핸들러가 공유 시크릿으로 검증한다.
                         .requestMatchers("/internal/audio/**")
                         .permitAll()
+                        // 녹화 재생. <video> 는 Authorization 헤더를 싣지 못해 자격이 주소에 들어 있고,
+                        // 유스케이스가 세션·만료에 묶인 서명으로 검증한다(불일치·만료 401). 주소 발급 API
+                        // (/media-url)는 여기 열지 않는다 — 그쪽은 로그인과 세션 참여를 확인해야 한다.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/sessions/*/media")
+                        .permitAll()
                         // 업무 이벤트 STOMP 핸드셰이크. 브라우저 WebSocket 은 핸드셰이크에 Authorization 헤더를 붙일 수 없고,
                         // 토큰을 쿼리 파라미터로 넘기면 프록시·액세스 로그에 남는다. 그래서 여기서는 열고
                         // StompAuthChannelInterceptor 가 CONNECT 프레임의 Bearer 토큰으로 인증한다.
