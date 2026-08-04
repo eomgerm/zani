@@ -39,9 +39,11 @@ from zani_ai.engagement.experiment import (
     E0J_SPEC,
     E0K_SPEC,
     E0L_SPEC,
+    E0M_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
+    E1P_SPEC,
     SPECS,
     ExperimentSpec,
     _assert_file_record_unchanged,
@@ -94,12 +96,19 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     # E0-10 is new in S15P11A105-238; measured on this tree, not before it.
     ("E0-10", "cpu"): "bdca954125cd03df0915a62015f457b5e80317c0746c83f4ff7d8d4a7a62816e",
     ("E0-10", "cuda"): "a70522fae9f65c7241f5310600f88ef2f47d39014f204cf94a4b9dc48676b8e1",
+    # E0-M is new in S15P11A105-289. Its `probability_mixing` block covers the
+    # grid, the two budgets and the selection rule, so widening the grid or
+    # relaxing a budget is a new protocol rather than an edit to this one.
+    ("E0-M", "cpu"): "e97224c25b3c8c181f0705551a4aea2b22cf2c0deacd8892798ce765b0041e3e",
+    ("E0-M", "cuda"): "03a82ac7eaf05d46a9af018ae9eb468d8edc69e9f3df7c0bb2470553cc3dd03e",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
     ("E1-A", "cuda"): "5bc0d7f9ae6420c53d3b1a3d107d2a2165b5ee22aa88541a24468051f608d07e",
     ("E1-B", "cpu"): "f97f99b67dbfcd9175eb4ba5a5a6f0d55af19194c914f9425466b9d458406326",
     ("E1-B", "cuda"): "b2f2ddf8514256a654ecb15a83c08a6156aef9838dac7939bb2a7c9bae10ef9e",
+    ("E1-P", "cpu"): "c5fb4e569e4c488b369d76527ba0e0426b42445394ad42c52592fb3426863a2f",
+    ("E1-P", "cuda"): "75d43a54dd388461861a136106c9e1a7c95644b5d6c6c117f7bee29909aea1c8",
 }
 
 SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
@@ -116,10 +125,12 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0J_SPEC,
     E0K_SPEC,
     E0L_SPEC,
+    E0M_SPEC,
     E0_10_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
+    E1P_SPEC,
 )
 
 
@@ -180,10 +191,13 @@ def test_completed_protocols_stay_pinned_to_the_five_seed_identity(spec: Experim
 
     ``seeds`` is inside ``configuration``, so letting one of these inherit the
     new default would change its ``configuration_sha256`` and make
-    ``_validate_summary_identity`` reject its own output directory. Only E0-10,
-    which has nothing on disk yet, may carry the new list.
+    ``_validate_summary_identity`` reject its own output directory. Only a
+    protocol with nothing on disk yet may carry the new list: E0-10, E1-P from
+    S15P11A105-288, and E0-M from S15P11A105-289, which is compared against
+    E0-10 and therefore has to be measured at the same ten seeds.
     """
-    expected = CANDIDATE_SEEDS if spec.protocol == "E0-10" else E0_SEEDS
+    ten_seed_protocols = {"E0-10", "E0-M", "E1-P"}
+    expected = CANDIDATE_SEEDS if spec.protocol in ten_seed_protocols else E0_SEEDS
 
     assert spec.seeds == expected
 
@@ -448,6 +462,47 @@ def test_e0l_differs_from_e0_only_in_its_head_and_the_two_rules_it_needs() -> No
     assert {key: value for key, value in model.items() if key != "head"} == {
         key: value for key, value in cast(dict[str, object], base["model"]).items()
     }
+
+
+def test_e0m_identity_covers_the_mixing_grid_and_its_selection_rule() -> None:
+    """The grid is the protocol; the point chosen from it is the artifact.
+
+    A grid searched on Validation and a rule that picks from it both decide the
+    numbers, so widening either has to produce a different identity. The selected
+    ``alpha`` must *not* be in here -- it is per seed, and putting it in the
+    identity would give every seed a different protocol.
+    """
+    base = _build_configuration(E0_10_SPEC, "cuda")
+
+    variant = _build_configuration(E0M_SPEC, "cuda")
+
+    differing = {key for key in base | variant if base.get(key) != variant.get(key)}
+    assert differing == {"model", "loss", "probability_mixing"}
+    mixing = cast(dict[str, object], variant["probability_mixing"])
+    assert mixing["alpha_grid"] == [0.0, 0.25, 0.5, 0.75, 1.0]
+    assert mixing["temperature_grid"] == [1.0, 1.5, 2.0]
+    assert mixing["epsilon"] == 1e-6
+    assert mixing["false_alarm_budget_per_90min"] == 0.5
+    assert mixing["accuracy_drop_budget"] == 0.01
+    assert mixing["decoding"] == "argmax_mixed_class_probability"
+    assert "alpha" not in mixing
+    # Same schedule and seed list as the baseline it is judged against, so the
+    # dual head is the only thing that moved.
+    for field in ("learning_rate", "batch_size", "max_epochs", "patience", "lr_step", "seeds"):
+        assert getattr(E0M_SPEC, field) == getattr(E0_10_SPEC, field)
+    model = cast(dict[str, object], variant["model"])
+    assert model["head"] == "dual_softmax_ordinal"
+    assert {key: value for key, value in model.items() if key != "head"} == {
+        key: value for key, value in cast(dict[str, object], base["model"]).items()
+    }
+
+
+def test_a_widened_mixing_grid_is_a_different_protocol() -> None:
+    from zani_ai.engagement.model import MixingProtocol
+
+    wider = replace(E0M_SPEC, mixing=MixingProtocol(alpha_grid=(0.0, 0.5, 0.9, 1.0)))
+
+    assert _canonical_hash(_build_configuration(wider, "cpu")) != BASELINE_HASHES[("E0-M", "cpu")]
 
 
 def _stage1_directory(path: Path, payload: bytes = b"stage1") -> Path:

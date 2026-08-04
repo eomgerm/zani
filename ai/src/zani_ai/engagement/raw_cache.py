@@ -156,6 +156,7 @@ class RawProvenance:
     max_excluded_fraction: float
     algorithm_source_sha256: dict[str, str]
     extraction_fingerprint: str
+    require_coverage: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,9 +309,27 @@ def _process_raw_clip(
     *,
     frame_source: RawFrameSource = iter_sampled_frames,
     sample_fps: float = SAMPLE_FPS,
+    require_coverage: bool = True,
 ) -> RawClip:
-    """Collect raw frames and enforce canonical inclusion, raising on failure."""
+    """Collect raw frames and enforce canonical inclusion, raising on failure.
+
+    With ``require_coverage=False`` both coverage gates are skipped and every
+    decodable clip is cached, gaps and all. arXiv:2403.17175 Section 5 reports
+    classifying "samples with occluded or absent faces, i.e., no facial
+    landmarks" as Not-Engaged, so the paper trained on exactly the clips the
+    gates drop -- and those clips are predominantly Not-Engaged, which is where
+    our per-class shortfall against the paper's split sits. `valid_mask` still
+    records every gap, so what to do with a sparse clip stays a decision for
+    the representation and the protocol, not for the cache.
+    """
     clip = collect_raw_clip(video_path, landmarker, frame_source=frame_source)
+    if clip.timestamps_ms.shape[0] == 0:
+        # Not a coverage question: a zero-frame npz can never satisfy
+        # `_cached_raw_clip`, so caching one would make every later run
+        # re-extract the clip forever. Excluded under either policy.
+        raise InsufficientRawCoverageError("no frames could be decoded from the clip")
+    if not require_coverage:
+        return clip
     valid_frame_count = sum(
         bool(valid) and 0 <= float(timestamp_ms) < WINDOW_SECONDS * 1000
         for valid, timestamp_ms in zip(clip.valid_mask, clip.timestamps_ms, strict=True)
@@ -478,6 +497,7 @@ def _build_raw_provenance(
     workers: int,
     max_excluded_fraction: float,
     sample_fps: float = SAMPLE_FPS,
+    require_coverage: bool = True,
 ) -> RawProvenance:
     model_sha256 = _file_sha256(model_asset_path)
     model_size = model_asset_path.stat().st_size
@@ -521,6 +541,11 @@ def _build_raw_provenance(
         },
         "algorithm_source_sha256": algorithm_source_sha256,
     }
+    if not require_coverage:
+        # Only stamped when the gate is off, so a gated cache keeps the exact
+        # fingerprint it has today and the existing caches stay reusable. The
+        # two policies still hash differently, which is what has to hold.
+        fingerprint_payload["require_coverage"] = False
     encoded = json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return RawProvenance(
         created_at_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -543,6 +568,7 @@ def _build_raw_provenance(
         max_excluded_fraction=max_excluded_fraction,
         algorithm_source_sha256=algorithm_source_sha256,
         extraction_fingerprint=sha256(encoded).hexdigest(),
+        require_coverage=require_coverage,
     )
 
 
@@ -556,6 +582,7 @@ class _RawWorkerTask:
     # stamps the matching schema, instead of the module defaults.
     sample_fps: float = SAMPLE_FPS
     schema: str = RAW_SCHEMA_NAME
+    require_coverage: bool = True
 
 
 # One landmarker per clip, not per worker: see the note above `_worker_model_path`
@@ -591,6 +618,7 @@ def _extract_raw_worker(task: _RawWorkerTask) -> RawIncludedClip | ExcludedClip:
                 landmarker,
                 frame_source=partial(iter_sampled_frames, sample_fps=task.sample_fps),
                 sample_fps=task.sample_fps,
+                require_coverage=task.require_coverage,
             )
     except (
         InvalidFrameFeaturesError,
@@ -620,6 +648,7 @@ def extract_raw_contract_parallel(
     progress_every: int = DEFAULT_PROGRESS_EVERY,
     max_excluded_fraction: float = 0.05,
     sample_fps: float = SAMPLE_FPS,
+    require_coverage: bool = True,
 ) -> RawManifest:
     """Extract and cache raw per-frame MediaPipe output for a whole contract.
 
@@ -653,6 +682,7 @@ def extract_raw_contract_parallel(
         workers=workers,
         max_excluded_fraction=max_excluded_fraction,
         sample_fps=sample_fps,
+        require_coverage=require_coverage,
     )
     total = len(records)
     included: dict[tuple[SplitName, str], RawIncludedClip] = {}
@@ -761,6 +791,7 @@ def extract_raw_contract_parallel(
                             provenance.extraction_fingerprint,
                             sample_fps=sample_fps,
                             schema=schema,
+                            require_coverage=require_coverage,
                         )
                     )
                 scanned_count += 1

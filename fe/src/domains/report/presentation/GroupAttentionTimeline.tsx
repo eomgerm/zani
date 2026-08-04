@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Area,
   CartesianGrid,
@@ -12,7 +12,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { Card } from "@/shared/ui";
+import {
+  Card,
+  PictoCamera,
+  PictoClockMuted,
+  PictoInbox,
+  PictoLock,
+  PictoWarn,
+} from "@/shared/ui";
 import {
   requestGroupAttentionTimeline,
   type GroupFocusPoint,
@@ -70,9 +77,9 @@ const shortageRunsOf = (
   return runs;
 };
 
-const Notice = ({ icon, title, detail }: { icon: string; title: string; detail: string }) => (
+const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) => (
   <div className="px-5 py-12 text-center text-ink-fainter">
-    <div className="mb-3 text-[36px]">{icon}</div>
+    <div className="mb-3 flex justify-center">{icon}</div>
     <div className="mb-1 font-bold text-ink-muted">{title}</div>
     <div className="text-[13px]">{detail}</div>
   </div>
@@ -100,13 +107,19 @@ export function GroupAttentionTimeline({
 
   const body = () => {
     if (status === "loading") {
-      return <Notice icon="⏳" title="집중 흐름을 불러오는 중이에요" detail="잠시만 기다려 주세요." />;
+      return (
+        <Notice
+          icon={<PictoClockMuted size={36} />}
+          title="집중 흐름을 불러오는 중이에요"
+          detail="잠시만 기다려 주세요."
+        />
+      );
     }
 
     if (status === "live") {
       return (
         <Notice
-          icon="🎥"
+          icon={<PictoCamera size={36} />}
           title="아직 진행 중인 수업이에요"
           detail="수업이 끝나면 집중 흐름을 볼 수 있어요."
         />
@@ -116,7 +129,7 @@ export function GroupAttentionTimeline({
     if (status === "forbidden") {
       return (
         <Notice
-          icon="🔒"
+          icon={<PictoLock size={36} />}
           title="이 수업의 집중 흐름을 볼 권한이 없어요"
           detail="내가 진행한 수업인지 확인해 주세요."
         />
@@ -126,7 +139,9 @@ export function GroupAttentionTimeline({
     if (status === "failed" || timeline === null) {
       return (
         <div className="px-5 py-12 text-center text-ink-fainter">
-          <div className="mb-3 text-[36px]">⚠️</div>
+          <div className="mb-3 flex justify-center">
+            <PictoWarn size={36} />
+          </div>
           <div className="mb-1 font-bold text-ink-muted">집중 흐름을 불러오지 못했어요</div>
           <button type="button" onClick={retry} className="z-btn z-btn-outline z-btn-md mt-3">
             다시 시도
@@ -141,7 +156,7 @@ export function GroupAttentionTimeline({
     if (focusFlow.points.length === 0 && signals.points.length === 0) {
       return (
         <Notice
-          icon="📭"
+          icon={<PictoInbox size={36} />}
           title="이 수업에는 기록이 없어요"
           detail="참여도 관측이 한 건도 남지 않아 그릴 흐름이 없어요."
         />
@@ -418,7 +433,7 @@ export function GroupAttentionTimeline({
     <Card className="px-6 pb-5 pt-[22px]">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <div className="z-section-title">
-          <span className="text-primary">📊</span>집중 흐름
+          집중 흐름
         </div>
         <span className="text-[11.5px] text-ink-fainter">
           수업 시간 순서대로 본 익명 집단 집중 흐름이에요.

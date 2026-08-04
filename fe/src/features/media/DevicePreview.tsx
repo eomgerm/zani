@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDownIcon, Select, type SelectOption } from "@/shared/ui";
+import { ChevronDownIcon, PictoCamera, Select, type SelectOption } from "@/shared/ui";
 import { MICROPHONE_LEVEL_THRESHOLD, type DeviceTestFailure } from "./deviceTest";
 import { useDevicePreview, type DevicePreviewState } from "./useDevicePreview";
 
@@ -77,7 +77,7 @@ export function DevicePreview({
         />
         {!cameraHasVideoFrame && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-[30px] text-center">
-            <span className="text-4xl">🎥</span>
+            <PictoCamera size={36} />
             <div className="text-lg font-extrabold text-white [text-shadow:0_2px_10px_#0008]">
               {cameraRequesting ? "카메라 권한을 확인하고 있어요" : "카메라 영상이 보이지 않아요"}
             </div>

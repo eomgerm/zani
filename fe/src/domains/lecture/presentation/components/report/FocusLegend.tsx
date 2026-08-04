@@ -5,10 +5,7 @@
 export function FocusLegend({ title, scope }: { title: string; scope: string }) {
   return (
     <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2.5">
-      <div className="z-section-title">
-        <span className="text-primary">📈</span>
-        {title}
-      </div>
+      <div className="z-section-title">{title}</div>
       <div className="flex flex-wrap gap-3.5 text-xs font-bold text-ink-muted">
         <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
           {scope}

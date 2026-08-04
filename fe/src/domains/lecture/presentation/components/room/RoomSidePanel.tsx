@@ -95,7 +95,7 @@ export function RoomSidePanel({
               <div className="mt-[30px] text-center text-[13px] text-[#6b7096]">
                 아직 메시지가 없어요.
                 <br />
-                첫 메시지를 보내보세요 💬
+                첫 메시지를 보내보세요
               </div>
             ) : (
               messages.map((m) => (
@@ -172,8 +172,9 @@ export function RoomSidePanel({
         <div className="flex-1 overflow-y-auto px-3 py-2.5">
           {handQueue.length > 0 && (
             <>
-              <div className="px-1.5 pb-2 pt-1.5 text-[11px] font-extrabold tracking-[.3px] text-panel-muted">
-                ✋ 손든 참가자
+              <div className="flex items-center gap-1 px-1.5 pb-2 pt-1.5 text-[11px] font-extrabold tracking-[.3px] text-panel-muted">
+                <HandIcon size={12} />
+                손든 참가자
               </div>
               {handQueue.map((p) => (
                 <div

@@ -36,6 +36,77 @@ SAMPLER_SCHEMES = ("none", "balanced")
 #: torch.
 TARGET_ENCODINGS = ("one_hot", "sord")
 
+#: The grades the product treats as "low engagement" -- `Not-Engaged` and
+#: `Barely-Engaged`. The browser sums their probabilities into the single number
+#: the 10-second decision reads (see `.agents/attention-coaching-context.md`
+#: §3.3), so the pair is a deployment contract rather than a reporting choice.
+LOW_ENGAGEMENT_CLASSES = (0, 1)
+
+#: How the low-engagement decision reaches a student prompt: one decision per
+#: 10-second window, three consecutive low decisions required, over a 90-minute
+#: lesson. Used only by the independence approximation below.
+DECISION_WINDOW_SECONDS = 10.0
+CONSECUTIVE_LOW_DECISIONS = 3
+LESSON_MINUTES = 90
+
+
+def low_engagement_metrics(confusion_matrix: list[list[int]]) -> dict[str, float]:
+    """Binary low-vs-high view of a 4-class confusion matrix.
+
+    The product does not act on the 4-class label; it acts on "are the bottom
+    two grades likely", and only after three consecutive windows say so. So the
+    numbers that decide whether a model is worth deploying are not accuracy and
+    macro-F1 but this collapse of the same matrix.
+
+    Derived rather than stored, which is what lets a protocol finalized before
+    this function existed (E0-10, E0-L) be read the same way without retraining.
+
+    ``consecutive_detection_rate`` and ``false_alarms_per_90min`` assume adjacent
+    10-second windows are **independent**, which they are not -- consecutive
+    windows see overlapping behaviour, so both figures come out low. They are the
+    same approximation `.agents/attention-coaching-context.md` §3.3 tabulates, so
+    they are comparable protocol to protocol and must not be read as absolutes.
+    """
+    if len(confusion_matrix) != len(LABELS) or any(
+        len(row) != len(LABELS) for row in confusion_matrix
+    ):
+        # Refusing rather than adapting to the size given: the low/high split is
+        # defined over the four graded labels, so reading a differently shaped
+        # matrix would answer a question about something else.
+        raise ValueError(
+            f"low-engagement metrics need a {len(LABELS)}x{len(LABELS)} confusion matrix"
+        )
+    low = set(LOW_ENGAGEMENT_CLASSES)
+    high = set(range(len(LABELS))) - low
+    counts = {
+        name: sum(confusion_matrix[actual][predicted] for actual in rows for predicted in columns)
+        for name, rows, columns in (
+            ("tp", low, low),
+            ("fn", low, high),
+            ("fp", high, low),
+            ("tn", high, high),
+        )
+    }
+
+    def ratio(numerator: float, denominator: float) -> float:
+        return numerator / denominator if denominator else 0.0
+
+    recall = ratio(counts["tp"], counts["tp"] + counts["fn"])
+    false_positive_rate = ratio(counts["fp"], counts["fp"] + counts["tn"])
+    precision = ratio(counts["tp"], counts["tp"] + counts["fp"])
+    windows_per_lesson = LESSON_MINUTES * 60 / DECISION_WINDOW_SECONDS
+    return {
+        "recall": recall,
+        "false_positive_rate": false_positive_rate,
+        "precision": precision,
+        "f1": ratio(2 * precision * recall, precision + recall) if precision + recall else 0.0,
+        "consecutive_detection_rate": recall**CONSECUTIVE_LOW_DECISIONS,
+        "false_alarms_per_90min": (
+            false_positive_rate**CONSECUTIVE_LOW_DECISIONS * windows_per_lesson
+        ),
+    }
+
+
 _LABEL_LOOKUP = {label.casefold(): label for label in LABELS}
 _LABEL_LOOKUP["barely-engaged"] = "Barely-Engaged"
 _SPLIT_FILES: dict[SplitName, str] = {
@@ -212,10 +283,15 @@ def load_dataset_contract(
 
 
 __all__ = [
+    "CONSECUTIVE_LOW_DECISIONS",
+    "DECISION_WINDOW_SECONDS",
     "LABELS",
+    "LESSON_MINUTES",
+    "LOW_ENGAGEMENT_CLASSES",
     "ClipRecord",
     "DatasetContract",
     "DatasetContractError",
     "SplitName",
     "load_dataset_contract",
+    "low_engagement_metrics",
 ]
