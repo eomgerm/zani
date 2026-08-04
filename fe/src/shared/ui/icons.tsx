@@ -26,34 +26,7 @@ const svgProps = (size: number, strokeWidth: number, className?: string) => ({
   className,
 });
 
-/* ---- 사이드바 내비게이션 (프로토타입 navIcon, 21px / stroke 1.9) ---- */
-
-export function HomeIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <path d="M4 11l8-6.5 8 6.5" />
-      <path d="M6 9.5V20h12V9.5" />
-    </svg>
-  );
-}
-
-export function CardsIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <rect x="4" y="4" width="16" height="16" rx="2.6" />
-      <path d="M9 4v16" />
-    </svg>
-  );
-}
-
-export function GearIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2.5v2.5M12 19v2.5M4.4 7l2.1 1.2M17.5 15.8l2.1 1.2M4.4 17l2.1-1.2M17.5 8.2l2.1-1.2" />
-    </svg>
-  );
-}
+/* 사이드바 내비게이션 아이콘은 pictograms 로 옮겼다 — 시안이 같은 도형을 상태별 색으로 쓴다. */
 
 /* ---- 목록 툴바 · 카드 메타 ---- */
 
@@ -234,16 +207,6 @@ export function CloseIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2.2, className)}>
       <path d="M6 6l12 12M18 6 6 18" />
-    </svg>
-  );
-}
-
-/** 화면 공유 오버레이의 모니터 일러스트 */
-export function MonitorIcon({ size = 60, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.5, className)}>
-      <rect x="2" y="4" width="20" height="13" rx="2" />
-      <path d="M8 21h8M12 17v4" />
     </svg>
   );
 }

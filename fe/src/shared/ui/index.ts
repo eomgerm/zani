@@ -14,9 +14,6 @@ export { AppShell } from "./AppShell";
 export type { AppShellMember } from "./AppShell";
 export * from "./pictograms";
 export {
-  HomeIcon,
-  CardsIcon,
-  GearIcon,
   SearchIcon,
   SortIcon,
   ListIcon,
@@ -38,5 +35,4 @@ export {
   HandIcon,
   ReactionIcon,
   CloseIcon,
-  MonitorIcon,
 } from "./icons";

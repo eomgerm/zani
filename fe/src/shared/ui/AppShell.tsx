@@ -5,17 +5,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
-import { CardsIcon, GearIcon, HomeIcon } from "./icons";
+import { PictoCards, PictoGear, PictoHome } from "./pictograms";
 
 export type AppShellMember = {
   displayName: string;
   email: string;
 };
 
-const NAV_ITEMS: { label: string; href: string; Icon: typeof HomeIcon }[] = [
-  { label: "홈", href: "/home", Icon: HomeIcon },
-  { label: "내 강의실", href: "/my-lectures", Icon: CardsIcon },
-  { label: "계정 설정", href: "/settings", Icon: GearIcon },
+const NAV_ITEMS: { label: string; href: string; Icon: typeof PictoHome }[] = [
+  { label: "홈", href: "/home", Icon: PictoHome },
+  { label: "내 강의실", href: "/my-lectures", Icon: PictoCards },
+  { label: "계정 설정", href: "/settings", Icon: PictoGear },
 ];
 
 /**
@@ -56,9 +56,9 @@ export function AppShell({
                   active ? "bg-primary-soft font-extrabold text-primary" : "font-bold text-ink-sub"
                 }`}
               >
-                {/* 비활성 상태에서는 아이콘만 라벨보다 옅게 둔다 */}
+                {/* 비활성 상태에서는 아이콘만 라벨보다 옅게 둔다 — 색은 글자 색을 따른다 */}
                 <span className={`flex shrink-0 ${active ? "" : "text-[#8388a6]"}`}>
-                  <Icon />
+                  <Icon size={21} tone="currentColor" />
                 </span>
                 {label}
               </Link>
