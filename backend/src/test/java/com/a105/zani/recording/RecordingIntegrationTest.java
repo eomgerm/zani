@@ -24,13 +24,13 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.TrackEgressUnavailableException;
 import com.a105.zani.recording.application.orchestrate.RelayRecordingOutboxUseCase;
 import com.a105.zani.recording.application.port.IssuedTrackEgress;
-import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookVerifierPort;
 import com.a105.zani.recording.application.port.TrackEgressPort;
 import com.a105.zani.recording.application.port.TrackEgressRequest;
 import com.a105.zani.recording.application.webhook.EgressFileResult;
-import com.a105.zani.recording.application.webhook.ProcessRecordingWebhookUseCase;
-import com.a105.zani.recording.application.webhook.RecordingWebhookEvent;
-import com.a105.zani.recording.application.webhook.RecordingWebhookEventType;
+import com.a105.zani.recording.application.webhook.LiveKitWebhookEvent;
+import com.a105.zani.recording.application.webhook.LiveKitWebhookEventType;
+import com.a105.zani.recording.application.webhook.ProcessLiveKitWebhookUseCase;
 import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
@@ -55,7 +55,7 @@ class RecordingIntegrationTest {
     private static final String INSTRUCTOR_IDENTITY_PREFIX = "p-";
 
     @Autowired
-    private ProcessRecordingWebhookUseCase webhookUseCase;
+    private ProcessLiveKitWebhookUseCase webhookUseCase;
 
     @Autowired
     private RelayRecordingOutboxUseCase relayUseCase;
@@ -142,9 +142,9 @@ class RecordingIntegrationTest {
     }
 
     private void publishTrack(String eventId, long participantId, String trackSid, TrackSource source) {
-        webhookFixture.nextEvent = new RecordingWebhookEvent(
+        webhookFixture.nextEvent = new LiveKitWebhookEvent(
                 eventKey(eventId),
-                RecordingWebhookEventType.TRACK_PUBLISHED,
+                LiveKitWebhookEventType.TRACK_PUBLISHED,
                 sessionId,
                 INSTRUCTOR_IDENTITY_PREFIX + participantId,
                 trackSid,
@@ -159,12 +159,12 @@ class RecordingIntegrationTest {
 
     private void egressCallback(
             String eventId,
-            RecordingWebhookEventType type,
+            LiveKitWebhookEventType type,
             String egressId,
             Boolean complete,
             String trackSid,
             List<EgressFileResult> files) {
-        webhookFixture.nextEvent = new RecordingWebhookEvent(
+        webhookFixture.nextEvent = new LiveKitWebhookEvent(
                 eventKey(eventId), type, sessionId, null, null, null, egressId, complete, trackSid, null, files);
         webhookUseCase.process("{}", "signature");
     }
@@ -245,7 +245,7 @@ class RecordingIntegrationTest {
         // 순서 역전: 종료 콜백이 시작 콜백보다 먼저 도착한다.
         egressCallback(
                 "EV-ord-ended",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 egressId,
                 Boolean.TRUE,
                 "TR_ord",
@@ -254,10 +254,10 @@ class RecordingIntegrationTest {
         assertEquals(1, fileKeys().size());
 
         // 뒤늦은 시작 콜백과 중복 종료 콜백은 종결 상태를 되돌리거나 파일을 늘리지 못한다.
-        egressCallback("EV-ord-started", RecordingWebhookEventType.EGRESS_STARTED, egressId, null, "TR_ord", List.of());
+        egressCallback("EV-ord-started", LiveKitWebhookEventType.EGRESS_STARTED, egressId, null, "TR_ord", List.of());
         egressCallback(
                 "EV-ord-ended-again",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 egressId,
                 Boolean.TRUE,
                 "TR_ord",
@@ -288,7 +288,7 @@ class RecordingIntegrationTest {
         // 성공한 트랙의 종료 콜백은 정상 처리된다.
         egressCallback(
                 "EV-part-ended",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG-TR_part_cam",
                 Boolean.TRUE,
                 "TR_part_cam",
@@ -320,7 +320,7 @@ class RecordingIntegrationTest {
 
         egressCallback(
                 "EV-fail-ended",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG-TR_fail",
                 Boolean.FALSE,
                 "TR_fail",
@@ -337,7 +337,7 @@ class RecordingIntegrationTest {
 
         egressCallback(
                 "EV-multi-ended",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG-TR_multi",
                 Boolean.TRUE,
                 "TR_multi",
@@ -440,12 +440,12 @@ class RecordingIntegrationTest {
     }
 
     /** 서명 검증을 통과한 것으로 간주하고, 테스트가 지정한 이벤트를 그대로 반환한다. */
-    static class FakeWebhookVerifier implements RecordingWebhookVerifierPort {
+    static class FakeWebhookVerifier implements LiveKitWebhookVerifierPort {
 
-        private RecordingWebhookEvent nextEvent;
+        private LiveKitWebhookEvent nextEvent;
 
         @Override
-        public RecordingWebhookEvent verify(String body, String authorizationHeader) {
+        public LiveKitWebhookEvent verify(String body, String authorizationHeader) {
             return nextEvent;
         }
     }

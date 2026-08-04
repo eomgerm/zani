@@ -10,14 +10,14 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.a105.zani.common.response.ApiResponse;
-import com.a105.zani.recording.application.webhook.ProcessRecordingWebhookUseCase;
+import com.a105.zani.recording.application.webhook.ProcessLiveKitWebhookUseCase;
 
-@Tag(name = "녹화 webhook", description = "LiveKit webhook 수신(서명 검증·이벤트 내구 저장·중복 차단)")
+@Tag(name = "LiveKit webhook", description = "LiveKit webhook 수신(서명 검증·이벤트 내구 저장·중복 차단)")
 @RestController
 @RequiredArgsConstructor
-public class RecordingWebhookController {
+public class LiveKitWebhookController {
 
-    private final ProcessRecordingWebhookUseCase processRecordingWebhookUseCase;
+    private final ProcessLiveKitWebhookUseCase processLiveKitWebhookUseCase;
 
     @Operation(
             summary = "LiveKit webhook 수신",
@@ -34,7 +34,7 @@ public class RecordingWebhookController {
     public ApiResponse<Void> receive(
             @RequestBody String body,
             @RequestHeader(value = "Authorization", required = false) String authorizationHeader) {
-        processRecordingWebhookUseCase.process(body, authorizationHeader);
+        processLiveKitWebhookUseCase.process(body, authorizationHeader);
         return ApiResponse.success();
     }
 }

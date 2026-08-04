@@ -19,7 +19,7 @@ import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressResult;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
-import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookEventPort;
 import com.a105.zani.recording.domain.model.Recording;
 import com.a105.zani.recording.domain.model.RecordingFile;
 import com.a105.zani.recording.domain.model.RecordingStatus;
@@ -27,6 +27,7 @@ import com.a105.zani.recording.domain.model.TrackRecordingDecision;
 import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionCommand;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -42,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RecordingWebhookServiceTest {
+class LiveKitWebhookServiceTest {
 
     private static final long SESSION_ID = 100L;
     // Egress 시작 시 recordings 에 보관되는 화자. egress_ended 가 이 값을 recording_files 로 옮긴다(S15P11A105-97).
@@ -50,21 +51,22 @@ class RecordingWebhookServiceTest {
     private static final Instant SESSION_START = Instant.parse("2026-07-25T05:00:00Z");
     private static final Instant NOW = Instant.parse("2026-07-25T06:00:00Z");
 
-    private RecordingWebhookEvent nextEvent;
+    private LiveKitWebhookEvent nextEvent;
     private final List<RequestTrackEgressCommand> egressRequests = new ArrayList<>();
     private final Map<String, Recording> recordingsByEgressId = new HashMap<>();
     private final List<RecordingFile> savedFiles = new ArrayList<>();
     private final Map<Long, SessionParticipant> participantsById = new HashMap<>();
+    private final List<ConfirmParticipantConnectionCommand> confirmedConnections = new ArrayList<>();
     private final Set<String> processedEvents = new HashSet<>();
     private final Set<String> seenEvents = new HashSet<>();
 
-    private RecordingWebhookService service;
+    private LiveKitWebhookService service;
 
-    private static RecordingWebhookEvent trackPublished(
+    private static LiveKitWebhookEvent trackPublished(
             String eventId, String identity, String trackSid, TrackSource source) {
-        return new RecordingWebhookEvent(
+        return new LiveKitWebhookEvent(
                 eventId,
-                RecordingWebhookEventType.TRACK_PUBLISHED,
+                LiveKitWebhookEventType.TRACK_PUBLISHED,
                 SESSION_ID,
                 identity,
                 trackSid,
@@ -76,13 +78,13 @@ class RecordingWebhookServiceTest {
                 List.of());
     }
 
-    private static RecordingWebhookEvent egressEvent(
+    private static LiveKitWebhookEvent egressEvent(
             String eventId,
-            RecordingWebhookEventType type,
+            LiveKitWebhookEventType type,
             String egressId,
             Boolean complete,
             List<EgressFileResult> files) {
-        return new RecordingWebhookEvent(
+        return new LiveKitWebhookEvent(
                 eventId, type, SESSION_ID, null, null, null, egressId, complete, "TR_src", null, files);
     }
 
@@ -171,7 +173,7 @@ class RecordingWebhookServiceTest {
                 return participant;
             }
         };
-        RecordingWebhookEventPort eventStore = new RecordingWebhookEventPort() {
+        LiveKitWebhookEventPort eventStore = new LiveKitWebhookEventPort() {
             @Override
             public boolean begin(String eventId, String eventType, String payload) {
                 if (processedEvents.contains(eventId)) {
@@ -186,7 +188,7 @@ class RecordingWebhookServiceTest {
                 processedEvents.add(eventId);
             }
         };
-        service = new RecordingWebhookService(
+        service = new LiveKitWebhookService(
                 (body, auth) -> {
                     if ("bad".equals(auth)) {
                         throw new InvalidWebhookSignatureException(new IllegalStateException("bad signature"));
@@ -195,6 +197,7 @@ class RecordingWebhookServiceTest {
                 },
                 eventStore,
                 egressUseCase,
+                confirmedConnections::add,
                 recordingRepository,
                 fileRepository,
                 sessionRepository,
@@ -224,9 +227,49 @@ class RecordingWebhookServiceTest {
                 id, SessionParticipant.reconstitute(id, SESSION_ID, id + 500, role, SESSION_START, SESSION_START));
     }
 
+    private static LiveKitWebhookEvent participantJoined(String eventId, String identity) {
+        return new LiveKitWebhookEvent(
+                eventId,
+                LiveKitWebhookEventType.PARTICIPANT_JOINED,
+                SESSION_ID,
+                identity,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of());
+    }
+
     @Test
     void 서명이_틀리면_401_예외() {
         assertThrows(InvalidWebhookSignatureException.class, () -> service.process("{}", "bad"));
+    }
+
+    @Test
+    void participant_joined는_연결_확정을_세션_도메인에_위임한다() {
+        nextEvent = participantJoined("EV_join", "p-7");
+
+        service.process("{}", "ok");
+
+        assertEquals(1, confirmedConnections.size());
+        assertEquals(SESSION_ID, confirmedConnections.get(0).sessionId());
+        assertEquals(7L, confirmedConnections.get(0).participantId());
+        assertEquals(NOW, confirmedConnections.get(0).connectedAt());
+        assertTrue(processedEvents.contains("EV_join"));
+    }
+
+    @Test
+    void 시스템_참가자의_participant_joined는_자격을_만들지_않는다() {
+        // Egress·시스템 참가자는 p-{id} 규칙을 따르지 않는다. 이들에게 자격이 생기면 출석 인원이 부풀려진다.
+        nextEvent = participantJoined("EV_egress", "EG_recorder");
+
+        service.process("{}", "ok");
+
+        assertTrue(confirmedConnections.isEmpty());
+        // 처리할 것이 없다는 판단도 처리 완료다 — 그러지 않으면 LiveKit이 같은 통지를 계속 재전송한다.
+        assertTrue(processedEvents.contains("EV_egress"));
     }
 
     @Test
@@ -279,7 +322,7 @@ class RecordingWebhookServiceTest {
                         SESSION_START));
         nextEvent = egressEvent(
                 "EV_4",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_1",
                 Boolean.TRUE,
                 List.of(new EgressFileResult(
@@ -334,7 +377,7 @@ class RecordingWebhookServiceTest {
                         null));
         nextEvent = egressEvent(
                 "EV_LEGACY",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_LEGACY",
                 Boolean.TRUE,
                 List.of(new EgressFileResult(
@@ -380,7 +423,7 @@ class RecordingWebhookServiceTest {
 
         nextEvent = egressEvent(
                 "EV_A",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_A",
                 Boolean.TRUE,
                 List.of(new EgressFileResult(
@@ -392,7 +435,7 @@ class RecordingWebhookServiceTest {
 
         nextEvent = egressEvent(
                 "EV_B",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_B",
                 Boolean.TRUE,
                 List.of(new EgressFileResult(
@@ -427,9 +470,9 @@ class RecordingWebhookServiceTest {
                 SESSION_START.plusSeconds(5).toEpochMilli(),
                 10L));
         // markProcessed 유실 등으로 같은 egress 종결이 다른 이벤트 id로 다시 도착해도 파일이 중복되면 안 된다.
-        nextEvent = egressEvent("EV_R1", RecordingWebhookEventType.EGRESS_ENDED, "EG_R", Boolean.TRUE, files);
+        nextEvent = egressEvent("EV_R1", LiveKitWebhookEventType.EGRESS_ENDED, "EG_R", Boolean.TRUE, files);
         service.process("{}", "ok");
-        nextEvent = egressEvent("EV_R2", RecordingWebhookEventType.EGRESS_ENDED, "EG_R", Boolean.TRUE, files);
+        nextEvent = egressEvent("EV_R2", LiveKitWebhookEventType.EGRESS_ENDED, "EG_R", Boolean.TRUE, files);
         service.process("{}", "ok");
 
         // 종결 전이는 한 번만 일어나므로(complete()가 false 반환) 파일도 한 번만 저장된다.
@@ -451,7 +494,7 @@ class RecordingWebhookServiceTest {
                         SESSION_START));
         nextEvent = egressEvent(
                 "EV_P",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_P",
                 Boolean.TRUE,
                 List.of(new EgressFileResult("/tmp/other-root/file.mp4", 0, 0, 10L)));
@@ -475,7 +518,7 @@ class RecordingWebhookServiceTest {
                         "TR_N",
                         1,
                         SESSION_START));
-        nextEvent = egressEvent("EV_N", RecordingWebhookEventType.EGRESS_ENDED, "EG_N", null, List.of());
+        nextEvent = egressEvent("EV_N", LiveKitWebhookEventType.EGRESS_ENDED, "EG_N", null, List.of());
 
         service.process("{}", "ok");
 
@@ -496,7 +539,7 @@ class RecordingWebhookServiceTest {
                         "TR_2",
                         1,
                         SESSION_START));
-        nextEvent = egressEvent("EV_5", RecordingWebhookEventType.EGRESS_ENDED, "EG_2", Boolean.FALSE, List.of());
+        nextEvent = egressEvent("EV_5", LiveKitWebhookEventType.EGRESS_ENDED, "EG_2", Boolean.FALSE, List.of());
 
         service.process("{}", "ok");
 
@@ -506,7 +549,7 @@ class RecordingWebhookServiceTest {
 
     @Test
     void recordings_행이_아직_없으면_재전송을_위해_예외를_던진다() {
-        nextEvent = egressEvent("EV_6", RecordingWebhookEventType.EGRESS_STARTED, "EG_missing", null, List.of());
+        nextEvent = egressEvent("EV_6", LiveKitWebhookEventType.EGRESS_STARTED, "EG_missing", null, List.of());
 
         assertThrows(RecordingNotReadyException.class, () -> service.process("{}", "ok"));
         assertTrue(seenEvents.contains("EV_6"));
@@ -519,7 +562,7 @@ class RecordingWebhookServiceTest {
         // 스트림 Egress 는 파일을 만들지 않아 recordings 행이 없다. 위 테스트처럼 재전송을 유도하면
         // 행이 영원히 생기지 않아 LiveKit 이 무한 재전송한다.
         audioStreamEgressIds.add("EG_ws");
-        nextEvent = egressEvent("EV_ws_1", RecordingWebhookEventType.EGRESS_STARTED, "EG_ws", null, List.of());
+        nextEvent = egressEvent("EV_ws_1", LiveKitWebhookEventType.EGRESS_STARTED, "EG_ws", null, List.of());
 
         service.process("{}", "ok");
 
@@ -542,9 +585,9 @@ class RecordingWebhookServiceTest {
     void 페이로드가_파일_출력이라고_알려주면_표시가_있어도_녹화로_처리한다() {
         // 1차 근거가 2차 근거를 덮어야 한다. 반대로 동작하면 낡은 표시 하나가 정상 녹화를 통째로 건너뛴다.
         audioStreamEgressIds.add("EG_file");
-        nextEvent = new RecordingWebhookEvent(
+        nextEvent = new LiveKitWebhookEvent(
                 "EV_file_wins",
-                RecordingWebhookEventType.EGRESS_STARTED,
+                LiveKitWebhookEventType.EGRESS_STARTED,
                 SESSION_ID,
                 null,
                 null,
@@ -562,10 +605,10 @@ class RecordingWebhookServiceTest {
     }
 
     /** 페이로드가 WebSocket 출력이라고 알려주는 egress 이벤트. */
-    private RecordingWebhookEvent audioStreamEgressEvent(String eventId, String egressId) {
-        return new RecordingWebhookEvent(
+    private LiveKitWebhookEvent audioStreamEgressEvent(String eventId, String egressId) {
+        return new LiveKitWebhookEvent(
                 eventId,
-                RecordingWebhookEventType.EGRESS_STARTED,
+                LiveKitWebhookEventType.EGRESS_STARTED,
                 SESSION_ID,
                 null,
                 null,
@@ -582,7 +625,7 @@ class RecordingWebhookServiceTest {
         audioStreamEgressIds.add("EG_ws");
         nextEvent = egressEvent(
                 "EV_ws_2",
-                RecordingWebhookEventType.EGRESS_ENDED,
+                LiveKitWebhookEventType.EGRESS_ENDED,
                 "EG_ws",
                 Boolean.TRUE,
                 List.of(new EgressFileResult(
@@ -610,7 +653,7 @@ class RecordingWebhookServiceTest {
                         "TR_3",
                         1,
                         SESSION_START));
-        nextEvent = egressEvent("EV_7", RecordingWebhookEventType.EGRESS_STARTED, "EG_3", null, List.of());
+        nextEvent = egressEvent("EV_7", LiveKitWebhookEventType.EGRESS_STARTED, "EG_3", null, List.of());
 
         service.process("{}", "ok");
 
