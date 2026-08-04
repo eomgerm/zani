@@ -1,0 +1,933 @@
+{
+  "schema": "mediapipe_98_v1",
+  "labels": [
+    "Not-Engaged",
+    "Barely-Engaged",
+    "Engaged",
+    "Highly-Engaged"
+  ],
+  "selection_metric": "validation_macro_f1",
+  "best_epoch": 3,
+  "model_family": "transformer",
+  "validation": {
+    "accuracy": 0.6836734693877551,
+    "macro_f1": 0.6023100028860933,
+    "within_one_accuracy": 0.9612244897959183,
+    "quadratic_weighted_kappa": 0.7156472656611454,
+    "confusion_matrix": [
+      [
+        42,
+        16,
+        10,
+        3
+      ],
+      [
+        4,
+        37,
+        41,
+        11
+      ],
+      [
+        3,
+        26,
+        127,
+        110
+      ],
+      [
+        0,
+        11,
+        75,
+        464
+      ]
+    ],
+    "classification_report": {
+      "Not-Engaged": {
+        "precision": 0.8571428571428571,
+        "recall": 0.5915492957746479,
+        "f1-score": 0.7,
+        "support": 71.0
+      },
+      "Barely-Engaged": {
+        "precision": 0.4111111111111111,
+        "recall": 0.3978494623655914,
+        "f1-score": 0.40437158469945356,
+        "support": 93.0
+      },
+      "Engaged": {
+        "precision": 0.5019762845849802,
+        "recall": 0.4774436090225564,
+        "f1-score": 0.48940269749518306,
+        "support": 266.0
+      },
+      "Highly-Engaged": {
+        "precision": 0.7891156462585034,
+        "recall": 0.8436363636363636,
+        "f1-score": 0.8154657293497364,
+        "support": 550.0
+      },
+      "accuracy": 0.6836734693877551,
+      "macro avg": {
+        "precision": 0.639836474774363,
+        "recall": 0.5776196826997898,
+        "f1-score": 0.6023100028860933,
+        "support": 980.0
+      },
+      "weighted avg": {
+        "precision": 0.6802344625839366,
+        "recall": 0.6836734693877551,
+        "f1-score": 0.6795855367889008,
+        "support": 980.0
+      }
+    },
+    "monotonicity_violation_rate": 0.005612244897959183
+  },
+  "validation_history": [
+    {
+      "epoch": 0,
+      "accuracy": 0.6775510204081633,
+      "macro_f1": 0.5907164849277169,
+      "quadratic_weighted_kappa": 0.7114202523455192,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 1,
+      "accuracy": 0.6785714285714286,
+      "macro_f1": 0.5904969541007893,
+      "quadratic_weighted_kappa": 0.7136894824707847,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 2,
+      "accuracy": 0.6795918367346939,
+      "macro_f1": 0.5883581587624431,
+      "quadratic_weighted_kappa": 0.7108148988466629,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 3,
+      "accuracy": 0.6836734693877551,
+      "macro_f1": 0.6023100028860933,
+      "quadratic_weighted_kappa": 0.7156472656611454,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 4,
+      "accuracy": 0.6816326530612244,
+      "macro_f1": 0.594415446762299,
+      "quadratic_weighted_kappa": 0.7168758716875872,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 5,
+      "accuracy": 0.6816326530612244,
+      "macro_f1": 0.5897216025329657,
+      "quadratic_weighted_kappa": 0.7208033488547105,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 6,
+      "accuracy": 0.6806122448979591,
+      "macro_f1": 0.5910186191849075,
+      "quadratic_weighted_kappa": 0.7128671523363186,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 7,
+      "accuracy": 0.676530612244898,
+      "macro_f1": 0.5754931344929718,
+      "quadratic_weighted_kappa": 0.7113266788509303,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 8,
+      "accuracy": 0.6806122448979591,
+      "macro_f1": 0.5896408219768732,
+      "quadratic_weighted_kappa": 0.709567353623584,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 9,
+      "accuracy": 0.6795918367346939,
+      "macro_f1": 0.5801459556166946,
+      "quadratic_weighted_kappa": 0.7020594965675058,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 10,
+      "accuracy": 0.6714285714285714,
+      "macro_f1": 0.5849840253836083,
+      "quadratic_weighted_kappa": 0.7038163716814159,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 11,
+      "accuracy": 0.6714285714285714,
+      "macro_f1": 0.5870847178197554,
+      "quadratic_weighted_kappa": 0.7048053842895468,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 12,
+      "accuracy": 0.6673469387755102,
+      "macro_f1": 0.5786326443720009,
+      "quadratic_weighted_kappa": 0.6990558254652122,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 13,
+      "accuracy": 0.6846938775510204,
+      "macro_f1": 0.5836222033666914,
+      "quadratic_weighted_kappa": 0.7108467590858,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 14,
+      "accuracy": 0.6775510204081633,
+      "macro_f1": 0.5797446426963595,
+      "quadratic_weighted_kappa": 0.6984242645049641,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 15,
+      "accuracy": 0.6683673469387755,
+      "macro_f1": 0.5766826695923419,
+      "quadratic_weighted_kappa": 0.6979398663697105,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 16,
+      "accuracy": 0.6714285714285714,
+      "macro_f1": 0.57643702548819,
+      "quadratic_weighted_kappa": 0.7040471002735154,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 17,
+      "accuracy": 0.6683673469387755,
+      "macro_f1": 0.5781653715684698,
+      "quadratic_weighted_kappa": 0.6980799554772286,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 18,
+      "accuracy": 0.6755102040816326,
+      "macro_f1": 0.587942488591563,
+      "quadratic_weighted_kappa": 0.7025258112094395,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 19,
+      "accuracy": 0.6724489795918367,
+      "macro_f1": 0.5763162845491122,
+      "quadratic_weighted_kappa": 0.7035093473269924,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 20,
+      "accuracy": 0.673469387755102,
+      "macro_f1": 0.5662094098714068,
+      "quadratic_weighted_kappa": 0.6972650705025079,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 21,
+      "accuracy": 0.6663265306122449,
+      "macro_f1": 0.5826895660903968,
+      "quadratic_weighted_kappa": 0.7015773767230353,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 22,
+      "accuracy": 0.6693877551020408,
+      "macro_f1": 0.5835755537824385,
+      "quadratic_weighted_kappa": 0.700907039918965,
+      "learning_rate": 0.0001
+    },
+    {
+      "epoch": 23,
+      "accuracy": 0.6846938775510204,
+      "macro_f1": 0.5806725925541024,
+      "quadratic_weighted_kappa": 0.7121794871794872,
+      "learning_rate": 0.0001
+    }
+  ],
+  "training": {
+    "features_root": "datasets/processed/engagenet",
+    "output_dir": "artifacts/engagement/e0m-dual-head/seed-49",
+    "max_epochs": 200,
+    "batch_size": 32,
+    "learning_rate": 0.0001,
+    "patience": 20,
+    "seed": 49,
+    "device": "cuda",
+    "class_weighting": "none",
+    "loss": "cross_entropy",
+    "focal_gamma": 2.0,
+    "sampler": "none",
+    "target_encoding": "one_hot",
+    "sord_alpha": 2.0,
+    "num_workers": 0,
+    "deterministic": true,
+    "model": {
+      "input_dim": 98,
+      "segment_count": 20,
+      "d_model": 256,
+      "nhead": 8,
+      "num_layers": 4,
+      "mlp_dim": 128,
+      "dropout": 0.3,
+      "num_classes": 4,
+      "head": "dual_softmax_ordinal"
+    },
+    "build_model": null,
+    "needs_feature_stats": true,
+    "lr_step": null,
+    "array_key": "tokens",
+    "array_shape": null,
+    "stage1_checkpoint": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-49/best.pt",
+    "mixing": {
+      "alpha_grid": [
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "temperature_grid": [
+        1.0,
+        1.5,
+        2.0
+      ],
+      "epsilon": 1e-06,
+      "false_alarm_budget_per_90min": 0.5,
+      "accuracy_drop_budget": 0.01
+    },
+    "curriculum": "none",
+    "reliability_manifest": null,
+    "reliable_warmup_epochs": 10,
+    "ambiguous_target_encoding": "adjacent_smoothing",
+    "ambiguous_neighbor_mass": 0.2
+  },
+  "probability_mixing": {
+    "selected": {
+      "alpha": 0.0,
+      "temperature_softmax": 1.0,
+      "temperature_ordinal": 1.0,
+      "epsilon": 1e-06
+    },
+    "constraints_satisfied": true,
+    "monotonicity_violation_rate": 0.005612244829535484,
+    "validation": {
+      "accuracy": 0.6836734693877551,
+      "macro_f1": 0.6023100028860933,
+      "within_one_accuracy": 0.9612244897959183,
+      "quadratic_weighted_kappa": 0.7156472656611454,
+      "confusion_matrix": [
+        [
+          42,
+          16,
+          10,
+          3
+        ],
+        [
+          4,
+          37,
+          41,
+          11
+        ],
+        [
+          3,
+          26,
+          127,
+          110
+        ],
+        [
+          0,
+          11,
+          75,
+          464
+        ]
+      ],
+      "classification_report": {
+        "Not-Engaged": {
+          "precision": 0.8571428571428571,
+          "recall": 0.5915492957746479,
+          "f1-score": 0.7,
+          "support": 71.0
+        },
+        "Barely-Engaged": {
+          "precision": 0.4111111111111111,
+          "recall": 0.3978494623655914,
+          "f1-score": 0.40437158469945356,
+          "support": 93.0
+        },
+        "Engaged": {
+          "precision": 0.5019762845849802,
+          "recall": 0.4774436090225564,
+          "f1-score": 0.48940269749518306,
+          "support": 266.0
+        },
+        "Highly-Engaged": {
+          "precision": 0.7891156462585034,
+          "recall": 0.8436363636363636,
+          "f1-score": 0.8154657293497364,
+          "support": 550.0
+        },
+        "accuracy": 0.6836734693877551,
+        "macro avg": {
+          "precision": 0.639836474774363,
+          "recall": 0.5776196826997898,
+          "f1-score": 0.6023100028860933,
+          "support": 980.0
+        },
+        "weighted avg": {
+          "precision": 0.6802344625839366,
+          "recall": 0.6836734693877551,
+          "f1-score": 0.6795855367889008,
+          "support": 980.0
+        }
+      },
+      "monotonicity_violation_rate": null
+    },
+    "validation_low_engagement": {
+      "recall": 0.6036585365853658,
+      "false_positive_rate": 0.049019607843137254,
+      "precision": 0.7122302158273381,
+      "f1": 0.6534653465346535,
+      "consecutive_detection_rate": 0.2199753612832083,
+      "false_alarms_per_90min": 0.06360675758192551
+    },
+    "reference_validation": {
+      "accuracy": 0.6673469387755102,
+      "macro_f1": 0.562250333349961,
+      "within_one_accuracy": 0.9530612244897959,
+      "quadratic_weighted_kappa": 0.6861356932153393,
+      "confusion_matrix": [
+        [
+          43,
+          15,
+          7,
+          6
+        ],
+        [
+          4,
+          32,
+          38,
+          19
+        ],
+        [
+          3,
+          26,
+          78,
+          159
+        ],
+        [
+          0,
+          11,
+          38,
+          501
+        ]
+      ],
+      "classification_report": {
+        "Not-Engaged": {
+          "precision": 0.86,
+          "recall": 0.6056338028169014,
+          "f1-score": 0.7107438016528925,
+          "support": 71.0
+        },
+        "Barely-Engaged": {
+          "precision": 0.38095238095238093,
+          "recall": 0.34408602150537637,
+          "f1-score": 0.3615819209039548,
+          "support": 93.0
+        },
+        "Engaged": {
+          "precision": 0.484472049689441,
+          "recall": 0.2932330827067669,
+          "f1-score": 0.36533957845433257,
+          "support": 266.0
+        },
+        "Highly-Engaged": {
+          "precision": 0.7313868613138687,
+          "recall": 0.9109090909090909,
+          "f1-score": 0.8113360323886639,
+          "support": 550.0
+        },
+        "accuracy": 0.6673469387755102,
+        "macro avg": {
+          "precision": 0.6142028229889226,
+          "recall": 0.5384654994845339,
+          "f1-score": 0.562250333349961,
+          "support": 980.0
+        },
+        "weighted avg": {
+          "precision": 0.6404295003761127,
+          "recall": 0.6673469387755102,
+          "f1-score": 0.6403113002490212,
+          "support": 980.0
+        }
+      },
+      "monotonicity_violation_rate": null
+    },
+    "reference_low_engagement": {
+      "recall": 0.573170731707317,
+      "false_positive_rate": 0.049019607843137254,
+      "precision": 0.7014925373134329,
+      "f1": 0.6308724832214765,
+      "consecutive_detection_rate": 0.18830073562484578,
+      "false_alarms_per_90min": 0.06360675758192551
+    },
+    "grid": [
+      {
+        "alpha": 0.0,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6836734693877551,
+        "macro_f1": 0.6023100028860933,
+        "low_engagement_recall": 0.6036585365853658,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.0,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6785714285714286,
+        "macro_f1": 0.5797842793705545,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.0,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.5429425326220985,
+        "low_engagement_recall": 0.5853658536585366,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6755102040816326,
+        "macro_f1": 0.5898168416367675,
+        "low_engagement_recall": 0.5914634146341463,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6704081632653062,
+        "macro_f1": 0.5669383886166479,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6663265306122449,
+        "macro_f1": 0.5449140917076091,
+        "low_engagement_recall": 0.5670731707317073,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6755102040816326,
+        "macro_f1": 0.5898763223071952,
+        "low_engagement_recall": 0.5914634146341463,
+        "low_engagement_false_positive_rate": 0.05024509803921569,
+        "false_alarms_per_90min": 0.06849752092662326
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6724489795918367,
+        "macro_f1": 0.568550357470812,
+        "low_engagement_recall": 0.5853658536585366,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6724489795918367,
+        "macro_f1": 0.5545893486787571,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6775510204081633,
+        "macro_f1": 0.5936972871280095,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.05024509803921569,
+        "false_alarms_per_90min": 0.06849752092662326
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6724489795918367,
+        "macro_f1": 0.569138415851992,
+        "low_engagement_recall": 0.5853658536585366,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.25,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6704081632653062,
+        "macro_f1": 0.5505417480264381,
+        "low_engagement_recall": 0.5853658536585366,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6775510204081633,
+        "macro_f1": 0.5848117193810973,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6714285714285714,
+        "macro_f1": 0.5666339638846588,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6683673469387755,
+        "macro_f1": 0.5496449264237162,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6775510204081633,
+        "macro_f1": 0.5881853461596371,
+        "low_engagement_recall": 0.5914634146341463,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.673469387755102,
+        "macro_f1": 0.5669990712465357,
+        "low_engagement_recall": 0.5853658536585366,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.5488826538307223,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6724489795918367,
+        "macro_f1": 0.5878228050689326,
+        "low_engagement_recall": 0.5914634146341463,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6704081632653062,
+        "macro_f1": 0.5669383886166479,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.051470588235294115,
+        "false_alarms_per_90min": 0.07363277274577651
+      },
+      {
+        "alpha": 0.5,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.5467457556411925,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.05024509803921569,
+        "false_alarms_per_90min": 0.06849752092662326
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6693877551020408,
+        "macro_f1": 0.5686514406927115,
+        "low_engagement_recall": 0.5914634146341463,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6693877551020408,
+        "macro_f1": 0.5653805611405607,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.5596753399074692,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6744897959183673,
+        "macro_f1": 0.5778397091901317,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.04656862745098039,
+        "false_alarms_per_90min": 0.054534843781803385
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6683673469387755,
+        "macro_f1": 0.5643254579991039,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.04779411764705882,
+        "false_alarms_per_90min": 0.05895451957815997
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 1.5,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6683673469387755,
+        "macro_f1": 0.554120611275861,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6785714285714286,
+        "macro_f1": 0.5851124710012755,
+        "low_engagement_recall": 0.5975609756097561,
+        "low_engagement_false_positive_rate": 0.04656862745098039,
+        "false_alarms_per_90min": 0.054534843781803385
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 1.5,
+        "accuracy": 0.6714285714285714,
+        "macro_f1": 0.5679553492180613,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.04656862745098039,
+        "false_alarms_per_90min": 0.054534843781803385
+      },
+      {
+        "alpha": 0.75,
+        "temperature_softmax": 2.0,
+        "temperature_ordinal": 2.0,
+        "accuracy": 0.6683673469387755,
+        "macro_f1": 0.5500320872310712,
+        "low_engagement_recall": 0.5792682926829268,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      },
+      {
+        "alpha": 1.0,
+        "temperature_softmax": 1.0,
+        "temperature_ordinal": 1.0,
+        "accuracy": 0.6673469387755102,
+        "macro_f1": 0.562250333349961,
+        "low_engagement_recall": 0.573170731707317,
+        "low_engagement_false_positive_rate": 0.049019607843137254,
+        "false_alarms_per_90min": 0.06360675758192551
+      }
+    ]
+  },
+  "test_evaluation": {
+    "status": "deferred",
+    "reason": "Test evaluation is deferred by the E0-M protocol."
+  },
+  "experiment": {
+    "protocol": "E0-M",
+    "seed": 49,
+    "feature_manifest_sha256": "08dcbff3821b0a055f53206437708530c4d055c78e9978e92fd333beef1e392b",
+    "configuration": {
+      "feature_schema": "mediapipe_98_v1",
+      "input_shape": [
+        "batch",
+        20,
+        98
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "optimizer": "Adam",
+      "learning_rate": 0.0001,
+      "batch_size": 32,
+      "maximum_epochs": 200,
+      "early_stopping": {
+        "metric": "validation_macro_f1",
+        "mode": "max",
+        "patience": 20
+      },
+      "class_weighting": false,
+      "model": {
+        "input_dim": 98,
+        "segment_count": 20,
+        "d_model": 256,
+        "nhead": 8,
+        "num_layers": 4,
+        "mlp_dim": 128,
+        "dropout": 0.3,
+        "num_classes": 4,
+        "head": "dual_softmax_ordinal",
+        "learned_position_count": 20,
+        "pooling": "max",
+        "classifier_dimensions": [
+          256,
+          128,
+          4
+        ]
+      },
+      "device": "cuda",
+      "deterministic_algorithms": true,
+      "num_workers": 0,
+      "loss": "ordinal_binary_bce",
+      "probability_mixing": {
+        "alpha_grid": [
+          0.0,
+          0.25,
+          0.5,
+          0.75,
+          1.0
+        ],
+        "temperature_grid": [
+          1.0,
+          1.5,
+          2.0
+        ],
+        "epsilon": 1e-06,
+        "false_alarm_budget_per_90min": 0.5,
+        "accuracy_drop_budget": 0.01,
+        "monotonicity": "cumulative_min",
+        "decoding": "argmax_mixed_class_probability",
+        "selection": "max_validation_low_engagement_recall under false_alarm_budget_per_90min and accuracy_drop_budget"
+      }
+    },
+    "configuration_sha256": "03a82ac7eaf05d46a9af018ae9eb468d8edc69e9f3df7c0bb2470553cc3dd03e",
+    "inputs": {
+      "stage1": {
+        "protocol_output": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10",
+        "seeds": {
+          "42": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-42/best.pt",
+            "sha256": "bed2a064a7bad212f9f1d48255c9524d892d62acdbe684056577699141fea976",
+            "size_bytes": 12912571
+          },
+          "43": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-43/best.pt",
+            "sha256": "9b718b4c21034b741d5f0044c4f195e1b320e70b6d33559ed024c3f7271582bb",
+            "size_bytes": 12912571
+          },
+          "44": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-44/best.pt",
+            "sha256": "cb602805b0fe1caa33a33cf1eb373451b249043c8b974a094ccedcf1348d6e53",
+            "size_bytes": 12912571
+          },
+          "45": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-45/best.pt",
+            "sha256": "cd1be8c429d9253ac4be4564a0a83f098973ac8e3764747071da5afb5baf78c2",
+            "size_bytes": 12912571
+          },
+          "46": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-46/best.pt",
+            "sha256": "7e9b7bc4f4bf3c8b35fa6ba3c52fc1de9e13c48f40cc0ae1b5ee5adddcf39ada",
+            "size_bytes": 12912571
+          },
+          "47": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-47/best.pt",
+            "sha256": "c0a38552aed934c735890e2f8d7e61b9231b92f8818135906cb702d2c938b51a",
+            "size_bytes": 12912571
+          },
+          "48": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-48/best.pt",
+            "sha256": "96c2086d5de7ef6d7e71e279f5aea4b1e95b76a3aa09b0923bd55ce48086a125",
+            "size_bytes": 12912571
+          },
+          "49": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-49/best.pt",
+            "sha256": "b72fcd611c86ce684ae96ec9a260b6c99611f0b8b7a3450cc2a18df1167f79cc",
+            "size_bytes": 12912571
+          },
+          "50": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-50/best.pt",
+            "sha256": "e379f46fdfdacbecf2dfa060065d41f2e2d329e91cd22bb8b72c1e0bc1442ba9",
+            "size_bytes": 12912571
+          },
+          "51": {
+            "path": "/home/j-i15a105/zani/ai/artifacts/engagement/e0-10/seed-51/best.pt",
+            "sha256": "647ee2f312cd7dfed540fe20f177489135db037fbf99c91f73d47fd451457131",
+            "size_bytes": 12912571
+          }
+        },
+        "sha256": "e0b8fd74d5b89daa7a6747f8ec8bef1d5e5fa46589e485489a3e9e65718c37bf"
+      }
+    }
+  }
+}
