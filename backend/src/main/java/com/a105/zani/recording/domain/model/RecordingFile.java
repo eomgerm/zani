@@ -114,41 +114,6 @@ public class RecordingFile {
                 endedOffsetMs);
     }
 
-    /**
-     * 이미 저장된 행을 도메인 객체로 되살린다.
-     *
-     * <p>생성 가드를 걸지 않는다. 가드는 "이 값을 새로 기록해도 되는가" 를 보는 것이고, 저장된 행은 기록될 때 이미 그 판정을 통과했거나(신규) 통과 대상이 아니었다(V12 이전 legacy).
-     * 읽으면서 다시 판정하면 legacy 행을 조회하는 것만으로 예외가 올라와 사후 전사가 그 세션을 아예 열 수 없다 — 정작 필요한 것은 "이 파일은 화자를 모른다" 는 사실을 <b>보는</b> 것이다.
-     *
-     * <p><b>이 객체를 저장해서는 안 된다.</b> {@code livekitTrackSid} 가 컬럼 값이 아니라 해석된 값이기 때문이다 — 파일 컬럼이 비어 있으면 매퍼가 부모 Egress 의 SID
-     * 로 채운다(한 Egress 가 파일을 여러 개 남기면 UNIQUE 제약 때문에 첫 행만 값을 갖는다). 그대로 저장하면 후속 파일 컬럼에 부모 SID 가 들어가 그 제약을 건드린다.
-     *
-     * <p>{@link #trackFile} 과 {@link #legacyTrackFile} 은 쓰기 경로 전용으로 남는다.
-     */
-    public static RecordingFile restored(
-            Long id,
-            Long sessionId,
-            Long recordingId,
-            Long sessionParticipantId,
-            TrackSource trackSource,
-            String fileType,
-            String storageKey,
-            String livekitTrackSid,
-            Long startedOffsetMs,
-            Long endedOffsetMs) {
-        return new RecordingFile(
-                id,
-                sessionId,
-                recordingId,
-                sessionParticipantId,
-                trackSource,
-                fileType,
-                storageKey,
-                livekitTrackSid,
-                startedOffsetMs,
-                endedOffsetMs);
-    }
-
     private static boolean isSafeRelativePath(String path) {
         if (path == null || path.isBlank() || path.startsWith("/") || path.contains("\\") || path.contains(":")) {
             return false;

@@ -8,8 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.recording.application.port.SessionRecordingProgressPort;
-import com.a105.zani.recording.domain.model.RecordingFile;
-import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.repository.SessionRepository;
 
@@ -19,16 +17,14 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 @RequiredArgsConstructor
 public class GetSessionRecordingSnapshotService implements GetSessionRecordingSnapshotUseCase {
 
-    private final RecordingFileRepository recordingFileRepository;
+    private final SessionTrackFileQueryPort sessionTrackFileQueryPort;
     private final SessionRecordingProgressPort sessionRecordingProgressPort;
     private final SessionRepository sessionRepository;
 
     @Override
     @Transactional(readOnly = true)
     public SessionRecordingSnapshot findBySessionId(Long sessionId) {
-        List<SessionTrackFile> files = recordingFileRepository.findBySessionId(sessionId).stream()
-                .map(GetSessionRecordingSnapshotService::toTrackFile)
-                .toList();
+        List<SessionTrackFile> files = sessionTrackFileQueryPort.findBySessionId(sessionId);
         return new SessionRecordingSnapshot(files, readiness(sessionId, files.size()));
     }
 
@@ -40,6 +36,9 @@ public class GetSessionRecordingSnapshotService implements GetSessionRecordingSn
      *
      * <p>세션이 아직 {@code ENDED} 가 아니면 무조건 진행 중이다. 정상 흐름에서는 나올 수 없다(메모 확정이 세션 종료 뒤에 일어난다). 그래도 확인하는 이유는 이 값이 뒤집혔을 때의 결과가
      * "수업 도중의 절반짜리 전사를 최종본으로 확정" 이라서다.
+     *
+     * <p>{@code ENDED} 인데 Egress 가 아직 도는 창이 실제로 있다. S15P11A105-265 가 LiveKit 정리를 세션 종료 트랜잭션 밖으로 뺐으므로 종료가 먼저 커밋된다 — 파일
+     * 목록만 봤다면 그 창에서 빈 전사를 확정했을 것이다.
      */
     private RecordingReadiness readiness(Long sessionId, int fileCount) {
         Session session = sessionRepository.findById(sessionId).orElse(null);
@@ -67,16 +66,5 @@ public class GetSessionRecordingSnapshotService implements GetSessionRecordingSn
             return RecordingReadiness.BROKEN;
         }
         return RecordingReadiness.SETTLED;
-    }
-
-    private static SessionTrackFile toTrackFile(RecordingFile file) {
-        return new SessionTrackFile(
-                file.id(),
-                file.sessionParticipantId(),
-                file.trackSource(),
-                file.storageKey(),
-                file.livekitTrackSid(),
-                file.startedOffsetMs(),
-                file.endedOffsetMs());
     }
 }
