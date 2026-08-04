@@ -26,4 +26,15 @@ public interface TrackEgressPort {
      * 흐름 자체가 끊긴 상태라 채택하면 그 세션은 코칭 오디오를 영구히 받지 못한다. 중복 유입이 해로운 구간은 실행이 살아 있을 때뿐이므로, 살아 있는 것만 채택하고 종료된 것만 있으면 새로 시작한다.
      */
     Optional<String> findLiveAudioStreamEgressId(AudioStreamEgressRequest request);
+
+    /**
+     * 세션 room 에 붙어 아직 살아 있는 Egress 를 모두 멈춘다.
+     *
+     * <p>수업이 끝나면 녹화도 끝나야 한다. 멈추지 않으면 아무도 없는 room 에 Egress 가 남아 계속 돌고, 파일도 정상적으로 마무리되지 않는다.
+     *
+     * <p>room 을 닫기 <b>전에</b> 부른다. room 이 먼저 사라지면 Egress 는 입력을 잃은 채 끝나 파일이 온전히 닫히지 않을 수 있다.
+     *
+     * @return 이번 호출로 멈춘 Egress 수. 미디어 서버를 쓰지 못하면 0
+     */
+    int stopLiveEgress(Long sessionId);
 }

@@ -216,6 +216,15 @@ class ResolveConnectedStudentsServiceTest {
         }
 
         @Override
+        public void markReconnecting(long sessionId, long participantId, Duration ttl) {}
+
+        /** 이 조회는 빈 방 판정 전용이라 접속 학생 해석에는 쓰이지 않는다. */
+        @Override
+        public boolean anyReconnecting(long sessionId, Collection<Long> participantIds) {
+            return false;
+        }
+
+        @Override
         public void startInstructorGrace(long sessionId, Instant deadline, Duration ttl) {}
 
         @Override

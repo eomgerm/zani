@@ -6,7 +6,9 @@ import { useAuth } from "@/domains/auth";
 import {
   PresenceReportError,
   reportPresence,
+  reportPresenceExit,
   type PresenceConnectionState,
+  type PresenceExitReporter,
   type PresenceReconnectStatus,
   type PresenceReporter,
 } from "../infrastructure/presenceApi";
@@ -49,6 +51,8 @@ export type UseSessionPresenceOptions = {
   intervalMs?: number;
   /** 보고 어댑터. 테스트에서 대체한다. */
   report?: PresenceReporter;
+  /** 이탈 보고 어댑터. 테스트에서 대체한다. */
+  reportExit?: PresenceExitReporter;
 };
 
 /**
@@ -60,7 +64,11 @@ export function useSessionPresence(
   sessionId: string,
   options: UseSessionPresenceOptions = {},
 ): SessionPresenceState {
-  const { intervalMs = HEARTBEAT_INTERVAL_MS, report = reportPresence } = options;
+  const {
+    intervalMs = HEARTBEAT_INTERVAL_MS,
+    report = reportPresence,
+    reportExit = reportPresenceExit,
+  } = options;
   const { status } = useRoomReconnect();
   const { accessToken } = useAuth();
   const connectionState = toConnectionState(status);
@@ -134,6 +142,21 @@ export function useSessionPresence(
       clearInterval(timer);
     };
   }, [sessionId, connectionState, intervalMs, report, stopped, accessToken, everConnected]);
+
+  // 탭을 닫거나 다른 페이지로 넘어가면 heartbeat 는 그냥 멈춘다 — 서버에는 "끊겼다"가 아니라 아무 소식도
+  // 오지 않는다. 그래서 강사가 브라우저를 그냥 닫으면 5분 유예가 시작되지 않고 수업이 3시간 상한까지 LIVE 로
+  // 남는다(LIVE-009). 떠나는 순간 이탈을 한 번 알려 그 경로를 막는다.
+  //
+  // unload 가 아니라 pagehide 를 쓰는 이유: 모바일 사파리는 탭을 닫을 때 unload 를 부르지 않는 경우가 있고,
+  // pagehide 는 bfcache 로 넘어가는 경우까지 포함해 문서가 화면에서 사라질 때 항상 온다.
+  useEffect(() => {
+    if (stopped || accessToken === null) {
+      return;
+    }
+    const handlePageHide = () => reportExit(sessionId, accessToken);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, [sessionId, accessToken, stopped, reportExit]);
 
   return { reconnectStatus, sessionEnded, error };
 }

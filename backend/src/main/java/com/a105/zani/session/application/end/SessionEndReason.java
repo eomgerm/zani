@@ -7,5 +7,7 @@ public enum SessionEndReason {
     /** 최대 수업 시간(3시간)에 도달했다. */
     MAX_DURATION_REACHED,
     /** 강사가 유예 시간 안에 복귀하지 않았다. */
-    INSTRUCTOR_ABSENT
+    INSTRUCTOR_ABSENT,
+    /** 마지막 참가자까지 강의실을 떠났다. 붙잡아 둘 이유가 없어 바로 종료한다(LIVE-010). */
+    ALL_PARTICIPANTS_LEFT
 }

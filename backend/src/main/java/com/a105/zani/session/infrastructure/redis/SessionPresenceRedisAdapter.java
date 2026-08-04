@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import lombok.RequiredArgsConstructor;
@@ -116,6 +117,34 @@ public class SessionPresenceRedisAdapter implements SessionPresencePort {
     }
 
     @Override
+    public void markReconnecting(long sessionId, long participantId, Duration ttl) {
+        try {
+            // 값은 쓰지 않는다. 있는지 없는지만 보는 표시라 presence 처럼 시작 시각을 담을 필요가 없다.
+            redisTemplate.opsForValue().set(reconnectingKey(sessionId, participantId), "1", ttl);
+        } catch (DataAccessException exception) {
+            throw new SessionPresenceUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public boolean anyReconnecting(long sessionId, Collection<Long> participantIds) {
+        if (participantIds.isEmpty()) {
+            return false;
+        }
+        try {
+            // presence 와 같은 이유로 키 공간을 훑지 않는다. 후보를 받아 그 키들만 조회한다.
+            List<String> values = redisTemplate
+                    .opsForValue()
+                    .multiGet(participantIds.stream()
+                            .map(participantId -> reconnectingKey(sessionId, participantId))
+                            .toList());
+            return values != null && values.stream().anyMatch(Objects::nonNull);
+        } catch (DataAccessException exception) {
+            throw new SessionPresenceUnavailableException(exception);
+        }
+    }
+
+    @Override
     public void startInstructorGrace(long sessionId, Instant deadline, Duration ttl) {
         try {
             // 진행 중인 유예가 없을 때만 마감 시각을 심는다(SETNX, 원자적). 반복·동시 이탈로 마감 시각이 갱신되지 않도록 한다.
@@ -153,5 +182,9 @@ public class SessionPresenceRedisAdapter implements SessionPresencePort {
 
     private String graceKey(long sessionId) {
         return "session:" + sessionId + ":instructor-grace";
+    }
+
+    private String reconnectingKey(long sessionId, long participantId) {
+        return "session:" + sessionId + ":reconnecting:" + participantId;
     }
 }

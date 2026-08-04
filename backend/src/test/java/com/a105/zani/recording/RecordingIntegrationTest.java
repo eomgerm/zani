@@ -409,6 +409,12 @@ class RecordingIntegrationTest {
         }
 
         @Override
+        public int stopLiveEgress(Long sessionId) {
+            // 이 통합 테스트는 시작 경로만 다룬다. 종료 정리는 EndSessionServiceTest 가 고정한다.
+            return 0;
+        }
+
+        @Override
         public IssuedTrackEgress start(TrackEgressRequest request) {
             if (failAll || failTrackSids.contains(request.trackSid())) {
                 throw new TrackEgressUnavailableException(new IllegalStateException("egress unavailable"));

@@ -27,6 +27,17 @@ public interface SessionPresencePort {
     void clearPresence(long sessionId, long participantId);
 
     /**
+     * 참가자가 복구 중임을 표시한다. RECONNECTING heartbeat 마다 갱신되어 TTL 이 지나면 사라진다.
+     *
+     * <p><b>presence 와 따로 두는 이유.</b> 재연결 구간은 참여 판정을 만들지 않으므로 집계 분모에서 빠져야 하고(FRD §11.6 — 연결 불가는 분자에 들어갈 수 없다), 그것을
+     * {@link #clearPresence} 가 구현한다. 그런데 같은 신호로 "방이 비었다"까지 판단하면 복구 중인 사람이 돌아올 방을 잃는다. 두 판단의 근거가 달라 키를 나눈다.
+     */
+    void markReconnecting(long sessionId, long participantId, Duration ttl);
+
+    /** 주어진 참가자 중 복구 중인 사람이 있는지. 빈 방 판정에만 쓴다 — 집계 분모는 {@link #connectedSince} 만 본다. */
+    boolean anyReconnecting(long sessionId, Collection<Long> participantIds);
+
+    /**
      * 강사 유예를 시작한다. 진행 중인 유예가 없을 때만 마감 시각을 기록하는 원자적 연산(SETNX 계열)이라, 강사가 동시에 여러 연결로 끊겨도 마감 시각이 갱신되지 않는다. 이미 유예가 진행 중이면 아무
      * 것도 하지 않는다.
      */
