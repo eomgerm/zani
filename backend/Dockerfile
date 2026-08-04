@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
 FROM eclipse-temurin:21.0.11_10-jdk-jammy AS build
-WORKDIR /workspace
+WORKDIR /workspace/backend
 
-COPY gradlew gradlew.bat build.gradle settings.gradle ./
-COPY gradle ./gradle
+COPY backend/gradlew backend/gradlew.bat backend/build.gradle backend/settings.gradle ./
+COPY backend/gradle ./gradle
 RUN bash ./gradlew dependencies --no-daemon
 
-COPY src ./src
+COPY backend/src ./src
 RUN bash ./gradlew bootJar -x test --no-daemon
 
 FROM eclipse-temurin:21.0.11_10-jre-jammy AS runtime
@@ -24,17 +24,21 @@ WORKDIR /app
 # Opus 디코더는 어디에도 없다. 컨테이너 포맷을 직접 다루는 대신 검증된 바이너리를 쓴다.
 # ffprobe 는 같은 ffmpeg 패키지에 들어 있다. 분할·전사는 원본 OGG 를 그대로 쓰므로 재인코딩은 하지 않는다.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl gosu ffmpeg \
+    && apt-get install -y --no-install-recommends curl gosu ffmpeg python3 util-linux \
     && groupadd --gid 10001 zani \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin zani \
     && rm -rf /var/lib/apt/lists/* \
     && { java --list-modules | grep -q '^java\.desktop' \
          || { echo 'FATAL: java.desktop is required for MP3 encoding (javax.sound.sampled)' >&2; exit 1; }; } \
     && { ffmpeg -version >/dev/null 2>&1 && ffprobe -version >/dev/null 2>&1 \
-         || { echo 'FATAL: ffmpeg and ffprobe are required for post-class transcription chunking' >&2; exit 1; }; }
+         || { echo 'FATAL: ffmpeg and ffprobe are required for post-class media processing' >&2; exit 1; }; } \
+    && { python3 --version >/dev/null 2>&1 && flock --version >/dev/null 2>&1 \
+         || { echo 'FATAL: python3 and flock are required for recording finalization' >&2; exit 1; }; }
 
-COPY --from=build /workspace/build/libs/*.jar /app/app.jar
-COPY --chmod=0555 docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY --from=build /workspace/backend/build/libs/*.jar /app/app.jar
+COPY --chmod=0555 backend/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY --chmod=0555 infrastructure/media/finalize-recording.sh /app/media/finalize-recording.sh
+COPY --chmod=0444 infrastructure/media/finalize_recording.py /app/media/finalize_recording.py
 
 EXPOSE 8080
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

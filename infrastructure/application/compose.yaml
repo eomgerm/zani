@@ -79,8 +79,8 @@ services:
 
   backend:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: backend/Dockerfile
     image: ${BACKEND_IMAGE:-zani/backend:dev}
     container_name: zani-backend
     restart: unless-stopped
@@ -109,6 +109,13 @@ services:
       # "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 하나로 겸하면 두
       # 마운트가 갈리는 날 조용히 깨진다(S15P11A105-95).
       POSTCLASS_SOURCE_ROOT: /out
+      # 최종 녹화 manifest 와 lecture.mp4 를 생성하는 writable 루트. Track Egress 원본(/out)은
+      # 계속 read-only 이며 worker lock 과 partial 산출물도 이 경로 아래에만 둔다.
+      RECORDING_FINALIZATION_SOURCE_ROOT: /out
+      RECORDING_FINALIZATION_OUTPUT_ROOT: /finalized
+      RECORDING_FINALIZATION_WORKER_PATH: /app/media/finalize-recording.sh
+      # 117 재생 API가 최종 lecture.mp4 를 읽는 별칭. 인증·Range 처리는 117이 소유한다.
+      RECORDING_MEDIA_ROOT: /recordings
     volumes:
       # Track Egress 원본을 사후 전사가 읽는다. 쓰기는 Egress 만 하므로 read-only 로 붙인다.
       # 호스트 track-egress 는 0771 root:root 여야 한다 — owner/group 의 rwx 는 Egress 쓰기용이고,
@@ -116,6 +123,10 @@ services:
       # 파일 경로의 정본은 DB recording_files.storage_key 라 /out 을 나열할 일이 없다.
       # 준비 절차는 infrastructure/application/README.md 의 Required host directories 를 따른다.
       - /srv/zani/recordings/track-egress:/out:ro
+      # 269만 manifest·lock·partial·최종 MP4 를 쓴다. Egress 원본은 별도 /out:ro 로 읽는다.
+      - /srv/zani/recordings:/finalized:rw
+      # 117 재생 경로는 동일 호스트 파일을 읽기 전용 별칭으로 본다.
+      - /srv/zani/recordings:/recordings:ro
     secrets:
       - mysql_app_password
       - redis_app_password

@@ -60,7 +60,14 @@ not set by itself:
 
 | Path | Required mode | Owner |
 | --- | --- | --- |
+| `/srv/zani/recordings` | `0770` | `root:10001` |
 | `/srv/zani/recordings/track-egress` | `0771` | `root:root` |
+
+The backend creates each finalization session directory beneath the writable root
+with owner `10001:10001`: the session, `manifest`, and `final` directories use
+`0750`; `tracks.json` and `lecture.mp4` use `0640`. The same host root is mounted as
+`/finalized:rw` for finalization and `/recordings:ro` for media playback. Track Egress
+sources remain isolated at `/out:ro`.
 
 Each bit is load-bearing, so do not widen or narrow it:
 
@@ -79,6 +86,7 @@ host users remain locked out.
 Applying this requires explicit operator approval, the same as the secret files above:
 
 ```bash
+sudo install -d -o root -g 10001 -m 0770 /srv/zani/recordings
 sudo chmod o+x /srv/zani/recordings/track-egress
 ```
 

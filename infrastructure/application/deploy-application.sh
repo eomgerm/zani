@@ -277,7 +277,8 @@ EOF
       die "Existing release metadata does not match ${sha}."
   else
     mkdir -p "${staging_dir}"
-    archive_commit "${workspace}" "${sha}" "${archive}" backend infrastructure/application
+    archive_commit "${workspace}" "${sha}" "${archive}" \
+      backend infrastructure/application infrastructure/media
     tar -xf "${archive}" -C "${staging_dir}"
     rm -f -- "${archive}"
     cat >"${staging_dir}/.zani-release" <<EOF

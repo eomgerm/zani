@@ -56,11 +56,18 @@ cat > "$session_dir/manifest.json" <<'JSON'
 JSON
 
 output="$session_dir/final/lecture.mp4"
-bash "$media_dir/finalize-recording.sh" --manifest "$session_dir/manifest.json" --output "$output"
+lock_dir="$session_dir/locks"
+mkdir -p "$lock_dir"
+bash "$media_dir/finalize-recording.sh" \
+  --manifest "$session_dir/manifest.json" \
+  --session-dir "$session_dir" \
+  --lock-dir "$lock_dir" \
+  --output "$output"
 
 # 검증
 [[ -f "$output" ]] || { echo "FAIL: output not created"; exit 1; }
 [[ ! -f "$output.partial" ]] || { echo "FAIL: partial not renamed"; exit 1; }
+[[ -f "$lock_dir/.finalize.lock" ]] || { echo "FAIL: lock was not created in --lock-dir"; exit 1; }
 
 probe() { ffprobe -v error "$@" -of default=noprint_wrappers=1:nokey=1 "$output"; }
 vcodec=$(probe -select_streams v:0 -show_entries stream=codec_name)
