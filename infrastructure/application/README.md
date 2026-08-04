@@ -66,8 +66,10 @@ not set by itself:
 The backend creates each finalization session directory beneath the writable root
 with owner `10001:10001`: the session, `manifest`, and `final` directories use
 `0750`; `tracks.json` and `lecture.mp4` use `0640`. The same host root is mounted as
-`/finalized:rw` for finalization and `/recordings:ro` for media playback. Track Egress
-sources remain isolated at `/out:ro`.
+`/finalized:rw` for finalization and `/recordings:ro` for media playback. Because that
+writable root also contains `track-egress`, Compose overlays the child once more at
+`/finalized/track-egress:ro`. Track Egress sources therefore have no writable container
+alias: both `/out` and `/finalized/track-egress` are read-only.
 
 Each bit is load-bearing, so do not widen or narrow it:
 

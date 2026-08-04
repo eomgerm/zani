@@ -125,6 +125,8 @@ services:
       - /srv/zani/recordings/track-egress:/out:ro
       # 269만 manifest·lock·partial·최종 MP4 를 쓴다. Egress 원본은 별도 /out:ro 로 읽는다.
       - /srv/zani/recordings:/finalized:rw
+      # The writable parent also contains Track Egress sources; mask that child read-only at its second alias.
+      - /srv/zani/recordings/track-egress:/finalized/track-egress:ro
       # 117 재생 경로는 동일 호스트 파일을 읽기 전용 별칭으로 본다.
       - /srv/zani/recordings:/recordings:ro
     secrets:
