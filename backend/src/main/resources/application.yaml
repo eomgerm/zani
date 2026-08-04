@@ -245,6 +245,16 @@ recording:
   outbox-relay-enabled: ${RECORDING_OUTBOX_RELAY_ENABLED:true}
   # outbox 릴레이 주기(ISO-8601 duration).
   outbox-relay-delay: ${RECORDING_OUTBOX_RELAY_DELAY:PT5S}
+  # 최종 MP4 를 읽어서 서빙할 마운트 경로. base-path 와 값이 같아도 뜻이 다르다 — 그쪽은 "LiveKit 에 넘길
+  # Egress 출력 경로"이고 이쪽은 "우리가 읽을 경로"다. 배포에서는 두 마운트가 갈리므로 겸용하지 않는다
+  # (사후 전사의 source-root 와 같은 이유).
+  media-root: ${RECORDING_MEDIA_ROOT:/srv/zani/recordings}
+  # 발급한 재생 주소의 유효 기간. 주소 자체가 자격이라 짧게 잡는다 — 새어 나가도 이 시간만 쓸 수 있다.
+  # 만료되면 클라이언트가 발급 API 를 다시 불러 이어 재생한다.
+  media-url-ttl: ${RECORDING_MEDIA_URL_TTL:PT5M}
+  # 발급할 재생 주소의 형식. 브라우저가 직접 여는 주소라 외부에서 닿는 오리진이어야 한다.
+  # 운영은 nginx 가 /api/ 를 백엔드로 넘기므로 공개 도메인을 넣는다.
+  media-url-template: ${RECORDING_MEDIA_URL_TEMPLATE:http://localhost:18080/api/v1/sessions/{sessionId}/media}
 
 ---
 spring:
