@@ -36,13 +36,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>모의 전사를 넣어 <b>모의 응답으로는 확인할 수 없는 것</b>을 본다: 게이트웨이가 이 모델에서 {@code strict} json_schema 를 실제로 강제하는지(GMS 가이드 §11 이 미확인으로
  * 남겨 둔 항목), {@code max_completion_tokens} 가 받아들여지는지, 그리고 돌아온 구간이 적재 애그리거트의 불변식(겹침 없음·시간순·수업 길이 안)을 그대로 통과하는지다.
  *
- * <p>모델은 {@code GMS_ANALYSIS_MODEL} 로 바꿀 수 있고 기본값은 {@code gpt-4o-mini} 다 — 실측 확인용으로 가장 값싼 multimodal 모델이다.
+ * <p>기본 모델은 {@code application.yaml} 의 {@code gms.analysis-model} 기본값과 같은 {@code gpt-5.4-mini} 다. <b>실제로 배포될 모델을 확인하는
+ * 것이 이 검사의 요점이다</b> — 다른 모델로 통과해도 배포본이 같으리라는 보장이 없고, 특히 추론 모델은 reasoning 토큰이 {@code max_completion_tokens} 예산에 함께 잡혀 절단
+ * 위험이 다르다. 절단은 재시도할 수 없는 실패라 그 세션은 리포트를 받지 못한다.
+ *
+ * <p>모델을 비교하고 싶으면 {@code GMS_ANALYSIS_MODEL} 로 덮어쓴다.
  */
 @EnabledIfEnvironmentVariable(named = "ZANI_GMS_LIVE_CHECK", matches = "true")
 class GmsContentAnalysisLiveCheckTest {
 
     private static final String DEFAULT_BASE_URL = "https://gms.ssafy.io/gmsapi/api.openai.com";
-    private static final String DEFAULT_MODEL = "gpt-4o-mini";
+    private static final String DEFAULT_MODEL = "gpt-5.4-mini";
 
     /** 60분 수업. 모의 전사의 마지막 발화가 52분 지점이라 그것을 덮는 길이를 쓴다 — 짧게 잡으면 모델이 정직하게 답해도 범위 검증에 걸린다. */
     private static final long CLASS_DURATION_MS = 60 * 60 * 1_000L;
