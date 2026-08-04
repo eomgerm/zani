@@ -140,6 +140,44 @@ class RecordingFinalizationJobPersistenceAdapterTest {
         assertTrue(port.findDueSessionIds(NOW.plusSeconds(30), 100).contains(sessionId));
     }
 
+    @Test
+    void 재기동은_RUNNING_작업을_즉시_재대기시키고_이전_실행의_결과를_막는다() {
+        long sessionId = queuedSession();
+        FinalizationJobLease claimed =
+                port.tryClaim(sessionId, NOW.plusSeconds(18_000), NOW).orElseThrow();
+        FinalizationJobLease attempted =
+                port.beginAttempt(claimed, NOW.plusSeconds(1)).orElseThrow();
+
+        assertEquals(1, port.requeueRunningJobs(NOW.plusSeconds(2)));
+
+        assertEquals(RecordingFinalizationStatus.PENDING.name(), text(sessionId, "status"));
+        assertEquals(1, integer(sessionId, "attempt_count"));
+        assertEquals("application_restarted", text(sessionId, "last_error"));
+        assertTrue(port.findDueSessionIds(NOW.plusSeconds(2), 100).contains(sessionId));
+        assertFalse(port.markCompleted(
+                attempted,
+                "/finalized/manifest.json",
+                "/finalized/lecture.mp4",
+                1L,
+                "a".repeat(64),
+                NOW.plusSeconds(3)));
+
+        FinalizationJobLease restarted = port.tryClaim(sessionId, NOW.plusSeconds(18_100), NOW.plusSeconds(2))
+                .orElseThrow();
+        assertTrue(restarted.leaseToken() > attempted.leaseToken());
+    }
+
+    @Test
+    void 재기동_복구는_이미_대기_중인_작업을_건드리지_않는다() {
+        long sessionId = queuedSession();
+
+        assertEquals(0, port.requeueRunningJobs(NOW.plusSeconds(1)));
+
+        assertEquals(RecordingFinalizationStatus.PENDING.name(), text(sessionId, "status"));
+        assertEquals(0, integer(sessionId, "attempt_count"));
+        assertTrue(port.findDueSessionIds(NOW.plusSeconds(1), 100).contains(sessionId));
+    }
+
     private long queuedSession() {
         long sessionId = createSession("ENDED");
         insertRecording(sessionId);

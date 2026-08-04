@@ -57,6 +57,34 @@ public interface RecordingFinalizationJobJpaRepository extends JpaRepository<Rec
                 Pageable.ofSize(limit));
     }
 
+    /**
+     * 기동 전에 종료된 인스턴스가 남긴 실행권을 회수한다.
+     *
+     * <p>{@code leaseToken}을 함께 올려 이전 worker가 뒤늦게 결과를 기록하지 못하게 하고, 실제 worker 실패가 아니므로 {@code attemptCount}는 유지한다. 단일
+     * 백엔드 인스턴스의 기동 시점 전용 쿼리다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update RecordingFinalizationJobJpaEntity job
+               set job.status = :pending, job.leaseToken = job.leaseToken + 1,
+                   job.leaseUntil = null, job.nextAttemptAt = :now,
+                   job.lastError = :reason, job.updatedAt = :now
+             where job.status = :running
+            """)
+    int requeueRunningJobs(
+            @Param("pending") String pending,
+            @Param("running") String running,
+            @Param("reason") String reason,
+            @Param("now") Instant now);
+
+    default int requeueRunningJobs(Instant now) {
+        return requeueRunningJobs(
+                RecordingFinalizationStatus.PENDING.name(),
+                RecordingFinalizationStatus.RUNNING.name(),
+                "application_restarted",
+                now);
+    }
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update RecordingFinalizationJobJpaEntity job

@@ -20,6 +20,7 @@ public class RecordingFinalizationExecutorConfig {
         executor.setQueueCapacity(0);
         executor.setThreadNamePrefix("recording-finalize-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
+        // 4시간 worker를 끝까지 기다리는 값이 아니다. 배포로 중단되면 기동 복구가 RUNNING 작업을 즉시 재대기시킨다.
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();
         return executor;

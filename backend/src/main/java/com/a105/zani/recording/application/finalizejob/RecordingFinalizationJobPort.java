@@ -11,6 +11,13 @@ public interface RecordingFinalizationJobPort {
 
     List<Long> findDueSessionIds(Instant now, int limit);
 
+    /**
+     * 애플리케이션 재기동으로 worker가 사라졌지만 {@code RUNNING}으로 남은 작업을 다시 대기시킨다.
+     *
+     * <p>기동 시점에만 호출한다. 시도 횟수는 실제 worker 실패가 아니므로 유지하고, fencing token은 올려 이전 프로세스의 늦은 결과를 차단한다.
+     */
+    int requeueRunningJobs(Instant now);
+
     Optional<FinalizationJobLease> tryClaim(Long sessionId, Instant leaseUntil, Instant now);
 
     Optional<FinalizationJobLease> beginAttempt(FinalizationJobLease lease, Instant now);

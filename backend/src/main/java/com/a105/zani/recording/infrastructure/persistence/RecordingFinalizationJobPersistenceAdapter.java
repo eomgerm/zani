@@ -55,6 +55,16 @@ public class RecordingFinalizationJobPersistenceAdapter implements RecordingFina
 
     @Override
     @Transactional
+    public int requeueRunningJobs(Instant now) {
+        try {
+            return repository.requeueRunningJobs(now);
+        } catch (DataAccessException failure) {
+            throw new FinalizationJobStoreException(failure);
+        }
+    }
+
+    @Override
+    @Transactional
     public Optional<FinalizationJobLease> tryClaim(Long sessionId, Instant leaseUntil, Instant now) {
         try {
             if (repository.claim(sessionId, leaseUntil, now) != 1) {
