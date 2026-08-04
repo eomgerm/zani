@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { PictoLink, PictoSpark } from "@/shared/ui";
 import { lectures, quizData } from "./fixtures";
 
 /**
@@ -134,8 +135,9 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
                   <span className="text-[13.5px] font-extrabold text-ink-label">{q.concept}</span>
                 </div>
                 <p className="mb-3 text-[13.5px] leading-[1.65] text-ink-sub">{q.explain}</p>
-                <button className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[13px] font-extrabold text-primary">
-                  🔗 관련 강의 구간 {q.t} 다시 보기
+                <button className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 font-sans text-[13px] font-extrabold text-primary">
+                  <PictoLink size={14} />
+                  관련 강의 구간 {q.t} 다시 보기
                 </button>
               </div>
             )}
@@ -165,14 +167,16 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
         ) : (
           <>
             <div className="z-card-lg mb-[18px] px-8 py-[30px] text-center">
-              <div className="mb-2.5 text-[40px]">🎉</div>
+              <div className="mb-2.5 flex justify-center">
+                <PictoSpark size={40} />
+              </div>
               <h1 className="mb-2 text-[22px] font-extrabold">
                 {total}개 개념 중 {score}개를 확인했어요.
               </h1>
               <p className="text-[14.5px] text-ink-muted">
                 {reviewCount > 0
                   ? `다시 살펴볼 개념이 ${reviewCount}개 있어요.`
-                  : "모든 개념을 잘 확인했어요 👏"}
+                  : "모든 개념을 잘 확인했어요"}
               </p>
             </div>
 

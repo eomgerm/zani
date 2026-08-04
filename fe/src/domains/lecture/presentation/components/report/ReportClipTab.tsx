@@ -59,9 +59,7 @@ export function ReportClipTab({ title }: { title: string }) {
 
       {/* AI 요약 문서 */}
       <div className="z-card px-7 py-6">
-        <div className="z-section-title mb-4">
-          <span className="text-primary">📝</span>수업 요약 레포트
-        </div>
+        <div className="z-section-title mb-4">수업 요약 레포트</div>
         <div className="flex flex-col gap-[18px]">
           {summarySections.map((s) => (
             <div key={s.h}>
