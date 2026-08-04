@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { PictoInbox } from "@/shared/ui";
-import type { TranscriptSegment } from "../infrastructure/studentReportApi";
+import type { TranscriptSegment } from "../infrastructure/studentClipApi";
 import { formatOffset } from "./offsetTime";
 import { activeSegmentIndex } from "./transcriptCursor";
 

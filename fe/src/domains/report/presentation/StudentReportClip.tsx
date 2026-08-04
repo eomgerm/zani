@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
-import type { StudentReportRequester } from "../infrastructure/studentReportApi";
+import type { StudentClipRequester } from "../infrastructure/studentClipApi";
 import { ReportPlayer, type SeekRequest } from "./ReportPlayer";
 import { TranscriptTimeline } from "./TranscriptTimeline";
-import { useStudentReport } from "./useStudentReport";
+import { useStudentClip } from "./useStudentClip";
 
 const Notice = ({
   icon,
@@ -41,7 +41,7 @@ export interface StudentReportClipProps {
   readonly sessionId: string;
   readonly title: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
-  readonly request?: StudentReportRequester;
+  readonly request?: StudentClipRequester;
   /** 리포트 탭에서 넘어온 이동 요청. 전사 행 클릭과 같은 `seekTo` 로 합류한다. */
   readonly seekRequest?: ClipSeekRequest | null;
 }
@@ -63,7 +63,7 @@ export function StudentReportClip({
   request,
   seekRequest = null,
 }: StudentReportClipProps) {
-  const { status, report, retry, reissueRecordingUrl } = useStudentReport({ sessionId, request });
+  const { status, clip, retry, reissueRecordingUrl } = useStudentClip({ sessionId, request });
 
   const [seek, setSeek] = useState<SeekRequest | null>(null);
   const nonceRef = useRef(0);
@@ -110,7 +110,7 @@ export function StudentReportClip({
     );
   }
 
-  if (status === "failed" || report === null) {
+  if (status === "failed" || clip === null) {
     return (
       <Notice
         icon={<PictoWarn size={44} />}
@@ -128,10 +128,10 @@ export function StudentReportClip({
     <div className="grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
       <ReportPlayer
         /* 재조회로 URL 이 바뀌면 리마운트해 실패·재발급 이력을 처음부터 다시 시작한다. */
-        key={report.recordingUrl ?? "no-recording"}
-        recordingUrl={report.recordingUrl}
+        key={clip.recordingUrl ?? "no-recording"}
+        recordingUrl={clip.recordingUrl}
         title={title}
-        initialSeconds={report.seekTimestamp}
+        initialSeconds={clip.seekTimestamp}
         seekRequest={seek}
         onTimeChange={handleTimeChange}
         reissueUrl={reissueRecordingUrl}
@@ -140,7 +140,7 @@ export function StudentReportClip({
       <div className="relative min-h-[220px]">
         <div className="absolute inset-0">
           <TranscriptTimeline
-            segments={report.transcript}
+            segments={clip.transcript}
             currentSeconds={cursorSeconds}
             onSeek={seekTo}
           />
