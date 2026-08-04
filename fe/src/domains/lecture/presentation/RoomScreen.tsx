@@ -31,6 +31,7 @@ import {
   useChatUnread,
   useRaisedHands,
   useSessionChat,
+  useSessionEventToast,
   useModeration,
   useSessionReactions,
   type ReactionKind,
@@ -245,6 +246,13 @@ function RoomScreenContent({
   const chatUnread = useChatUnread({
     myIdentity: localParticipantId,
     chatVisible: panelOpen && panel === "chat",
+  });
+  // 공유 중에는 메인 창이 공유 자료 뒤에 가려져 손들기·채팅을 놓친다. PiP 창이 떠 있는 동안만
+  // 실시간 알림을 토스트로 받아 그 창에 그린다(S15P11A105-295).
+  const pipToast = useSessionEventToast({
+    myIdentity: localParticipantId,
+    active: pipWindow !== null,
+    raisedIdentities: hands.raisedIdentities,
   });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
@@ -605,7 +613,7 @@ function RoomScreenContent({
                 {pipWindow &&
                   galleryParticipants.length > 0 &&
                   createPortal(
-                    <div className="flex h-screen flex-col bg-stage">
+                    <div className="relative flex h-screen flex-col bg-stage">
                       <div className="flex-1 overflow-y-auto p-2">
                         <RoomRoster
                           participants={galleryParticipants}
@@ -658,6 +666,18 @@ function RoomScreenContent({
                           <CloseIcon />
                         </button>
                       </div>
+                      {/* 공유 중 놓치기 쉬운 손들기·채팅 알림. 최신 한 건만 컨트롤 위에 겹쳐 그리고
+                          (key 로 리마운트해 등장 애니메이션을 다시 튼다), 클릭은 통과시켜 조작을 막지 않는다. */}
+                      {pipToast && (
+                        <div
+                          key={pipToast.key}
+                          role="status"
+                          data-testid="pip-toast"
+                          className="pointer-events-none absolute inset-x-2 bottom-16 z-10 animate-[zPop_.2s] truncate rounded-[14px] border border-room-edge bg-[#1e2138] px-4 py-2.5 text-center text-[12.5px] text-panel-soft"
+                        >
+                          {pipToast.message}
+                        </div>
+                      )}
                     </div>,
                     pipWindow.document.body,
                   )}
