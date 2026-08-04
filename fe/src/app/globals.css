@@ -20,6 +20,10 @@
   --color-mint-deep: #e8f2ee;
   --color-faint: #fbfbfe;
   --color-muted-surface: #f5f8f7;
+  /* 뉴트럴 표면 — 홈 배너·진입 카드처럼 민트 없이 얹는 자리(2026-08-04 시안) */
+  --color-shell: #f7f8f7;
+  --color-shell-line: #eef1ef;
+  --color-shell-icon: #e9f4ee;
 
   /* text */
   --color-ink: #2c3049;
@@ -93,6 +97,24 @@ body {
   background: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-sans);
+}
+
+/* 선택 영역·스크롤바는 시안이 값을 정해 둔 전역 표현이다(디자인 문서 §1·§10). */
+::selection {
+  background: #bdeeda;
+  color: #14523c;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d7dbee;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ==========================================================================
