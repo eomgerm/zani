@@ -52,6 +52,22 @@ require_ci_directory() {
     die "CI directory must be owned by root:root with mode ${mode}: ${directory}"
 }
 
+prepare_recording_directories() {
+  local root="/srv/zani/recordings"
+  local track_egress="${root}/track-egress"
+
+  # /finalized:rw와 /recordings:ro가 공유하는 호스트 정본. 앱 컨테이너 UID/GID 10001만 쓰고 읽는다.
+  install -d -o root -g 10001 -m 0770 "${root}"
+  [[ -d "${track_egress}" ]] || die "Track Egress directory is missing: ${track_egress}"
+  # Egress 쓰기(owner/group rwx)는 유지하고 앱 컨테이너에는 경로 통과(x)만 허용한다. 목록 읽기(r)는 주지 않는다.
+  chown root:root "${track_egress}"
+  chmod 0771 "${track_egress}"
+  [[ "$(stat -c '%u:%g:%a' "${root}")" == "0:10001:770" ]] ||
+    die "Recording root permissions are invalid: ${root}"
+  [[ "$(stat -c '%u:%g:%a' "${track_egress}")" == "0:0:771" ]] ||
+    die "Track Egress permissions are invalid: ${track_egress}"
+}
+
 validate_sha() {
   [[ "$1" =~ ^[0-9a-f]{40}$ ]] || die "Git SHA must be exactly 40 lowercase hexadecimal characters."
 }
@@ -248,6 +264,8 @@ deploy_backend() {
   exec 9>"${DEPLOY_LOCK}"
   flock -n 9 || die "Another application deployment or rollback is already running."
 
+  prepare_recording_directories
+
   short_sha="${sha:0:12}"
   release_name="application-${short_sha}"
   release_dir="${RELEASES_DIR}/${release_name}"
@@ -278,7 +296,7 @@ EOF
   else
     mkdir -p "${staging_dir}"
     archive_commit "${workspace}" "${sha}" "${archive}" \
-      backend infrastructure/application infrastructure/media
+      .dockerignore backend infrastructure/application infrastructure/media
     tar -xf "${archive}" -C "${staging_dir}"
     rm -f -- "${archive}"
     cat >"${staging_dir}/.zani-release" <<EOF
@@ -372,6 +390,7 @@ main() {
   require_command git
   require_command realpath
   require_command stat
+  require_command install
   require_command tar
   require_ci_directory "${CI_DOCKER}" 700
   require_ci_directory "${CI_LOCKS}" 755

@@ -85,4 +85,6 @@ fi
 
 # 검증 성공한 partial 만 동일 파일시스템에서 atomic rename 한다.
 mv -f -- "$output.partial" "$output"
+# backend UID 10001이 만들기 때문에 소유자는 그대로 두고, 117 재생 경로가 읽을 수 있는 최소 권한만 고정한다.
+chmod 0640 "$output"
 echo "finalized: $output" >&2
