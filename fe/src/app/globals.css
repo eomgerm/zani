@@ -89,7 +89,8 @@
   --font-mono: var(--font-space-mono), monospace;
 
   /* shadows */
-  --shadow-card: 0 4px 22px rgba(24, 74, 62, 0.05);
+  /* 카드는 1px 테두리로 가른다. 그림자는 종이가 떠 보이지 않을 만큼만 남긴다(디자인 문서 §4). */
+  --shadow-card: 0 1px 2px rgba(20, 30, 25, 0.04);
   --shadow-soft: 0 12px 40px rgba(24, 74, 62, 0.07);
   --shadow-pop: 0 12px 34px rgba(24, 74, 62, 0.16);
 }
@@ -133,6 +134,17 @@ body {
   /* 테두리만 있는 박스 (통계 타일, 인사이트 카드 등) */
   .z-box {
     @apply border border-line-light rounded-[14px];
+  }
+  /* 리포트 본문 블록. 제목은 박스 밖에 두고 내용만 담는다 — 박스 안의 박스를 만들지 않는다. */
+  .z-report-box {
+    @apply bg-surface border border-line-light rounded-2xl;
+  }
+  /* 리포트 섹션 제목 + 부제 */
+  .z-report-head {
+    @apply mb-3 mt-[26px] first:mt-0;
+  }
+  .z-report-sub {
+    @apply mt-1 text-xs text-ink-fainter;
   }
 
   /* ---- 버튼 ----

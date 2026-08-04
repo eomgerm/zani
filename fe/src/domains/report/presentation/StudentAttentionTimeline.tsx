@@ -13,7 +13,6 @@ import {
 } from "recharts";
 
 import {
-  Card,
   PictoCamera,
   PictoClockMuted,
   PictoInbox,
@@ -25,18 +24,16 @@ import {
   type FocusPoint,
   type StudentTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
-import { SectionAverages } from "./SectionAverages";
+import { SectionTimeline } from "./SectionTimeline";
 import {
   sectionBounds,
   sectionCallout,
   sectionColorOf,
-  sectionIndexAt,
   sectionKeyOf,
   sectionMidpoint,
   toSectionRows,
 } from "./sectionFlow";
-import { formatOffset, TimelineStatusBar } from "./TimelineStatusBar";
-import type { TrackSegment } from "./timelineTrack";
+import { formatOffset } from "./offsetTime";
 import { useAttentionTimeline } from "./useAttentionTimeline";
 
 /**
@@ -149,28 +146,18 @@ export function StudentAttentionTimeline({
       );
     }
 
-    const { focusFlow, durationSeconds, stateIntervals, sections } = timeline;
+    const { focusFlow, durationSeconds, sections } = timeline;
     const points = focusFlow.points;
     const intervalSeconds = focusFlow.intervalSeconds;
     const blanks = blankRunsOf(points, intervalSeconds);
     const blankSeconds = blanks.reduce((sum, run) => sum + (run.end - run.start), 0);
     const total = durationSeconds > 0 ? durationSeconds : points.length * intervalSeconds;
 
-    // 서버가 병합해 준 구간을 그대로 넘긴다. 다시 병합하지 않는다(설계 문서 §2.13).
-    const segments: TrackSegment[] = stateIntervals.map((interval) => ({
-      startSeconds: interval.startSeconds,
-      endSeconds: interval.endSeconds,
-      state: interval.state,
-    }));
-
     // 흐름을 수업 내용 구간으로 나눠 그린다. 248 이 구간을 채우기 전 세션은 한 줄로 그린다.
     const hasSections = sections.length > 0;
     const rows: readonly object[] = hasSections ? toSectionRows(points, sections) : points;
-    // 상태 막대에서 고른 자리가 어느 내용 구간인지 차트에서도 짚어 준다.
-    const activeSection =
-      hasSections && segments.length > 0
-        ? sectionIndexAt(sections, segments[Math.min(selectedIndex, segments.length - 1)].startSeconds)
-        : null;
+    // 아래 타임라인에서 고른 구간을 차트에서도 짚어 준다 — 두 그림이 같은 자리를 가리킨다.
+    const activeSection = hasSections ? Math.min(selectedIndex, sections.length - 1) : null;
 
     // 차트 자체는 읽을 수 없는 그림이므로 요약을 이름으로 준다. 상호작용은 아래 상태 막대가 맡는다.
     const chartLabel =
@@ -291,43 +278,59 @@ export function StudentAttentionTimeline({
           </ResponsiveContainer>
         </div>
 
-        <p className="mb-3.5 mt-1 text-[11.5px] font-semibold text-ink-fainter">
-          회색으로 비워 둔 구간은 값이 없는 시간이에요. 1단계가 아니라 기록이 없다는 뜻이에요.
-        </p>
-
-        {segments.length > 0 ? (
-          <TimelineStatusBar
-            segments={segments}
-            selectedIndex={Math.min(selectedIndex, segments.length - 1)}
-            onSelect={setSelectedIndex}
-            label="구간별 내 상태"
-          />
-        ) : (
-          <p className="text-xs font-semibold text-ink-faint">구간 정보가 없어요.</p>
-        )}
-
-        <SectionAverages sections={sections} />
       </>
     );
   };
 
+  // 구간은 차트와 타임라인이 같은 응답에서 나온다. 두 자리에 따로 받아 오지 않는다.
+  const sections = timeline?.sections ?? [];
+
   return (
-    <Card className="px-6 pb-5 pt-[22px]">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <div className="z-section-title">
-          집중 흐름
+    <>
+      <div className="z-report-head flex flex-wrap items-center justify-between gap-2.5">
+        <div className="z-section-title">집중 흐름</div>
+        <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
+          <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
+            내 집중도
+          </span>
+          {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
+          <span className="flex items-center gap-[7px]">
+            <span
+              aria-hidden="true"
+              className="h-2 w-9 rounded-full bg-[linear-gradient(90deg,#e0455f,#f4c325,#16c582)]"
+            />
+            1 낮음 → 4 높음
+          </span>
         </div>
-        <span className="text-[11.5px] text-ink-fainter">
-          수업 시간 순서대로 본 내 참여 상태예요.
-        </span>
       </div>
 
-      {body()}
+      <div className="z-report-box px-6 pb-3 pt-[18px]">{body()}</div>
 
-      <p className="mt-3.5 text-[11.5px] leading-[1.6] text-ink-fainter">
+      {/* 이 문구가 없으면 학생이 성적표로 읽는다(NFR-UX-006). 박스 밖에 두어 그래프만 담는다. */}
+      <p className="mt-2 text-[11.5px] leading-[1.6] text-ink-fainter">
         겹치지 않는 30초 구간마다 낸 <b className="font-extrabold text-ink-faint">1~4 단계 평균</b>
-        이에요. 참고용 파생 지표이며 점수가 아닙니다.
+        이에요. 참고용 파생 지표이며 점수가 아닙니다. 회색으로 비워 둔 자리는 1단계가 아니라 기록이
+        없다는 뜻이에요.
       </p>
-    </Card>
+
+      {status === "ready" && timeline !== null && (
+        <>
+          <div className="z-report-head">
+            <div className="z-section-title">타임라인</div>
+            <div className="z-report-sub">
+              구간을 눌러 어느 내용에서 집중 흐름이 오르내렸는지 확인해 보세요.
+            </div>
+          </div>
+          <div className="z-report-box px-6 py-[22px]">
+            <SectionTimeline
+              sections={sections}
+              selectedIndex={Math.min(selectedIndex, Math.max(0, sections.length - 1))}
+              onSelect={setSelectedIndex}
+            />
+          </div>
+        </>
+      )}
+    </>
   );
 }
+

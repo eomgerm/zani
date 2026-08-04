@@ -102,32 +102,6 @@ export const transcript = [
   { t: "51:20", speaker: "박서준", text: "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요." },
 ];
 
-export interface LearnSegment {
-  range: string;
-  title: string;
-  /** 전체(강사 시점) 집중 점수 */
-  fAll: number;
-  /** 나(학생 시점) 집중 점수 */
-  fMine: number;
-  evAll: string;
-  evMine: string;
-  desc: string;
-  seek: string;
-  mine?: boolean;
-}
-
-/** 리포트 타임라인 · 집중 흐름 구간 */
-export const learnSegments: LearnSegment[] = [
-  { range: "00:00–08:39", title: "상태 관리 개요", fAll: 3, fMine: 4, evAll: "대부분의 수강생이 안정적으로 따라온 도입 구간이에요.", evMine: "도입 개념을 놓치지 않고 꾸준히 집중했어요.", desc: "useState의 역할과 props drilling의 한계를 소개한 안정 구간이에요.", seek: "00:02" },
-  { range: "08:40–15:21", title: "Context와 리렌더링", fAll: 2, fMine: 1, evAll: "이해도 알림이 몰린, 전체적으로 집중이 떨어진 구간이에요.", evMine: "리렌더링 원리에서 집중이 크게 흔들렸어요. 다시 볼 것을 추천해요.", desc: "Context 구독과 리렌더링 원리를 다룬, 높은 확인이 필요한 구간이에요.", seek: "08:40" },
-  { range: "15:22–23:59", title: "내 질문 · Context 리렌더", fAll: 2, fMine: 1, evAll: "질문이 이어지며 확인이 필요했던 구간이에요.", evMine: "직접 질문을 남길 만큼 어려웠던 구간이에요. 복습이 필요해요.", desc: "내가 공개 질문을 남겼고 확인 필요 상태가 이어진 구간이에요.", seek: "15:22", mine: true },
-  { range: "24:00–30:59", title: "useMemo 메모이제이션", fAll: 2, fMine: 2, evAll: "반복 확인 신호가 감지된 핵심 구간이에요.", evMine: "개념은 따라갔지만 집중이 보통 수준이었어요.", desc: "반복된 확인 필요 신호가 감지된 핵심 구간이에요.", seek: "24:10" },
-  { range: "31:00–41:59", title: "상태관리 라이브러리 비교", fAll: 3, fMine: 3, evAll: "선택 기준을 다룬, 안정적으로 유지된 구간이에요.", evMine: "비교 설명에 잘 집중했어요.", desc: "라이브러리 선택 기준을 다룬 안정 구간이에요.", seek: "31:05" },
-  { range: "42:00–51:19", title: "Zustand 실습", fAll: 4, fMine: 4, evAll: "실습으로 참여도와 집중이 가장 높았던 구간이에요.", evMine: "실습 구간에서 집중이 최고조였어요.", desc: "실습으로 개념을 굳힌 안정 구간이에요.", seek: "42:00" },
-  { range: "51:20–74:00", title: "정리와 질문", fAll: 3, fMine: 2, evAll: "핵심을 정리하며 마무리한 구간이에요.", evMine: "마무리 구간에서 집중이 조금 떨어졌어요.", desc: "핵심 개념을 정리하고 마무리한 구간이에요.", seek: "51:20" },
-];
-
-/** 리포트(학생) - 복습 추천 */
 export const recommendations = [
   { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
   { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
@@ -213,18 +187,3 @@ export const summarySections = [
   { h: "5. 정리와 선택 기준", p: "지역 상태는 useState, 좁은 범위의 공유 상태는 Context, 전역이거나 복잡한 상태 흐름은 라이브러리로 접근합니다. 무엇을 선택하든 리렌더링 비용과 참조 안정성을 이해하는 것이 핵심입니다." },
 ];
 
-/**
- * 집중 점수(0–4)에 대한 색/배경/라벨. 타임라인 카드와 구간 모달이 쓴다.
- *
- * 보통(1.5–2.5) 구간이 짙은 골드(#c9a11a)인 것은 의도한 차이다 — 흐름 차트 내부는
- * 같은 구간을 #f4c325 로 칠하고(FocusFlowChart 의 colOf), 프로토타입도 두 값을 나눠 쓴다.
- */
-export function focusColor(f: number) {
-  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#c9a11a" : f >= 0.5 ? "#e0714f" : "#e0455f";
-}
-export function focusBg(f: number) {
-  return f >= 3.5 ? "#eaf7f2" : f >= 2.5 ? "#eef8ef" : f >= 1.5 ? "#fdf8e7" : f >= 0.5 ? "#fdefe8" : "#fdeeee";
-}
-export function focusLabel(f: number) {
-  return ["매우 낮음", "낮음", "보통", "높음", "매우 높음"][Math.round(f)] ?? "보통";
-}

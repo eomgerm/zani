@@ -78,7 +78,8 @@ describe("StudentAttentionTimeline", () => {
     expect(path?.getAttribute("d")).toContain("M");
   });
 
-  it("서버가 준 상태 구간을 그대로 막대로 그린다", async () => {
+  /** 집중 흐름 칸에는 그래프만 둔다. 상태 막대는 타임라인이 구간 선택을 맡으면서 걷어냈다. */
+  it("집중 흐름 칸에 상태 막대를 그리지 않는다", async () => {
     render(
       <StudentAttentionTimeline
         sessionId="s1"
@@ -93,8 +94,10 @@ describe("StudentAttentionTimeline", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: /집중/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /카메라 꺼짐/ })).toBeInTheDocument();
+    await screen.findByRole("img");
+
+    expect(screen.queryByRole("group", { name: /상태/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /카메라 꺼짐/ })).not.toBeInTheDocument();
   });
 
   it("내용 구간 평균이 있으면 함께 보여준다", async () => {
@@ -176,16 +179,11 @@ describe("StudentAttentionTimeline", () => {
     expect(dashed).toHaveLength(1);
   });
 
-  it("상태 구간이 하나도 없어도 깨지지 않는다", async () => {
-    render(
-      <StudentAttentionTimeline
-        sessionId="s1"
-        request={async () => timelineWith({ stateIntervals: [] })}
-      />,
-    );
+  it("내용 구간이 하나도 없어도 깨지지 않는다", async () => {
+    render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
 
     expect(await screen.findByRole("img")).toBeInTheDocument();
-    expect(screen.getByText(/구간 정보가 없어요/)).toBeInTheDocument();
+    expect(screen.getByText(/수업 내용 구간이 아직 없어요/)).toBeInTheDocument();
   });
 
   it("labels the metric as a reference-only derived value", async () => {

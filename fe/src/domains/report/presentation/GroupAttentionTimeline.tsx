@@ -14,7 +14,6 @@ import {
 } from "recharts";
 
 import {
-  Card,
   PictoCamera,
   PictoClockMuted,
   PictoInbox,
@@ -27,18 +26,16 @@ import {
   type GroupSignalPoint,
   type GroupTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
-import { SectionAverages } from "./SectionAverages";
+import { SectionTimeline } from "./SectionTimeline";
 import {
   sectionBounds,
   sectionCallout,
   sectionColorOf,
-  sectionIndexAt,
   sectionKeyOf,
   sectionMidpoint,
   toSectionRows,
 } from "./sectionFlow";
-import { formatOffset, TimelineStatusBar } from "./TimelineStatusBar";
-import type { TrackSegment } from "./timelineTrack";
+import { formatOffset } from "./offsetTime";
 import { useAttentionTimeline } from "./useAttentionTimeline";
 
 /**
@@ -177,31 +174,11 @@ export function GroupAttentionTimeline({
       durationSeconds > 0 ? durationSeconds : focusFlow.points.length * focusFlow.intervalSeconds;
     const shortages = shortageRunsOf(focusFlow.points, focusFlow.intervalSeconds);
 
-    // 상태 막대는 학생 상태가 아니라 흐트러짐 구간을 담는다. 강사 화면에는 개인 상태가 없다.
-    const segments: TrackSegment[] = distractedIntervals.map((interval) => ({
-      startSeconds: interval.startSeconds,
-      endSeconds: interval.endSeconds,
-      state: null,
-    }));
-
-    const activeIndex = segments.length === 0 ? 0 : Math.min(selectedIndex, segments.length - 1);
-    const activeSegment = segments[activeIndex];
-    // 구간 시작 시점의 5초 포인트를 그대로 읽는다. 여러 포인트를 평탄화하면 서버가 계산한 값이
-    // 아니라 화면이 지어낸 값이 된다.
-    const selectedPoint: GroupSignalPoint | undefined =
-      activeSegment === undefined
-        ? signals.points[0]
-        : (signals.points.find((point) => point.offsetSeconds >= activeSegment.startSeconds) ??
-          signals.points[0]);
-
     // 흐름을 수업 내용 구간으로 나눠 그린다. 248 이 구간을 채우기 전 세션은 한 줄로 그린다.
     const hasSections = sections.length > 0;
     const sectionRows = hasSections ? toSectionRows(focusFlow.points, sections) : [];
-    // 상태 막대에서 고른 흐트러짐 구간이 어느 내용 구간인지 차트에서도 짚어 준다.
-    const activeSection =
-      hasSections && activeSegment !== undefined
-        ? sectionIndexAt(sections, activeSegment.startSeconds)
-        : null;
+    // 아래 타임라인에서 고른 구간을 차트에서도 짚어 준다 — 두 그림이 같은 자리를 가리킨다.
+    const activeSection = hasSections ? Math.min(selectedIndex, sections.length - 1) : null;
 
     const chartLabel =
       `집단 집중 흐름 그래프. 30초 구간마다 1~4 단계 평균을 낸 주 계열과 ` +
@@ -407,8 +384,7 @@ export function GroupAttentionTimeline({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-
-        <ul className="mt-1 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0 text-[11.5px] font-semibold text-ink-faint">
+        <ul className="mt-2 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0 text-[11.5px] font-semibold text-ink-faint">
           <li className="flex items-center gap-1.5">
             <span aria-hidden="true" className="inline-block h-1.5 w-5 rounded-full bg-[#16c582]" />
             집단 집중 흐름 (왼쪽 축)
@@ -426,7 +402,7 @@ export function GroupAttentionTimeline({
           <li className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              className="inline-block h-3 w-5 rounded-[3px] border border-[#5e9ec6]"
+              className="inline-block h-0.5 w-5 rounded-full"
               style={{
                 background:
                   "repeating-linear-gradient(45deg, #5e9ec6 0 2px, transparent 2px 6px)",
@@ -445,78 +421,94 @@ export function GroupAttentionTimeline({
 
         <p className="mt-2 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
           왼쪽 축은 집중 흐름 1~4 단계, 오른쪽 축은 비율 0~100%입니다. 축이 다르니 두 선의 높이를
-          견주지 마세요.
+          견주지 마세요. 확인 필요 비율의 분모는 측정 가능한 인원, 카메라 꺼짐 비율의 분모는 접속한
+          인원 전체라 분모가 다릅니다. 두 값을 더하지 마세요.
         </p>
-        <p className="mt-1 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
-          확인 필요 비율의 분모는 측정 가능한 인원, 카메라 꺼짐 비율의 분모는 접속한 인원 전체라
-          분모가 다릅니다. 두 값을 더하지 마세요.
-        </p>
-
         {shortages.length > 0 && (
-          <p className="mt-1.5 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
+          <p className="mt-1 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
             회색 구간은 집계 인원이 부족합니다 — {MIN_AGGREGATE_HEADCOUNT}명 미만이라 값을 감췄어요.
           </p>
         )}
-
-        {segments.length > 0 ? (
-          <div className="mt-4">
-            <div className="mb-1.5 text-xs font-extrabold text-ink-sub">집중 흐트러짐 구간</div>
-            <TimelineStatusBar
-              segments={segments}
-              selectedIndex={activeIndex}
-              onSelect={setSelectedIndex}
-              label="집중 흐트러짐 구간"
-              renderLabel={(segment) =>
-                `집중 흐트러짐 ${formatOffset(segment.startSeconds)}~${formatOffset(segment.endSeconds)}`
-              }
-            />
-          </div>
-        ) : (
-          <p className="mt-4 text-xs font-semibold text-ink-faint">
-            집중이 흐트러진 구간은 잡히지 않았어요.
-          </p>
-        )}
-
-        {selectedPoint !== undefined && (
-          <div className="mt-4 rounded-xl bg-canvas px-4 py-3.5">
-            <div className="mb-2.5 text-xs font-extrabold text-ink-sub">
-              {formatOffset(selectedPoint.offsetSeconds)} 시점의 응답 분포
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              {MIX_FIELDS.map((field) => (
-                <div key={field.key}>
-                  <div className="mb-1 text-[11.5px] text-ink-faint">{field.label}</div>
-                  <div className="text-lg font-extrabold tracking-[-.3px]">
-                    {percentOf(selectedPoint[field.key])}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {selectedPoint.eligibleCount < MIN_AGGREGATE_HEADCOUNT && (
-              <p className="mt-2.5 text-[11.5px] font-semibold text-ink-faint">
-                이 시점은 인원이 모자라 분포를 감췄어요.
-              </p>
-            )}
-          </div>
-        )}
-
-        <SectionAverages sections={sections} />
       </>
     );
   };
 
+  // 구간은 차트와 타임라인이 같은 응답에서 나온다. 두 자리에 따로 받아 오지 않는다.
+  const sections = timeline?.sections ?? [];
+  const activeSectionIndex = Math.min(selectedIndex, Math.max(0, sections.length - 1));
+  const activeSection = sections[activeSectionIndex];
+  // 고른 구간이 시작되는 시점의 5초 포인트를 그대로 읽는다. 여러 포인트를 평탄화하면 서버가
+  // 계산한 값이 아니라 화면이 지어낸 값이 된다.
+  const selectedPoint: GroupSignalPoint | undefined =
+    timeline === null
+      ? undefined
+      : activeSection === undefined
+        ? timeline.signals.points[0]
+        : (timeline.signals.points.find(
+            (point) => point.offsetSeconds >= activeSection.startSeconds,
+          ) ?? timeline.signals.points[0]);
+
   return (
-    <Card className="px-6 pb-5 pt-[22px]">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <div className="z-section-title">
-          집중 흐름
+    <>
+      <div className="z-report-head flex flex-wrap items-center justify-between gap-2.5">
+        <div className="z-section-title">집중 흐름</div>
+        <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
+          <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
+            전체 집중도
+          </span>
+          {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
+          <span className="flex items-center gap-[7px]">
+            <span
+              aria-hidden="true"
+              className="h-2 w-9 rounded-full bg-[linear-gradient(90deg,#e0455f,#f4c325,#16c582)]"
+            />
+            1 낮음 → 4 높음
+          </span>
         </div>
-        <span className="text-[11.5px] text-ink-fainter">
-          수업 시간 순서대로 본 익명 집단 집중 흐름이에요.
-        </span>
       </div>
 
-      {body()}
-    </Card>
+      <div className="z-report-box px-6 pb-3 pt-[18px]">{body()}</div>
+
+      {status === "ready" && timeline !== null && (
+        <>
+          <div className="z-report-head">
+            <div className="z-section-title">타임라인</div>
+            <div className="z-report-sub">
+              구간을 눌러 어느 내용에서 집단 집중 흐름이 오르내렸는지 확인해 보세요.
+            </div>
+          </div>
+          <div className="z-report-box px-6 py-[22px]">
+            <SectionTimeline
+              sections={sections}
+              selectedIndex={activeSectionIndex}
+              onSelect={setSelectedIndex}
+            />
+
+            {selectedPoint !== undefined && (
+              <div className="mt-4 rounded-xl bg-canvas px-4 py-3.5">
+                <div className="mb-2.5 text-xs font-extrabold text-ink-sub">
+                  {formatOffset(selectedPoint.offsetSeconds)} 시점의 응답 분포
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {MIX_FIELDS.map((field) => (
+                    <div key={field.key}>
+                      <div className="mb-1 text-[11.5px] text-ink-faint">{field.label}</div>
+                      <div className="text-lg font-extrabold tracking-[-.3px]">
+                        {percentOf(selectedPoint[field.key])}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {selectedPoint.eligibleCount < MIN_AGGREGATE_HEADCOUNT && (
+                  <p className="mt-2.5 text-[11.5px] font-semibold text-ink-faint">
+                    이 시점은 인원이 모자라 분포를 감췄어요.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
   );
 }

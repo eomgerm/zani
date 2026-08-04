@@ -9,11 +9,10 @@ import {
   PictoLock,
   PictoWarn,
 } from "@/shared/ui";
-import { learnSegments, lectures } from "./fixtures";
+import { lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
-import { SegmentModal } from "./components/report/SegmentModal";
 import { useSessionRole } from "./useSessionRole";
 
 const tabCls = (active: boolean) =>
@@ -38,13 +37,6 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
   const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
 
   const [tab, setTab] = useState<"clip" | "report">("clip");
-  const [activeSeg, setActiveSeg] = useState(2);
-  const [segModal, setSegModal] = useState<number | null>(null);
-
-  const onSelectSeg = (i: number) => {
-    setActiveSeg(i);
-    setSegModal(i);
-  };
 
   const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
 
@@ -143,25 +135,13 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
               <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
             </div>
           ) : isInstructor ? (
-            <InstructorReport sessionId={lectureId} activeSeg={activeSeg} onSelect={onSelectSeg} />
+            <InstructorReport sessionId={lectureId} />
           ) : (
-            <StudentReport
-              lectureId={lecture.id}
-              sessionId={lectureId}
-              activeSeg={activeSeg}
-              onSelect={onSelectSeg}
-            />
+            <StudentReport lectureId={lecture.id} sessionId={lectureId} />
           )}
         </>
       )}
 
-      {segModal !== null && (
-        <SegmentModal
-          segment={learnSegments[segModal]}
-          role={isInstructor ? "instructor" : "student"}
-          onClose={() => setSegModal(null)}
-        />
-      )}
     </>
   );
 }

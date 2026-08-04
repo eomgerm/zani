@@ -1,150 +1,112 @@
 import Link from "next/link";
-import {
-  Badge,
-  Card,
-  PICTOGRAMS,
-  PictoClock,
-  PictoDoc,
-  PictoPen,
-  PictoStar,
-} from "@/shared/ui";
+import { Badge, PICTOGRAMS } from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
-import { learnSegments, recommendations, studentGlance, studentSummary } from "../../fixtures";
-import { TimelineSegments } from "./TimelineSegments";
+import { recommendations, studentGlance, studentSummary } from "../../fixtures";
 
 interface Props {
   lectureId: string;
   /** 집중 흐름을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
   sessionId: string;
-  activeSeg: number;
-  onSelect: (i: number) => void;
 }
 
-/** 리포트 탭 2 (학생) — 한눈에 보기 · 참여도 요약 · 집중 흐름 · 타임라인 · 복습 추천 + 퀴즈. */
-export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Props) {
+/**
+ * 리포트 탭 2 (학생) — 한눈에 보기 · 참여도 요약 · 집중 흐름 · 타임라인 · 복습 추천 + 퀴즈.
+ *
+ * <p>제목은 박스 밖에 두고 내용만 박스에 담는다. 카드를 다시 카드로 감싸면 같은 정보에 테두리가
+ * 두 겹 생겨 정보 밀도만 떨어진다(디자인 문서 §6).
+ *
+ * <p>집중 흐름과 타임라인은 한 응답에서 나오므로 report 도메인 컴포넌트가 두 블록을 함께 그린다.
+ */
+export function StudentReport({ lectureId, sessionId }: Props) {
   return (
-    <div className="flex flex-col gap-5">
-      <Card className="px-6 py-[22px]">
-        <div className="z-section-title mb-4">한눈에 보기</div>
-        <div className="grid grid-cols-4 gap-3">
-          {studentGlance.map((g) => {
-            const Icon = PICTOGRAMS[g.icon];
-            return (
-              <div key={g.label} className="z-box p-4">
-                <div className="mb-[9px] flex items-center gap-1.5 text-xs text-ink-faint">
-                  <Icon size={15} />
-                  {g.label}
-                </div>
-                <div className="text-2xl font-black tracking-[-.5px]">{g.value}</div>
+    <>
+      <div className="z-report-head">
+        <div className="z-section-title">한눈에 보기</div>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        {studentGlance.map((g) => {
+          const Icon = PICTOGRAMS[g.icon];
+          return (
+            <div key={g.label} className="z-report-box px-[18px] py-[18px]">
+              <div className="mb-[11px] flex items-center gap-2 text-[13px] font-medium text-ink-faint">
+                <Icon size={18} />
+                {g.label}
               </div>
-            );
-          })}
-        </div>
-      </Card>
+              <div className="text-[26px] font-extrabold tracking-[-.5px]">{g.value}</div>
+            </div>
+          );
+        })}
+      </div>
 
-      <Card className="px-6 py-[22px]">
-        <div className="mb-3.5 flex items-center gap-2">
-          <div className="z-section-title">수업 참여도 요약</div>
-          <span className="text-[11.5px] text-ink-fainter">
-            AI가 분석한 전반적인 수업 참여도예요.
-          </span>
-        </div>
-        <div className="rounded-xl bg-canvas px-[18px] py-4">
-          <p className="text-[13px] leading-[1.75] text-ink-sub">{studentSummary}</p>
-        </div>
-      </Card>
+      <div className="z-report-head">
+        <div className="z-section-title">수업 참여도 요약</div>
+        <div className="z-report-sub">AI가 분석한 전반적인 수업 참여도예요.</div>
+      </div>
+      <div className="z-report-box px-[18px] py-4">
+        <p className="text-[13px] leading-[1.75] text-ink-sub">{studentSummary}</p>
+      </div>
 
       <StudentAttentionTimeline sessionId={sessionId} />
 
-      <Card className="px-6 py-[22px]">
-        <div className="mb-1 flex flex-wrap items-center gap-2">
-          <div className="z-section-title">타임라인</div>
-          <span className="text-[11.5px] text-ink-fainter">
-            구간을 누르면 집중도 평가와 설명, 복습 클립 바로가기가 열려요.
-          </span>
-        </div>
-        <div className="mb-3 mt-1.5 text-xs font-bold text-ink-faint">
-          수업 내용 기반 구간 · 내 집중도 점수 (0–4)
-        </div>
-        <TimelineSegments
-          segments={learnSegments}
-          role="student"
-          activeSeg={activeSeg}
-          onSelect={onSelect}
-        />
-      </Card>
-
-      <div className="grid grid-cols-2 items-start gap-5">
-        <Card className="px-6 py-[22px]">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="z-section-title">나의 복습 추천</div>
-            <span className="text-[11.5px] text-ink-fainter">
-              자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
-            </span>
-          </div>
-          <div className="flex flex-col gap-3">
-            {recommendations.map((r) => (
-              <div
-                key={r.t}
-                className="flex cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 hover:border-line-primary hover:bg-faint"
-              >
-                <div className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
-                  <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
-                    ▶
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[11.5px] font-extrabold text-primary">
-                      {r.t}
-                    </span>
-                    <Badge bg={`${r.color}22`} fg={r.color}>
-                      {r.tag}
-                    </Badge>
-                    <span className="text-[13.5px] font-extrabold">{r.title}</span>
-                  </div>
-                  <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
-                </div>
+      <div className="z-report-head">
+        <div className="z-section-title">나의 복습 추천</div>
+        <div className="z-report-sub">복습이 필요한 구간을 확인하고 다시 학습해 보세요.</div>
+      </div>
+      <div className="flex flex-col gap-3">
+        {recommendations.map((r) => (
+          <div
+            key={r.t}
+            className="z-report-box flex cursor-pointer gap-3.5 px-3.5 py-[13px] hover:border-line-primary hover:bg-[#fbfdfc]"
+          >
+            <div className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
+              <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
+                ▶
+              </span>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-[5px] text-sm font-extrabold text-primary">{r.t}</div>
+              <div className="mb-[5px] flex flex-wrap items-center gap-[7px]">
+                <span className="text-sm font-extrabold">{r.title}</span>
+                <Badge bg={`${r.color}22`} fg={r.color}>
+                  {r.tag}
+                </Badge>
               </div>
-            ))}
+              <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
+            </div>
           </div>
-        </Card>
+        ))}
+      </div>
 
-        <Card className="px-6 py-[22px]">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="z-section-title">AI 이해도 퀴즈</div>
-            <span className="text-[11.5px] text-ink-fainter">
-              강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
-            </span>
-          </div>
-          <div className="mb-[18px] flex items-center gap-[18px]">
-            <div className="flex h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
-              <PictoPen size={44} />
-            </div>
-            <div className="flex flex-1 flex-col gap-2.5">
-              {[
-                { icon: <PictoDoc size={16} />, text: "총 5문제" },
-                { icon: <PictoClock size={16} />, text: "약 3분" },
-                { icon: <PictoStar size={16} />, text: "주요 개념 3개" },
-              ].map((t) => (
-                <div
-                  key={t.text}
-                  className="flex items-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
-                >
-                  {t.icon}
-                  {t.text}
-                </div>
-              ))}
-            </div>
-          </div>
+      {/* AI 퀴즈는 카드가 아니라 화면 폭을 쓰는 띠다 — 다음 할 일이라 눈에 걸려야 한다. */}
+      <div className="relative mt-[26px] flex flex-wrap items-center gap-5 overflow-hidden rounded-[18px] bg-primary px-7 py-8">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-[14%] -top-[58%] w-[52%] rounded-full bg-white/[.13] pb-[52%]"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-[72%] -right-[6%] w-[60%] rounded-full bg-white/10 pb-[60%]"
+        />
+        <div className="relative z-10 min-w-[240px] flex-1">
+          <h3 className="mb-1.5 text-lg font-extrabold tracking-[-.6px] text-white">
+            AI 이해도 퀴즈
+          </h3>
+          <p className="text-[13px] font-bold leading-[1.55] text-[#e6f7ef]">
+            수업 중 어려웠던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
+          </p>
+        </div>
+        <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2.5">
           <Link
             href={`/my-lectures/${lectureId}/quiz`}
-            className="z-btn z-btn-primary z-btn-block"
+            className="z-btn rounded-[11px] bg-surface px-[26px] py-[11px] text-sm text-[#0e7f5b]"
           >
-            퀴즈 풀어보기 ›
+            퀴즈 풀어보기
           </Link>
-        </Card>
+          <span className="rounded-[11px] bg-white/20 px-5 py-[11px] text-[13px] font-extrabold text-white">
+            총 5문제 · 약 3분
+          </span>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
