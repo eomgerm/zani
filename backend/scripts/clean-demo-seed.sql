@@ -41,10 +41,6 @@ WHERE sr.`session_id` BETWEEN @first_session AND @last_session;
 
 DELETE FROM `student_reports` WHERE `session_id` BETWEEN @first_session AND @last_session;
 
-DELETE t FROM `instructor_report_tips` t
-    JOIN `instructor_reports` ir ON ir.`id` = t.`instructor_report_id`
-WHERE ir.`session_id` BETWEEN @first_session AND @last_session;
-
 DELETE i FROM `instructor_report_insights` i
     JOIN `instructor_reports` ir ON ir.`id` = i.`instructor_report_id`
 WHERE ir.`session_id` BETWEEN @first_session AND @last_session;

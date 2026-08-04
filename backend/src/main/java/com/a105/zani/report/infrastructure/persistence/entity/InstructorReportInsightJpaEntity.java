@@ -35,11 +35,14 @@ public class InstructorReportInsightJpaEntity extends BaseJpaEntity {
     @JoinColumn(name = "instructor_report_id", referencedColumnName = "id", insertable = false, updatable = false)
     private InstructorReportJpaEntity instructorReport;
 
-    @Column(name = "insight_type", nullable = false, length = 30)
-    private String insightType;
+    @Column(name = "title", length = 200)
+    private String title;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
+
+    @Column(name = "suggestion", columnDefinition = "TEXT")
+    private String suggestion;
 
     @Column(name = "started_offset_ms")
     private Long startedOffsetMs;
