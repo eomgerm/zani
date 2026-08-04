@@ -74,7 +74,7 @@ describe("StudentAttentionTimeline", () => {
     // 30~60초 한 칸이 비어 있다.
     expect(chart.getAttribute("aria-label")).toContain("00:30");
     // recharts 는 값이 null 인 점을 path 에서 끊는다. 0 으로 채웠다면 끊기지 않는다.
-    const path = container.querySelector("path.recharts-line-curve");
+    const path = container.querySelector("path.recharts-area-curve");
     expect(path?.getAttribute("d")).toContain("M");
   });
 
@@ -113,10 +113,67 @@ describe("StudentAttentionTimeline", () => {
   });
 
   it("내용 구간이 없으면 그 영역만 비고 그래프는 정상이다", async () => {
-    render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
+    const { container } = render(
+      <StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />,
+    );
 
     expect(await screen.findByRole("img")).toBeInTheDocument();
-    expect(screen.queryByText("수업 내용 구간별 집중 흐름")).not.toBeInTheDocument();
+    expect(screen.queryByText("수업 내용 구간")).not.toBeInTheDocument();
+    // 구간이 없어도 흐름은 한 줄로 그린다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(1);
+  });
+
+  /** 구간을 색으로 갈라 놓지 않으면 어느 내용에서 흐름이 내려갔는지 시간축을 되짚어야 한다. */
+  it("내용 구간마다 계열을 따로 그리고 구간 이름을 붙인다", async () => {
+    const { container } = render(
+      <StudentAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          timelineWith({
+            sections: [
+              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+            ],
+          })
+        }
+      />,
+    );
+
+    await screen.findByRole("img");
+
+    // 구간마다 계열이 하나씩 — 한 줄로 이어 그리지 않는다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(2);
+    // 구간 이름은 차트 위에 붙고, 아래 카드도 같은 번호를 쓴다.
+    expect(screen.getAllByText("구간 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("구간 2").length).toBeGreaterThan(0);
+    // 평균이 다른 두 구간은 색도 다르다.
+    const strokes = [...container.querySelectorAll("path.recharts-area-curve")].map((path) =>
+      path.getAttribute("stroke"),
+    );
+    expect(strokes[0]).not.toBe(strokes[1]);
+  });
+
+  it("구간 경계마다 점선을 하나씩 둔다 — 첫 구간의 시작은 축과 겹쳐 그리지 않는다", async () => {
+    const { container } = render(
+      <StudentAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          timelineWith({
+            sections: [
+              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+            ],
+          })
+        }
+      />,
+    );
+
+    await screen.findByRole("img");
+
+    const dashed = [...container.querySelectorAll("line.recharts-reference-line-line")].filter(
+      (line) => line.getAttribute("stroke-dasharray") === "4 5",
+    );
+    expect(dashed).toHaveLength(1);
   });
 
   it("상태 구간이 하나도 없어도 깨지지 않는다", async () => {

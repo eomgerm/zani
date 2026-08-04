@@ -7,6 +7,7 @@ import {
   ComposedChart,
   Line,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -27,6 +28,15 @@ import {
   type GroupTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
 import { SectionAverages } from "./SectionAverages";
+import {
+  sectionBounds,
+  sectionCallout,
+  sectionColorOf,
+  sectionIndexAt,
+  sectionKeyOf,
+  sectionMidpoint,
+  toSectionRows,
+} from "./sectionFlow";
 import { formatOffset, TimelineStatusBar } from "./TimelineStatusBar";
 import type { TrackSegment } from "./timelineTrack";
 import { useAttentionTimeline } from "./useAttentionTimeline";
@@ -184,18 +194,44 @@ export function GroupAttentionTimeline({
         : (signals.points.find((point) => point.offsetSeconds >= activeSegment.startSeconds) ??
           signals.points[0]);
 
+    // 흐름을 수업 내용 구간으로 나눠 그린다. 248 이 구간을 채우기 전 세션은 한 줄로 그린다.
+    const hasSections = sections.length > 0;
+    const sectionRows = hasSections ? toSectionRows(focusFlow.points, sections) : [];
+    // 상태 막대에서 고른 흐트러짐 구간이 어느 내용 구간인지 차트에서도 짚어 준다.
+    const activeSection =
+      hasSections && activeSegment !== undefined
+        ? sectionIndexAt(sections, activeSegment.startSeconds)
+        : null;
+
     const chartLabel =
       `집단 집중 흐름 그래프. 30초 구간마다 1~4 단계 평균을 낸 주 계열과 ` +
       `확인 필요 비율·카메라 꺼짐 비율 보조 계열. ` +
-      `전체 ${formatOffset(total)}, 흐트러짐 구간 ${distractedIntervals.length}개.`;
+      `전체 ${formatOffset(total)}, 흐트러짐 구간 ${distractedIntervals.length}개.` +
+      (hasSections ? ` 수업 내용 구간 ${sections.length}개로 나눠 색을 달리했습니다.` : "");
 
     return (
       <>
         <div role="img" aria-label={chartLabel}>
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={hasSections ? 264 : 240}>
             {/* 배열이 둘이라 차트에 data 를 주지 않고 계열마다 자기 data 를 준다. */}
-            <ComposedChart margin={{ top: 12, right: 44, left: 4, bottom: 4 }}>
+            <ComposedChart margin={{ top: hasSections ? 34 : 12, right: 44, left: 4, bottom: 4 }}>
               <defs>
+                {sections.map((section, index) => {
+                  const color = sectionColorOf(section.focusLevel);
+                  return (
+                    <linearGradient
+                      key={`grad-${section.startSeconds}`}
+                      id={`groupFlow${index}`}
+                      x1={0}
+                      y1={0}
+                      x2={0}
+                      y2={1}
+                    >
+                      <stop offset="0%" stopColor={color} stopOpacity={0.75} />
+                      <stop offset="100%" stopColor={color} stopOpacity={0.18} />
+                    </linearGradient>
+                  );
+                })}
                 {/* recharts 에 패턴 채우기 API 가 없어 SVG 패턴을 직접 선언한다. 색만으로
                     계열을 나누면 색각 이상인 사람에게 두 선이 같아 보인다(NFR-UX-005). */}
                 <pattern
@@ -315,19 +351,59 @@ export function GroupAttentionTimeline({
                 connectNulls={false}
                 isAnimationActive={false}
               />
-              {/* 주 계열을 마지막에 그려 위로 올린다. */}
-              <Line
-                yAxisId="level"
-                data={focusFlow.points as GroupFocusPoint[]}
-                type="monotone"
-                dataKey="focusLevel"
-                stroke="#16c582"
-                strokeWidth={2.8}
-                dot={false}
-                activeDot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
+              {/* 구간이 갈리는 자리를 점선으로 짚는다. */}
+              {sectionBounds(sections).map((boundary) => (
+                <ReferenceLine
+                  key={`bound-${boundary}`}
+                  yAxisId="level"
+                  x={boundary}
+                  stroke="#c6ccd4"
+                  strokeWidth={1.2}
+                  strokeDasharray="4 5"
+                />
+              ))}
+              {/* 주 계열을 마지막에 그려 위로 올린다. 구간이 있으면 구간마다 색을 달리한다. */}
+              {hasSections &&
+                sections.map((section, index) => (
+                  <Area
+                    key={`area-${section.startSeconds}`}
+                    yAxisId="level"
+                    data={sectionRows}
+                    type="monotone"
+                    dataKey={sectionKeyOf(index)}
+                    stroke={sectionColorOf(section.focusLevel)}
+                    strokeWidth={2.8}
+                    fill={`url(#groupFlow${index})`}
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                ))}
+              {!hasSections && (
+                <Line
+                  yAxisId="level"
+                  data={focusFlow.points as GroupFocusPoint[]}
+                  type="monotone"
+                  dataKey="focusLevel"
+                  stroke="#16c582"
+                  strokeWidth={2.8}
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {/* 이름표는 마지막에 얹는다 — 앞에 두면 계열이 위로 덮는다. */}
+              {sections.map((section, index) => (
+                <ReferenceLine
+                  key={`callout-${section.startSeconds}`}
+                  yAxisId="level"
+                  x={sectionMidpoint(section)}
+                  stroke="transparent"
+                  label={sectionCallout(index + 1, index === activeSection)}
+                />
+              ))}
             </ComposedChart>
           </ResponsiveContainer>
         </div>

@@ -2,10 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import {
+  Area,
   CartesianGrid,
   ComposedChart,
-  Line,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -25,6 +26,15 @@ import {
   type StudentTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
 import { SectionAverages } from "./SectionAverages";
+import {
+  sectionBounds,
+  sectionCallout,
+  sectionColorOf,
+  sectionIndexAt,
+  sectionKeyOf,
+  sectionMidpoint,
+  toSectionRows,
+} from "./sectionFlow";
 import { formatOffset, TimelineStatusBar } from "./TimelineStatusBar";
 import type { TrackSegment } from "./timelineTrack";
 import { useAttentionTimeline } from "./useAttentionTimeline";
@@ -153,19 +163,47 @@ export function StudentAttentionTimeline({
       state: interval.state,
     }));
 
+    // 흐름을 수업 내용 구간으로 나눠 그린다. 248 이 구간을 채우기 전 세션은 한 줄로 그린다.
+    const hasSections = sections.length > 0;
+    const rows: readonly object[] = hasSections ? toSectionRows(points, sections) : points;
+    // 상태 막대에서 고른 자리가 어느 내용 구간인지 차트에서도 짚어 준다.
+    const activeSection =
+      hasSections && segments.length > 0
+        ? sectionIndexAt(sections, segments[Math.min(selectedIndex, segments.length - 1)].startSeconds)
+        : null;
+
     // 차트 자체는 읽을 수 없는 그림이므로 요약을 이름으로 준다. 상호작용은 아래 상태 막대가 맡는다.
     const chartLabel =
       `집중 흐름 그래프. 겹치지 않는 30초 구간마다 1~4 단계 평균을 낸 참고용 파생 지표. ` +
-      `전체 ${formatOffset(total)} 중 ${formatOffset(blankSeconds)}는 값이 없어 비워 뒀습니다.`;
+      `전체 ${formatOffset(total)} 중 ${formatOffset(blankSeconds)}는 값이 없어 비워 뒀습니다.` +
+      (hasSections ? ` 수업 내용 구간 ${sections.length}개로 나눠 색을 달리했습니다.` : "");
 
     return (
       <>
         <div role="img" aria-label={chartLabel}>
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={264}>
             <ComposedChart
-              data={points as FocusPoint[]}
-              margin={{ top: 12, right: 18, left: 4, bottom: 4 }}
+              data={rows as FocusPoint[]}
+              margin={{ top: hasSections ? 34 : 12, right: 18, left: 4, bottom: 4 }}
             >
+              <defs>
+                {sections.map((section, index) => {
+                  const color = sectionColorOf(section.focusLevel);
+                  return (
+                    <linearGradient
+                      key={`grad-${section.startSeconds}`}
+                      id={`studentFlow${index}`}
+                      x1={0}
+                      y1={0}
+                      x2={0}
+                      y2={1}
+                    >
+                      <stop offset="0%" stopColor={color} stopOpacity={0.75} />
+                      <stop offset="100%" stopColor={color} stopOpacity={0.18} />
+                    </linearGradient>
+                  );
+                })}
+              </defs>
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
               {blanks.map((run) => (
                 <ReferenceArea
@@ -200,17 +238,55 @@ export function StudentAttentionTimeline({
                 width={52}
                 tick={{ fill: "#8a90b4", fontSize: 11, fontWeight: 700 }}
               />
+              {/* 구간이 갈리는 자리를 점선으로 짚는다. */}
+              {sectionBounds(sections).map((boundary) => (
+                <ReferenceLine
+                  key={`bound-${boundary}`}
+                  x={boundary}
+                  stroke="#c6ccd4"
+                  strokeWidth={1.2}
+                  strokeDasharray="4 5"
+                />
+              ))}
               {/* connectNulls 를 켜면 관측이 없던 구간이 이어져 "쭉 집중했다"로 보인다. */}
-              <Line
-                type="monotone"
-                dataKey="focusLevel"
-                stroke="#16c582"
-                strokeWidth={2.4}
-                dot={false}
-                activeDot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
+              {hasSections ? (
+                sections.map((section, index) => (
+                  <Area
+                    key={`area-${section.startSeconds}`}
+                    type="monotone"
+                    dataKey={sectionKeyOf(index)}
+                    stroke={sectionColorOf(section.focusLevel)}
+                    strokeWidth={2.4}
+                    fill={`url(#studentFlow${index})`}
+                    dot={false}
+                    activeDot={false}
+                    connectNulls={false}
+                    isAnimationActive={false}
+                  />
+                ))
+              ) : (
+                <Area
+                  type="monotone"
+                  dataKey="focusLevel"
+                  stroke="#16c582"
+                  strokeWidth={2.4}
+                  fill="#16c582"
+                  fillOpacity={0.14}
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              )}
+              {/* 이름표는 마지막에 얹는다 — 앞에 두면 계열이 위로 덮는다. */}
+              {sections.map((section, index) => (
+                <ReferenceLine
+                  key={`callout-${section.startSeconds}`}
+                  x={sectionMidpoint(section)}
+                  stroke="transparent"
+                  label={sectionCallout(index + 1, index === activeSection)}
+                />
+              ))}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
