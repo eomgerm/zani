@@ -19,12 +19,12 @@ import com.a105.zani.recording.application.getsessiontranscript.GetSessionTransc
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
 import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
+import com.a105.zani.report.application.exception.InvalidSessionAnalysisException;
+import com.a105.zani.report.application.exception.SessionAnalysisAlreadyStoredException;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
 import com.a105.zani.report.application.savesessionanalysis.SessionSectionDraft;
-import com.a105.zani.report.domain.exception.InvalidSessionReportException;
-import com.a105.zani.report.domain.exception.SessionAlreadyAnalyzedException;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextQuery;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextResult;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextUseCase;
@@ -109,16 +109,12 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         try {
             return saveSessionAnalysisUseCase.save(
                     new SaveSessionAnalysisCommand(sessionId, classSummary, sections, classDurationMs));
-        } catch (SessionAlreadyAnalyzedException raced) {
+        } catch (SessionAnalysisAlreadyStoredException raced) {
             // 존재 확인과 저장 사이에 다른 시도가 먼저 적재했다. 결과는 "이미 있다"와 같으므로 실패가 아니다.
-            //
-            // 이 catch 가 적재 유스케이스 안이 아니라 여기 있는 이유: 그쪽은 @Transactional 이고 이 예외는 flush 가
-            // 유니크 제약에 걸린 뒤에 나온다. 트랜잭션 안에서 잡아 정상 반환하면 스프링이 커밋을 시도하는데,
-            // flush 가 이미 실패한 영속성 컨텍스트는 쓸 수 없어 커밋이 다시 터진다. 경계 밖으로 내보내 롤백을
-            // 제대로 시키고, 해석은 트랜잭션이 없는 이 자리에서 한다.
+            // 적재 쪽은 롤백을 시키려고 예외로 내보내고(그쪽 주석 참고), 트랜잭션이 없는 이 자리가 해석한다.
             log.info("다른 시도가 먼저 공통 분석을 적재해 이번 호출은 건너뜁니다. sessionId={}", sessionId);
             return new SaveSessionAnalysisResult(sessionId, false, 0);
-        } catch (InvalidSessionReportException rejected) {
+        } catch (InvalidSessionAnalysisException rejected) {
             log.warn("공통 분석 결과가 구간 계약에 걸려 적재하지 않습니다. sessionId={}", sessionId, rejected);
             throw new ContentAnalysisFailedException(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE);
         }

@@ -18,11 +18,11 @@ import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
 import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
+import com.a105.zani.report.application.exception.SessionAnalysisAlreadyStoredException;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
 import com.a105.zani.report.domain.exception.InvalidSessionReportException;
-import com.a105.zani.report.domain.exception.SessionAlreadyAnalyzedException;
 import com.a105.zani.report.domain.exception.SessionReportErrorCode;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextResult;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextUseCase;
@@ -243,7 +243,7 @@ class AnalyzeSessionContentServiceTest {
     void treatsALostRaceAsAlreadyAnalysed() {
         AnalyzeSessionContentService raced = new AnalyzeSessionContentService(
                 getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
-                    throw new SessionAlreadyAnalyzedException();
+                    throw new SessionAnalysisAlreadyStoredException(new IllegalStateException("unique violation"));
                 });
 
         AnalyzeSessionContentResult result = raced.analyze(new AnalyzeSessionContentCommand(SESSION_ID));

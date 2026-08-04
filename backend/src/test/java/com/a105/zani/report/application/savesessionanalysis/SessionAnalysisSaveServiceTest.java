@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.a105.zani.report.domain.exception.InvalidSessionReportException;
+import com.a105.zani.report.application.exception.InvalidSessionAnalysisException;
 import com.a105.zani.report.domain.model.SessionReport;
 import com.a105.zani.report.domain.repository.SessionReportRepository;
 
@@ -57,12 +57,16 @@ class SessionAnalysisSaveServiceTest {
         assertEquals(1, repository.saved.size());
     }
 
-    /** 검증에 걸리는 결과는 저장하지 않는다 — 완료 조건: 스키마 위반 응답은 저장 없이 실패로 남는다. */
+    /**
+     * 검증에 걸리는 결과는 저장하지 않는다 — 완료 조건: 스키마 위반 응답은 저장 없이 실패로 남는다.
+     *
+     * <p>도메인 예외가 아니라 애플리케이션 경계 예외로 올라온다. 호출하는 도메인이 report 의 domain 계층을 알면 그쪽 구조를 바꿀 때마다 같이 깨진다.
+     */
     @Test
     void savesNothingWhenTheSectionsAreInvalid() {
         SaveSessionAnalysisCommand overlapping = command(List.of(draft(0, 600_000), draft(300_000, 900_000)));
 
-        assertThrows(InvalidSessionReportException.class, () -> service.save(overlapping));
+        assertThrows(InvalidSessionAnalysisException.class, () -> service.save(overlapping));
         assertTrue(repository.saved.isEmpty());
     }
 
