@@ -169,6 +169,34 @@ cd ~/zani/ai && CUDA_VISIBLE_DEVICES=2 CUBLAS_WORKSPACE_CONFIG=:4096:8 setsid no
 tail -f ~/<protocol>.log
 ```
 
+Each epoch prints one line, ending with when it happened and how much is left:
+
+```text
+E0-M seed=42 epoch=12/200 validation_accuracy=0.672100 validation_macro_f1=0.580400
+  at=2026-08-04T10:03:12+09:00 elapsed=0:03:21 epoch_seconds=16.8
+  eta_stop=0:02:14 eta_max=0:52:38
+```
+
+(one line in the log; wrapped here to fit.)
+
+**Read `eta_stop`, not `eta_max`.** Early stopping means the end is not known, so
+both bounds are printed rather than one guess: `eta_stop` assumes nothing improves
+from here and is therefore the soonest the seed can finish, `eta_max` is the full
+epoch budget and the latest. For the E0 family the truth sits near `eta_stop` —
+measured `best_epoch` is 2~11 against a 200-epoch budget — so a run whose
+`eta_max` reads nine hours normally ends in about one.
+
+`elapsed` is monotonic and unaffected by a clock correction; `at=` is the box's
+local wall clock, which is the one to compare against the idle-culler deadline.
+
+A finished seed adds its own measured cost, which is what sizes the seeds still to
+come — the per-epoch ETA cannot, because it never sees ONNX export or artifact
+fingerprinting:
+
+```text
+E0-M seed=42 complete best_epoch=3 validation_macro_f1=0.594400 seed_duration=0:41:07 at=2026-08-04T10:44:19+09:00
+```
+
 Watching GPU utilization alongside it tells you where the bottleneck is.
 
 ```bash

@@ -740,6 +740,168 @@ seed도 200 epoch 예산에 닿지 않았으므로 일정이 병목도 아니었
 잡음이며, 순서 품질(QWK·within-1)을 목표로 삼는 결정이 내려진다면 그때 이 결과가 근거가
 됩니다.
 
+### E0-M 공유 백본 dual head
+
+E0-M은 E0-10의 softmax head와 E0-L의 순서형 head를 **encoder 하나 위에** 얹고 두 head의
+클래스 확률을 섞습니다. 목적 지표가 4-class 정확도가 아니라 제품이 실제로 쓰는
+**저참여 판정**이기 때문입니다.
+
+#### 왜 섞는가 — 둘은 서로 다른 것을 잘합니다
+
+Test 실측(E0-10 10-seed, E0-L 5-seed)에서 두 프로토콜은 반대 방향으로 갈립니다.
+
+| 지표 | E0-10 | E0-L | 차이 |
+| --- | --- | --- | --- |
+| accuracy | 0.7136 ± 0.0083 | 0.7003 ± 0.0110 | **−1.33%p** |
+| macro-F1 | 0.5866 ± 0.0097 | 0.5916 ± 0.0075 | +0.51%p |
+| 저참여 recall | 0.6673 ± 0.0375 | 0.7082 ± 0.0219 | **+4.09%p** |
+| 저참여 FPR | 0.0560 ± 0.0145 | 0.0665 ± 0.0059 | +1.05%p |
+
+E0-L은 실제로 헤매는 학생을 4.09%p 더 많이 잡고, 그 대가로 4-class 정확도 1.33%p와
+오탐 1.05%p를 냅니다. 지금까지의 모든 프로토콜은 macro-F1으로 순위를 매겼으므로 **이
+교환은 한 번도 선택의 대상이 아니었습니다.** 289는 이것을 선택의 대상으로 만듭니다.
+
+둘 중 하나를 고르지 않고 섞는 이유는 **둘이 두 모델이 아니기 때문입니다.** E0-L은 이미 E0의
+encoder를 동결하므로 두 head가 같은 pooled 벡터를 읽습니다. 결합 비용은 추론 두 번이 아니라
+`encoder 한 번 + 작은 MLP 두 벌`이고, 따라서 런타임 근거로 하나를 고를 이유가 없습니다.
+그러면 `alpha`는 근거로 정할 수 있는 값이 됩니다.
+
+#### 무엇이 고정이고 무엇이 선택인가
+
+1단계는 **E0-10의 완주 산출물**이고, encoder뿐 아니라 **softmax head까지 동결**합니다.
+그래야 `alpha = 1`이 seed별로 E0-10 자신의 판정이 되고, 정확도 가드와 recall 이득을 두
+프로토콜의 집계가 아니라 **한 실행 안에서** 잴 수 있습니다.
+
+2단계는 E0-L과 완전히 같습니다 — K-1개 `1[y>j]` 지시자에 대한 BCE, lr 1e-4, 200 epoch,
+patience 20, 그리고 **순서형 head의 Validation macro-F1으로 checkpoint 선택**. E0-10 seed
+n의 가중치는 E0 seed n과 동일하므로([seed 목록은 수치에 영향을 주지 않습니다](#seed-목록은-수치에-영향을-주지-않습니다--실측-확인))
+seed 42\~46은 E0-L의 head를 재현하고 47\~51이 10개로 늘립니다.
+
+`alpha`·두 temperature·epsilon은 **사전 등록한 격자에서 Validation만 보고** 고릅니다.
+격자와 선택 규칙은 재현성 identity(`MixingProtocol`)에 들어가고, 고른 점은 seed별 산출물
+속성입니다. 격자를 넓히면 다른 프로토콜이 됩니다.
+
+| 항목 | 값 |
+| --- | --- |
+| `alpha_grid` | 0.0, 0.25, 0.5, 0.75, 1.0 |
+| `temperature_grid` | 1.0, 1.5, 2.0 (두 head 각각) |
+| `epsilon` | 1e-6 |
+| 실제 탐색 점 | 31개 |
+| 선택 규칙 | 아래 두 예산 안에서 **Validation 저참여 recall 최대** |
+| 오탐 예산 | 3연속 근사 90분당 0.5회 이하 |
+| 정확도 예산 | `alpha = 1` 대비 하락 1.0%p 이하 |
+
+`alpha` 0과 1에서는 한쪽 head만 남으므로 그 쪽 temperature는 판정을 바꾸지 않습니다.
+`alpha = 1`은 두 temperature 모두, `alpha = 0`은 softmax temperature가 접혀서 31개가
+됩니다. `alpha = 0`에서 순서형 temperature는 **접지 않습니다** — 클래스 확률이 독립
+sigmoid의 인접 차이므로 scaling이 어느 차가 최대인지를 바꿉니다.
+
+어느 점도 두 예산을 넘지 못하면 `alpha = 1`(기준선 판정)을 그대로 두고
+`constraints_satisfied: false`로 남깁니다. 기준선 자신도 오탐 예산을 넘을 수 있으므로 이
+경로는 방어용이 아니라 실제 경로입니다.
+
+#### 출력 계약 — FE 코드는 바뀌지 않습니다
+
+모델 출력은 `log(p_safe)`입니다.
+
+```text
+p_softmax = softmax(e0_logits / T_softmax)
+p_ordinal = ordinal_to_probabilities(e0l_logits / T_ordinal)   # 누적 최소 보정 포함
+p_mix     = alpha * p_softmax + (1 - alpha) * p_ordinal
+p_safe    = normalize(clamp_min(p_mix, epsilon))
+output    = log(p_safe)
+```
+
+브라우저는 출력을 logits로 보고 softmax를 한 번 걸므로 `softmax(output) == p_safe`이고,
+결합 확률이 그대로 보존됩니다. **`web/engagement-demo`와 FE 도메인 코드는 한 줄도 바뀌지
+않습니다.** 배포 metadata도 그대로입니다(`output_name: logits`, 입력 `["batch", 20, 98]`).
+
+두 head를 로짓 단계에서 섞지 않고 각각 4-class 확률로 바꾼 뒤 섞습니다. 두 head의 로짓
+스케일이 다르므로(4-class CE vs 3-임계값 BCE) 로짓 blend는 `alpha`가 스케일에 딸려 가는
+값이 됩니다.
+
+`epsilon` clamp는 `log(0)`을 막습니다. float32에서 큰 로짓의 sigmoid는 **정확히** 0 또는
+1이므로 이는 가정이 아니라 도달 가능한 상태입니다. clamp가 잃는 확률 질량은 클래스당 최대
+`epsilon`이고, 판정 임계값 0.35보다 네 자리 아래입니다.
+
+클래스 순서는 두 head와 최종 출력 모두 `Not-Engaged, Barely-Engaged, Engaged,
+Highly-Engaged`입니다.
+
+#### 실행
+
+E0-M은 E0의 특징을 그대로 쓰므로 `build-features`를 다시 돌릴 필요가 없습니다. `--stage1`은
+**E0-10**의 완주 출력이어야 합니다(E0의 5-seed 출력이 아닙니다 — seed 47\~51의 checkpoint가
+없어 즉시 거부됩니다).
+
+```bash
+uv run python -m zani_ai engagement reproduce-e0m \
+  --features datasets/processed/engagenet \
+  --stage1 artifacts/engagement/e0-10 \
+  --output artifacts/engagement/e0m-dual-head \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-10 --variant artifacts/engagement/e0m-dual-head --split validation
+```
+
+Validation 비교와 `alpha` 선택을 기록한 뒤에만 고정 checkpoint로 Test를 한 번 평가합니다.
+
+```bash
+uv run python -m zani_ai engagement finalize-e0m \
+  --features datasets/processed/engagenet \
+  --output artifacts/engagement/e0m-dual-head \
+  --device cuda
+
+uv run python scripts/compare_protocols.py --baseline artifacts/engagement/e0-10 --variant artifacts/engagement/e0m-dual-head
+```
+
+비교기는 4-class 표 아래에 **저참여 이진 판정 표**와 289의 채택 게이트 판정줄을 함께
+출력합니다. 저참여 지표는 seed별 confusion matrix에서 유도하므로 **E0-10·E0-L의 이미 끝난
+실행에도 재학습 없이 적용됩니다.**
+
+10-seed 학습은 길고 원격 로그로만 보이므로 epoch 줄마다 타임스탬프와 남은 시간이
+붙습니다. **`eta_stop`을 보십시오** — early stopping 때문에 끝은 모르는 값이라 하나로
+찍지 않고 양쪽 경계를 냅니다. `eta_stop`은 지금부터 개선이 없다고 볼 때의 최단, `eta_max`는
+epoch 예산을 다 쓸 때의 최장입니다. 이 계열의 실측 `best_epoch`이 2\~11이므로 실제 종료는
+`eta_stop` 쪽에 붙습니다. 형식과 seed 완료 줄은
+[../.agents/ai-remote-l40s-guide.md](../.agents/ai-remote-l40s-guide.md)에 있습니다.
+
+#### 무엇이 어디에 기록되는가
+
+| 위치 | 내용 |
+| --- | --- |
+| `summary.json` seed 레코드 | 고른 `alpha`·temperature·epsilon, 예산 충족 여부, 선택점·기준점의 저참여 지표와 정확도 |
+| `metrics.json` `probability_mixing` | 위 + 31개 격자 점 전체(점별 accuracy·macro-F1·저참여 recall·FPR·90분 오탐), 보정 전 단조성 위반율 |
+| `test_results.json` `aggregate.test_low_engagement` | Test 저참여 지표의 pooled 값과 seed별 평균·표준편차 |
+| `best.pt` | `probability_mixing` — 고른 점이 가중치와 함께 이동합니다 |
+| `configuration_sha256` | 격자·두 예산·선택 규칙 (고른 점은 **들어가지 않습니다**) |
+
+고른 점이 없는 dual head 모델은 `deployment_view`가 거부합니다. `alpha`를 아무도 고르지
+않은 모델은 정의된 출력이 없으므로, 기본값을 슬쩍 채워 배포되는 경로를 막았습니다.
+
+#### 추론 예산
+
+공유 encoder가 예산 논거의 전부입니다. E0 Transformer는 최악 조건(WASM)에서도 p95 11.2ms로
+1초 예산의 1.1%이며([추론 속도 실측](#추론-속도-실측)), E0-M이 그 위에 더하는 것은 pooled
+256차원 벡터에 대한 `Linear(256→128)→ReLU→Linear(128→1)` 3벌 + softmax·sigmoid·log뿐입니다.
+약 10만 MAC로, 20토큰 4층 Transformer encoder 대비 무시할 수준입니다.
+
+**단, 이 수치는 실측이 아니라 연산량 논거입니다.** 실제 브라우저 지연은 학습이 끝난 뒤
+`bench.html`로 재야 합니다. 입력·출력 계약이 E0와 같으므로 절차는 그대로입니다 —
+`public/models/bench/`에 `e0m.onnx`/`e0m.metadata.json` 쌍을 두면 됩니다.
+
+#### 결과
+
+> 학습 대기 중입니다. Validation 비교와 `alpha` 선택을 먼저 기록하고, 그 뒤에 Test를 한 번
+> 평가해 채택·기각을 판단합니다.
+
+미리 알고 있는 것 하나: E0-L 단독은 이 게이트에서 **정확도 조건을 넘지 못합니다**(하락
+1.33%p > 1.0%p). 그래서 `alpha`가 필요하고, 이 프로토콜이 검정하는 것은
+"정확도를 1%p 안에 묶으면서 recall을 3%p 이상 올리는 `alpha`가 존재하는가"입니다.
+
+또 하나: 10 + 5 비교에서 저참여 recall의 검출한계는 5.14%p였고 실측 차이는 4.09%p였습니다.
+즉 **E0-L의 recall 이득 자체가 5-seed에서는 검정 가능한 값이 아니었습니다.** E0-M을 10-seed로
+돌리는 이유가 이것이고, 10 + 10에서 이 한계는 약 4.2%p로 내려갑니다.
+
 ### E1-P 문헌 정합 재구현 — 기각
 
 `reproduce-e1p`는 arXiv:2403.17175의 non-ordinal ST-GCN을 문헌 기준으로 다시 만든

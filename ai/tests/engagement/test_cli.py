@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from zani_ai.engagement.cli import build_parser
 
@@ -117,13 +118,39 @@ def test_cli_registers_the_e0l_two_stage_protocol() -> None:
     assert finalize_args.output == Path("artifacts/engagement/e0l")
 
 
-def test_reproduce_e0l_requires_the_stage1_argument(tmp_path: Path) -> None:
+def test_cli_registers_the_e0m_dual_head_protocol() -> None:
+    """E0-M's stage 1 is E0-10, and it supplies the softmax head as well."""
+    parser = build_parser()
+
+    reproduce_args = parser.parse_args(
+        [
+            "reproduce-e0m",
+            "--features",
+            "features",
+            "--stage1",
+            "artifacts/engagement/e0-10",
+            "--output",
+            "artifacts/engagement/e0m",
+        ]
+    )
+    finalize_args = parser.parse_args(
+        ["finalize-e0m", "--features", "features", "--output", "artifacts/engagement/e0m"]
+    )
+
+    assert reproduce_args.stage1 == Path("artifacts/engagement/e0-10")
+    assert finalize_args.output == Path("artifacts/engagement/e0m")
+
+
+@pytest.mark.parametrize("protocol", ["e0l", "e0m"])
+def test_a_two_stage_protocol_requires_the_stage1_argument(
+    protocol: str, tmp_path: Path
+) -> None:
     result = _run_cli(
-        "reproduce-e0l",
+        f"reproduce-{protocol}",
         "--features",
         str(tmp_path / "features"),
         "--output",
-        str(tmp_path / "e0l"),
+        str(tmp_path / protocol),
     )
 
     assert result.returncode == 2

@@ -15,7 +15,9 @@ from zani_ai.engagement.contracts import LABELS
 from zani_ai.engagement.features import SCHEMA_NAME, SCHEMAS, FeatureSchema, get_schema
 from zani_ai.engagement.landmark_graph import GRAPH_VERSION
 from zani_ai.engagement.model import (
+    DUAL_HEAD,
     EngagementTransformer,
+    deployment_view,
     ordinal_binary_class_probabilities,
 )
 
@@ -209,6 +211,11 @@ def export_onnx(
             export_module = _CoralClassProbModule(model).eval()
         elif head == "ordinal_binary":
             export_module = _OrdinalBinaryClassProbModule(model).eval()
+        elif head == DUAL_HEAD:
+            # `log(p_safe)`, not probabilities: `DualHeadMixture` is the same
+            # module Test evaluation used, so the exported graph and the measured
+            # number cannot drift apart. The browser's softmax inverts the log.
+            export_module = deployment_view(model)
     try:
         batch = torch.export.Dim("batch", min=1)
         with warnings.catch_warnings():
