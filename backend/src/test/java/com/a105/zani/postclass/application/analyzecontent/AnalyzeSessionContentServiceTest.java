@@ -7,9 +7,12 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.postclass.application.exception.ContentAnalysisErrorCode;
 import com.a105.zani.postclass.application.exception.ContentAnalysisFailedException;
 import com.a105.zani.postclass.application.port.AnalyzedSection;
 import com.a105.zani.postclass.application.port.ContentAnalysis;
+import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
+import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
@@ -38,7 +41,7 @@ class AnalyzeSessionContentServiceTest {
     private GetPostClassContextResult context = new GetPostClassContextResult("React 상태 관리", STARTED_AT, ENDED_AT);
     private Optional<GetSessionTranscriptResult> transcript = Optional.of(new GetSessionTranscriptResult(
             false, List.of(new TranscriptLine(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."))));
-    private Optional<ContentAnalysis> analysis = Optional.of(new ContentAnalysis(
+    private ContentAnalysisOutcome analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
             "React 상태 관리를 다뤘다.", List.of(new AnalyzedSection("상태 관리", "useState 와 useReducer 를 비교했다.", 0, 600_000))));
 
     private final List<ContentAnalysisRequest> analysisRequests = new ArrayList<>();
@@ -109,12 +112,29 @@ class AnalyzeSessionContentServiceTest {
         assertEquals(CLASS_DURATION_MS, saved.sections().getFirst().endOffsetMs());
     }
 
-    /** 스키마 위반·기술적 실패는 포트가 빈 값으로 알린다. 저장하지 않고 실패로 올린다(완료 조건). */
+    /** 기술적 실패는 저장하지 않고 실패로 올린다(완료 조건). 기다리면 풀릴 수 있어 재시도 대상 사유다. */
     @Test
-    void savesNothingWhenTheAnalysisIsUnusable() {
-        analysis = Optional.empty();
+    void savesNothingWhenTheAnalysisIsUnavailable() {
+        analysis = ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNAVAILABLE);
 
-        assertThrows(ContentAnalysisFailedException.class, this::analyze);
+        ContentAnalysisFailedException thrown = assertThrows(ContentAnalysisFailedException.class, this::analyze);
+
+        assertEquals(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNAVAILABLE, thrown.errorCode());
+        assertTrue(savedCommands.isEmpty());
+    }
+
+    /**
+     * 스키마 위반은 기술적 실패와 다른 사유로 올린다.
+     *
+     * <p>{@code temperature: 0} 이라 같은 요청에 같은 응답이 온다. 두 실패를 합치면 재시도 정책(107)이 시도 5회와 GMS 호출 5회를 헛되이 쓴다.
+     */
+    @Test
+    void reportsASchemaViolationSeparatelyFromATechnicalFailure() {
+        analysis = ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
+
+        ContentAnalysisFailedException thrown = assertThrows(ContentAnalysisFailedException.class, this::analyze);
+
+        assertEquals(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE, thrown.errorCode());
         assertTrue(savedCommands.isEmpty());
     }
 

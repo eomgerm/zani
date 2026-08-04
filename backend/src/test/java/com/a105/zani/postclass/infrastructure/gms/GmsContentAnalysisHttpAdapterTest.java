@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
@@ -18,8 +17,9 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
-import com.a105.zani.postclass.application.port.ContentAnalysis;
+import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
 import com.a105.zani.postclass.application.port.ContentAnalysisLine;
+import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -108,12 +108,12 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
 
-        Optional<ContentAnalysis> analysis = fixture.adapter().analyze(request());
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
 
-        assertThat(analysis).isPresent();
-        assertThat(analysis.orElseThrow().classSummary()).isEqualTo("React 상태 관리를 다뤘다.");
-        assertThat(analysis.orElseThrow().sections()).hasSize(1);
-        assertThat(analysis.orElseThrow().sections().getFirst().title()).isEqualTo("상태 관리");
+        assertThat(outcome.value()).isPresent();
+        assertThat(outcome.analysis().classSummary()).isEqualTo("React 상태 관리를 다뤘다.");
+        assertThat(outcome.analysis().sections()).hasSize(1);
+        assertThat(outcome.analysis().sections().getFirst().title()).isEqualTo("상태 관리");
     }
 
     /** 세션 식별자를 보내지 않는다(GMS 가이드 §9). 전사 본문과 제목·시각만 나간다. */
@@ -127,7 +127,51 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isPresent();
+        assertThat(fixture.adapter().analyze(request()).value()).isPresent();
+    }
+
+    /**
+     * 평가 금지 지시가 프롬프트에 실리고, 스키마에 평가 필드가 없는지.
+     *
+     * <p>FRD §17.4 는 감정·성격·역량 평가를 금지한다. 스키마에 필드가 없어도 요약 문장에는 들어갈 수 있어 지시가 함께 필요하다. Jackson 은 모르는 필드를 조용히 버리므로, 지시가
+     * 사라지거나 스키마에 평가 필드가 붙어도 다른 테스트는 깨지지 않는다.
+     */
+    @Test
+    void forbidsEvaluationInThePromptAndTheSchema() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andExpect(content().string(containsString("성격, 태도, 성실성, 감정, 역량을 평가하지 않는다")))
+                // 스키마 속성은 정확히 네 개다. 평가 필드가 붙으면 여기서 걸린다.
+                .andExpect(content().string(containsString("startOffsetMs")))
+                .andExpect(content().string(not(containsString("emotion"))))
+                .andExpect(content().string(not(containsString("competency"))))
+                .andExpect(content().string(not(containsString("personality"))))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
+
+        assertThat(fixture.adapter().analyze(request()).value()).isPresent();
+    }
+
+    /**
+     * 순서만 어긋난 응답은 정렬해 되살린다.
+     *
+     * <p>{@code temperature: 0} 이라 재시도해도 같은 순서가 온다. 여기서 정렬하지 않으면 적재 애그리거트가 거절해 그 세션은 리포트를 영영 받지 못한다. 진짜 겹침은 그대로 거절된다.
+     */
+    @Test
+    void sortsSectionsThatTheModelReturnedOutOfOrder() {
+        Fixture fixture = fixture();
+        String unordered = section("뒤 구간", 600_000, 900_000) + "," + section("앞 구간", 0, 600_000);
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(unordered)), MediaType.APPLICATION_JSON));
+
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isPresent();
+        assertThat(outcome.analysis().sections().getFirst().title()).isEqualTo("앞 구간");
+        assertThat(outcome.analysis().sections().getLast().title()).isEqualTo("뒤 구간");
     }
 
     /** 수업 길이를 넘는 구간은 재생할 수 없는 지점을 가리킨다. 저장 전에 버린다. */
@@ -140,7 +184,10 @@ class GmsContentAnalysisHttpAdapterTest {
                         chatResponse(sections(section("상태 관리", 0, CLASS_DURATION_MS + 1))),
                         MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isEmpty();
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isEmpty();
+        assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
     /** 길이가 0 인 구간은 시크할 지점이 없다. */
@@ -152,7 +199,10 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 600_000, 600_000))), MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isEmpty();
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isEmpty();
+        assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
     /** 구간이 하나도 없는 응답은 타임라인을 만들지 못한다. */
@@ -164,7 +214,10 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse("{\"classSummary\":\"요약\",\"sections\":[]}"), MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isEmpty();
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isEmpty();
+        assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
     /** 제목이 컬럼 길이를 넘으면 적재 단계에서 잘린다. 어댑터에서 걸러 실패 사유를 분명히 남긴다. */
@@ -176,7 +229,10 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("가".repeat(201), 0, 600_000))), MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isEmpty();
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isEmpty();
+        assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
     /** 응답이 잘리면 JSON 이 깨진다. finish_reason 을 보고 사유를 남긴다. */
@@ -188,7 +244,10 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess("""
                         {"choices":[{"finish_reason":"length","message":{"role":"assistant","content":"{","refusal":null}}]}""", MediaType.APPLICATION_JSON));
 
-        assertThat(fixture.adapter().analyze(request())).isEmpty();
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isEmpty();
+        assertThat(outcome.failure()).isEqualTo(ContentAnalysisFailure.UNUSABLE_RESPONSE);
     }
 
     /**
@@ -215,10 +274,10 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
 
-        Optional<ContentAnalysis> analysis = fixture.adapter()
+        ContentAnalysisOutcome outcome = fixture.adapter()
                 .analyze(new ContentAnalysisRequest("React 상태 관리", CLASS_DURATION_MS, List.copyOf(lines)));
 
-        assertThat(analysis).isPresent();
+        assertThat(outcome.value()).isPresent();
         fixture.server().verify();
     }
 

@@ -10,7 +10,9 @@ import org.springframework.stereotype.Service;
 import com.a105.zani.postclass.application.exception.ContentAnalysisErrorCode;
 import com.a105.zani.postclass.application.exception.ContentAnalysisFailedException;
 import com.a105.zani.postclass.application.port.ContentAnalysis;
+import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
 import com.a105.zani.postclass.application.port.ContentAnalysisLine;
+import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptQuery;
@@ -115,11 +117,16 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         List<ContentAnalysisLine> lines = transcript.lines().stream()
                 .map(line -> new ContentAnalysisLine(line.startOffsetMs(), line.endOffsetMs(), line.text()))
                 .toList();
-        return contentAnalysisPort
-                .analyze(new ContentAnalysisRequest(lectureTitle, classDurationMs, lines))
-                .orElseThrow(() -> {
-                    log.warn("공통 분석 결과를 받지 못해 적재하지 않습니다. sessionId={}", sessionId);
-                    return new ContentAnalysisFailedException(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNAVAILABLE);
-                });
+        ContentAnalysisOutcome outcome =
+                contentAnalysisPort.analyze(new ContentAnalysisRequest(lectureTitle, classDurationMs, lines));
+        return outcome.value().orElseThrow(() -> {
+            // 사유를 나눠 올린다. 스키마 위반은 같은 요청에 같은 응답이 오므로 재시도가 의미 없고(temperature 0),
+            // 기술적 실패는 기다리면 풀릴 수 있다 — 재시도 정책(107)이 이 구분으로 retryable 을 정한다.
+            ContentAnalysisErrorCode errorCode = outcome.failure() == ContentAnalysisFailure.UNUSABLE_RESPONSE
+                    ? ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE
+                    : ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNAVAILABLE;
+            log.warn("공통 분석 결과를 받지 못해 적재하지 않습니다. sessionId={} failure={}", sessionId, outcome.failure());
+            return new ContentAnalysisFailedException(errorCode);
+        });
     }
 }

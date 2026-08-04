@@ -1,7 +1,6 @@
 package com.a105.zani.postclass.infrastructure.gms;
 
 import java.util.List;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +9,9 @@ import org.springframework.stereotype.Component;
 
 import com.a105.zani.postclass.application.port.AnalyzedSection;
 import com.a105.zani.postclass.application.port.ContentAnalysis;
+import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
 import com.a105.zani.postclass.application.port.ContentAnalysisLine;
+import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 
@@ -33,19 +34,19 @@ public class GmsContentAnalysisMockAdapter implements ContentAnalysisPort {
     static final String MOCK_SECTION_SUMMARY = "예시로 만든 구간 요약입니다.";
 
     @Override
-    public Optional<ContentAnalysis> analyze(ContentAnalysisRequest request) {
+    public ContentAnalysisOutcome analyze(ContentAnalysisRequest request) {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
-            return Optional.empty();
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
         List<ContentAnalysisLine> lines = request.lines();
         long startOffsetMs = lines.getFirst().startOffsetMs();
         long endOffsetMs = Math.min(lines.getLast().endOffsetMs(), request.classDurationMs());
         if (endOffsetMs <= startOffsetMs) {
-            return Optional.empty();
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
 
         log.info("Mock content analysis returned for a {}ms class", request.classDurationMs());
-        return Optional.of(new ContentAnalysis(
+        return ContentAnalysisOutcome.success(new ContentAnalysis(
                 MOCK_CLASS_SUMMARY,
                 List.of(new AnalyzedSection(MOCK_SECTION_TITLE, MOCK_SECTION_SUMMARY, startOffsetMs, endOffsetMs))));
     }

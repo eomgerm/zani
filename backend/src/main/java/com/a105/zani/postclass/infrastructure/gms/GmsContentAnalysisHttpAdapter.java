@@ -2,9 +2,9 @@ package com.a105.zani.postclass.infrastructure.gms;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -19,7 +19,9 @@ import tools.jackson.databind.ObjectMapper;
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
 import com.a105.zani.postclass.application.port.AnalyzedSection;
 import com.a105.zani.postclass.application.port.ContentAnalysis;
+import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
 import com.a105.zani.postclass.application.port.ContentAnalysisLine;
+import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
 
@@ -42,7 +44,12 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
     private static final Logger log = LoggerFactory.getLogger(GmsContentAnalysisHttpAdapter.class);
     private static final String CHAT_COMPLETIONS_PATH = "/v1/chat/completions";
 
-    /** 요청 본문 바이트 예산. 게이트웨이 실측 상한 102,400B 에서 여유를 둔 값이다(GMS 가이드 §4.1). 프롬프트·스키마가 함께 실리므로 전사만으로 상한을 채우면 안 된다. */
+    /**
+     * 요청 본문 바이트 예산. 게이트웨이 실측 상한 102,400B 에서 여유를 둔 값이다(GMS 가이드 §4.1).
+     *
+     * <p>이 값은 <b>완성된 본문 전체</b>에 걸리는 상한이다 — 전사만 재면 안 된다. 전사는 user 메시지 안에 JSON 문자열로 들어가 따옴표가 한 번 더 escape 되고, 시스템 프롬프트와
+     * 응답 스키마도 같은 본문에 실린다. 상한을 넘으면 게이트웨이가 본문을 잘라 "Model not found" 로 답하므로(가이드 §4.1) 무엇이 잘렸는지 알 수 없다.
+     */
     private static final int REQUEST_BUDGET_BYTES = 92_160;
 
     private static final int TITLE_MAX_LENGTH = 200;
@@ -99,7 +106,7 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
     }
 
     @Override
-    public Optional<ContentAnalysis> analyze(ContentAnalysisRequest request) {
+    public ContentAnalysisOutcome analyze(ContentAnalysisRequest request) {
         long startedAt = System.nanoTime();
         try {
             ChatResponse response = analysisRestClient
@@ -112,12 +119,55 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
             return parse(response, request, elapsedMs(startedAt));
         } catch (RuntimeException exception) {
             // timeout, 401(자격증명), 402(크레딧 소진), 429(rate limit), 5xx 를 모두 같은 실패로 다룬다.
-            log.warn("공통 분석 호출이 {}ms 후 실패했습니다: {}", elapsedMs(startedAt), exception.toString());
-            return Optional.empty();
+            log.warn("Content analysis failed after {}ms: {}", elapsedMs(startedAt), exception.toString());
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNAVAILABLE);
         }
     }
 
+    /**
+     * 예산에 맞을 만큼만 남겨 본문을 만든다.
+     *
+     * <p>남기는 방식은 <b>고른 간격의 표본</b>이다 — 뒤쪽을 잘라 내면 수업 후반이 구간에서 통째로 사라지고, 앞쪽을 잘라 내면 도입부가 사라진다. 간격을 유지하면 구간 경계의 해상도만 낮아진다.
+     *
+     * <p>비율로 한 번 계산하지 않고 <b>완성된 본문을 재서 줄여 나간다.</b> 바이트가 줄 수에 비례하지 않기 때문이다 — 줄 길이가 고르지 않고, 전사는 문자열로 한 번 더 escape 되며, 시스템
+     * 프롬프트와 스키마도 같은 본문에 실린다. 한 번의 비율 계산은 이 셋을 모두 놓친다.
+     *
+     * <p>이 상한을 없애려면 창을 나눠 여러 번 부르고 결과를 합쳐야 하는데, 그 합치는 규칙이 GMS 가이드 §12 의 미결정 항목이다. 45분 수업(약 15,000자)은 한 번에 들어가므로 MVP 는 이
+     * 표본으로 충분하다.
+     */
     private Map<String, Object> requestBody(ContentAnalysisRequest request) {
+        List<ContentAnalysisLine> lines = request.lines();
+        Map<String, Object> body = bodyWith(request, lines);
+        if (byteLength(body) <= REQUEST_BUDGET_BYTES) {
+            return body;
+        }
+
+        int keepEvery = 2;
+        while (true) {
+            List<ContentAnalysisLine> sampled = sample(lines, keepEvery);
+            body = bodyWith(request, sampled);
+            if (byteLength(body) <= REQUEST_BUDGET_BYTES || sampled.size() <= 1) {
+                log.warn(
+                        "Transcript exceeded the request budget: sending {} of {} lines (every {}th)."
+                                + " Section boundaries lose resolution.",
+                        sampled.size(),
+                        lines.size(),
+                        keepEvery);
+                return body;
+            }
+            keepEvery++;
+        }
+    }
+
+    private List<ContentAnalysisLine> sample(List<ContentAnalysisLine> lines, int keepEvery) {
+        List<ContentAnalysisLine> sampled = new ArrayList<>();
+        for (int index = 0; index < lines.size(); index += keepEvery) {
+            sampled.add(lines.get(index));
+        }
+        return sampled;
+    }
+
+    private Map<String, Object> bodyWith(ContentAnalysisRequest request, List<ContentAnalysisLine> lines) {
         return Map.of(
                 "model",
                 analysisModel,
@@ -130,74 +180,47 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
                 "messages",
                 List.of(
                         Map.of("role", "system", "content", SYSTEM_PROMPT),
-                        Map.of("role", "user", "content", userPrompt(request))));
+                        Map.of("role", "user", "content", userPrompt(request, lines))));
     }
 
     /** 데이터를 JSON 으로 감싸 경계를 분명히 한다. 평문으로 이어 붙이면 전사 안의 문장이 지시처럼 보인다. */
-    private String userPrompt(ContentAnalysisRequest request) {
+    private String userPrompt(ContentAnalysisRequest request, List<ContentAnalysisLine> lines) {
         return objectMapper.writeValueAsString(Map.of(
                 "lectureTitle",
                 request.lectureTitle() == null ? "" : request.lectureTitle(),
                 "classDurationMs",
                 request.classDurationMs(),
                 "transcript",
-                withinBudget(request.lines())));
+                lines.stream()
+                        .map(line -> Map.<String, Object>of(
+                                "startOffsetMs", line.startOffsetMs(),
+                                "endOffsetMs", line.endOffsetMs(),
+                                "text", line.text()))
+                        .toList()));
     }
 
-    /**
-     * 예산에 맞을 만큼만 남긴다. 남기는 방식은 <b>고른 간격의 표본</b>이다 — 뒤쪽을 잘라 내면 수업 후반이 구간에서 통째로 사라지고, 앞쪽을 잘라 내면 도입부가 사라진다. 간격을 유지하면 구간 경계의
-     * 해상도만 낮아진다.
-     *
-     * <p>이 상한을 없애려면 창을 나눠 여러 번 부르고 결과를 합쳐야 하는데, 그 합치는 규칙이 GMS 가이드 §12 의 미결정 항목이다. 45분 수업(약 15,000자)은 한 번에 들어가므로 MVP 는 이
-     * 표본으로 충분하다.
-     */
-    private List<Map<String, Object>> withinBudget(List<ContentAnalysisLine> lines) {
-        List<Map<String, Object>> rendered = render(lines);
-        int bytes = byteLength(rendered);
-        if (bytes <= REQUEST_BUDGET_BYTES) {
-            return rendered;
-        }
-
-        int keepEvery = (int) Math.ceil((double) bytes / REQUEST_BUDGET_BYTES);
-        List<ContentAnalysisLine> sampled = new ArrayList<>();
-        for (int index = 0; index < lines.size(); index += keepEvery) {
-            sampled.add(lines.get(index));
-        }
-        log.warn("전사가 요청 예산을 넘어 {}줄 중 {}줄만 보냅니다(매 {}번째). 구간 경계 해상도가 낮아집니다.", lines.size(), sampled.size(), keepEvery);
-        return render(sampled);
+    private int byteLength(Map<String, Object> body) {
+        return objectMapper.writeValueAsString(body).getBytes(StandardCharsets.UTF_8).length;
     }
 
-    private List<Map<String, Object>> render(List<ContentAnalysisLine> lines) {
-        return lines.stream()
-                .map(line -> Map.<String, Object>of(
-                        "startOffsetMs", line.startOffsetMs(),
-                        "endOffsetMs", line.endOffsetMs(),
-                        "text", line.text()))
-                .toList();
-    }
-
-    private int byteLength(List<Map<String, Object>> rendered) {
-        return objectMapper.writeValueAsString(rendered).getBytes(StandardCharsets.UTF_8).length;
-    }
-
-    private Optional<ContentAnalysis> parse(ChatResponse response, ContentAnalysisRequest request, long elapsedMs) {
+    private ContentAnalysisOutcome parse(ChatResponse response, ContentAnalysisRequest request, long elapsedMs) {
         Choice choice = response == null
                         || response.choices() == null
                         || response.choices().isEmpty()
                 ? null
                 : response.choices().getFirst();
         if (choice == null || choice.message() == null) {
-            log.warn("공통 분석 응답에 choices 가 없습니다. elapsedMs={}", elapsedMs);
-            return Optional.empty();
+            log.warn("Content analysis returned empty choices after {}ms", elapsedMs);
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNAVAILABLE);
         }
         if (choice.message().refusal() != null) {
-            log.warn("공통 분석이 거부됐습니다. elapsedMs={}", elapsedMs);
-            return Optional.empty();
+            log.warn("Content analysis refused after {}ms", elapsedMs);
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
         if (!"stop".equals(choice.finishReason())) {
             // length 면 JSON 이 잘려 파싱도 실패한다. 사유를 남겨 max_completion_tokens 를 의심할 수 있게 한다.
-            log.warn("공통 분석 응답이 완결되지 않았습니다. elapsedMs={} finishReason={}", elapsedMs, choice.finishReason());
-            return Optional.empty();
+            log.warn("Content analysis incomplete after {}ms: finishReason={}", elapsedMs, choice.finishReason());
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
 
         AnalysisResponse parsed;
@@ -205,8 +228,8 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
             parsed = objectMapper.readValue(choice.message().content(), AnalysisResponse.class);
         } catch (Exception exception) {
             // strict 스키마를 썼어도 모델이 스키마 밖 응답을 낼 여지를 남긴다.
-            log.warn("공통 분석 응답이 스키마를 벗어났습니다. elapsedMs={}: {}", elapsedMs, exception.toString());
-            return Optional.empty();
+            log.warn("Content analysis schema invalid after {}ms: {}", elapsedMs, exception.toString());
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
         return validate(parsed, request, elapsedMs);
     }
@@ -216,38 +239,41 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
      *
      * <p>구간의 겹침·순서는 여기서 보지 않는다. 적재하는 애그리거트({@code SessionReport})가 그 불변식을 소유하고 있어, 두 곳에서 검사하면 규칙이 갈라진다.
      */
-    private Optional<ContentAnalysis> validate(
-            AnalysisResponse parsed, ContentAnalysisRequest request, long elapsedMs) {
+    private ContentAnalysisOutcome validate(AnalysisResponse parsed, ContentAnalysisRequest request, long elapsedMs) {
         if (parsed.classSummary() == null
                 || parsed.sections() == null
                 || parsed.sections().isEmpty()) {
-            log.warn("공통 분석 응답에 필수 필드가 없습니다. elapsedMs={}", elapsedMs);
-            return Optional.empty();
+            log.warn("Content analysis missing required fields after {}ms", elapsedMs);
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
         String classSummary = parsed.classSummary().strip();
         if (classSummary.isEmpty() || classSummary.length() > CLASS_SUMMARY_MAX_LENGTH) {
-            log.warn("공통 분석 요약 길이가 계약을 벗어났습니다. elapsedMs={} length={}", elapsedMs, classSummary.length());
-            return Optional.empty();
+            log.warn(
+                    "Content analysis summary length out of contract after {}ms: {}", elapsedMs, classSummary.length());
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
         if (parsed.sections().size() > MAX_SECTIONS) {
             log.warn(
-                    "공통 분석 구간 수가 상한을 넘었습니다. elapsedMs={} sections={}",
+                    "Content analysis returned too many sections after {}ms: {}",
                     elapsedMs,
                     parsed.sections().size());
-            return Optional.empty();
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
         }
 
         List<AnalyzedSection> sections = new ArrayList<>(parsed.sections().size());
         for (SectionResponse section : parsed.sections()) {
             AnalyzedSection converted = convert(section, request.classDurationMs());
             if (converted == null) {
-                log.warn("공통 분석 구간이 계약을 벗어났습니다. elapsedMs={}", elapsedMs);
-                return Optional.empty();
+                log.warn("Content analysis section out of contract after {}ms", elapsedMs);
+                return ContentAnalysisOutcome.failed(ContentAnalysisFailure.UNUSABLE_RESPONSE);
             }
             sections.add(converted);
         }
-        log.info("공통 분석을 받았습니다. elapsedMs={} sections={}", elapsedMs, sections.size());
-        return Optional.of(new ContentAnalysis(classSummary, List.copyOf(sections)));
+        // 순서만 어긋난 응답은 되살린다. temperature 0 이라 재시도해도 같은 순서가 오므로, 여기서 정렬하지
+        // 않으면 그 세션은 리포트를 영영 받지 못한다. 진짜 겹침은 적재 애그리거트가 그대로 거절한다.
+        sections.sort(Comparator.comparingLong(AnalyzedSection::startOffsetMs));
+        log.info("Content analysis returned {} sections after {}ms", sections.size(), elapsedMs);
+        return ContentAnalysisOutcome.success(new ContentAnalysis(classSummary, List.copyOf(sections)));
     }
 
     private AnalyzedSection convert(SectionResponse section, long classDurationMs) {
