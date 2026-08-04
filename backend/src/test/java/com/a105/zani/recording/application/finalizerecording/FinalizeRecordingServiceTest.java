@@ -96,6 +96,27 @@ class FinalizeRecordingServiceTest {
     }
 
     @Test
+    void readiness_조회가_실패하면_lease_만료를_기다리지_않고_재시도한다() {
+        when(readinessUseCase.check(SESSION_ID)).thenThrow(new IllegalStateException("db unavailable"));
+
+        service.finalizeRecording(CLAIMED);
+
+        verify(jobPort).markRetry(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), NOW);
+        verify(jobPort, never()).beginAttempt(any(), any());
+    }
+
+    @Test
+    void attempt_시작이_실패하면_lease_만료를_기다리지_않고_재시도한다() {
+        when(readinessUseCase.check(SESSION_ID)).thenReturn(FinalizationReadiness.SETTLED);
+        when(jobPort.beginAttempt(CLAIMED, NOW)).thenThrow(new IllegalStateException("db unavailable"));
+
+        service.finalizeRecording(CLAIMED);
+
+        verify(jobPort).markRetry(CLAIMED, "finalization_preflight_failed", NOW.plusSeconds(60), NOW);
+        verify(workerPort, never()).finalizeRecording(any());
+    }
+
+    @Test
     void manifest를_저장한_뒤_worker를_실행하고_MP4_메타데이터를_확정한다() {
         FinalizationJobLease attempted = attempted(1);
         RecordingManifest manifest = manifest();

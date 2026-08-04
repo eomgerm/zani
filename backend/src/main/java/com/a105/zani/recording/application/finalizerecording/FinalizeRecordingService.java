@@ -41,19 +41,24 @@ public class FinalizeRecordingService implements FinalizeRecordingUseCase {
     @Override
     public void finalizeRecording(FinalizationJobLease claimedLease) {
         Long sessionId = claimedLease.sessionId();
-        FinalizationReadiness readiness = readinessUseCase.check(sessionId);
-        if (readiness == FinalizationReadiness.IN_PROGRESS) {
-            Instant now = clock.instant();
-            jobPort.markWaiting(claimedLease, now.plus(properties.waitingDelay()), now);
+        FinalizationJobLease attempted;
+        try {
+            FinalizationReadiness readiness = readinessUseCase.check(sessionId);
+            if (readiness == FinalizationReadiness.IN_PROGRESS) {
+                Instant now = clock.instant();
+                jobPort.markWaiting(claimedLease, now.plus(properties.waitingDelay()), now);
+                return;
+            }
+            if (readiness == FinalizationReadiness.BROKEN) {
+                jobPort.markFailed(claimedLease, "recordings_broken", clock.instant());
+                return;
+            }
+            attempted = jobPort.beginAttempt(claimedLease, clock.instant()).orElse(null);
+        } catch (RuntimeException preflightFailure) {
+            log.warn("Recording finalization preflight failed: sessionId={}", sessionId, preflightFailure);
+            retryOrFail(claimedLease, "finalization_preflight_failed");
             return;
         }
-        if (readiness == FinalizationReadiness.BROKEN) {
-            jobPort.markFailed(claimedLease, "recordings_broken", clock.instant());
-            return;
-        }
-
-        FinalizationJobLease attempted =
-                jobPort.beginAttempt(claimedLease, clock.instant()).orElse(null);
         if (attempted == null) {
             return;
         }
