@@ -41,14 +41,20 @@ class EndSessionServiceTest {
     private final RecordingActivationLockPort activationLock = new RecordingActivationLockPort();
     private final FakeStopSessionRecording stopRecording = new FakeStopSessionRecording();
     private final FakeMediaRoomControl mediaRoomControl = new FakeMediaRoomControl();
-    private final EndSessionService service = new EndSessionService(
-            sessionRepository,
-            audioRelease,
-            activationLock,
-            stopRecording,
-            mediaRoomControl,
-            Clock.fixed(NOW, ZoneOffset.UTC),
-            commitRecordingTransactions());
+    private final EndSessionService service = serviceWith(Runnable::run);
+
+    /** 미디어 정리 executor 만 갈아 끼운다. 기본은 같은 스레드 실행이라 나머지 테스트가 순서를 그대로 볼 수 있다. */
+    private EndSessionService serviceWith(java.util.concurrent.Executor mediaCleanupExecutor) {
+        return new EndSessionService(
+                sessionRepository,
+                audioRelease,
+                activationLock,
+                stopRecording,
+                mediaRoomControl,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                commitRecordingTransactions(),
+                mediaCleanupExecutor);
+    }
 
     /** 커밋 시점을 callOrder 에 남기는 템플릿. 미디어 정리가 커밋 뒤에 오는지 순서로 검증할 수 있게 한다. */
     private TransactionTemplate commitRecordingTransactions() {
@@ -96,6 +102,31 @@ class EndSessionServiceTest {
         service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
 
         assertEquals(List.of("commit", "stopRecording", "closeRoom"), callOrder);
+    }
+
+    /**
+     * 미디어 정리를 호출 스레드에서 하지 않는지.
+     *
+     * <p>정리는 살아 있는 Egress 를 하나씩 멈춰 한 세션에 LiveKit 호출이 열 건을 넘고 건마다 최대 60초 걸릴 수 있다. 여기서 기다리면 heartbeat·강사 종료 응답이 분 단위로
+     * 늘어지고, 만료 스윕은 {@code @Scheduled} 스레드를 그만큼 붙들어 100ms 주기 무음 패딩을 굶긴다.
+     */
+    @Test
+    void handsTheMediaCleanupToTheExecutorInsteadOfBlockingTheCaller() {
+        sessionRepository.session = sessionWith(SessionStatus.LIVE);
+        List<Runnable> deferred = new java.util.ArrayList<>();
+
+        EndSessionResult result =
+                serviceWith(deferred::add).end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
+
+        // 종료는 이미 끝나 응답할 수 있는데, LiveKit 은 아직 아무것도 부르지 않았다.
+        assertTrue(result.ended());
+        assertTrue(stopRecording.stopped.isEmpty());
+        assertTrue(mediaRoomControl.closed.isEmpty());
+
+        deferred.forEach(Runnable::run);
+
+        assertEquals(List.of(SESSION_ID), stopRecording.stopped);
+        assertEquals(List.of(SESSION_ID), mediaRoomControl.closed);
     }
 
     /** 미디어 정리가 실패해도 종료는 남아야 한다 — 되돌리면 수업이 계속 살아 있는 것으로 남는다. */
