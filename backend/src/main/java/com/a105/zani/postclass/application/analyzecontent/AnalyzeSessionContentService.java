@@ -22,6 +22,7 @@ import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisC
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
 import com.a105.zani.report.application.savesessionanalysis.SessionSectionDraft;
+import com.a105.zani.report.domain.exception.InvalidSessionReportException;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextQuery;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextResult;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextUseCase;
@@ -72,9 +73,35 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
                     .toList();
         }
 
-        SaveSessionAnalysisResult saved = saveSessionAnalysisUseCase.save(
-                new SaveSessionAnalysisCommand(sessionId, classSummary, sections, classDurationMs));
+        SaveSessionAnalysisResult saved = save(sessionId, classSummary, sections, classDurationMs);
         return new AnalyzeSessionContentResult(sessionId, saved.saved(), saved.sectionCount());
+    }
+
+    /**
+     * 검증에 걸린 결과는 저장하지 않고 <b>재시도할 수 없는 실패</b>로 올린다.
+     *
+     * <p>구간이 개별로는 계약을 지키면서 서로 겹치는 응답은 어댑터를 통과한다 — 겹침 판정은 적재 애그리거트가 소유하고, 두 곳에서 검사하면 규칙이 갈라진다. 그 거절을 그대로 올리면 세션 도메인의
+     * {@code BAD_REQUEST} 가 사후 파이프라인까지 새어 나가 재시도 여부를 정할 수 없다. {@code temperature: 0} 이라 겹침은 매 시도에 반복되므로, 재시도해도 같다는 사실을
+     * 사유로 못박는다.
+     */
+    private SaveSessionAnalysisResult save(
+            Long sessionId, String classSummary, List<SessionSectionDraft> sections, long classDurationMs) {
+        try {
+            return saveSessionAnalysisUseCase.save(
+                    new SaveSessionAnalysisCommand(sessionId, classSummary, sections, classDurationMs));
+        } catch (InvalidSessionReportException rejected) {
+            log.warn("공통 분석 결과가 구간 계약에 걸려 적재하지 않습니다. sessionId={}", sessionId, rejected);
+            throw new ContentAnalysisFailedException(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE);
+        }
+    }
+
+    /** 실패 사유를 재시도 정책이 읽을 오류 코드로 옮긴다. {@code UNAVAILABLE} 만 기다리면 풀릴 수 있다. */
+    private static ContentAnalysisErrorCode errorCodeOf(ContentAnalysisFailure failure) {
+        return switch (failure) {
+            case UNAVAILABLE -> ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNAVAILABLE;
+            case UNUSABLE_RESPONSE -> ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE;
+            case REQUEST_TOO_LARGE -> ContentAnalysisErrorCode.CONTENT_ANALYSIS_REQUEST_TOO_LARGE;
+        };
     }
 
     /**
@@ -122,9 +149,7 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         return outcome.value().orElseThrow(() -> {
             // 사유를 나눠 올린다. 스키마 위반은 같은 요청에 같은 응답이 오므로 재시도가 의미 없고(temperature 0),
             // 기술적 실패는 기다리면 풀릴 수 있다 — 재시도 정책(107)이 이 구분으로 retryable 을 정한다.
-            ContentAnalysisErrorCode errorCode = outcome.failure() == ContentAnalysisFailure.UNUSABLE_RESPONSE
-                    ? ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE
-                    : ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNAVAILABLE;
+            ContentAnalysisErrorCode errorCode = errorCodeOf(outcome.failure());
             log.warn("공통 분석 결과를 받지 못해 적재하지 않습니다. sessionId={} failure={}", sessionId, outcome.failure());
             return new ContentAnalysisFailedException(errorCode);
         });

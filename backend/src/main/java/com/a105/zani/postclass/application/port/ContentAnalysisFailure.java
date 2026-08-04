@@ -14,5 +14,11 @@ public enum ContentAnalysisFailure {
      * 응답은 왔지만 쓸 수 없고, 같은 요청에는 같은 응답이 온다. 스키마 위반, 모델 거부, 출력 상한에 걸린 절단({@code finish_reason=length})이 여기 든다 — 절단은 상한을 올리지
      * 않는 한 재시도해도 같은 지점에서 잘린다.
      */
-    UNUSABLE_RESPONSE
+    UNUSABLE_RESPONSE,
+
+    /**
+     * 전사를 한 줄까지 줄여도 요청이 게이트웨이 본문 상한에 들어가지 않는다. 보내면 게이트웨이가 본문을 잘라 "Model not found" 로 답해(가이드 §4.1) 원인을 알 수 없는 실패가 되므로 아예
+     * 보내지 않는다. 전사가 그대로인 한 재시도해도 같다.
+     */
+    REQUEST_TOO_LARGE
 }

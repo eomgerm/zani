@@ -21,6 +21,8 @@ import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
+import com.a105.zani.report.domain.exception.InvalidSessionReportException;
+import com.a105.zani.report.domain.exception.SessionReportErrorCode;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextResult;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextUseCase;
 
@@ -135,6 +137,43 @@ class AnalyzeSessionContentServiceTest {
         ContentAnalysisFailedException thrown = assertThrows(ContentAnalysisFailedException.class, this::analyze);
 
         assertEquals(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE, thrown.errorCode());
+        assertTrue(savedCommands.isEmpty());
+    }
+
+    /**
+     * 겹친 구간은 저장하지 않고 재시도할 수 없는 실패로 올린다.
+     *
+     * <p>겹침 판정은 적재 애그리거트가 소유하므로 어댑터를 통과해 여기까지 온다. 그 거절을 그대로 올리면 세션 도메인의 {@code BAD_REQUEST} 가 파이프라인까지 새어 나가 재시도 여부를 정할
+     * 수 없다. {@code temperature: 0} 이라 겹침은 매 시도에 반복된다.
+     */
+    @Test
+    void reportsOverlappingSectionsAsAnUnusableResponse() {
+        analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
+                "React 상태 관리를 다뤘다.",
+                List.of(
+                        new AnalyzedSection("앞 구간", "겹치는 구간이다.", 0, 600_000),
+                        new AnalyzedSection("뒤 구간", "앞 구간과 겹친다.", 300_000, 900_000))));
+        AnalyzeSessionContentService rejecting = new AnalyzeSessionContentService(
+                getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                    // 실제 적재 유스케이스와 같은 계약: 애그리거트가 구간 계약 위반을 거절한다.
+                    throw new InvalidSessionReportException(SessionReportErrorCode.INVALID_SESSION_REPORT);
+                });
+
+        ContentAnalysisFailedException thrown = assertThrows(
+                ContentAnalysisFailedException.class,
+                () -> rejecting.analyze(new AnalyzeSessionContentCommand(SESSION_ID)));
+
+        assertEquals(ContentAnalysisErrorCode.CONTENT_ANALYSIS_UNUSABLE_RESPONSE, thrown.errorCode());
+    }
+
+    /** 전사가 상한에 들어가지 않아 호출하지 못한 경우도 재시도 대상이 아니다. */
+    @Test
+    void reportsARequestThatCannotFitTheGatewayLimit() {
+        analysis = ContentAnalysisOutcome.failed(ContentAnalysisFailure.REQUEST_TOO_LARGE);
+
+        ContentAnalysisFailedException thrown = assertThrows(ContentAnalysisFailedException.class, this::analyze);
+
+        assertEquals(ContentAnalysisErrorCode.CONTENT_ANALYSIS_REQUEST_TOO_LARGE, thrown.errorCode());
         assertTrue(savedCommands.isEmpty());
     }
 

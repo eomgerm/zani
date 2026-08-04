@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
@@ -107,13 +108,18 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
 
     @Override
     public ContentAnalysisOutcome analyze(ContentAnalysisRequest request) {
+        Optional<Map<String, Object>> body = requestBody(request);
+        if (body.isEmpty()) {
+            return ContentAnalysisOutcome.failed(ContentAnalysisFailure.REQUEST_TOO_LARGE);
+        }
+
         long startedAt = System.nanoTime();
         try {
             ChatResponse response = analysisRestClient
                     .post()
                     .uri(CHAT_COMPLETIONS_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(requestBody(request))
+                    .body(body.get())
                     .retrieve()
                     .body(ChatResponse.class);
             return parse(response, request, elapsedMs(startedAt));
@@ -135,27 +141,35 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
      * <p>이 상한을 없애려면 창을 나눠 여러 번 부르고 결과를 합쳐야 하는데, 그 합치는 규칙이 GMS 가이드 §12 의 미결정 항목이다. 45분 수업(약 15,000자)은 한 번에 들어가므로 MVP 는 이
      * 표본으로 충분하다.
      */
-    private Map<String, Object> requestBody(ContentAnalysisRequest request) {
+    private Optional<Map<String, Object>> requestBody(ContentAnalysisRequest request) {
         List<ContentAnalysisLine> lines = request.lines();
         Map<String, Object> body = bodyWith(request, lines);
         if (byteLength(body) <= REQUEST_BUDGET_BYTES) {
-            return body;
+            return Optional.of(body);
         }
 
-        int keepEvery = 2;
-        while (true) {
+        for (int keepEvery = 2; ; keepEvery++) {
             List<ContentAnalysisLine> sampled = sample(lines, keepEvery);
             body = bodyWith(request, sampled);
-            if (byteLength(body) <= REQUEST_BUDGET_BYTES || sampled.size() <= 1) {
+            if (byteLength(body) <= REQUEST_BUDGET_BYTES) {
                 log.warn(
                         "Transcript exceeded the request budget: sending {} of {} lines (every {}th)."
                                 + " Section boundaries lose resolution.",
                         sampled.size(),
                         lines.size(),
                         keepEvery);
-                return body;
+                return Optional.of(body);
             }
-            keepEvery++;
+            if (sampled.size() <= 1) {
+                // 한 줄까지 줄여도 들어가지 않는다. 보내면 게이트웨이가 본문을 잘라 "Model not found" 로 답해
+                // 원인을 알 수 없는 실패가 되고, 그것을 재시도 가능한 실패로 읽어 5회를 헛되이 쓴다.
+                log.error(
+                        "Transcript does not fit the request budget even at one line: {} bytes for {} lines."
+                                + " Not sending.",
+                        byteLength(body),
+                        lines.size());
+                return Optional.empty();
+            }
         }
     }
 
