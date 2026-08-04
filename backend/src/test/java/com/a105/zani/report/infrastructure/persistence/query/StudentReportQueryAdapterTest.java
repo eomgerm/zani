@@ -73,7 +73,7 @@ class StudentReportQueryAdapterTest {
 
         insertPrompt(9_112_200L, STUDENT_PARTICIPANT_ID, "CONFUSED");
         insertPrompt(9_112_201L, STUDENT_PARTICIPANT_ID, "OK");
-        insertPrompt(9_112_202L, STUDENT_PARTICIPANT_ID, "NO_RESPONSE");
+        insertPrompt(9_112_202L, STUDENT_PARTICIPANT_ID, "NON_RESPONSE");
         insertPrompt(9_112_203L, STUDENT_PARTICIPANT_ID, null);
         insertPrompt(9_112_204L, OTHER_PARTICIPANT_ID, "MISSED");
 
