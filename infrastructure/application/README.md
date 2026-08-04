@@ -85,17 +85,20 @@ Parent directories stay `0750 root:root`. They are not widened: Docker resolves 
 bind-mount source as root, so the container never traverses `/srv/zani` itself, and
 host users remain locked out.
 
-Applying this requires explicit operator approval, the same as the secret files above:
+`deploy-application.sh` applies and verifies this approved policy on every deployment
+before Compose recreates the application containers. Operators do not need to repeat
+the commands manually during a normal deployment. For a fresh host or an out-of-band
+directory restore, the equivalent preparation is:
 
 ```bash
 sudo install -d -o root -g 10001 -m 0770 /srv/zani/recordings
 sudo chmod o+x /srv/zani/recordings/track-egress
 ```
 
-Re-apply it whenever the directory is recreated — a fresh host, a restore, or a
-manual `mkdir` all produce `0770` and silently break transcription. **The application
-container must not change host permissions at startup**; that would require privileges
-the container deliberately drops.
+The deployment script also repairs a manually recreated directory before startup.
+**The application container itself does not change host permissions**; the privileged
+host deployment step owns that responsibility so the container can keep its dropped
+capabilities.
 
 Verify with a throwaway container rather than a host-side `setpriv` check. A host
 process running as UID 10001 fails on the `0750` parents regardless of this mode, so
