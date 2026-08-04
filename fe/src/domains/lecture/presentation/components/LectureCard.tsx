@@ -62,7 +62,7 @@ function Body({ lecture }: { lecture: MyLecture }) {
       <div className="truncate px-1.5 pt-1 text-[13px] text-ink-muted">
         {lecture.role === "student"
           ? lecture.instructor
-          : `수강생 ${lecture.students}명`}
+          : `인원 ${lecture.students}명`}
       </div>
       <div className="mx-1.5 my-3.5 h-px bg-line-light" />
       <div className="flex items-center gap-3.5 px-1.5 text-[13px] text-ink-fainter">
