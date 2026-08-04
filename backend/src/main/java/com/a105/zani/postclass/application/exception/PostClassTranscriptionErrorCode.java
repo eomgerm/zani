@@ -20,7 +20,21 @@ public enum PostClassTranscriptionErrorCode implements ErrorCode {
     CHUNK_BOUNDARY_MISMATCH(
             ErrorType.CONFLICT,
             "POSTCLASS_TRANSCRIPTION_005",
-            "Re-split chunk boundaries disagree with the recorded checkpoints");
+            "Re-split chunk boundaries disagree with the recorded checkpoints"),
+    TRANSCRIPT_INCOMPLETE(
+            ErrorType.CONFLICT,
+            "POSTCLASS_TRANSCRIPTION_006",
+            "Cannot assemble a transcript while chunks are unfinished or failed"),
+    TRANSCRIPT_ASSEMBLY_INVALID(
+            ErrorType.INTERNAL_SERVER_ERROR,
+            "POSTCLASS_TRANSCRIPTION_007",
+            "Chunk results cannot be placed on the lesson timeline"),
+    TRANSCRIPT_DOCUMENT_INVALID(
+            ErrorType.INTERNAL_SERVER_ERROR,
+            "POSTCLASS_TRANSCRIPTION_008",
+            "Transcript document violates the stored document contract"),
+    TRANSCRIPT_NOT_READY(
+            ErrorType.CONFLICT, "POSTCLASS_TRANSCRIPTION_009", "Some transcription chunks have not finished yet");
 
     private final ErrorType type;
     private final String code;
