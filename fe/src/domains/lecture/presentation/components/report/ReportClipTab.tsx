@@ -1,5 +1,5 @@
 import { MenuIcon } from "@/shared/ui";
-import { StudentReportClip, type SeekRequest } from "@/domains/report";
+import { StudentReportClip } from "@/domains/report";
 import { summarySections, transcript } from "../../fixtures";
 
 interface Props {
@@ -11,16 +11,15 @@ interface Props {
    * 남는다 — 학생용 엔드포인트를 강사가 부르면 403 만 받는다.
    */
   isStudent: boolean;
-  seekRequest?: SeekRequest | null;
 }
 
 /** 리포트 탭 1 (수업 클립 / 복습 클립): 강의 영상 + 수업 내용 전사 + AI 요약 문서. */
-export function ReportClipTab({ title, sessionId, isStudent, seekRequest = null }: Props) {
+export function ReportClipTab({ title, sessionId, isStudent }: Props) {
   return (
     <>
       {isStudent ? (
         <div className="mb-5">
-          <StudentReportClip sessionId={sessionId} title={title} seekRequest={seekRequest} />
+          <StudentReportClip sessionId={sessionId} title={title} />
         </div>
       ) : (
         <MockClipPanel title={title} />

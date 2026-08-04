@@ -46,18 +46,16 @@ describe("StudentReportClip", () => {
     expect(video.currentTime).toBe(125);
   });
 
-  it("리포트 탭에서 넘어온 이동 명령을 플레이어에 전달한다", async () => {
+  it("서버가 준 초기 위치에서 시작한다", async () => {
     render(
       <StudentReportClip
         sessionId="s1"
         title="React"
-        seekRequest={{ seconds: 1440, nonce: 1 }}
-        request={async () => reportWith()}
+        request={async () => reportWith({ seekTimestamp: 1440 })}
       />,
     );
 
     const video = (await screen.findByTestId("report-video")) as HTMLVideoElement;
-    // 메타데이터 전에 도착한 명령은 메타데이터가 오는 순간 적용된다.
     Object.defineProperty(video, "duration", { value: 5430, configurable: true });
     fireEvent.loadedMetadata(video);
 

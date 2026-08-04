@@ -4,16 +4,10 @@ interface SegmentModalProps {
   segment: LearnSegment;
   role: "instructor" | "student";
   onClose: () => void;
-  /** 클립 탭의 플레이어로 이동한다. 배선되지 않은 역할(강사 목업)에서는 버튼을 숨긴다. */
-  onGoToClip?: (seconds: number) => void;
 }
 
-/** fixture 의 "MM:SS"·"H:MM:SS" 시각 문자열을 초로 바꾼다. */
-const secondsOfLabel = (label: string): number =>
-  label.split(":").reduce((total, part) => total * 60 + Number(part), 0);
-
 /** 타임라인 구간 상세 모달. 집중 평가 · 구간 설명 · 복습 클립 바로가기. */
-export function SegmentModal({ segment, role, onClose, onGoToClip }: SegmentModalProps) {
+export function SegmentModal({ segment, role, onClose }: SegmentModalProps) {
   const score = role === "instructor" ? segment.fAll : segment.fMine;
   const c = focusColor(score);
   const ev = role === "instructor" ? segment.evAll : segment.evMine;
@@ -67,19 +61,12 @@ export function SegmentModal({ segment, role, onClose, onGoToClip }: SegmentModa
           <div className="mb-2 text-[13.5px] font-extrabold text-ink">이 구간 설명</div>
           <p className="mb-[22px] text-[13.5px] leading-[1.7] text-ink-sub">{segment.desc}</p>
 
-          {onGoToClip !== undefined && (
-            <button
-              type="button"
-              onClick={() => {
-                // 모달을 닫아야 뒤에서 전환된 클립 탭이 보인다.
-                onGoToClip(secondsOfLabel(segment.seek));
-                onClose();
-              }}
-              className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-[14.5px]"
-            >
-              ↗ {role === "instructor" ? "수업 클립" : "복습 클립"} 바로가기
-            </button>
-          )}
+          <button
+            type="button"
+            className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-[14.5px]"
+          >
+            ↗ {role === "instructor" ? "수업 클립" : "복습 클립"} 바로가기
+          </button>
         </div>
       </div>
     </div>

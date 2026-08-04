@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { StudentReportRequester } from "../infrastructure/studentReportApi";
 import { ReportPlayer, type SeekRequest } from "./ReportPlayer";
@@ -29,8 +29,6 @@ const Notice = ({
 export interface StudentReportClipProps {
   readonly sessionId: string;
   readonly title: string;
-  /** 리포트 탭(추천 카드·타임라인)에서 넘어온 이동 명령. 탭 전환과 함께 도착한다. */
-  readonly seekRequest?: SeekRequest | null;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: StudentReportRequester;
 }
@@ -38,20 +36,15 @@ export interface StudentReportClipProps {
 /**
  * 학생 복습 클립 패널 — 공통 녹화 플레이어 + 실명 화자 전사(REPORT-S-001).
  *
- * <p>이동 명령의 합류 지점이다. 전사 행 클릭(안)과 추천 카드·타임라인(밖) 모두 여기의
- * `seekTo` 로 모여 하나의 `SeekRequest` 흐름으로 플레이어에 내려간다. 밖에서 온 명령도
- * 내부 nonce 로 다시 찍는다 — 두 소스의 nonce 가 섞이면 증가가 보장되지 않는다.
+ * <p>이동 명령의 합류 지점이다. 지금은 전사 행 클릭 하나뿐이지만, 모든 명령은 `seekTo` 로
+ * 모여 하나의 `SeekRequest` 흐름으로 플레이어에 내려간다 — nonce 를 한 곳에서 찍어야
+ * 증가가 보장되고, 같은 시각을 연속으로 눌러도 두 번째가 무시되지 않는다.
  *
  * <p>전사 하이라이트에는 재생 위치를 **정수 초로 낮춰** 전달한다. timeupdate 는 초당 네 번쯤
  * 오는데, 세 시간 수업의 전사는 수천 행이라 그 빈도로 목록을 다시 그리면 재생이 버벅인다.
  * 행 강조는 초 단위보다 촘촘할 이유가 없다.
  */
-export function StudentReportClip({
-  sessionId,
-  title,
-  seekRequest = null,
-  request,
-}: StudentReportClipProps) {
+export function StudentReportClip({ sessionId, title, request }: StudentReportClipProps) {
   const { status, report, retry, reissueRecordingUrl } = useStudentReport({ sessionId, request });
 
   const [seek, setSeek] = useState<SeekRequest | null>(null);
@@ -60,10 +53,6 @@ export function StudentReportClip({
     nonceRef.current += 1;
     setSeek({ seconds, nonce: nonceRef.current });
   }, []);
-
-  useEffect(() => {
-    if (seekRequest !== null) seekTo(seekRequest.seconds);
-  }, [seekRequest, seekTo]);
 
   const [cursorSeconds, setCursorSeconds] = useState(0);
   const handleTimeChange = useCallback((seconds: number) => {

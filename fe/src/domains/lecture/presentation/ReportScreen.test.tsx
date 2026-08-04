@@ -26,22 +26,8 @@ vi.mock("@/domains/report", () => ({
   StudentAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-timeline">{sessionId}</div>
   ),
-  StudentReportClip: ({
-    sessionId,
-    seekRequest,
-  }: {
-    sessionId: string;
-    seekRequest?: { seconds: number; nonce: number } | null;
-  }) => (
-    <div data-testid="student-clip">
-      {sessionId}
-      {seekRequest ? `@${seekRequest.seconds}` : ""}
-    </div>
-  ),
-  StudentRecommendations: ({ onSeekToClip }: { onSeekToClip: (seconds: number) => void }) => (
-    <button type="button" data-testid="student-recs" onClick={() => onSeekToClip(1440)}>
-      추천
-    </button>
+  StudentReportClip: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="student-clip">{sessionId}</div>
   ),
 }));
 
@@ -119,17 +105,5 @@ describe("ReportScreen", () => {
 
     // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
-  });
-
-  it("switches to the clip tab and forwards the seek when a recommendation is clicked", () => {
-    role.role = "STUDENT";
-
-    render(<ReportScreen lectureId="s4" />);
-    openReportTab();
-    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("student-recs"));
-
-    expect(screen.getByTestId("student-clip")).toHaveTextContent("@1440");
   });
 });
