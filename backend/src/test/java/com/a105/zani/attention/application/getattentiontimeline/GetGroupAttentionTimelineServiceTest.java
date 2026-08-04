@@ -169,8 +169,8 @@ class GetGroupAttentionTimelineServiceTest {
     void section_offsets_are_converted_from_milliseconds() {
         observeFiveStudents(30);
         // 60초 경계로 나눈 두 구간. ms 를 초로 바꾸지 않으면 두 구간이 모두 0~300 을 덮어 값이 같아진다.
-        listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞"));
-        listSessionSections.sections.add(new SessionSectionView(60_000L, 300_000L, "뒤"));
+        listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞", null));
+        listSessionSections.sections.add(new SessionSectionView(60_000L, 300_000L, "뒤", null));
 
         GetGroupAttentionTimelineResult result = get();
 

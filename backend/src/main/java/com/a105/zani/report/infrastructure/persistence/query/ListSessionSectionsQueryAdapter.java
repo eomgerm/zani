@@ -29,6 +29,7 @@ public class ListSessionSectionsQueryAdapter implements ListSessionSectionsQuery
     }
 
     private static SessionSectionView toView(SessionSectionJpaEntity entity) {
-        return new SessionSectionView(entity.getStartedOffsetMs(), entity.getEndedOffsetMs(), entity.getTitle());
+        return new SessionSectionView(
+                entity.getStartedOffsetMs(), entity.getEndedOffsetMs(), entity.getTitle(), entity.getSummary());
     }
 }

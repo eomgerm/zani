@@ -9,4 +9,4 @@ package com.a105.zani.report.application.listsessionsections;
  * @param endedOffsetMs 세션 시작 기준 구간 종료 <b>밀리초</b>
  * @param title 248 이 채운 구간 제목. FE 가 구간에 붙일 이름이 없으면 "구간 1·2·3" 이 되므로 함께 준다
  */
-public record SessionSectionView(long startedOffsetMs, long endedOffsetMs, String title) {}
+public record SessionSectionView(long startedOffsetMs, long endedOffsetMs, String title, String summary) {}
