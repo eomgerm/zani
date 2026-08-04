@@ -14,11 +14,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.postclass.application.exception.TranscriptDocumentInvalidException;
 import com.a105.zani.postclass.application.port.TranscriptPort;
+import com.a105.zani.postclass.domain.model.ConfidenceMethod;
 import com.a105.zani.postclass.domain.model.TranscriptDocument;
 import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 import com.a105.zani.recording.domain.model.TrackSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -48,11 +50,13 @@ class TranscriptPersistenceAdapterTest {
                 List.of(new TranscriptDocumentSegment(
                         9_300_101L,
                         TrackSource.MICROPHONE,
+                        "TR_roundtrip01",
                         startOffsetMs,
                         startOffsetMs + 4_000,
                         text,
                         -0.21,
                         Math.exp(-0.21),
+                        ConfidenceMethod.EXP_AVG_LOGPROB,
                         0.0541,
                         9_300_201L,
                         3)));
@@ -129,6 +133,52 @@ class TranscriptPersistenceAdapterTest {
         assertEquals(3, segment.chunkIndex());
         assertEquals(-0.21, segment.avgLogprob(), 1e-9);
         assertEquals(0.0541, segment.noSpeechProb(), 1e-9);
+        // 추적 좌표 둘과 신뢰도 계산 방법도 왕복해야 한다. enum 이 이름으로 직렬화되는지도 여기서 걸린다.
+        assertEquals("TR_roundtrip01", segment.trackSid());
+        assertEquals(9_300_201L, segment.recordingFileId());
+        assertEquals(ConfidenceMethod.EXP_AVG_LOGPROB, segment.confidenceMethod());
+    }
+
+    @Test
+    void 저장된_JSON_에_새_필드가_이름_그대로_들어간다() {
+        // 소비자가 읽는 것은 컬럼의 JSON 문자열이다. record 왕복만 보면 필드명이 바뀐 것을 놓친다.
+        long sessionId = createSession();
+
+        port.save(sessionId, document("계약 확인", 1_000), NOW);
+
+        String json = jdbcTemplate.queryForObject(
+                "SELECT transcript_document FROM transcripts WHERE session_id = ?", String.class, sessionId);
+        assertTrue(json.contains("\"trackSid\""), "trackSid 필드명이 그대로여야 한다: " + json);
+        assertTrue(json.contains("\"EXP_AVG_LOGPROB\""), "confidenceMethod 는 enum 이름으로 저장된다: " + json);
+        assertTrue(json.contains("\"startOffsetMs\""), "시간 필드명은 startOffsetMs 를 유지한다: " + json);
+        assertTrue(json.contains("\"endOffsetMs\""), "시간 필드명은 endOffsetMs 를 유지한다: " + json);
+        assertTrue(json.contains("\"recordingFileId\""), "recordingFileId 도 함께 남는다: " + json);
+    }
+
+    @Test
+    void trackSid_가_없는_세그먼트도_왕복한다() {
+        // 한 Egress 가 파일을 여러 개 남기면 첫 행만 Track SID 를 갖는다. 그 경우가 저장·조회를 막지 않아야 한다.
+        long sessionId = createSession();
+        TranscriptDocument document = TranscriptDocument.complete(
+                "ko",
+                List.of(new TranscriptDocumentSegment(
+                        9_300_101L,
+                        TrackSource.MICROPHONE,
+                        null,
+                        0,
+                        1_000,
+                        "SID 없는 파일",
+                        -0.21,
+                        Math.exp(-0.21),
+                        ConfidenceMethod.EXP_AVG_LOGPROB,
+                        0.02,
+                        9_300_201L,
+                        0)));
+
+        port.save(sessionId, document, NOW);
+
+        assertNull(
+                port.findBySessionId(sessionId).orElseThrow().segments().get(0).trackSid());
     }
 
     @Test

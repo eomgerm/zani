@@ -2,10 +2,12 @@ package com.a105.zani.postclass;
 
 import org.junit.jupiter.api.Test;
 
+import com.a105.zani.postclass.domain.model.ConfidenceMethod;
 import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 import com.a105.zani.recording.domain.model.TrackSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -18,17 +20,20 @@ class TranscriptDocumentSegmentTest {
 
     private static final long PARTICIPANT = 9_400_101L;
     private static final long FILE = 9_400_201L;
+    private static final String TRACK_SID = "TR_smoke0001";
 
     private static TranscriptDocumentSegment segment(
             long startOffsetMs, long endOffsetMs, String text, double avgLogprob, double confidence, double noSpeech) {
         return new TranscriptDocumentSegment(
                 PARTICIPANT,
                 TrackSource.MICROPHONE,
+                TRACK_SID,
                 startOffsetMs,
                 endOffsetMs,
                 text,
                 avgLogprob,
                 confidence,
+                ConfidenceMethod.EXP_AVG_LOGPROB,
                 noSpeech,
                 FILE,
                 0);
@@ -103,20 +108,85 @@ class TranscriptDocumentSegmentTest {
 
     @Test
     void 식별자와_트랙_종류가_없으면_거절한다() {
+        ConfidenceMethod method = ConfidenceMethod.EXP_AVG_LOGPROB;
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new TranscriptDocumentSegment(
-                        0, TrackSource.MICROPHONE, 0, 1_000, "문장", -0.21, 0.81, 0.02, FILE, 0));
+                        0, TrackSource.MICROPHONE, TRACK_SID, 0, 1_000, "문장", -0.21, 0.81, method, 0.02, FILE, 0));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new TranscriptDocumentSegment(
-                        PARTICIPANT, TrackSource.MICROPHONE, 0, 1_000, "문장", -0.21, 0.81, 0.02, 0, 0));
+                        PARTICIPANT,
+                        TrackSource.MICROPHONE,
+                        TRACK_SID,
+                        0,
+                        1_000,
+                        "문장",
+                        -0.21,
+                        0.81,
+                        method,
+                        0.02,
+                        0,
+                        0));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new TranscriptDocumentSegment(
-                        PARTICIPANT, TrackSource.MICROPHONE, 0, 1_000, "문장", -0.21, 0.81, 0.02, FILE, -1));
+                        PARTICIPANT,
+                        TrackSource.MICROPHONE,
+                        TRACK_SID,
+                        0,
+                        1_000,
+                        "문장",
+                        -0.21,
+                        0.81,
+                        method,
+                        0.02,
+                        FILE,
+                        -1));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new TranscriptDocumentSegment(PARTICIPANT, null, 0, 1_000, "문장", -0.21, 0.81, 0.02, FILE, 0));
+                () -> new TranscriptDocumentSegment(
+                        PARTICIPANT, null, TRACK_SID, 0, 1_000, "문장", -0.21, 0.81, method, 0.02, FILE, 0));
+    }
+
+    @Test
+    void 신뢰도_계산_방법이_없으면_거절한다() {
+        // 이 값이 없으면 소비자가 confidence 를 어떻게 해석할지 알 수 없다.
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new TranscriptDocumentSegment(
+                        PARTICIPANT,
+                        TrackSource.MICROPHONE,
+                        TRACK_SID,
+                        0,
+                        1_000,
+                        "문장",
+                        -0.21,
+                        0.81,
+                        null,
+                        0.02,
+                        FILE,
+                        0));
+    }
+
+    @Test
+    void trackSid_는_없어도_받는다() {
+        // 한 Egress 가 파일을 여러 개 남기면 첫 행만 Track SID 를 갖는다(UK 제약). 그것을 거절하면
+        // 정상적으로 저장된 트랙이 전사되지 않는다.
+        TranscriptDocumentSegment segment = new TranscriptDocumentSegment(
+                PARTICIPANT,
+                TrackSource.MICROPHONE,
+                null,
+                0,
+                1_000,
+                "문장",
+                -0.21,
+                0.81,
+                ConfidenceMethod.EXP_AVG_LOGPROB,
+                0.02,
+                FILE,
+                0);
+
+        assertNull(segment.trackSid());
     }
 }

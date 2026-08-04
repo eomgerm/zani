@@ -389,6 +389,7 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
                         track.recordingFileId(),
                         track.sessionParticipantId(),
                         track.trackSource(),
+                        track.livekitTrackSid(),
                         track.startedOffsetMs()))
                 .toList();
     }

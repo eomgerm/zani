@@ -14,8 +14,14 @@ import com.a105.zani.recording.domain.model.TrackSource;
  * @param recordingFileId {@code recording_files.id}. 체크포인트와 잇는 키
  * @param sessionParticipantId 이 트랙의 발행자. V12 이전 legacy 행은 {@code null} 일 수 있고, 그러면 조립이 실패한다
  * @param trackSource 트랙 종류. legacy 행은 {@code null} 일 수 있다
+ * @param livekitTrackSid LiveKit Track SID. <b>{@code null} 을 허용한다</b> — 한 Egress 가 파일을 여러 개 남기면 첫 행만 이 값을 갖는다. 없다고 조립을
+ *     막지 않는다: 시간축을 만드는 데 쓰이지 않고 추적용으로만 문서에 실린다
  * @param startedOffsetMs 수업 타임라인 기준 이 파일의 시작 시각. webhook 에 시각이 없으면 {@code null} 이고, 그러면 조립이 실패한다 — 0 으로 가정하면 그 트랙의 발화
  *     전체가 수업 시작 지점으로 밀린다
  */
 public record TranscriptionTrack(
-        Long recordingFileId, Long sessionParticipantId, TrackSource trackSource, Long startedOffsetMs) {}
+        Long recordingFileId,
+        Long sessionParticipantId,
+        TrackSource trackSource,
+        String livekitTrackSid,
+        Long startedOffsetMs) {}

@@ -18,12 +18,14 @@ import com.a105.zani.postclass.application.port.TranscriptPort;
 import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
 import com.a105.zani.postclass.application.port.TranscriptionTrack;
+import com.a105.zani.postclass.domain.model.ConfidenceMethod;
 import com.a105.zani.postclass.domain.model.TranscriptDocument;
 import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 import com.a105.zani.postclass.domain.model.TranscriptionChunkStatus;
 import com.a105.zani.recording.domain.model.TrackSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -68,7 +70,7 @@ class AssembleTranscriptServiceTest {
     }
 
     private static TranscriptionTrack track(Long fileId, Long participantId, Long startedOffsetMs) {
-        return new TranscriptionTrack(fileId, participantId, TrackSource.MICROPHONE, startedOffsetMs);
+        return new TranscriptionTrack(fileId, participantId, TrackSource.MICROPHONE, "TR_" + fileId, startedOffsetMs);
     }
 
     private static TranscriptionChunk chunk(
@@ -113,9 +115,24 @@ class AssembleTranscriptServiceTest {
         assertEquals(3_009_000, stored.endOffsetMs());
         assertEquals(STUDENT, stored.sessionParticipantId());
         assertEquals(TrackSource.MICROPHONE, stored.source());
-        // 추적용 좌표. 이 문장이 이상하면 이 두 값으로 체크포인트 행을 바로 찾는다.
+        // 추적용 좌표 셋. recordingFileId·chunkIndex 는 체크포인트 행으로, trackSid 는 LiveKit 발행 구간으로 간다.
         assertEquals(STUDENT_FILE, stored.recordingFileId());
         assertEquals(2, stored.chunkIndex());
+        assertEquals("TR_" + STUDENT_FILE, stored.trackSid());
+        assertEquals(ConfidenceMethod.EXP_AVG_LOGPROB, stored.confidenceMethod());
+    }
+
+    @Test
+    void trackSid_가_없는_트랙도_조립한다() {
+        // 한 Egress 가 파일을 여러 개 남기면 첫 행만 Track SID 를 갖는다. 그것으로 조립을 막으면
+        // 정상적으로 저장된 트랙이 전사되지 않는다.
+        List<TranscriptionChunk> chunks =
+                List.of(chunk(STUDENT_FILE, 0, TranscriptionChunkStatus.SUCCEEDED, List.of(segment(0, 3_000, "발화"))));
+        TranscriptionTrack noSid = new TranscriptionTrack(STUDENT_FILE, STUDENT, TrackSource.MICROPHONE, null, 0L);
+
+        assemble(List.of(noSid), chunks);
+
+        assertNull(transcriptPort.only().segments().get(0).trackSid());
     }
 
     @Test

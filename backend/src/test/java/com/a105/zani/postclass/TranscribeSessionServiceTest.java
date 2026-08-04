@@ -103,7 +103,7 @@ class TranscribeSessionServiceTest {
     private static final Executor DIRECT = Runnable::run;
 
     private static SessionTrackFile track(Long fileId, Long participantId, TrackSource source, String key) {
-        return new SessionTrackFile(fileId, participantId, source, key, 0L, CHUNK_MS);
+        return new SessionTrackFile(fileId, participantId, source, key, "TR_" + fileId, 0L, CHUNK_MS);
     }
 
     private final class FakeChunkPort implements TranscriptionChunkPort {

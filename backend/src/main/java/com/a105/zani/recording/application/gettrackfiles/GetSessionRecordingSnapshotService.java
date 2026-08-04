@@ -75,6 +75,7 @@ public class GetSessionRecordingSnapshotService implements GetSessionRecordingSn
                 file.sessionParticipantId(),
                 file.trackSource(),
                 file.storageKey(),
+                file.livekitTrackSid(),
                 file.startedOffsetMs(),
                 file.endedOffsetMs());
     }

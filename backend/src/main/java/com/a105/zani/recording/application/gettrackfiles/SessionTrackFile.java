@@ -13,6 +13,8 @@ import com.a105.zani.recording.domain.model.TrackSource;
  * @param sessionParticipantId 이 트랙의 발행자. legacy 행은 {@code null}
  * @param trackSource 트랙 종류. legacy 행이거나 알 수 없는 값이 저장돼 있으면 {@code null}
  * @param storageKey 세션 루트 기준 상대 경로. 절대 경로가 아니며 이것이 파일 위치의 정본이다
+ * @param livekitTrackSid LiveKit Track SID. 한 Egress 가 파일을 여러 개 남기면 첫 행만 이 값을 갖고 나머지는 {@code null} 이다
+ *     ({@code UK(recording_id, livekit_track_sid)} 때문). 재접속·재발행 구간을 가르는 유일한 값이다
  * @param startedOffsetMs 수업 타임라인 기준 시작 시각. 없으면 {@code null}
  * @param endedOffsetMs 수업 타임라인 기준 종료 시각. 없으면 {@code null}
  */
@@ -21,5 +23,6 @@ public record SessionTrackFile(
         Long sessionParticipantId,
         TrackSource trackSource,
         String storageKey,
+        String livekitTrackSid,
         Long startedOffsetMs,
         Long endedOffsetMs) {}

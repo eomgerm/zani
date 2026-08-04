@@ -21,6 +21,7 @@ import com.a105.zani.postclass.application.port.TranscriptPort;
 import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
 import com.a105.zani.postclass.application.port.TranscriptionTrack;
+import com.a105.zani.postclass.domain.model.ConfidenceMethod;
 import com.a105.zani.postclass.domain.model.TranscriptDocument;
 import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 
@@ -228,11 +229,14 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         return new TranscriptDocumentSegment(
                 track.sessionParticipantId(),
                 track.trackSource(),
+                track.livekitTrackSid(),
                 base + segment.startMs(),
                 base + endMs,
                 segment.text(),
                 segment.avgLogprob(),
                 segment.confidenceScore(),
+                // confidenceScore() 가 exp(avgLogprob) 이다. 식과 이름이 한 자리에서 갈리지 않게 함께 적는다.
+                ConfidenceMethod.EXP_AVG_LOGPROB,
                 segment.noSpeechProb(),
                 chunk.recordingFileId(),
                 chunk.chunkIndex());
