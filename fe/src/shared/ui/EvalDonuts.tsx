@@ -31,6 +31,7 @@ export function EvalDonuts({ data }: { data: EvalDatum[] }) {
         const open = openName === d.name;
         return (
           <div key={d.name} className="relative flex flex-col items-center">
+            <span className="mb-1.5 text-[12.5px] font-extrabold text-ink-label">{d.name}</span>
             <button
               type="button"
               aria-describedby={d.desc === undefined ? undefined : `donut-${d.name}`}
@@ -63,21 +64,22 @@ export function EvalDonuts({ data }: { data: EvalDatum[] }) {
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              <span className="absolute inset-0 flex items-baseline justify-center gap-0.5">
-                <span className="text-[22px] font-extrabold tracking-[-.5px] text-ink">
-                  {d.value}
+              {/* 링 안쪽 정중앙. items-baseline 로 맞추면 글자 밑선이 기준이 되어 위로 붙는다. */}
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex items-baseline gap-0.5">
+                  <span className="text-[22px] font-extrabold tracking-[-.5px] text-ink">
+                    {d.value}
+                  </span>
+                  <span className="text-[10.5px] font-extrabold text-ink-ghost">점</span>
                 </span>
-                <span className="text-[10.5px] font-extrabold text-ink-ghost">점</span>
               </span>
             </button>
-
-            <span className="mt-1.5 text-[12.5px] font-extrabold text-ink-label">{d.name}</span>
 
             {d.desc !== undefined && (
               <span
                 id={`donut-${d.name}`}
                 role="tooltip"
-                className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-[200px] -translate-x-1/2 rounded-[10px] bg-[#26263a] px-[11px] py-[9px] text-[11.5px] font-semibold leading-[1.55] text-white shadow-[0_10px_26px_rgba(20,25,50,.3)] ${
+                className={`pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 w-[200px] -translate-x-1/2 rounded-[10px] bg-[#26263a] px-[11px] py-[9px] text-[11.5px] font-semibold leading-[1.55] text-white shadow-[0_10px_26px_rgba(20,25,50,.3)] ${
                   open ? "" : "hidden"
                 }`}
               >

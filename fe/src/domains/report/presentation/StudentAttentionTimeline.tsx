@@ -339,6 +339,7 @@ export function StudentAttentionTimeline({
               selectedIndex={Math.min(selectedIndex, Math.max(0, sections.length - 1))}
               onSelect={setSelectedIndex}
               scopeLabel="내 집중도"
+              clipTabLabel="복습 클립"
               onJumpToClip={onJumpToClip}
               detailIndex={detailIndex}
               onDetailChange={setDetailIndex}

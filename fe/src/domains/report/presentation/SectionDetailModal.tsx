@@ -23,6 +23,8 @@ export interface SectionDetailModalProps {
   /** 강사 화면은 집단 값이라 이름이 다르다. */
   readonly scopeLabel: string;
   readonly onClose: () => void;
+  /** 클립 탭 이름. 강사는 수업 클립, 학생은 복습 클립이라 버튼 문구가 다르다. */
+  readonly clipTabLabel: string;
   /** 클립 탭으로 옮겨 이 구간 시작 시각을 재생한다. 배선이 없으면 버튼을 내지 않는다. */
   readonly onJumpToClip?: (offsetSeconds: number) => void;
 }
@@ -31,6 +33,7 @@ export function SectionDetailModal({
   section,
   number,
   scopeLabel,
+  clipTabLabel,
   onClose,
   onJumpToClip,
 }: SectionDetailModalProps) {
@@ -121,7 +124,7 @@ export function SectionDetailModal({
               onClick={() => onJumpToClip(section.startSeconds)}
               className="z-btn z-btn-primary w-full rounded-[13px] py-3.5 text-sm"
             >
-              복습 클립 바로가기
+              {clipTabLabel} 바로가기
             </button>
           )}
         </div>

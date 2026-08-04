@@ -26,6 +26,8 @@ export interface SectionTimelineProps {
   readonly onSelect: (index: number) => void;
   /** 강사 화면은 집단 값이라 상세의 이름이 다르다. */
   readonly scopeLabel: string;
+  /** 클립 탭 이름. 강사는 수업 클립, 학생은 복습 클립이다. */
+  readonly clipTabLabel: string;
   /** 클립 탭으로 옮겨 그 구간을 재생한다. 배선이 없으면 상세에 버튼을 내지 않는다. */
   readonly onJumpToClip?: (offsetSeconds: number) => void;
   /**
@@ -41,6 +43,7 @@ export function SectionTimeline({
   selectedIndex,
   onSelect,
   scopeLabel,
+  clipTabLabel,
   onJumpToClip,
   detailIndex: controlledDetailIndex,
   onDetailChange,
@@ -150,6 +153,7 @@ export function SectionTimeline({
           section={sections[detailIndex]}
           number={detailIndex + 1}
           scopeLabel={scopeLabel}
+          clipTabLabel={clipTabLabel}
           onClose={() => setDetailIndex(null)}
           onJumpToClip={
             onJumpToClip === undefined

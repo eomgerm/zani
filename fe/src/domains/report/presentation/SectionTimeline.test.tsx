@@ -10,7 +10,7 @@ const sections = [
 
 describe("SectionTimeline", () => {
   it("구간마다 번호·제목·시각·평균을 보여준다", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />);
 
     expect(screen.getByText("구간 1")).toBeInTheDocument();
     expect(screen.getByText("구간 2")).toBeInTheDocument();
@@ -22,7 +22,7 @@ describe("SectionTimeline", () => {
 
   /** 경계가 10분 같은 고정 길이가 아니라 서버가 준 실제 시각이어야 한다. */
   it("고정 길이가 아닌 실제 시각을 쓴다", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />);
 
     // 372초 = 06:12
     expect(screen.getAllByText(/06:12/).length).toBeGreaterThan(0);
@@ -35,6 +35,7 @@ describe("SectionTimeline", () => {
         selectedIndex={0}
         onSelect={() => {}}
         scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
       />,
     );
 
@@ -44,21 +45,21 @@ describe("SectionTimeline", () => {
 
   it("퍼센트 기호를 쓰지 않는다 — 1~4 척도다", () => {
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />,
+      <SectionTimeline sections={sections} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />,
     );
 
     expect(container.textContent).not.toContain("%");
   });
 
   it("구간이 없으면 그 사실을 알린다 — 248 미완 세션", () => {
-    render(<SectionTimeline sections={[]} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" />);
+    render(<SectionTimeline sections={[]} selectedIndex={0} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />);
 
     expect(screen.getByText(/수업 내용 구간이 아직 없어요/)).toBeInTheDocument();
   });
 
   it("구간을 누르면 그 번호를 알린다", () => {
     const onSelect = vi.fn();
-    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" />);
+    render(<SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" clipTabLabel="복습 클립" />);
 
     fireEvent.click(screen.getByRole("button", { name: /구간 2/ }));
 
@@ -69,7 +70,7 @@ describe("SectionTimeline", () => {
   it("화살표·Home·End 로 구간을 옮긴다", () => {
     const onSelect = vi.fn();
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" />,
+      <SectionTimeline sections={sections} selectedIndex={0} onSelect={onSelect} scopeLabel="내 집중도" clipTabLabel="복습 클립" />,
     );
     const list = container.querySelector("ul");
 
@@ -81,7 +82,7 @@ describe("SectionTimeline", () => {
   });
 
   it("고른 구간만 탭 순서에 남긴다 — roving tabindex", () => {
-    render(<SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" />);
+    render(<SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />);
 
     expect(screen.getByRole("button", { name: /구간 2/ })).toHaveAttribute("tabindex", "0");
     expect(screen.getByRole("button", { name: /구간 1/ })).toHaveAttribute("tabindex", "-1");
@@ -89,7 +90,7 @@ describe("SectionTimeline", () => {
 
   it("고른 구간을 읽어 준다", () => {
     const { container } = render(
-      <SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" />,
+      <SectionTimeline sections={sections} selectedIndex={1} onSelect={() => {}} scopeLabel="내 집중도" clipTabLabel="복습 클립" />,
     );
 
     const live = container.querySelector("[aria-live='polite']");
@@ -104,6 +105,7 @@ describe("SectionTimeline", () => {
         selectedIndex={0}
         onSelect={() => {}}
         scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
       />,
     );
 
@@ -123,6 +125,7 @@ describe("SectionTimeline", () => {
         selectedIndex={0}
         onSelect={() => {}}
         scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
         onJumpToClip={onJumpToClip}
       />,
     );
@@ -140,6 +143,7 @@ describe("SectionTimeline", () => {
         selectedIndex={0}
         onSelect={() => {}}
         scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
       />,
     );
 

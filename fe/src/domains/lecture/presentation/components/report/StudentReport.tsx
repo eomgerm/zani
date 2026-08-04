@@ -54,7 +54,7 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
         복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 제목과 설명은 다른 블록처럼
         박스 밖에 두고, 추천은 퀴즈 카드 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
       */}
-      <div className="grid grid-cols-2 items-stretch gap-5">
+      <div className="mt-[26px] grid grid-cols-2 items-stretch gap-5">
         <div className="flex min-w-0 flex-col">
           <div className="z-report-head">
             <div className="z-section-title">나의 복습 추천</div>

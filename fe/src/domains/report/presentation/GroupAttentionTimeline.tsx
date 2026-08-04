@@ -356,6 +356,7 @@ export function GroupAttentionTimeline({
               selectedIndex={activeSectionIndex}
               onSelect={setSelectedIndex}
               scopeLabel="전체 집중도"
+              clipTabLabel="수업 클립"
               onJumpToClip={onJumpToClip}
               detailIndex={detailIndex}
               onDetailChange={setDetailIndex}
