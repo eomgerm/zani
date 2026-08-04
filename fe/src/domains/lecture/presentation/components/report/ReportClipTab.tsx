@@ -60,7 +60,7 @@ export function ReportClipTab({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
               {transcript.map((t, i) => (
-                <div key={i} className="flex cursor-pointer gap-3 rounded-[9px] px-2 py-[9px] hover:bg-faint">
+                <div key={i} className="flex cursor-pointer gap-3 rounded-[9px] px-2 py-[9px] hover:bg-[#f6faf8]">
                   <span className="w-[42px] shrink-0 font-mono text-xs font-bold text-primary">
                     {t.t}
                   </span>

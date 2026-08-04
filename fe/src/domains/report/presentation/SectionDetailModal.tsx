@@ -87,7 +87,7 @@ export function SectionDetailModal({
               ) : (
                 <span className="inline-flex items-baseline gap-1" style={{ color }}>
                   <b className="font-mono text-[26px] font-extrabold tracking-[-.5px]">
-                    {Math.round(section.focusLevel)}
+                    {section.focusLevel.toFixed(1)}
                   </b>
                   <span className="text-[13px] font-extrabold text-ink-fainter">/ 4</span>
                 </span>

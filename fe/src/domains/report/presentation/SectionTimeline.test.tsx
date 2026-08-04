@@ -15,9 +15,9 @@ describe("SectionTimeline", () => {
     expect(screen.getByText("구간 1")).toBeInTheDocument();
     expect(screen.getByText("구간 2")).toBeInTheDocument();
     expect(screen.getByText("함수의 정의")).toBeInTheDocument();
-    // 점수는 정수로 반올림한다 — 30초 평균의 정밀도를 넘겨 읽히지 않게.
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    // 점수는 소수점 첫째 자리까지 — 둘째 자리에서 반올림한다.
+    expect(screen.getByText("3.2")).toBeInTheDocument();
+    expect(screen.getByText("1.8")).toBeInTheDocument();
   });
 
   /** 경계가 10분 같은 고정 길이가 아니라 서버가 준 실제 시각이어야 한다. */
@@ -39,7 +39,7 @@ describe("SectionTimeline", () => {
     );
 
     expect(screen.getAllByText("값 없음").length).toBeGreaterThan(0);
-    expect(screen.queryByText("1")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0")).not.toBeInTheDocument();
   });
 
   it("퍼센트 기호를 쓰지 않는다 — 1~4 척도다", () => {

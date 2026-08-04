@@ -228,11 +228,12 @@ export function GroupAttentionTimeline({
               </defs>
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
 
+              {/* 선이 끊기는 자리를 다 덮는다 — 빈 칸에만 맞추면 왼쪽에 흰 틈이 남는다. */}
               {shortages.map((run) => (
                 <ReferenceArea
                   key={`shortage-${run.start}`}
                   yAxisId="level"
-                  x1={run.start}
+                  x1={Math.max(0, run.start - focusFlow.intervalSeconds)}
                   x2={run.end}
                   y1={1}
                   y2={4}
@@ -460,9 +461,6 @@ export function GroupAttentionTimeline({
       <div className="z-report-head flex flex-wrap items-center justify-between gap-2.5">
         <div className="z-section-title">집중 흐름</div>
         <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
-          <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
-            전체 집중도 · 참고용
-          </span>
           {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
           <span className="flex items-center gap-[7px]">
             <span
@@ -476,7 +474,7 @@ export function GroupAttentionTimeline({
               aria-hidden="true"
               className="h-2 w-4 rounded-[3px] border border-line-light bg-[#c9cdde]/[.55]"
             />
-            회색은 인원 부족
+            인원 부족
           </span>
         </div>
       </div>

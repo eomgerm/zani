@@ -187,11 +187,15 @@ describe("StudentAttentionTimeline", () => {
     expect(screen.getByText(/수업 내용 구간이 아직 없어요/)).toBeInTheDocument();
   });
 
-  it("labels the metric as a reference-only derived value", async () => {
+  /**
+   * 지표 성격을 알리는 문구는 화면에서 걷어내기로 정해졌다(2026-08-04 디자인). 그래프 이름에는
+   * 남아 있어 눈으로 보지 않는 사람에게는 전달된다 — 눈으로 보는 사람에게는 알리지 않는다.
+   */
+  it("keeps the reference-only wording in the chart name", async () => {
     render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
 
-    // NFR-UX-006. 이 고지가 없으면 학생이 성적표로 읽는다. 긴 문장은 걷어내고 범례 칩에 남겼다.
-    expect(await screen.findByText(/참고용/)).toBeInTheDocument();
+    const chart = await screen.findByRole("img");
+    expect(chart.getAttribute("aria-label")).toContain("참고용");
   });
 
   it("never shows an average score or a comparison with others", async () => {

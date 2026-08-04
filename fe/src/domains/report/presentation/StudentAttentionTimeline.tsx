@@ -196,10 +196,14 @@ export function StudentAttentionTimeline({
                 })}
               </defs>
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
+              {/*
+                선은 값이 있는 앞 점부터 끊기므로 밴드도 그 자리부터 덮어야 한다. 빈 칸에만
+                맞추면 왼쪽에 흰 틈이 남아 그림이 두 번 끊긴 것처럼 보인다.
+              */}
               {blanks.map((run) => (
                 <ReferenceArea
                   key={`blank-${run.start}`}
-                  x1={run.start}
+                  x1={Math.max(0, run.start - intervalSeconds)}
                   x2={run.end}
                   y1={1}
                   y2={4}
@@ -297,9 +301,6 @@ export function StudentAttentionTimeline({
       <div className="z-report-head flex flex-wrap items-center justify-between gap-2.5">
         <div className="z-section-title">집중 흐름</div>
         <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
-          <span className="rounded-full bg-[#eaf7f2] px-2.5 py-[3px] text-[11px] font-extrabold text-primary-deep">
-            내 집중도 · 참고용
-          </span>
           {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
           <span className="flex items-center gap-[7px]">
             <span
@@ -313,7 +314,7 @@ export function StudentAttentionTimeline({
               aria-hidden="true"
               className="h-2 w-4 rounded-[3px] border border-line-light bg-[#c9cdde]/[.55]"
             />
-            회색은 기록 없음
+            기록 없음
           </span>
         </div>
       </div>

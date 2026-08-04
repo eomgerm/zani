@@ -78,7 +78,7 @@ export function SectionTimeline({
   const selected = sections[Math.min(selectedIndex, sections.length - 1)];
   const labelOf = (section: SectionAverage, index: number) =>
     `구간 ${index + 1} · ${section.title} · ${formatOffset(section.startSeconds)}~${formatOffset(section.endSeconds)} · ` +
-    (section.focusLevel === null ? "값 없음" : `${Math.round(section.focusLevel)}단계`);
+    (section.focusLevel === null ? "값 없음" : `${section.focusLevel.toFixed(1)}단계`);
 
   return (
     <div>
@@ -91,7 +91,7 @@ export function SectionTimeline({
           const active = index === selectedIndex;
           const color = sectionColorOf(section.focusLevel);
           return (
-            <li key={section.startSeconds} className="shrink-0">
+            <li key={section.startSeconds} className="min-w-[136px] flex-1 shrink-0">
               <button
                 type="button"
                 tabIndex={active ? 0 : -1}
@@ -101,7 +101,7 @@ export function SectionTimeline({
                   onSelect(index);
                   setDetailIndex(index);
                 }}
-                className={`flex h-full w-[152px] cursor-pointer flex-col rounded-[14px] border-[1.5px] px-3.5 py-[13px] text-left outline-offset-2 ${
+                className={`flex h-full w-full cursor-pointer flex-col rounded-[14px] border-[1.5px] px-3.5 py-[13px] text-left outline-offset-2 ${
                   active ? "border-primary bg-[#edfaf5]" : "border-line-mint bg-surface"
                 }`}
               >
@@ -121,7 +121,7 @@ export function SectionTimeline({
                         borderColor: color,
                       }}
                     >
-                      {Math.round(section.focusLevel)}
+                      {section.focusLevel.toFixed(1)}
                     </span>
                   )}
                 </span>

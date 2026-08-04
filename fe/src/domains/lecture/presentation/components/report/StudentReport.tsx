@@ -6,7 +6,6 @@ import {
   PictoClock,
   PictoDoc,
   PictoPen,
-  PictoStar,
 } from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
 import { recommendations, studentGlance, studentSummary } from "../../fixtures";
@@ -62,21 +61,21 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
         복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 추천은 개수가 늘 수 있어
         퀴즈 카드 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
       */}
-      <div className="mt-[26px] grid grid-cols-2 items-start gap-5">
-        <Card className="flex flex-col px-6 py-[22px]">
+      <div className="mt-[26px] grid grid-cols-2 items-stretch gap-5">
+        <Card className="flex max-h-[420px] flex-col px-6 py-[22px]">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <div className="z-section-title">나의 복습 추천</div>
             <span className="text-[11.5px] text-ink-fainter">
               자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
             </span>
           </div>
-          <ul className="flex max-h-[400px] list-none flex-col gap-3 overflow-y-auto p-0">
+          <ul className="flex min-h-0 flex-1 list-none flex-col gap-3 overflow-y-auto p-0">
             {recommendations.map((r) => (
               <li key={r.t}>
                 <button
                   type="button"
                   onClick={() => onJumpToClip(offsetSecondsOf(r.t))}
-                  className="flex w-full cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 text-left hover:border-line-primary hover:bg-faint"
+                  className="flex w-full cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 text-left hover:border-line-primary hover:bg-[#f6faf8]"
                 >
                   <span className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
                     <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
@@ -101,14 +100,14 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
           </ul>
         </Card>
 
-        <Card className="px-6 py-[22px]">
-          <div className="mb-4 flex items-center gap-2">
+        <Card className="flex flex-col px-6 py-[22px]">
+          <div className="mb-4">
             <div className="z-section-title">AI 이해도 퀴즈</div>
-            <span className="text-[11.5px] text-ink-fainter">
+            <div className="z-report-sub">
               강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
-            </span>
+            </div>
           </div>
-          <div className="mb-[18px] flex items-center gap-[18px]">
+          <div className="mb-[18px] flex flex-1 items-center gap-[18px]">
             <div className="flex h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
               <PictoPen size={44} />
             </div>
@@ -116,7 +115,6 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
               {[
                 { icon: <PictoDoc size={16} />, text: "총 5문제" },
                 { icon: <PictoClock size={16} />, text: "약 3분" },
-                { icon: <PictoStar size={16} />, text: "주요 개념 3개" },
               ].map((t) => (
                 <div
                   key={t.text}
