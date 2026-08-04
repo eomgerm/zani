@@ -102,7 +102,7 @@ class GmsContentAnalysisLiveCheckTest {
                         Duration.ofSeconds(6),
                         model,
                         Duration.ofSeconds(60)),
-                new ContentAnalysisProperties(4000));
+                new ContentAnalysisProperties(12_000));
 
         ContentAnalysisOutcome outcome =
                 adapter.analyze(new ContentAnalysisRequest("React 상태 관리 심화", CLASS_DURATION_MS, mockTranscript()));

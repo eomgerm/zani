@@ -64,7 +64,7 @@ class GmsContentAnalysisHttpAdapterTest {
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         GmsContentAnalysisHttpAdapter adapter = new GmsContentAnalysisHttpAdapter(
-                builder.build(), JsonMapper.builder().build(), gmsProperties(), new ContentAnalysisProperties(4000));
+                builder.build(), JsonMapper.builder().build(), gmsProperties(), new ContentAnalysisProperties(12_000));
         return new Fixture(adapter, server);
     }
 
@@ -100,7 +100,7 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andExpect(content().string(containsString("\"model\":\"gpt-5.4-mini\"")))
                 .andExpect(content().string(containsString("\"temperature\":0")))
                 // gpt-5.4-mini 는 max_tokens 를 거부한다(실측). 회귀로 못 박는다.
-                .andExpect(content().string(containsString("\"max_completion_tokens\":4000")))
+                .andExpect(content().string(containsString("\"max_completion_tokens\":12000")))
                 .andExpect(content().string(not(containsString("\"max_tokens\""))))
                 .andExpect(content().string(containsString("json_schema")))
                 .andExpect(content().string(containsString("session_content_analysis")))
@@ -198,6 +198,29 @@ class GmsContentAnalysisHttpAdapterTest {
         assertThat(outcome.analysis().sections().getFirst().endOffsetMs()).isEqualTo(195_000);
         // 마지막 구간의 끝과 첫 구간의 시작은 모델이 준 값 그대로다.
         assertThat(outcome.analysis().sections().getLast().endOffsetMs()).isEqualTo(226_000);
+    }
+
+    /**
+     * 빈틈 메우기가 진짜 겹침을 지우지 않는지.
+     *
+     * <p>다음 구간이 이 구간의 끝보다 앞에서 시작하면 겹침이다. 그때 끝을 다음 시작으로 낮추면 겹침이 사라져 적재 애그리거트가 볼 것이 없어지고, 겹친 타임라인이 조용히 저장된다. 메우기는 <b>늘리는
+     * 것만</b> 해야 한다.
+     */
+    @Test
+    void neverShrinksASectionSoRealOverlapStillReachesTheAggregate() {
+        Fixture fixture = fixture();
+        String overlapping = section("앞 구간", 0, 600_000) + "," + section("뒤 구간", 300_000, 900_000);
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(overlapping)), MediaType.APPLICATION_JSON));
+
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isPresent();
+        // 앞 구간의 끝이 그대로 남아야 겹침이 살아 있다. 300_000 으로 줄면 겹침이 지워진 것이다.
+        assertThat(outcome.analysis().sections().getFirst().endOffsetMs()).isEqualTo(600_000);
+        assertThat(outcome.analysis().sections().getLast().startOffsetMs()).isEqualTo(300_000);
     }
 
     /** 수업 길이를 넘는 구간은 재생할 수 없는 지점을 가리킨다. 저장 전에 버린다. */

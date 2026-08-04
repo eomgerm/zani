@@ -14,12 +14,12 @@ class ContentAnalysisPropertiesTest {
 
     @Test
     void fallsBackToTheDefaultWhenTheLimitIsMissing() {
-        assertEquals(4_000, new ContentAnalysisProperties(null).maxCompletionTokens());
+        assertEquals(12_000, new ContentAnalysisProperties(null).maxCompletionTokens());
     }
 
     /** 0 이면 모델이 아무것도 내지 못해 모든 세션의 분석이 실패한다. 기본값으로 되돌린다. */
     @Test
     void fallsBackToTheDefaultWhenTheLimitIsNotPositive() {
-        assertEquals(4_000, new ContentAnalysisProperties(0).maxCompletionTokens());
+        assertEquals(12_000, new ContentAnalysisProperties(0).maxCompletionTokens());
     }
 }

@@ -54,8 +54,18 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
     private static final int REQUEST_BUDGET_BYTES = 92_160;
 
     private static final int TITLE_MAX_LENGTH = 200;
-    private static final int SECTION_SUMMARY_MAX_LENGTH = 2_000;
-    private static final int CLASS_SUMMARY_MAX_LENGTH = 4_000;
+
+    /**
+     * 구간 요약 길이 상한. 프롬프트·스키마·출력 토큰 예산 셋이 같은 값을 보게 하려고 여기서 정한다.
+     *
+     * <p>적재 컬럼({@code TEXT})과 애그리거트 상한(2,000자)은 이보다 넉넉하지만, 여기서 더 조인다. 스키마가 허용하는 최악(구간 {@value #MAX_SECTIONS}개 × 요약
+     * 2,000자)은 약 92,000자로 {@code max-completion-tokens} 예산을 한참 넘고, 넘으면 {@code finish_reason=length} 로 잘려 <b>재시도할 수 없는
+     * 실패</b>가 된다 — 그 세션은 리포트를 받지 못한다. 리포트 타임라인에 한 줄로 붙는 요약이라 2~3문장이면 충분하다.
+     */
+    private static final int SECTION_SUMMARY_MAX_LENGTH = 200;
+
+    private static final int CLASS_SUMMARY_MAX_LENGTH = 1_000;
+
     private static final int MAX_SECTIONS = 40;
 
     /**
@@ -66,7 +76,8 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
      *
      * <p>평가 금지를 명시한다(FRD §17.4). 스키마에 감정·성격·역량 필드가 없어도 요약 문장에는 들어갈 수 있고, 그 문장은 학생이 그대로 읽는다.
      */
-    private static final String SYSTEM_PROMPT = """
+    private static final String SYSTEM_PROMPT =
+            """
             너는 수업 전사를 읽고 내용이 바뀌는 지점으로 수업을 구간으로 나누고, 각 구간과 수업 전체를 요약한다.
 
             [역할 경계]
@@ -87,9 +98,10 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
             [작성 규칙]
             - title 은 그 구간에서 다룬 내용을 가리키는 명사구로 쓴다. %d자 이내다.
             - summary 는 그 구간에서 실제로 말한 내용만 담는다. transcript 에 없는 내용을 추측해 넣지 않는다.
-            - classSummary 는 수업 전체에서 다룬 내용을 이어지는 문장으로 쓴다.
+              2~3문장으로 %d자 이내로 쓴다.
+            - classSummary 는 수업 전체에서 다룬 내용을 이어지는 문장으로 %d자 이내로 쓴다.
             - 사람의 성격, 태도, 성실성, 감정, 역량을 평가하지 않는다. 강사도 학생도 평가 대상이 아니다.
-            - 모든 문장은 한국어 존댓말로 쓴다.""".formatted(MAX_SECTIONS, TITLE_MAX_LENGTH);
+            - 모든 문장은 한국어 존댓말로 쓴다.""".formatted(MAX_SECTIONS, TITLE_MAX_LENGTH, SECTION_SUMMARY_MAX_LENGTH, CLASS_SUMMARY_MAX_LENGTH);
 
     private static final Map<String, Object> RESPONSE_FORMAT = responseFormat();
 
@@ -323,9 +335,10 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
             boolean last = index == sections.size() - 1;
             long endOffsetMs =
                     last ? section.endOffsetMs() : sections.get(index + 1).startOffsetMs();
-            if (endOffsetMs <= section.startOffsetMs()) {
-                // 다음 구간이 이 구간 안에서 시작한다(겹침). 늘리지 않고 그대로 둔다 — 겹침 판정은 적재
-                // 애그리거트가 소유하고, 여기서 손대면 진짜 겹침이 가려진다.
+            if (endOffsetMs <= section.endOffsetMs()) {
+                // 늘리는 것만 한다. 다음 구간이 이 구간의 끝보다 앞에서 시작하면 진짜 겹침인데, 그때 끝을
+                // 다음 시작으로 낮추면 겹침이 지워져 적재 애그리거트가 볼 것이 없어진다. 겹침 판정은 그쪽이
+                // 소유하므로 여기서는 원래 끝을 그대로 둔다(같은 지점에서 이어지는 경우도 이 갈래다).
                 endOffsetMs = section.endOffsetMs();
             }
             stitched.add(new AnalyzedSection(section.title(), section.summary(), section.startOffsetMs(), endOffsetMs));
