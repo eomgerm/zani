@@ -326,7 +326,7 @@ export function StudentAttentionTimeline({
           <div className="z-report-head">
             <div className="z-section-title">타임라인</div>
             <div className="z-report-sub">
-              구간을 눌러 어느 내용에서 집중 흐름이 오르내렸는지 확인해 보세요.
+              구간을 눌러 집중도와 핵심 내용을 확인하고, 관련 클립으로 복습해 보세요.
             </div>
           </div>
           <div className="z-report-box px-6 py-[22px]">

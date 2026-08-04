@@ -171,15 +171,6 @@ describe("GroupAttentionTimeline", () => {
     expect(await screen.findByText(/기록이 없어요/)).toBeInTheDocument();
   });
 
-  it("shows the response mix for the selected interval", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
-
-    expect(await screen.findByText(/헷갈림/)).toBeInTheDocument();
-    expect(screen.getByText(/놓침/)).toBeInTheDocument();
-    expect(screen.getByText(/무응답/)).toBeInTheDocument();
-    expect(screen.getByText(/측정 불가/)).toBeInTheDocument();
-  });
-
   it("explains a 403 as a permission problem, not an empty report", async () => {
     const request = vi.fn().mockRejectedValue(new AttentionTimelineError("nope", 403));
     render(<GroupAttentionTimeline sessionId="s1" request={request} />);

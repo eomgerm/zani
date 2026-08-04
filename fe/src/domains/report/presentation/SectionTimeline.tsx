@@ -85,13 +85,13 @@ export function SectionTimeline({
       <ul
         ref={listRef}
         onKeyDown={onKeyDown}
-        className="flex list-none gap-2.5 overflow-x-auto p-0 pb-1.5"
+        className="flex list-none gap-4 overflow-x-auto p-0 pb-1.5"
       >
         {sections.map((section, index) => {
           const active = index === selectedIndex;
           const color = sectionColorOf(section.focusLevel);
           return (
-            <li key={section.startSeconds} className="min-w-[136px] flex-1 shrink-0">
+            <li key={section.startSeconds} className="min-w-[176px] flex-1 shrink-0">
               <button
                 type="button"
                 tabIndex={active ? 0 : -1}

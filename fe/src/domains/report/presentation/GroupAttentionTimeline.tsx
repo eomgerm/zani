@@ -22,7 +22,6 @@ import {
 import {
   requestGroupAttentionTimeline,
   type GroupFocusPoint,
-  type GroupSignalPoint,
   type GroupTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
 import { SectionTimeline } from "./SectionTimeline";
@@ -57,9 +56,6 @@ import { useAttentionTimeline } from "./useAttentionTimeline";
 /** 5명 미만이면 서버가 값을 `null` 로 감춘다(REPORT-I-005). 그 판단을 화면이 뒤집지 않는다. */
 const MIN_AGGREGATE_HEADCOUNT = 5;
 
-const percentOf = (ratio: number | null): string =>
-  ratio === null ? "—" : `${Math.round(ratio * 100)}%`;
-
 /**
  * 인원이 모자라 감춘 구간을 찾는다. 값을 다시 세지 않고 인원 수만 본다.
  *
@@ -90,13 +86,6 @@ const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detai
     <div className="text-[13px]">{detail}</div>
   </div>
 );
-
-const MIX_FIELDS = [
-  { key: "confusedRatio", label: "헷갈림" },
-  { key: "missedRatio", label: "놓침" },
-  { key: "nonResponseRatio", label: "무응답" },
-  { key: "unmeasurableRatio", label: "측정 불가" },
-] as const;
 
 export interface GroupAttentionTimelineProps {
   readonly sessionId: string;
@@ -328,17 +317,6 @@ export function GroupAttentionTimeline({
   // 구간은 차트와 타임라인이 같은 응답에서 나온다. 두 자리에 따로 받아 오지 않는다.
   const sections = timeline?.sections ?? [];
   const activeSectionIndex = Math.min(selectedIndex, Math.max(0, sections.length - 1));
-  const activeSection = sections[activeSectionIndex];
-  // 고른 구간이 시작되는 시점의 5초 포인트를 그대로 읽는다. 여러 포인트를 평탄화하면 서버가
-  // 계산한 값이 아니라 화면이 지어낸 값이 된다.
-  const selectedPoint: GroupSignalPoint | undefined =
-    timeline === null
-      ? undefined
-      : activeSection === undefined
-        ? timeline.signals.points[0]
-        : (timeline.signals.points.find(
-            (point) => point.offsetSeconds >= activeSection.startSeconds,
-          ) ?? timeline.signals.points[0]);
 
   return (
     <>
@@ -370,7 +348,7 @@ export function GroupAttentionTimeline({
           <div className="z-report-head">
             <div className="z-section-title">타임라인</div>
             <div className="z-report-sub">
-              구간을 눌러 어느 내용에서 집단 집중 흐름이 오르내렸는지 확인해 보세요.
+              구간을 눌러 집중도와 핵심 내용을 확인하고, 관련 클립으로 복습해 보세요.
             </div>
           </div>
           <div className="z-report-box px-6 py-[22px]">
@@ -383,29 +361,6 @@ export function GroupAttentionTimeline({
               detailIndex={detailIndex}
               onDetailChange={setDetailIndex}
             />
-
-            {selectedPoint !== undefined && (
-              <div className="mt-4 rounded-xl bg-canvas px-4 py-3.5">
-                <div className="mb-2.5 text-xs font-extrabold text-ink-sub">
-                  {formatOffset(selectedPoint.offsetSeconds)} 시점의 응답 분포
-                </div>
-                <div className="grid grid-cols-4 gap-3">
-                  {MIX_FIELDS.map((field) => (
-                    <div key={field.key}>
-                      <div className="mb-1 text-[11.5px] text-ink-faint">{field.label}</div>
-                      <div className="text-lg font-extrabold tracking-[-.3px]">
-                        {percentOf(selectedPoint[field.key])}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {selectedPoint.eligibleCount < MIN_AGGREGATE_HEADCOUNT && (
-                  <p className="mt-2.5 text-[11.5px] font-semibold text-ink-faint">
-                    이 시점은 인원이 모자라 분포를 감췄어요.
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         </>
       )}

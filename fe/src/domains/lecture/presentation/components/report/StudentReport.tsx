@@ -1,12 +1,5 @@
 import Link from "next/link";
-import {
-  Badge,
-  Card,
-  PICTOGRAMS,
-  PictoClock,
-  PictoDoc,
-  PictoPen,
-} from "@/shared/ui";
+import { Badge, PICTOGRAMS, PictoClock, PictoDoc, PictoPen } from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
 import { recommendations, studentGlance, studentSummary } from "../../fixtures";
 
@@ -58,81 +51,83 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
       <StudentAttentionTimeline sessionId={sessionId} onJumpToClip={onJumpToClip} />
 
       {/*
-        복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 추천은 개수가 늘 수 있어
-        퀴즈 카드 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
+        복습 추천과 퀴즈는 둘 다 "이제 무엇을 할까"라 나란히 둔다. 제목과 설명은 다른 블록처럼
+        박스 밖에 두고, 추천은 퀴즈 카드 높이만큼만 자리를 쓰고 그 안에서 스크롤한다.
       */}
-      <div className="mt-[26px] grid grid-cols-2 items-stretch gap-5">
-        <Card className="flex max-h-[420px] flex-col px-6 py-[22px]">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-2 items-stretch gap-5">
+        <div className="flex min-w-0 flex-col">
+          <div className="z-report-head">
             <div className="z-section-title">나의 복습 추천</div>
-            <span className="text-[11.5px] text-ink-fainter">
-              자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
-            </span>
+            <div className="z-report-sub">복습이 필요한 구간을 확인하고 다시 학습해 보세요.</div>
           </div>
-          <ul className="flex min-h-0 flex-1 list-none flex-col gap-3 overflow-y-auto p-0">
-            {recommendations.map((r) => (
-              <li key={r.t}>
-                <button
-                  type="button"
-                  onClick={() => onJumpToClip(offsetSecondsOf(r.t))}
-                  className="flex w-full cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 text-left hover:border-line-primary hover:bg-[#f6faf8]"
-                >
-                  <span className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
-                    <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
-                      ▶
-                    </span>
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="mb-1 flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-[11.5px] font-extrabold text-primary">
-                        {r.t}
+          <div className="z-report-box flex max-h-[360px] min-h-0 flex-1 flex-col px-5 py-[18px]">
+            <ul className="flex min-h-0 flex-1 list-none flex-col gap-3 overflow-y-auto p-0">
+              {recommendations.map((r) => (
+                <li key={r.t}>
+                  <button
+                    type="button"
+                    onClick={() => onJumpToClip(offsetSecondsOf(r.t))}
+                    className="flex w-full cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 text-left hover:border-line-primary hover:bg-[#f6faf8]"
+                  >
+                    <span className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
+                      <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
+                        ▶
                       </span>
-                      <Badge bg={`${r.color}22`} fg={r.color}>
-                        {r.tag}
-                      </Badge>
-                      <span className="text-[13.5px] font-extrabold">{r.title}</span>
                     </span>
-                    <span className="block text-xs leading-[1.5] text-ink-faint">{r.reason}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
+                    <span className="min-w-0 flex-1">
+                      <span className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[11.5px] font-extrabold text-primary">
+                          {r.t}
+                        </span>
+                        <Badge bg={`${r.color}22`} fg={r.color}>
+                          {r.tag}
+                        </Badge>
+                        <span className="text-[13.5px] font-extrabold">{r.title}</span>
+                      </span>
+                      <span className="block text-xs leading-[1.5] text-ink-faint">
+                        {r.reason}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
 
-        <Card className="flex flex-col px-6 py-[22px]">
-          <div className="mb-4">
+        <div className="flex min-w-0 flex-col">
+          <div className="z-report-head">
             <div className="z-section-title">AI 이해도 퀴즈</div>
             <div className="z-report-sub">
               강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
             </div>
           </div>
-          <div className="mb-[18px] flex flex-1 items-center gap-[18px]">
-            <div className="flex h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
+          <div className="z-report-box flex flex-1 flex-col px-5 py-[18px]">
+            <div className="flex min-h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
               <PictoPen size={44} />
             </div>
-            <div className="flex flex-1 flex-col gap-2.5">
+            <div className="mt-3 grid grid-cols-2 gap-2.5">
               {[
                 { icon: <PictoDoc size={16} />, text: "총 5문제" },
                 { icon: <PictoClock size={16} />, text: "약 3분" },
               ].map((t) => (
                 <div
                   key={t.text}
-                  className="flex items-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
+                  className="flex items-center justify-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
                 >
                   {t.icon}
                   {t.text}
                 </div>
               ))}
             </div>
+            <Link
+              href={`/my-lectures/${lectureId}/quiz`}
+              className="z-btn z-btn-primary z-btn-block mt-3"
+            >
+              퀴즈 풀어보기 ›
+            </Link>
           </div>
-          <Link
-            href={`/my-lectures/${lectureId}/quiz`}
-            className="z-btn z-btn-primary z-btn-block"
-          >
-            퀴즈 풀어보기 ›
-          </Link>
-        </Card>
+        </div>
       </div>
     </>
   );
