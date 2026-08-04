@@ -125,6 +125,21 @@ class RecordingFinalizationJobPersistenceAdapterTest {
         assertEquals(sha256, text(sessionId, "output_sha256"));
     }
 
+    @Test
+    void worker_잠금_경합은_attempt에서_제외하고_다시_대기한다() {
+        long sessionId = queuedSession();
+        FinalizationJobLease lease =
+                port.tryClaim(sessionId, NOW.plusSeconds(300), NOW).orElseThrow();
+        FinalizationJobLease attempted =
+                port.beginAttempt(lease, NOW.plusSeconds(1)).orElseThrow();
+
+        assertTrue(port.markContended(attempted, NOW.plusSeconds(30), NOW.plusSeconds(2)));
+
+        assertEquals(0, integer(sessionId, "attempt_count"));
+        assertFalse(port.findDueSessionIds(NOW.plusSeconds(29), 100).contains(sessionId));
+        assertTrue(port.findDueSessionIds(NOW.plusSeconds(30), 100).contains(sessionId));
+    }
+
     private long queuedSession() {
         long sessionId = createSession("ENDED");
         insertRecording(sessionId);

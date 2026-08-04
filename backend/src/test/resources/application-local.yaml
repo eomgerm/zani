@@ -24,6 +24,10 @@ recording:
   # ApplicationContextRunner 를 쓰는 RecordingOutboxRelaySchedulerConditionTest 는 설정 파일을 읽지 않아
   # 영향을 받지 않는다. "속성이 없으면 켜진다"는 matchIfMissing 계약을 그대로 검증한다.
   outbox-relay-enabled: false
+  finalization:
+    dispatch:
+      # 캐시된 Spring context의 scheduler가 다른 테스트가 만든 종료 세션을 가져가지 않게 한다.
+      enabled: false
 
 postclass:
   transcription:

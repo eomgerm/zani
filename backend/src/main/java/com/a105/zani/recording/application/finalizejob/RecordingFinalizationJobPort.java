@@ -17,6 +17,9 @@ public interface RecordingFinalizationJobPort {
 
     boolean markWaiting(FinalizationJobLease lease, Instant nextAttemptAt, Instant now);
 
+    /** worker exit 9는 실제 시도가 아니므로 방금 증가한 attempt를 되돌리고 다시 대기한다. */
+    boolean markContended(FinalizationJobLease lease, Instant nextAttemptAt, Instant now);
+
     boolean markRetry(FinalizationJobLease lease, String error, Instant nextAttemptAt, Instant now);
 
     boolean markFailed(FinalizationJobLease lease, String error, Instant now);

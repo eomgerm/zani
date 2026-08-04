@@ -252,6 +252,15 @@ recording:
     worker-path: ${RECORDING_FINALIZATION_WORKER_PATH:/app/media/finalize-recording.sh}
     # 최대 3시간 수업을 보수적으로 허용하되 timeout 시 자식 ffmpeg까지 강제 종료한다.
     process-timeout: ${RECORDING_FINALIZATION_PROCESS_TIMEOUT:PT4H}
+    dispatch:
+      enabled: ${RECORDING_FINALIZATION_ENABLED:true}
+      poll-delay: ${RECORDING_FINALIZATION_POLL_DELAY:PT15S}
+      batch-size: ${RECORDING_FINALIZATION_BATCH_SIZE:5}
+      # 최대 4시간 프로세스 제한보다 길어야 살아 있는 worker의 실행권을 회수하지 않는다.
+      lease-duration: ${RECORDING_FINALIZATION_LEASE_DURATION:PT5H}
+      waiting-delay: ${RECORDING_FINALIZATION_WAITING_DELAY:PT15S}
+      retry-delay: ${RECORDING_FINALIZATION_RETRY_DELAY:PT1M}
+      max-attempts: ${RECORDING_FINALIZATION_MAX_ATTEMPTS:3}
 
 ---
 spring:

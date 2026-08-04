@@ -129,6 +129,32 @@ public interface RecordingFinalizationJobJpaRepository extends JpaRepository<Rec
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update RecordingFinalizationJobJpaEntity job
+               set job.status = :pending, job.attemptCount = case when job.attemptCount > 0
+                       then job.attemptCount - 1 else 0 end,
+                   job.leaseUntil = null, job.nextAttemptAt = :nextAttemptAt, job.updatedAt = :now
+             where job.sessionId = :sessionId and job.status = :running and job.leaseToken = :leaseToken
+            """)
+    int markContended(
+            @Param("sessionId") Long sessionId,
+            @Param("pending") String pending,
+            @Param("running") String running,
+            @Param("leaseToken") int leaseToken,
+            @Param("nextAttemptAt") Instant nextAttemptAt,
+            @Param("now") Instant now);
+
+    default int markContended(Long sessionId, int leaseToken, Instant nextAttemptAt, Instant now) {
+        return markContended(
+                sessionId,
+                RecordingFinalizationStatus.PENDING.name(),
+                RecordingFinalizationStatus.RUNNING.name(),
+                leaseToken,
+                nextAttemptAt,
+                now);
+    }
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update RecordingFinalizationJobJpaEntity job
                set job.status = :pending, job.leaseUntil = null, job.nextAttemptAt = :nextAttemptAt,
                    job.lastError = :error, job.updatedAt = :now
              where job.sessionId = :sessionId and job.status = :running and job.leaseToken = :leaseToken

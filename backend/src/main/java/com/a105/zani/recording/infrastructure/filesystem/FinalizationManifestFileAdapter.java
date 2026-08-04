@@ -2,7 +2,6 @@ package com.a105.zani.recording.infrastructure.filesystem;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -93,11 +92,8 @@ public class FinalizationManifestFileAdapter implements FinalizationManifestStor
     }
 
     private static void moveAtomically(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        } catch (AtomicMoveNotSupportedException unsupported) {
-            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        // 비원자 fallback은 독자가 절반짜리 JSON을 볼 수 있으므로 지원하지 않는다. 운영 경로는 같은 파일시스템이다.
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static void setPermissionsIfSupported(Path path, Set<PosixFilePermission> permissions) throws IOException {
