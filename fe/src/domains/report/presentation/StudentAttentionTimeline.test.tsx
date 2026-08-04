@@ -107,7 +107,7 @@ describe("StudentAttentionTimeline", () => {
         sessionId="s1"
         request={async () =>
           timelineWith({
-            sections: [{ startSeconds: 0, endSeconds: 90, title: "함수의 정의", focusLevel: 3.0 }],
+            sections: [{ startSeconds: 0, endSeconds: 90, title: "함수의 정의", summary: null, focusLevel: 3.0 }],
           })
         }
       />,
@@ -135,8 +135,8 @@ describe("StudentAttentionTimeline", () => {
         request={async () =>
           timelineWith({
             sections: [
-              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
-              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+              { startSeconds: 0, endSeconds: 30, title: "도입", summary: null, focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", summary: null, focusLevel: 1.8 },
             ],
           })
         }
@@ -164,8 +164,8 @@ describe("StudentAttentionTimeline", () => {
         request={async () =>
           timelineWith({
             sections: [
-              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
-              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+              { startSeconds: 0, endSeconds: 30, title: "도입", summary: null, focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", summary: null, focusLevel: 1.8 },
             ],
           })
         }

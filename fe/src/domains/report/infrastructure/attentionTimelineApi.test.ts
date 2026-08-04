@@ -138,6 +138,33 @@ describe("requestStudentAttentionTimeline", () => {
     expect(timeline.sections).toEqual([]);
   });
 
+  it("내용 구간 summary 를 문자열 또는 null 로 읽는다", async () => {
+    respondWith(
+      envelope({
+        durationSeconds: 60,
+        focusFlow: { intervalSeconds: 30, points: [] },
+        stateIntervals: [],
+        sections: [
+          {
+            startSeconds: 0,
+            endSeconds: 30,
+            title: "함수의 정의",
+            summary: "입력과 출력의 관계를 설명했어요.",
+            focusLevel: 3.2,
+          },
+          { startSeconds: 30, endSeconds: 60, title: "함수의 활용", summary: 42, focusLevel: null },
+        ],
+      }),
+    );
+
+    const timeline = await requestStudentAttentionTimeline("s1", "token");
+
+    expect(timeline.sections.map((section) => section.summary)).toEqual([
+      "입력과 출력의 관계를 설명했어요.",
+      null,
+    ]);
+  });
+
   it("intervalSeconds 가 없으면 집중 흐름 기본값 30초를 쓴다", async () => {
     respondWith(
       envelope({
