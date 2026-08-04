@@ -40,8 +40,9 @@ export function AppShell({
   return (
     <div className="flex min-h-screen bg-surface">
       <aside className="sticky top-0 flex h-screen w-[246px] shrink-0 flex-col border-r border-line px-4 py-[22px]">
+        {/* 시안은 여백 있는 원본을 62px 로 얹는다 — 여백을 잘라 둔 우리 파일에서는 24px 이 같은 크기다. */}
         <div className="px-2 pb-[22px]">
-          <Logo height={44} />
+          <Logo height={24} />
         </div>
 
         <nav className="flex flex-col gap-1">
