@@ -106,7 +106,8 @@ describe("GroupAttentionTimeline", () => {
     expect(chart.getAttribute("aria-label")).not.toContain("%");
   });
 
-  it("집계 인원이 5명 미만인 30초 칸을 안내한다", async () => {
+  /** 값을 감춘 사실은 알려야 한다(REPORT-I-005). 문구 대신 범례가 회색이 무엇인지 말한다. */
+  it("인원이 모자라 감춘 구간이 무엇인지 범례로 알린다", async () => {
     render(
       <GroupAttentionTimeline
         sessionId="s1"
@@ -121,7 +122,7 @@ describe("GroupAttentionTimeline", () => {
       />,
     );
 
-    expect(await screen.findByText(/집계 인원이 부족합니다/)).toBeInTheDocument();
+    expect(await screen.findByText("인원 부족")).toBeInTheDocument();
   });
 
   it("학생 이름이나 개별 값이 화면에 없다", async () => {

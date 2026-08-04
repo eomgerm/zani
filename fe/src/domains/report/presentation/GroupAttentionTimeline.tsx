@@ -220,10 +220,13 @@ export function GroupAttentionTimeline({
                 />
               ))}
 
+              {/* 눈금을 구간 시작 시각에 둔다. 자동 눈금은 경계와 어긋나 어느 구간인지 짚기 어렵다. */}
               <XAxis
                 dataKey="offsetSeconds"
                 type="number"
                 domain={[0, total]}
+                ticks={hasSections ? sections.map((section) => section.startSeconds) : undefined}
+                interval={0}
                 allowDuplicatedCategory={false}
                 tickFormatter={formatOffset}
                 tickLine={false}
@@ -305,11 +308,6 @@ export function GroupAttentionTimeline({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        {shortages.length > 0 && (
-          <p className="mt-1 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
-            회색 구간은 집계 인원이 부족합니다 — {MIN_AGGREGATE_HEADCOUNT}명 미만이라 값을 감췄어요.
-          </p>
-        )}
       </>
     );
   };
@@ -325,11 +323,12 @@ export function GroupAttentionTimeline({
         <div className="flex flex-wrap items-center gap-3.5 text-xs font-bold text-ink-muted">
           {/* 1~4 단계다. 시안 범례의 0 은 쓰지 않는다 — 0 단계 판정은 없다. */}
           <span className="flex items-center gap-[7px]">
+            낮음
             <span
               aria-hidden="true"
               className="h-2 w-9 rounded-full bg-[linear-gradient(90deg,#e0455f,#f4c325,#16c582)]"
             />
-            1 낮음 → 4 높음
+            높음
           </span>
           <span className="flex items-center gap-[7px]">
             <span
