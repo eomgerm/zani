@@ -1,11 +1,53 @@
 import { MenuIcon } from "@/shared/ui";
+import { StudentReportClip, type SeekRequest } from "@/domains/report";
 import { summarySections, transcript } from "../../fixtures";
 
+interface Props {
+  title: string;
+  /** 녹화·전사를 조회할 실제 세션 id. AI 요약은 아직 fixture 다. */
+  sessionId: string;
+  /**
+   * 학생만 실데이터 패널을 그린다. 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업으로
+   * 남는다 — 학생용 엔드포인트를 강사가 부르면 403 만 받는다.
+   */
+  isStudent: boolean;
+  seekRequest?: SeekRequest | null;
+}
+
 /** 리포트 탭 1 (수업 클립 / 복습 클립): 강의 영상 + 수업 내용 전사 + AI 요약 문서. */
-export function ReportClipTab({ title }: { title: string }) {
+export function ReportClipTab({ title, sessionId, isStudent, seekRequest = null }: Props) {
   return (
     <>
-      <div className="mb-5 grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
+      {isStudent ? (
+        <div className="mb-5">
+          <StudentReportClip sessionId={sessionId} title={title} seekRequest={seekRequest} />
+        </div>
+      ) : (
+        <MockClipPanel title={title} />
+      )}
+
+      {/* AI 요약 문서 */}
+      <div className="z-card px-7 py-6">
+        <div className="z-section-title mb-4">
+          <span className="text-primary">📝</span>수업 요약 레포트
+        </div>
+        <div className="flex flex-col gap-[18px]">
+          {summarySections.map((s) => (
+            <div key={s.h}>
+              <div className="mb-1.5 text-[14.5px] font-extrabold">{s.h}</div>
+              <p className="text-[13.5px] leading-[1.75] text-ink-sub">{s.p}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** 강사용 목업 패널. 강사 리포트 API 배선 전까지의 자리 표시자다. */
+function MockClipPanel({ title }: { title: string }) {
+  return (
+    <div className="mb-5 grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
         {/* 강의 영상 */}
         <div className="flex flex-col overflow-hidden rounded-2xl bg-panel-video shadow-[0_8px_30px_rgba(20,25,50,.22)]">
           <div className="relative flex aspect-video items-center justify-center bg-[linear-gradient(120deg,#1c2036,#20263f_55%,#1a1f34)]">
@@ -56,21 +98,5 @@ export function ReportClipTab({ title }: { title: string }) {
           </div>
         </div>
       </div>
-
-      {/* AI 요약 문서 */}
-      <div className="z-card px-7 py-6">
-        <div className="z-section-title mb-4">
-          <span className="text-primary">📝</span>수업 요약 레포트
-        </div>
-        <div className="flex flex-col gap-[18px]">
-          {summarySections.map((s) => (
-            <div key={s.h}>
-              <div className="mb-1.5 text-[14.5px] font-extrabold">{s.h}</div>
-              <p className="text-[13.5px] leading-[1.75] text-ink-sub">{s.p}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
   );
 }

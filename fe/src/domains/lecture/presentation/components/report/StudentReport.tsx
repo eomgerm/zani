@@ -1,19 +1,21 @@
 import Link from "next/link";
-import { Badge, BookmarkIcon, Card } from "@/shared/ui";
-import { StudentAttentionTimeline } from "@/domains/report";
-import { learnSegments, recommendations, studentGlance, studentSummary } from "../../fixtures";
+import { Card } from "@/shared/ui";
+import { StudentAttentionTimeline, StudentRecommendations } from "@/domains/report";
+import { learnSegments, studentGlance, studentSummary } from "../../fixtures";
 import { TimelineSegments } from "./TimelineSegments";
 
 interface Props {
   lectureId: string;
-  /** 집중 흐름을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
+  /** 집중 흐름·복습 추천을 조회할 실제 세션 id. 나머지 카드는 아직 fixture 다(110 범위). */
   sessionId: string;
   activeSeg: number;
   onSelect: (i: number) => void;
+  /** 추천을 누르면 클립 탭으로 전환해 그 구간부터 재생한다. */
+  onSeekToClip: (seconds: number) => void;
 }
 
 /** 리포트 탭 2 (학생) — 한눈에 보기 · 참여도 요약 · 집중 흐름 · 타임라인 · 복습 추천 + 퀴즈. */
-export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Props) {
+export function StudentReport({ lectureId, sessionId, activeSeg, onSelect, onSeekToClip }: Props) {
   return (
     <div className="flex flex-col gap-5">
       <Card className="px-6 py-[22px]">
@@ -67,43 +69,7 @@ export function StudentReport({ lectureId, sessionId, activeSeg, onSelect }: Pro
       </Card>
 
       <div className="grid grid-cols-2 items-start gap-5">
-        <Card className="px-6 py-[22px]">
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="z-section-title">
-              <span className="text-danger">🎯</span>나의 복습 추천
-            </div>
-            <span className="text-[11.5px] text-ink-fainter">
-              자기보고 · 질문 · 반복된 확인 필요가 결합된 구간만 골라요 (최대 5개)
-            </span>
-          </div>
-          <div className="flex flex-col gap-3">
-            {recommendations.map((r) => (
-              <div
-                key={r.t}
-                className="flex cursor-pointer gap-3.5 rounded-[13px] border border-line-mint p-3 hover:border-line-primary hover:bg-faint"
-              >
-                <div className="flex h-[50px] w-[74px] shrink-0 items-center justify-center rounded-[9px] bg-[#20233a]">
-                  <span className="flex size-[26px] items-center justify-center rounded-full bg-white/80 text-[11px] text-primary">
-                    ▶
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[11.5px] font-extrabold text-primary">
-                      {r.t}
-                    </span>
-                    <Badge bg={`${r.color}22`} fg={r.color}>
-                      {r.tag}
-                    </Badge>
-                    <span className="text-[13.5px] font-extrabold">{r.title}</span>
-                  </div>
-                  <div className="text-xs leading-[1.5] text-ink-faint">{r.reason}</div>
-                </div>
-                <BookmarkIcon className="shrink-0 text-[#c2c7dc]" />
-              </div>
-            ))}
-          </div>
-        </Card>
+        <StudentRecommendations sessionId={sessionId} onSeekToClip={onSeekToClip} />
 
         <Card className="px-6 py-[22px]">
           <div className="mb-4 flex items-center gap-2">

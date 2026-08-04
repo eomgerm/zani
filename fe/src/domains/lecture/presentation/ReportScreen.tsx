@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { DownloadIcon } from "@/shared/ui";
+import type { SeekRequest } from "@/domains/report";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -34,6 +35,14 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
   const [tab, setTab] = useState<"clip" | "report">("clip");
   const [activeSeg, setActiveSeg] = useState(2);
   const [segModal, setSegModal] = useState<number | null>(null);
+
+  // 리포트 탭(추천 카드·구간 모달)에서 온 이동 명령. 클립 탭으로 전환하며 플레이어에 전달한다.
+  // nonce 를 올려 두면 같은 구간을 연속으로 눌러도 두 번째 클릭이 무시되지 않는다.
+  const [clipSeek, setClipSeek] = useState<SeekRequest | null>(null);
+  const seekToClip = (seconds: number) => {
+    setTab("clip");
+    setClipSeek((prev) => ({ seconds, nonce: (prev?.nonce ?? 0) + 1 }));
+  };
 
   const onSelectSeg = (i: number) => {
     setActiveSeg(i);
@@ -116,7 +125,12 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           </div>
 
           {tab === "clip" ? (
-            <ReportClipTab title={lecture.title} />
+            <ReportClipTab
+              title={lecture.title}
+              sessionId={lectureId}
+              isStudent={roleStatus === "ready" && role === "STUDENT"}
+              seekRequest={clipSeek}
+            />
           ) : roleStatus === "loading" ? (
             /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
             <div className="px-5 py-[70px] text-center text-ink-fainter">
@@ -137,6 +151,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
               sessionId={lectureId}
               activeSeg={activeSeg}
               onSelect={onSelectSeg}
+              onSeekToClip={seekToClip}
             />
           )}
         </>
@@ -147,6 +162,8 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           segment={learnSegments[segModal]}
           role={isInstructor ? "instructor" : "student"}
           onClose={() => setSegModal(null)}
+          /* 강사 클립 탭은 아직 목업이라 이동할 플레이어가 없다. 학생만 배선한다. */
+          onGoToClip={isInstructor ? undefined : seekToClip}
         />
       )}
     </>

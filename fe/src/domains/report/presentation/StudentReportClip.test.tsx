@@ -1,0 +1,84 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@/domains/auth", () => ({ useAuth: () => ({ accessToken: "token" }) }));
+
+import { StudentReportError, type StudentReport } from "../infrastructure/studentReportApi";
+import { StudentReportClip } from "./StudentReportClip";
+
+const reportWith = (overrides: Partial<StudentReport> = {}): StudentReport => ({
+  recordingUrl: "https://media.example/lecture.mp4?token=a",
+  durationSeconds: 5430,
+  transcript: [
+    { startSeconds: 2, endSeconds: 30, speakerName: "박서준", text: "오늘은 상태 관리를 다룹니다." },
+    { startSeconds: 125, endSeconds: 150, speakerName: "정하윤", text: "Context 는 언제 쓰나요?" },
+  ],
+  recommendations: [],
+  seekTimestamp: 0,
+  ...overrides,
+});
+
+const failWith = (status: number) => async () => {
+  throw new StudentReportError("boom", status);
+};
+
+describe("StudentReportClip", () => {
+  it("녹화 플레이어와 실명 화자 전사를 함께 그린다", async () => {
+    render(
+      <StudentReportClip sessionId="s1" title="React" request={async () => reportWith()} />,
+    );
+
+    expect(await screen.findByTestId("report-video")).toBeInTheDocument();
+    expect(screen.getByText("박서준")).toBeInTheDocument();
+    expect(screen.getByText(/Context 는 언제 쓰나요/)).toBeInTheDocument();
+  });
+
+  it("전사 행을 누르면 플레이어가 그 발화 시각으로 이동한다", async () => {
+    render(
+      <StudentReportClip sessionId="s1" title="React" request={async () => reportWith()} />,
+    );
+
+    const video = (await screen.findByTestId("report-video")) as HTMLVideoElement;
+    Object.defineProperty(video, "readyState", { value: 1, configurable: true });
+
+    fireEvent.click(screen.getByRole("button", { name: /Context 는 언제 쓰나요/ }));
+
+    expect(video.currentTime).toBe(125);
+  });
+
+  it("리포트 탭에서 넘어온 이동 명령을 플레이어에 전달한다", async () => {
+    render(
+      <StudentReportClip
+        sessionId="s1"
+        title="React"
+        seekRequest={{ seconds: 1440, nonce: 1 }}
+        request={async () => reportWith()}
+      />,
+    );
+
+    const video = (await screen.findByTestId("report-video")) as HTMLVideoElement;
+    // 메타데이터 전에 도착한 명령은 메타데이터가 오는 순간 적용된다.
+    Object.defineProperty(video, "duration", { value: 5430, configurable: true });
+    fireEvent.loadedMetadata(video);
+
+    expect(video.currentTime).toBe(1440);
+  });
+
+  it("403 은 권한 안내, 404 는 준비 전 안내다", async () => {
+    const forbidden = render(
+      <StudentReportClip sessionId="s1" title="t" request={failWith(403)} />,
+    );
+    expect(await screen.findByText("이 수업의 다시 보기를 볼 수 없어요")).toBeInTheDocument();
+    forbidden.unmount();
+
+    render(<StudentReportClip sessionId="s1" title="t" request={failWith(404)} />);
+    expect(await screen.findByText("아직 분석이 끝나지 않았어요")).toBeInTheDocument();
+  });
+
+  it("그 밖의 실패는 다시 시도 버튼을 준다", async () => {
+    render(<StudentReportClip sessionId="s1" title="t" request={failWith(500)} />);
+
+    expect(await screen.findByText("다시 보기를 불러오지 못했어요")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "다시 시도" })).toBeInTheDocument();
+  });
+});

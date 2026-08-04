@@ -18,13 +18,30 @@ const role = vi.hoisted(() => ({
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
-// 카드 두 개는 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐는지만 본다.
+// report 도메인 카드들은 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐고 무엇이 전달됐는지만 본다.
 vi.mock("@/domains/report", () => ({
   GroupAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="group-timeline">{sessionId}</div>
   ),
   StudentAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-timeline">{sessionId}</div>
+  ),
+  StudentReportClip: ({
+    sessionId,
+    seekRequest,
+  }: {
+    sessionId: string;
+    seekRequest?: { seconds: number; nonce: number } | null;
+  }) => (
+    <div data-testid="student-clip">
+      {sessionId}
+      {seekRequest ? `@${seekRequest.seconds}` : ""}
+    </div>
+  ),
+  StudentRecommendations: ({ onSeekToClip }: { onSeekToClip: (seconds: number) => void }) => (
+    <button type="button" data-testid="student-recs" onClick={() => onSeekToClip(1440)}>
+      추천
+    </button>
   ),
 }));
 
@@ -87,5 +104,32 @@ describe("ReportScreen", () => {
     openReportTab();
 
     expect(screen.getByText(/리포트를 볼 수 없어요/)).toBeInTheDocument();
+  });
+
+  it("renders the real clip panel only for a confirmed student", () => {
+    role.role = "STUDENT";
+
+    render(<ReportScreen lectureId="s4" />);
+
+    expect(screen.getByTestId("student-clip")).toHaveTextContent("s4");
+  });
+
+  it("keeps the mock clip panel for an instructor", () => {
+    render(<ReportScreen lectureId="s1" />);
+
+    // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
+    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+  });
+
+  it("switches to the clip tab and forwards the seek when a recommendation is clicked", () => {
+    role.role = "STUDENT";
+
+    render(<ReportScreen lectureId="s4" />);
+    openReportTab();
+    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("student-recs"));
+
+    expect(screen.getByTestId("student-clip")).toHaveTextContent("@1440");
   });
 });

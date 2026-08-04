@@ -5,3 +5,7 @@
 export { GroupAttentionTimeline } from "./presentation/GroupAttentionTimeline";
 export { StudentAttentionTimeline } from "./presentation/StudentAttentionTimeline";
 export { InstructorNoteEditor } from "./presentation/InstructorNoteEditor";
+export { StudentReportClip } from "./presentation/StudentReportClip";
+export { StudentRecommendations } from "./presentation/StudentRecommendations";
+// 이동 명령의 모양만 밖에 공개한다. 명령을 만들어 보내는 쪽(리포트 화면)이 nonce 를 찍는다.
+export type { SeekRequest } from "./presentation/ReportPlayer";
