@@ -5,7 +5,6 @@ import {
   Area,
   CartesianGrid,
   ComposedChart,
-  Line,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -195,7 +194,7 @@ export function GroupAttentionTimeline({
         <div role="img" aria-label={chartLabel}>
           <ResponsiveContainer width="100%" height={hasSections ? 264 : 240}>
             {/* 배열이 둘이라 차트에 data 를 주지 않고 계열마다 자기 data 를 준다. */}
-            <ComposedChart margin={{ top: hasSections ? 34 : 12, right: 44, left: 4, bottom: 4 }}>
+            <ComposedChart margin={{ top: hasSections ? 34 : 12, right: 18, left: 4, bottom: 4 }}>
               <defs>
                 {sections.map((section, index) => {
                   const color = sectionColorOf(section.focusLevel);
@@ -213,18 +212,6 @@ export function GroupAttentionTimeline({
                     </linearGradient>
                   );
                 })}
-                {/* recharts 에 패턴 채우기 API 가 없어 SVG 패턴을 직접 선언한다. 색만으로
-                    계열을 나누면 색각 이상인 사람에게 두 선이 같아 보인다(NFR-UX-005). */}
-                <pattern
-                  id="cameraOffHatch"
-                  patternUnits="userSpaceOnUse"
-                  width={6}
-                  height={6}
-                  patternTransform="rotate(45)"
-                >
-                  <rect width={6} height={6} fill="#5e9ec6" fillOpacity={0.08} />
-                  <line x1={0} y1={0} x2={0} y2={6} stroke="#5e9ec6" strokeWidth={2.2} />
-                </pattern>
               </defs>
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
 
@@ -243,21 +230,6 @@ export function GroupAttentionTimeline({
                   ifOverflow="extendDomain"
                 />
               ))}
-              {distractedIntervals.map((interval) => (
-                <ReferenceArea
-                  key={`distracted-${interval.startSeconds}`}
-                  yAxisId="level"
-                  x1={interval.startSeconds}
-                  x2={interval.endSeconds}
-                  y1={1}
-                  y2={4}
-                  fill="#e0455f"
-                  fillOpacity={0.1}
-                  stroke="#e0455f"
-                  strokeOpacity={0.35}
-                  ifOverflow="extendDomain"
-                />
-              ))}
 
               <XAxis
                 dataKey="offsetSeconds"
@@ -270,7 +242,7 @@ export function GroupAttentionTimeline({
                 tick={{ fill: "#8a90b4", fontSize: 11 }}
               />
 
-              {/* 왼쪽: 집중 흐름 1~4. 주 계열이다. */}
+              {/* 1~4 단계 척도다. 0~100 으로 환산하지 않는다. */}
               <YAxis
                 yAxisId="level"
                 type="number"
@@ -282,57 +254,7 @@ export function GroupAttentionTimeline({
                 width={52}
                 tick={{ fill: "#8a90b4", fontSize: 11, fontWeight: 700 }}
               />
-              {/* 오른쪽: 비율 0~1. 왼쪽 축과 단위가 다르다. 같은 축에 놓지 않는다. */}
-              <YAxis
-                yAxisId="ratio"
-                orientation="right"
-                type="number"
-                domain={[0, 1]}
-                ticks={[0, 0.5, 1]}
-                // 데이터는 0.0~1.0 분수 그대로 두고 눈금에서만 100 을 곱한다.
-                tickFormatter={(value: number) => `${Math.round(value * 100)}%`}
-                tickLine={false}
-                axisLine={false}
-                width={40}
-                tick={{ fill: "#8a90b4", fontSize: 11, fontWeight: 700 }}
-              />
 
-              <Area
-                yAxisId="ratio"
-                data={signals.points as GroupSignalPoint[]}
-                type="monotone"
-                dataKey="cameraOffRatio"
-                stroke="none"
-                fill="url(#cameraOffHatch)"
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-              <Line
-                yAxisId="ratio"
-                data={signals.points as GroupSignalPoint[]}
-                type="monotone"
-                dataKey="checkNeededRatio"
-                stroke="#e0455f"
-                strokeWidth={1.6}
-                strokeDasharray="2 3"
-                dot={false}
-                activeDot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-              <Line
-                yAxisId="ratio"
-                data={signals.points as GroupSignalPoint[]}
-                type="monotone"
-                dataKey="cameraOffRatio"
-                stroke="#5e9ec6"
-                strokeWidth={1.6}
-                strokeDasharray="6 4"
-                dot={false}
-                activeDot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
               {/* 구간이 갈리는 자리를 점선으로 짚는다. */}
               {sectionBounds(sections).map((boundary) => (
                 <ReferenceLine
@@ -363,13 +285,15 @@ export function GroupAttentionTimeline({
                   />
                 ))}
               {!hasSections && (
-                <Line
+                <Area
                   yAxisId="level"
                   data={focusFlow.points as GroupFocusPoint[]}
                   type="monotone"
                   dataKey="focusLevel"
                   stroke="#16c582"
                   strokeWidth={2.8}
+                  fill="#16c582"
+                  fillOpacity={0.14}
                   dot={false}
                   activeDot={false}
                   connectNulls={false}
@@ -392,46 +316,6 @@ export function GroupAttentionTimeline({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <ul className="mt-2 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0 text-[11.5px] font-semibold text-ink-faint">
-          <li className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="inline-block h-1.5 w-5 rounded-full bg-[#16c582]" />
-            집단 집중 흐름 (왼쪽 축)
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="inline-block h-0.5 w-5 rounded-full"
-              style={{
-                background: "repeating-linear-gradient(90deg, #e0455f 0 2px, transparent 2px 5px)",
-              }}
-            />
-            확인 필요 비율 (오른쪽 축, 점선)
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="inline-block h-0.5 w-5 rounded-full"
-              style={{
-                background:
-                  "repeating-linear-gradient(45deg, #5e9ec6 0 2px, transparent 2px 6px)",
-              }}
-            />
-            카메라 꺼짐 비율 (오른쪽 축, 빗금)
-          </li>
-          <li className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className="inline-block h-3 w-5 rounded-[3px] border border-[#e0455f]/40 bg-[#e0455f]/10"
-            />
-            집중 흐트러짐 구간
-          </li>
-        </ul>
-
-        <p className="mt-2 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
-          왼쪽 축은 집중 흐름 1~4 단계, 오른쪽 축은 비율 0~100%입니다. 축이 다르니 두 선의 높이를
-          견주지 마세요. 확인 필요 비율의 분모는 측정 가능한 인원, 카메라 꺼짐 비율의 분모는 접속한
-          인원 전체라 분모가 다릅니다. 두 값을 더하지 마세요.
-        </p>
         {shortages.length > 0 && (
           <p className="mt-1 text-[11.5px] font-semibold leading-[1.6] text-ink-faint">
             회색 구간은 집계 인원이 부족합니다 — {MIN_AGGREGATE_HEADCOUNT}명 미만이라 값을 감췄어요.

@@ -84,29 +84,26 @@ describe("GroupAttentionTimeline", () => {
     expect(ariaLabel.indexOf("집중 흐름")).toBeLessThan(ariaLabel.indexOf("확인 필요"));
   });
 
-  it("배열이 둘로 갈라져도 계열 셋을 모두 그린다", async () => {
+  /** 강사 그래프도 학생과 같은 구성이다 — 집단 집중 흐름 한 계열만 그린다. */
+  it("집단 집중 흐름 한 계열만 그린다", async () => {
     const { container } = render(
       <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
     );
 
     await screen.findByRole("img");
 
-    // 계열마다 자기 data 를 주는 구성이라 하나라도 빠지면 조용히 선이 사라진다.
-    const curves = container.querySelectorAll("path.recharts-line-curve");
-    expect(curves).toHaveLength(3);
-    // 주 계열(집중 흐름)은 굵은 초록 선이다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(1);
     expect(container.querySelector('path[stroke="#16c582"]')?.getAttribute("d")).toContain("M");
   });
 
-  it("두 축의 단위가 다르다는 것을 적는다", async () => {
-    const { container } = render(
-      <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
-    );
+  it("척도가 1~4 단계라는 것을 그래프 이름에 적는다", async () => {
+    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
 
-    await screen.findByRole("img");
+    const chart = await screen.findByRole("img");
 
-    expect(container.textContent).toContain("1~4 단계");
-    expect(container.textContent).toContain("분모가 다릅니다");
+    expect(chart.getAttribute("aria-label")).toContain("1~4 단계");
+    // 비율 계열이 빠졌으므로 퍼센트 축도 없다.
+    expect(chart.getAttribute("aria-label")).not.toContain("%");
   });
 
   it("집계 인원이 5명 미만인 30초 칸을 안내한다", async () => {
