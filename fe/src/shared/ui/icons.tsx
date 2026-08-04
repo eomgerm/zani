@@ -12,6 +12,16 @@ type IconProps = {
   className?: string;
 };
 
+/** 면(fill)으로만 그리는 아이콘의 svg 속성. 색은 `currentColor` 를 따른다. */
+const solidProps = (size: number, className?: string) => ({
+  width: size,
+  height: size,
+  viewBox: "0 0 24 24",
+  fill: "none" as const,
+  "aria-hidden": true,
+  className,
+});
+
 /** 모든 아이콘이 공유하는 svg 속성 */
 const svgProps = (size: number, strokeWidth: number, className?: string) => ({
   width: size,
@@ -26,36 +36,10 @@ const svgProps = (size: number, strokeWidth: number, className?: string) => ({
   className,
 });
 
-/* ---- 사이드바 내비게이션 (프로토타입 navIcon, 21px / stroke 1.9) ---- */
+/* 사이드바 내비게이션 아이콘은 pictograms 로 옮겼다 — 시안이 같은 도형을 상태별 색으로 쓴다. */
 
-export function HomeIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <path d="M4 11l8-6.5 8 6.5" />
-      <path d="M6 9.5V20h12V9.5" />
-    </svg>
-  );
-}
-
-export function CardsIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <rect x="4" y="4" width="16" height="16" rx="2.6" />
-      <path d="M9 4v16" />
-    </svg>
-  );
-}
-
-export function GearIcon({ size = 21, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.9, className)}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 2.5v2.5M12 19v2.5M4.4 7l2.1 1.2M17.5 15.8l2.1 1.2M4.4 17l2.1-1.2M17.5 8.2l2.1-1.2" />
-    </svg>
-  );
-}
-
-/* ---- 목록 툴바 · 카드 메타 ---- */
+/* ---- 목록 툴바 ----
+   검색·정렬은 시안도 선형이다(프로토타입 툴바 인라인 SVG). 카탈로그에도 대응이 없어 그대로 둔다. */
 
 export function SearchIcon({ size = 15, className }: IconProps) {
   return (
@@ -75,59 +59,37 @@ export function SortIcon({ size = 14, className }: IconProps) {
   );
 }
 
-/** 리스트 보기(도트 + 선) */
-export function ListIcon({ size = 17, className }: IconProps) {
+/**
+ * 보기 전환 토글의 두 아이콘. 카탈로그 픽토그램과 같은 솔리드 형태지만 색이 상태를 따라야 해서
+ * (활성은 초록 배경 위 흰색) `currentColor` 로 둔다 — 색이 박힌 픽토그램을 쓸 수 없는 자리다.
+ */
+export function ListIcon({ size = 16, className }: IconProps) {
   return (
-    <svg {...svgProps(size, 2, className)}>
-      <line x1="8" y1="6" x2="20" y2="6" />
-      <line x1="8" y1="12" x2="20" y2="12" />
-      <line x1="8" y1="18" x2="20" y2="18" />
-      <circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none" />
+    <svg {...solidProps(size, className)}>
+      <rect x="3" y="4.4" width="18" height="3.4" rx="1.7" fill="currentColor" />
+      <rect x="3" y="10.3" width="18" height="3.4" rx="1.7" fill="currentColor" opacity=".75" />
+      <rect x="3" y="16.2" width="18" height="3.4" rx="1.7" fill="currentColor" opacity=".5" />
     </svg>
   );
 }
 
-export function CalendarIcon({ size = 17, className }: IconProps) {
+export function CalendarIcon({ size = 16, className }: IconProps) {
   return (
-    <svg {...svgProps(size, 2, className)}>
-      <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
-      <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+    <svg {...solidProps(size, className)}>
+      <rect x="3" y="4.4" width="18" height="16.2" rx="3" fill="currentColor" />
+      <rect x="6.4" y="11" width="3" height="3" rx=".8" fill="#fff" />
+      <rect x="10.7" y="11" width="3" height="3" rx=".8" fill="#fff" opacity=".75" />
+      <rect x="6.4" y="15.2" width="3" height="3" rx=".8" fill="#fff" opacity=".75" />
     </svg>
   );
 }
 
-export function ClockIcon({ size = 15, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 2, className)}>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </svg>
-  );
-}
-
-/** 섹션 제목 앞 햄버거(마지막 줄이 짧다) */
-export function MenuIcon({ size = 16, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 2, className)}>
-      <path d="M4 6h16M4 12h16M4 18h10" />
-    </svg>
-  );
-}
-
-export function BookmarkIcon({ size = 15, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 2, className)}>
-      <path d="M6 4h12v16l-6-4-6 4z" />
-    </svg>
-  );
-}
-
+/** 내려받기. 초록 버튼 위에 흰색으로 얹히므로 픽토그램 대신 `currentColor` 를 쓴다. */
 export function DownloadIcon({ size = 16, className }: IconProps) {
   return (
-    <svg {...svgProps(size, 2.2, className)}>
-      <path d="M12 4v11M7 11l5 4 5-4M5 20h14" />
+    <svg {...svgProps(size, 2.6, className)}>
+      <path d="M12 3.2v9.3M7.4 9l4.6 4.6L16.6 9" />
+      <rect x="4.5" y="18.6" width="15" height="2.6" rx="1.3" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -234,16 +196,6 @@ export function CloseIcon({ size = 22, className }: IconProps) {
   return (
     <svg {...svgProps(size, 2.2, className)}>
       <path d="M6 6l12 12M18 6 6 18" />
-    </svg>
-  );
-}
-
-/** 화면 공유 오버레이의 모니터 일러스트 */
-export function MonitorIcon({ size = 60, className }: IconProps) {
-  return (
-    <svg {...svgProps(size, 1.5, className)}>
-      <rect x="2" y="4" width="20" height="13" rx="2" />
-      <path d="M8 21h8M12 17v4" />
     </svg>
   );
 }

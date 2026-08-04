@@ -86,7 +86,7 @@ describe("MyLecturesScreen", () => {
   });
 
   /** 내가 연 수업은 강사가 나이므로 이름 대신 몇 명이 들었는지가 궁금하다. */
-  it("진행강의 카드에는 수강생 수가 보인다", async () => {
+  it("진행강의 카드에는 들어온 인원 수가 보인다", async () => {
     render(
       <MyLecturesScreen
         requestList={listing([summary({ role: "INSTRUCTOR", participantCount: 24 })])}
@@ -95,7 +95,7 @@ describe("MyLecturesScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "진행강의" }));
 
-    expect(await screen.findByText("수강생 24명")).toBeVisible();
+    expect(await screen.findByText("인원 24명")).toBeVisible();
   });
 
   /** 리포트가 실패했다고 수업이 없었던 것은 아니다. 목록에서 지우면 강사는 자기 수업이 사라진 것으로 본다. */

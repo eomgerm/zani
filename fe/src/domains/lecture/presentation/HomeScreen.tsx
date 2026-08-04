@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/domains/auth";
+import { PictoLink, PictoPlus } from "@/shared/ui";
 import { inviteCodeFrom } from "@/domains/lecture/domain/inviteCode";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
 import { EndSessionButton } from "./components/room/EndSessionButton";
@@ -45,7 +46,7 @@ export function HomeScreen({
       <h1 className="mb-2 text-3xl font-extrabold tracking-[-.7px]">
         안녕하세요, {member?.displayName ?? "사용자"}님!
       </h1>
-      <p className="mb-[26px] text-[15px] text-ink-faint">
+      <p className="mb-[26px] text-base text-ink-faint">
         ZANI에서 수업을 시작하고, 함께 배워보세요.
       </p>
 
@@ -58,9 +59,9 @@ export function HomeScreen({
       {activeSession !== null && (
         <div
           data-testid="active-session-banner"
-          className="mb-[34px] flex items-center gap-[18px] rounded-[18px] border border-line-mint bg-primary-softer px-6 py-[18px]"
+          className="mb-[34px] flex items-center gap-[18px] rounded-2xl border border-shell-line bg-shell px-6 py-[18px]"
         >
-          <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-surface shadow-[0_4px_14px_rgba(18,184,134,.16)]">
+          <span className="flex size-[52px] shrink-0 items-center justify-center rounded-full bg-surface">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <rect x="2.5" y="6.5" width="12" height="11" rx="2.5" fill="#10b981" />
               <path d="M15 10l6-3.5v11L15 14z" fill="#10b981" />
@@ -88,25 +89,16 @@ export function HomeScreen({
       )}
 
 
-      <h2 className="mb-1.5 text-[21px] font-extrabold tracking-[-.4px]">무엇을 할까요?</h2>
+      <h2 className="mb-1.5 text-[22px] font-extrabold tracking-[-.4px]">무엇을 할까요?</h2>
       <p className="mb-5 text-sm text-ink-faint">
         새로운 수업을 시작하거나, 참여할 수업에 입장해보세요.
       </p>
 
       <div className="grid grid-cols-2 gap-[22px]">
         {/* 강의실 만들기 */}
-        <div className="relative flex flex-col overflow-hidden rounded-[20px] border border-line-mint bg-canvas px-7 py-[30px]">
+        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-shell-line bg-shell px-7 py-[30px]">
           <CornerIcon>
-            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="3" y="5" width="18" height="16" rx="3" fill="#fff" />
-              <rect x="3" y="5" width="18" height="5" rx="3" fill="#10b981" />
-              <path d="M8 3v4M16 3v4" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" />
-              <rect x="6.5" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
-              <rect x="10.7" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
-              <rect x="14.9" y="12.5" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
-              <rect x="6.5" y="16.4" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
-              <rect x="10.7" y="16.4" width="2.6" height="2.6" rx=".6" fill="#c3c8f7" />
-            </svg>
+            <PictoPlus size={36} />
           </CornerIcon>
           <h3 className="mb-3 whitespace-nowrap pr-[92px] text-[22px] font-extrabold tracking-[-.4px]">
             강의실 만들기
@@ -123,23 +115,9 @@ export function HomeScreen({
         </div>
 
         {/* 강의실 참여하기 */}
-        <div className="relative flex flex-col overflow-hidden rounded-[20px] border border-line-mint bg-canvas px-7 py-[30px]">
+        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-shell-line bg-shell px-7 py-[30px]">
           <CornerIcon>
-            <svg
-              width="36"
-              height="36"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#1ece8a"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9.5 14.5l5-5" />
-              <path d="M13 7l1.5-1.5a3.5 3.5 0 0 1 5 5L18 12" />
-              <path d="M11 17l-1.5 1.5a3.5 3.5 0 0 1-5-5L6 12" />
-            </svg>
+            <PictoLink size={36} />
           </CornerIcon>
           <h3 className="mb-3 whitespace-nowrap pr-[92px] text-[22px] font-extrabold tracking-[-.4px]">
             강의실 참여하기
@@ -183,10 +161,10 @@ export function HomeScreen({
   );
 }
 
-/** 카드 우상단의 큰 아이콘 배지 */
+/** 카드 우상단의 큰 아이콘 배지. 시안은 그라디언트·글로우 없이 플랫 민트 한 겹이다. */
 function CornerIcon({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute right-6 top-6 flex size-[76px] items-center justify-center rounded-[18px] bg-[linear-gradient(135deg,#daf3ea,#c9ecdf)] shadow-[0_12px_30px_rgba(18,184,134,.22)]">
+    <div className="absolute right-6 top-6 flex size-[76px] items-center justify-center rounded-2xl bg-shell-icon">
       {children}
     </div>
   );

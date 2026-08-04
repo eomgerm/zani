@@ -60,8 +60,9 @@ describe("StudentAttentionTimeline", () => {
 
     await screen.findByRole("img");
 
+    const chart = screen.getByRole("img");
     expect(container.textContent).not.toContain("이동창");
-    expect(container.textContent).toContain("30초 구간");
+    expect(chart.getAttribute("aria-label")).toContain("30초 구간");
   });
 
   it("빈 값 구간을 공백으로 알린다 — 0% 도 1단계도 아니다", async () => {
@@ -74,11 +75,12 @@ describe("StudentAttentionTimeline", () => {
     // 30~60초 한 칸이 비어 있다.
     expect(chart.getAttribute("aria-label")).toContain("00:30");
     // recharts 는 값이 null 인 점을 path 에서 끊는다. 0 으로 채웠다면 끊기지 않는다.
-    const path = container.querySelector("path.recharts-line-curve");
+    const path = container.querySelector("path.recharts-area-curve");
     expect(path?.getAttribute("d")).toContain("M");
   });
 
-  it("서버가 준 상태 구간을 그대로 막대로 그린다", async () => {
+  /** 집중 흐름 칸에는 그래프만 둔다. 상태 막대는 타임라인이 구간 선택을 맡으면서 걷어냈다. */
+  it("집중 흐름 칸에 상태 막대를 그리지 않는다", async () => {
     render(
       <StudentAttentionTimeline
         sessionId="s1"
@@ -93,8 +95,10 @@ describe("StudentAttentionTimeline", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: /집중/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /카메라 꺼짐/ })).toBeInTheDocument();
+    await screen.findByRole("img");
+
+    expect(screen.queryByRole("group", { name: /상태/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /카메라 꺼짐/ })).not.toBeInTheDocument();
   });
 
   it("내용 구간 평균이 있으면 함께 보여준다", async () => {
@@ -113,29 +117,85 @@ describe("StudentAttentionTimeline", () => {
   });
 
   it("내용 구간이 없으면 그 영역만 비고 그래프는 정상이다", async () => {
-    render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
-
-    expect(await screen.findByRole("img")).toBeInTheDocument();
-    expect(screen.queryByText("수업 내용 구간별 집중 흐름")).not.toBeInTheDocument();
-  });
-
-  it("상태 구간이 하나도 없어도 깨지지 않는다", async () => {
-    render(
-      <StudentAttentionTimeline
-        sessionId="s1"
-        request={async () => timelineWith({ stateIntervals: [] })}
-      />,
+    const { container } = render(
+      <StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />,
     );
 
     expect(await screen.findByRole("img")).toBeInTheDocument();
-    expect(screen.getByText(/구간 정보가 없어요/)).toBeInTheDocument();
+    expect(screen.queryByText("수업 내용 구간")).not.toBeInTheDocument();
+    // 구간이 없어도 흐름은 한 줄로 그린다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(1);
   });
 
-  it("labels the metric as a reference-only derived value", async () => {
+  /** 구간을 색으로 갈라 놓지 않으면 어느 내용에서 흐름이 내려갔는지 시간축을 되짚어야 한다. */
+  it("내용 구간마다 계열을 따로 그리고 구간 이름을 붙인다", async () => {
+    const { container } = render(
+      <StudentAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          timelineWith({
+            sections: [
+              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+            ],
+          })
+        }
+      />,
+    );
+
+    await screen.findByRole("img");
+
+    // 구간마다 계열이 하나씩 — 한 줄로 이어 그리지 않는다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(2);
+    // 구간 이름은 차트 위에 붙고, 아래 카드도 같은 번호를 쓴다.
+    expect(screen.getAllByText("구간 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("구간 2").length).toBeGreaterThan(0);
+    // 평균이 다른 두 구간은 색도 다르다.
+    const strokes = [...container.querySelectorAll("path.recharts-area-curve")].map((path) =>
+      path.getAttribute("stroke"),
+    );
+    expect(strokes[0]).not.toBe(strokes[1]);
+  });
+
+  it("구간 경계마다 점선을 하나씩 둔다 — 첫 구간의 시작은 축과 겹쳐 그리지 않는다", async () => {
+    const { container } = render(
+      <StudentAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          timelineWith({
+            sections: [
+              { startSeconds: 0, endSeconds: 30, title: "도입", focusLevel: 3.4 },
+              { startSeconds: 30, endSeconds: 90, title: "실습", focusLevel: 1.8 },
+            ],
+          })
+        }
+      />,
+    );
+
+    await screen.findByRole("img");
+
+    const dashed = [...container.querySelectorAll("line.recharts-reference-line-line")].filter(
+      (line) => line.getAttribute("stroke-dasharray") === "4 5",
+    );
+    expect(dashed).toHaveLength(1);
+  });
+
+  it("내용 구간이 하나도 없어도 깨지지 않는다", async () => {
     render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
 
-    // NFR-UX-006. 이 문구가 없으면 학생이 성적표로 읽는다.
-    expect(await screen.findByText(/참고용/)).toBeInTheDocument();
+    expect(await screen.findByRole("img")).toBeInTheDocument();
+    expect(screen.getByText(/수업 내용 구간이 아직 없어요/)).toBeInTheDocument();
+  });
+
+  /**
+   * 지표 성격을 알리는 문구는 화면에서 걷어내기로 정해졌다(2026-08-04 디자인). 그래프 이름에는
+   * 남아 있어 눈으로 보지 않는 사람에게는 전달된다 — 눈으로 보는 사람에게는 알리지 않는다.
+   */
+  it("keeps the reference-only wording in the chart name", async () => {
+    render(<StudentAttentionTimeline sessionId="s1" request={async () => timelineWith()} />);
+
+    const chart = await screen.findByRole("img");
+    expect(chart.getAttribute("aria-label")).toContain("참고용");
   });
 
   it("never shows an average score or a comparison with others", async () => {

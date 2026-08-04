@@ -2,13 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DownloadIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
-import { learnSegments, lectures } from "./fixtures";
+import {
+  ChevronLeftIcon,
+  DownloadIcon,
+  PictoClockMuted,
+  PictoLock,
+  PictoWarn,
+} from "@/shared/ui";
+import { lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
-import { SegmentModal } from "./components/report/SegmentModal";
 import { useSessionRole } from "./useSessionRole";
+import type { ClipSeekRequest } from "@/domains/report";
 
 const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
@@ -58,26 +64,36 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
   const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
 
   const [tab, setTab] = useState<"clip" | "report">("clip");
-  const [activeSeg, setActiveSeg] = useState(2);
-  const [segModal, setSegModal] = useState<number | null>(null);
 
-  const onSelectSeg = (i: number) => {
-    setActiveSeg(i);
-    setSegModal(i);
+  /**
+   * 구간 상세의 "클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린 뒤 그 시각을 넘긴다.
+   *
+   * <p>nonce 를 함께 올리는 이유: 같은 구간을 연달아 누르면 시각이 같아 상태가 바뀌지 않고,
+   * 그러면 두 번째 이동이 묻힌다. 실제 재생 위치 이동은 학생 플레이어(113)가 맡는다.
+   */
+  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(null);
+  const jumpToClip = (offsetSeconds: number) => {
+    setSeekRequest((previous) => ({
+      seconds: offsetSeconds,
+      nonce: (previous?.nonce ?? 0) + 1,
+    }));
+    setTab("clip");
+    window.scrollTo({ top: 0 });
   };
 
   const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
 
   return (
     <>
-      <Link
-        href="/my-lectures"
-        className="mb-4 inline-flex items-center gap-[7px] text-sm font-extrabold text-ink-sub no-underline"
-      >
-        ← {isInstructor ? "진행강의" : "참여강의"}
-      </Link>
-
       <div className="mb-5 flex items-center gap-4">
+        {/* 돌아갈 목록이 하나뿐이라 아이콘만 둔다. 어디로 가는지는 이름으로 알린다. */}
+        <Link
+          href="/my-lectures"
+          aria-label={`${isInstructor ? "진행강의" : "참여강의"} 목록으로 돌아가기`}
+          className="flex size-10 shrink-0 items-center justify-center rounded-full border border-shell-toggle bg-surface text-ink-sub no-underline hover:bg-[#f3f5f3]"
+        >
+          <ChevronLeftIcon size={17} />
+        </Link>
         <div className="min-w-0 flex-1">
           <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
@@ -95,8 +111,8 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
       </div>
 
       {failed && (
-        <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-line-muted bg-primary-softer px-[22px] py-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft">
+        <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-shell-line bg-shell px-[22px] py-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface">
             <PictoWarn size={22} />
           </span>
           <div className="flex-1">
@@ -152,27 +168,20 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
               title={lecture.title}
               sessionId={lectureId}
               isStudent={role === "STUDENT"}
+              seekRequest={seekRequest}
             />
           ) : isInstructor ? (
-            <InstructorReport sessionId={lectureId} activeSeg={activeSeg} onSelect={onSelectSeg} />
+            <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           ) : (
             <StudentReport
               lectureId={lecture.id}
               sessionId={lectureId}
-              activeSeg={activeSeg}
-              onSelect={onSelectSeg}
+              onJumpToClip={jumpToClip}
             />
           )}
         </>
       )}
 
-      {segModal !== null && (
-        <SegmentModal
-          segment={learnSegments[segModal]}
-          role={isInstructor ? "instructor" : "student"}
-          onClose={() => setSegModal(null)}
-        />
-      )}
     </>
   );
 }

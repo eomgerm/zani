@@ -54,27 +54,27 @@ export function LoginScreen() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[linear-gradient(120deg,#f5f6fc_0%,#e9f8f2_45%,#edfaf5_100%)]">
-      {/* 상단 내비 */}
-      <div className="mx-auto flex w-full max-w-[1360px] items-center justify-between px-12 py-[26px]">
-        <Image
-          src={LOGO_SRC}
-          alt="ZANI"
-          height={52}
-          width={101}
-          priority
-          className="h-[52px] w-auto mix-blend-multiply"
-        />
-      </div>
+      {/* 상단 내비 — 히어로가 워드마크를 크게 보여주므로 로고를 겹쳐 놓지 않는다(시안). */}
+      <div className="mx-auto w-full max-w-[1360px] px-12 py-[26px]" />
 
       {/* 히어로 */}
       <div className="mx-auto flex w-full max-w-[1360px] flex-1 flex-wrap items-center gap-10 px-12 pb-[60px] pt-5">
         <div className="min-w-[340px] flex-1">
-          <div className="mb-3.5 text-xl font-bold tracking-[-.3px] text-ink-muted">
+          <div className="text-[22px] font-bold tracking-[-.3px] text-ink-muted">
             수업이 깨어나는 모든 순간
           </div>
-          <div className="mb-[34px] bg-[linear-gradient(120deg,#42daa0,#16b276)] bg-clip-text text-[118px] font-black leading-[.92] tracking-[-4px] text-transparent">
-            ZANI
-          </div>
+          {/*
+            히어로 워드마크. 시안은 여백이 있는 원본을 height 200px 로 얹고 음수 마진으로 여백을
+            상쇄했다 — 우리 파일은 여백을 잘라 뒀으므로 같은 크기가 78px 이고 마진 보정도 필요 없다.
+          */}
+          <Image
+            src={LOGO_SRC}
+            alt="ZANI"
+            height={78}
+            width={210}
+            priority
+            className="mb-[18px] mt-2 block h-[78px] w-auto"
+          />
           <div className="flex flex-wrap items-center gap-3.5">
             <div ref={buttonContainerRef} />
             {error && <p className="text-sm text-danger">{error}</p>}

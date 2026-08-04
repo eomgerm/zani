@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoWarn } from "@/shared/ui";
-import { formatOffset } from "./TimelineStatusBar";
+import { formatOffset } from "./offsetTime";
 
 /**
  * 외부(전사 행·복습 추천·타임라인)에서 온 이동 명령. `nonce` 가 있어야 같은 시각을 연속으로
@@ -262,7 +262,7 @@ export function ReportPlayer({
           value={Math.min(currentSeconds, durationSeconds > 0 ? durationSeconds : 0)}
           disabled={durationSeconds <= 0}
           onChange={(event) => scrubTo(Number(event.target.value))}
-          className="h-1 w-full cursor-pointer appearance-auto bg-[#2f344f] accent-violet"
+          className="h-1 w-full cursor-pointer appearance-auto bg-[#2f3a37] accent-primary"
         />
 
         {/* 재생 컨트롤 글리프는 시안 그대로 둔다 — 픽토그램 카탈로그(258)에 재생·정지·볼륨·

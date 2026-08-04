@@ -105,6 +105,32 @@ describe("LectureCalendar", () => {
     expect(screen.queryByRole("link", { name: "CS 네트워크 기초" })).not.toBeInTheDocument();
   });
 
+  /** 오늘 자리를 색으로만 알리면 눈으로 보지 않는 사람에게는 아무 표시가 없는 것과 같다. */
+  it("marks today, and only while the current month is displayed", () => {
+    render(<LectureCalendar lectures={[]} />);
+
+    expect(screen.getByText("15")).toHaveAttribute("aria-current", "date");
+
+    fireEvent.click(screen.getByRole("button", { name: "다음 달" }));
+
+    expect(screen.getByText("15")).not.toHaveAttribute("aria-current");
+  });
+
+  /** 상태 점만 찍어 두면 색이 무엇을 뜻하는지 알 길이 없다. 실패도 목록처럼 캘린더에 남는다. */
+  it("explains every status colour it can show", () => {
+    render(<LectureCalendar lectures={[]} />);
+
+    for (const label of ["분석완료", "분석 중", "분석 전", "분석 실패"]) {
+      expect(screen.getByText(label)).toBeVisible();
+    }
+  });
+
+  it("keeps a failed lecture on the calendar", () => {
+    render(<LectureCalendar lectures={[lecture({ status: "FAILED" })]} />);
+
+    expect(screen.getByText("CS 네트워크 기초")).toBeVisible();
+  });
+
   it("does not cap how many lectures a day can show", () => {
     render(
       <LectureCalendar
