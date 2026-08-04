@@ -16,6 +16,32 @@ const tabCls = (active: boolean) =>
   }`;
 
 /**
+ * 역할이 확정되기 전까지 두 탭이 함께 쓰는 안내.
+ *
+ * <p>역할을 모르는 채로 본문을 그리면 리포트 탭은 어느 엔드포인트를 부를지 모르고, 클립 탭은
+ * 강사용 목업(다른 강의 제목·박제된 재생 시간·fixture 전사)을 학생에게 먼저 보여 준 뒤 실제
+ * 화면으로 바꾼다. 잠깐이라도 그럴듯한 가짜를 보여주느니 아무것도 그리지 않는다.
+ */
+function RoleNotice({ status }: { status: "loading" | "unknown" }) {
+  return status === "loading" ? (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoClockMuted size={44} />
+      </div>
+      <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
+    </div>
+  ) : (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoLock size={44} />
+      </div>
+      <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
+      <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
+    </div>
+  );
+}
+
+/**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
  * 탭 전환·구간 선택·상세 모달은 시연용 로컬 상태로 동작한다.
  */
@@ -117,24 +143,16 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
             </button>
           </div>
 
-          {tab === "clip" ? (
-            <ReportClipTab title={lecture.title} />
-          ) : roleStatus === "loading" ? (
-            /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 flex justify-center">
-                <PictoClockMuted size={44} />
-              </div>
-              <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
-            </div>
-          ) : roleStatus === "unknown" ? (
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 flex justify-center">
-                <PictoLock size={44} />
-              </div>
-              <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
-              <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
-            </div>
+          {roleStatus !== "ready" ? (
+            /* 두 탭 모두 역할을 기다린다. 클립 탭도 예외가 아니다 — 목업을 먼저 보여 주면
+               학생이 남의 강의 전사를 자기 수업으로 읽는다. */
+            <RoleNotice status={roleStatus} />
+          ) : tab === "clip" ? (
+            <ReportClipTab
+              title={lecture.title}
+              sessionId={lectureId}
+              isStudent={role === "STUDENT"}
+            />
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} activeSeg={activeSeg} onSelect={onSelectSeg} />
           ) : (

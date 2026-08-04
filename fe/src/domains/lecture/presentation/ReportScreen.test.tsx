@@ -18,13 +18,16 @@ const role = vi.hoisted(() => ({
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
-// 카드 두 개는 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐는지만 본다.
+// report 도메인 카드들은 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐고 무엇이 전달됐는지만 본다.
 vi.mock("@/domains/report", () => ({
   GroupAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="group-timeline">{sessionId}</div>
   ),
   StudentAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-timeline">{sessionId}</div>
+  ),
+  StudentReportClip: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="student-clip">{sessionId}</div>
   ),
 }));
 
@@ -34,6 +37,9 @@ import { ReportScreen } from "./ReportScreen";
 const openReportTab = () => {
   fireEvent.click(screen.getByRole("button", { name: /리포트/ }));
 };
+
+/** 강사용 목업 패널에만 있는 박제된 재생 시간. 목업이 그려졌는지 가리는 표식으로 쓴다. */
+const MOCK_CLIP_MARKER = "42:30 / 2:05:30";
 
 beforeEach(() => {
   role.status = "ready";
@@ -86,6 +92,45 @@ describe("ReportScreen", () => {
     render(<ReportScreen lectureId="s1" />);
     openReportTab();
 
+    expect(screen.getByText(/리포트를 볼 수 없어요/)).toBeInTheDocument();
+  });
+
+  it("renders the real clip panel only for a confirmed student", () => {
+    role.role = "STUDENT";
+
+    render(<ReportScreen lectureId="s4" />);
+
+    expect(screen.getByTestId("student-clip")).toHaveTextContent("s4");
+  });
+
+  it("keeps the mock clip panel for an instructor", () => {
+    render(<ReportScreen lectureId="s1" />);
+
+    // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
+    expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
+    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+  });
+
+  it("does not show the mock clip panel while the role is still loading", () => {
+    role.status = "loading";
+    role.role = null;
+
+    render(<ReportScreen lectureId="s4" />);
+
+    // 목업을 먼저 보여 주면 학생이 남의 강의 전사를 자기 수업으로 읽는다. 어느 쪽도 그리지 않는다.
+    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+    expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
+  });
+
+  it("does not leave the mock clip panel up when the role cannot be determined", () => {
+    role.status = "unknown";
+    role.role = null;
+
+    render(<ReportScreen lectureId="s4" />);
+
+    // 로딩과 달리 이 상태는 지나가지 않는다. 가짜가 영구히 남으면 안 된다.
+    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
     expect(screen.getByText(/리포트를 볼 수 없어요/)).toBeInTheDocument();
   });
 });
