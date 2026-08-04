@@ -15,6 +15,11 @@ export type {
 export type { ChatEntryStatus, ChatMessageView } from "./presentation/chatMessages";
 export { useChatUnread } from "./presentation/useChatUnread";
 export type { UseChatUnreadOptions } from "./presentation/useChatUnread";
+export { SESSION_EVENT_TOAST_MS, useSessionEventToast } from "./presentation/useSessionEventToast";
+export type {
+  SessionEventToast,
+  UseSessionEventToastOptions,
+} from "./presentation/useSessionEventToast";
 export { useRaisedHands } from "./presentation/useRaisedHands";
 export type {
   UseRaisedHandsOptions,

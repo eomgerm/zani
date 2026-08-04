@@ -39,6 +39,11 @@ const chat = vi.hoisted(() => ({
 /** 읽지 않은 채팅 여부. 판정 규칙은 useChatUnread.test 가 검증하고, 여기서는 버튼 전달만 본다. */
 const chatUnread = vi.hoisted(() => ({ value: false }));
 
+/** PiP 알림 토스트. 판정 규칙은 useSessionEventToast.test 가 검증한다. */
+const sessionEventToast = vi.hoisted(() => ({
+  value: null as { key: string; message: string } | null,
+}));
+
 const hands = vi.hoisted(() => ({
   raisedIdentities: [] as string[],
   myHandRaised: false,
@@ -62,6 +67,7 @@ vi.mock("@/domains/interaction", () => ({
   SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionChat: () => chat,
   useChatUnread: () => chatUnread.value,
+  useSessionEventToast: () => sessionEventToast.value,
   useRaisedHands: () => hands,
   useSessionReactions: () => sessionReactions,
   useModeration: () => moderation,
