@@ -24,3 +24,14 @@ recording:
   # ApplicationContextRunner 를 쓰는 RecordingOutboxRelaySchedulerConditionTest 는 설정 파일을 읽지 않아
   # 영향을 받지 않는다. "속성이 없으면 켜진다"는 matchIfMissing 계약을 그대로 검증한다.
   outbox-relay-enabled: false
+
+postclass:
+  transcription:
+    # 배경 전사 디스패치를 끈다(S15P11A105-247). 위 릴레이와 같은 이유다 — 캐시된 컨텍스트의
+    # @Scheduled 가 10초마다 같은 테스트 DB 를 폴링하면서, 다른 테스트가 만든 pipeline_jobs 행을
+    # 집어 전사를 시작한다. 원본 OGG 가 없으니 분할이 실패하고 그 세션에 파이프라인 실패가 기록돼,
+    # 작업 단계를 검증하는 테스트가 이유를 알 수 없이 깨진다.
+    #
+    # 전사 동작이 필요한 테스트는 TranscribeSessionUseCase 를 직접 부르므로 배경 실행에 의존하는
+    # 테스트는 없다. 스케줄러 자체의 계약(디스패치 순서·포화 처리)은 단위 테스트가 본다.
+    enabled: false

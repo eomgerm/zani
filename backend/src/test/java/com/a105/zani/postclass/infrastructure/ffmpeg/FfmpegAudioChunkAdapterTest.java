@@ -47,6 +47,8 @@ class FfmpegAudioChunkAdapterTest {
                 "ffprobe",
                 Duration.ofSeconds(30),
                 Duration.ofSeconds(10),
+                5,
+                true,
                 Duration.ofMinutes(10),
                 Duration.ofMinutes(5),
                 25_165_824L,
