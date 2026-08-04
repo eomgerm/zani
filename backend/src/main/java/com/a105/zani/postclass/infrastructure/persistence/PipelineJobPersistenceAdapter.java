@@ -7,6 +7,7 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.postclass.application.exception.PipelineJobUnavailableException;
@@ -59,6 +60,16 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
                 job.getAttemptCount(),
                 job.getCreatedAt(),
                 job.getNextAttemptAt());
+    }
+
+    @Override
+    @Transactional
+    public int requeueStalledTranscriptions(Instant now) {
+        try {
+            return pipelineJobJpaRepository.requeueStalledTranscriptions(now);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
     }
 
     @Override

@@ -245,6 +245,7 @@ class TranscribeSessionServiceTest {
     /** 넘겨받은 작업 디렉터리에 청크 파일을 실제로 만든다. 정리되는지 확인하려면 파일이 있어야 한다. */
     private final class FakeAudioChunkPort implements AudioChunkPort {
         private final int chunkCount;
+        private final List<Path> splitSources = new ArrayList<>();
 
         private FakeAudioChunkPort(int chunkCount) {
             this.chunkCount = chunkCount;
@@ -252,6 +253,7 @@ class TranscribeSessionServiceTest {
 
         @Override
         public List<AudioChunk> split(Path source, Path chunkWorkDir) {
+            splitSources.add(source);
             calls.add("split:" + source.getFileName());
             List<AudioChunk> chunks = new ArrayList<>();
             for (int index = 0; index < chunkCount; index++) {
@@ -268,6 +270,10 @@ class TranscribeSessionServiceTest {
     }
 
     private TranscribeSessionService service(int chunksPerTrack) {
+        return serviceWith(new FakeAudioChunkPort(chunksPerTrack));
+    }
+
+    private TranscribeSessionService serviceWith(FakeAudioChunkPort audioChunkPort) {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         TranscriptPort transcriptPort = new TranscriptPort() {
             @Override
@@ -301,7 +307,7 @@ class TranscribeSessionServiceTest {
                 clock,
                 new PostClassTranscriptionSettings(sourceRoot, workDir, Duration.ofMinutes(5), 2, "ko", false),
                 trackFiles,
-                new FakeAudioChunkPort(chunksPerTrack),
+                audioChunkPort,
                 chunkPort,
                 transcriptionPort,
                 assemble,
@@ -351,6 +357,11 @@ class TranscribeSessionServiceTest {
         @Override
         public void clearRetryWait(Long sessionId, Instant changedAt) {
             throw new AssertionError("unexpected");
+        }
+
+        @Override
+        public int requeueStalledTranscriptions(Instant now) {
+            throw new AssertionError("복구는 기동 시점 전용이다. 전사 도중에 부르면 도는 세션을 되살린다");
         }
 
         @Override
@@ -617,6 +628,23 @@ class TranscribeSessionServiceTest {
         assertTrue(advanced.isEmpty());
         assertEquals(1, pipelineFailures.size());
         assertFalse(pipelineFailures.get(0).retryable(), "영구 실패가 대기보다 우선한다");
+    }
+
+    @Test
+    void 원본_경로에_세션_디렉터리를_넣는다() throws IOException {
+        // storage_key 는 세션 루트 이후만 담는다(RecordingWebhookService.sessionRelativePath 가
+        // /{sessionId}/ 까지 잘라 낸다). 실제 파일은 {sourceRoot}/{sessionId}/{storageKey} 에 있으므로
+        // 세션 조각을 빼면 정상 신규 녹화도 FFmpeg 읽기 검사에서 실패한다.
+        String storageKey = "raw/participants/student-002/student-002-microphone-TR_AMwJHeUVPpSG8t.ogg";
+        tracks.add(track(MIC_FILE, INSTRUCTOR, TrackSource.MICROPHONE, storageKey));
+        FakeAudioChunkPort chunks = new FakeAudioChunkPort(1);
+
+        serviceWith(chunks).transcribe(SESSION_ID);
+
+        assertEquals(
+                sourceRoot.resolve(String.valueOf(SESSION_ID)).resolve(storageKey),
+                chunks.splitSources.get(0),
+                "분할에 넘기는 경로에 세션 디렉터리가 있어야 한다");
     }
 
     @Test

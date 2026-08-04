@@ -204,7 +204,7 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
      * <p>작업 디렉터리는 어떤 종료 경로에서도 지운다. 남기면 실패가 반복될 때마다 트랙 하나 크기가 쌓여 디스크를 채우고, 그러면 전사가 아니라 호스트가 멈춘다.
      */
     private void processTrack(Long sessionId, SessionTrackFile track, Instant queuedAt) {
-        Path source = resolveSource(track);
+        Path source = resolveSource(sessionId, track);
         Path trackWorkDir = sessionWorkDir(sessionId).resolve("file-" + track.recordingFileId());
         try {
             Files.createDirectories(trackWorkDir);
@@ -222,16 +222,30 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
     /**
      * {@code storageKey} 를 원본 루트 아래 절대 경로로 푼다.
      *
+     * <p><b>세션 디렉터리를 사이에 넣어야 한다.</b> {@code storage_key} 는 세션 루트 <b>이후</b>만 담는다 —
+     * {@code RecordingWebhookService.sessionRelativePath} 가 {@code /{sessionId}/} 까지 잘라 내기 때문에 값이
+     * {@code raw/participants/...} 로 시작한다. 실제 파일은 {@code {sourceRoot}/{sessionId}/{storageKey}} 에 있다.
+     *
+     * <pre>
+     * sourceRoot   /out
+     * sessionId    870812498334810873
+     * storageKey   raw/participants/student-002/student-002-microphone-TR_....ogg
+     * → /out/870812498334810873/raw/participants/student-002/student-002-microphone-TR_....ogg
+     * </pre>
+     *
+     * <p>세션 조각을 빼면 정상 신규 녹화도 {@code FfmpegAudioChunkAdapter} 의 읽기 검사에서 실패한다.
+     *
      * <p>{@code normalize()} 뒤에 루트 아래인지 다시 본다. 쓰기 시점에 검증된 값이지만 읽는 쪽에서 한 번 더 보는 비용이 거의 없고, 통과하면 임의 경로를 읽게 되는 종류의 실수다.
      */
-    private Path resolveSource(SessionTrackFile track) {
+    private Path resolveSource(Long sessionId, SessionTrackFile track) {
         String storageKey = track.storageKey();
         if (storageKey == null || storageKey.isBlank()) {
             log.error("Track has no storage key: recordingFileId={}", track.recordingFileId());
             throw new TranscriptionSourceInvalidException();
         }
         Path root = settings.sourceRoot().toAbsolutePath().normalize();
-        Path resolved = root.resolve(storageKey).normalize();
+        Path resolved =
+                root.resolve(String.valueOf(sessionId)).resolve(storageKey).normalize();
         if (!resolved.startsWith(root)) {
             log.error("Track path escapes the source root: recordingFileId={}", track.recordingFileId());
             throw new TranscriptionSourceInvalidException();

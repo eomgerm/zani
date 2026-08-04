@@ -108,6 +108,20 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
     }
 
     @Override
+    public int requeueStalledTranscriptions(Instant now) {
+        int recovered = 0;
+        for (Row row : rows.values()) {
+            // 실제 쿼리와 같은 조건이다: TRANSCRIBING 인데 재시도 대기가 없는 행만 되살린다.
+            if (row.status == PipelineStatus.TRANSCRIBING && row.nextAttemptAt == null) {
+                row.nextAttemptAt = now;
+                row.changedAt = now;
+                recovered++;
+            }
+        }
+        return recovered;
+    }
+
+    @Override
     public void clearRetryWait(Long sessionId, Instant changedAt) {
         Row row = rows.get(sessionId);
         // 단계와 시도 횟수는 그대로 둔다. 대기만 푸는 것이 이 계약의 전부다.

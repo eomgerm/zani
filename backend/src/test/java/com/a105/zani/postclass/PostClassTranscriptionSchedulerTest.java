@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import com.a105.zani.postclass.application.InMemoryPipelineJobPort;
 import com.a105.zani.postclass.application.exception.PipelineJobUnavailableException;
 import com.a105.zani.postclass.application.port.PipelineJobPort;
+import com.a105.zani.postclass.application.recoverstalledtranscriptions.RecoverStalledTranscriptionsService;
 import com.a105.zani.postclass.application.starttranscription.TryStartTranscriptionService;
 import com.a105.zani.postclass.application.starttranscription.TryStartTranscriptionUseCase;
 import com.a105.zani.postclass.application.transcribesession.TranscribeSessionUseCase;
@@ -208,6 +209,52 @@ class PostClassTranscriptionSchedulerTest {
         assertEquals(List.of("tryStart:" + FIRST), calls, "선점만 시도하고 전사는 부르지 않는다");
         assertTrue(transcribed.isEmpty());
         assertEquals(PipelineStatus.ANALYZING, jobPort.statusOf(FIRST).orElseThrow(), "단계를 되돌리지 않는다");
+    }
+
+    @Test
+    void 재기동_복구가_고아_작업을_다시_발견되게_만든다() {
+        // 워커 없이 남은 TRANSCRIBING + next_attempt_at=null 은 후보 조회가 "실행 중" 으로 보고 제외한다.
+        // 복구 없이는 청크 lease 가 만료돼도 회수할 세션이 디스패치되지 않아 영구 정지한다.
+        enqueue(FIRST);
+        assertTrue(tryStart.tryStart(FIRST), "최초 시작이 TRANSCRIBING 으로 옮기고 대기 시각을 비운다");
+        calls.clear();
+        assertEquals(List.of(), jobPort.findDueTranscriptionSessionIds(NOW, 5), "복구 전에는 후보에 없다");
+
+        int recovered = new RecoverStalledTranscriptionsService(jobPort, clock).recover();
+
+        assertEquals(1, recovered);
+        assertEquals(List.of(FIRST), jobPort.findDueTranscriptionSessionIds(NOW, 5), "복구 후에는 후보에 있다");
+
+        // 수동 markRetry 없이 스케줄러가 그대로 이어간다.
+        scheduler(new BoundedExecutor(1)).dispatchDueTranscriptions();
+
+        assertEquals(List.of(FIRST), transcribed);
+        assertEquals(PipelineStatus.TRANSCRIBING, jobPort.statusOf(FIRST).orElseThrow());
+    }
+
+    @Test
+    void 재기동_복구가_시도_횟수를_올리지_않는다() {
+        // 크래시는 단계 실패가 아니다. 올리면 배포 한 번에 재시도 예산이 깎여, 한 번도 실패하지 않은
+        // 세션이 상한에 걸린다.
+        enqueue(FIRST);
+        tryStart.tryStart(FIRST);
+        int before = jobPort.attemptCountOf(FIRST).orElseThrow();
+
+        new RecoverStalledTranscriptionsService(jobPort, clock).recover();
+
+        assertEquals(before, jobPort.attemptCountOf(FIRST).orElseThrow());
+    }
+
+    @Test
+    void 재기동_복구가_재시도_대기_중인_작업은_건드리지_않는다() {
+        // 이미 후보인 작업이다. 대기 시각을 지금으로 당기면 백오프가 무의미해진다.
+        enqueueRetryDue(FIRST);
+        Instant scheduled = jobPort.nextAttemptAtOf(FIRST).orElseThrow();
+
+        int recovered = new RecoverStalledTranscriptionsService(jobPort, clock).recover();
+
+        assertEquals(0, recovered);
+        assertEquals(scheduled, jobPort.nextAttemptAtOf(FIRST).orElseThrow());
     }
 
     @Test

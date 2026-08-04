@@ -42,6 +42,7 @@ import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
 import com.a105.zani.postclass.application.port.TranscriptionChunkPort;
 import com.a105.zani.postclass.application.port.TranscriptionResult;
+import com.a105.zani.postclass.application.recoverstalledtranscriptions.RecoverStalledTranscriptionsUseCase;
 import com.a105.zani.postclass.application.starttranscription.TryStartTranscriptionUseCase;
 import com.a105.zani.postclass.application.transcribesession.TranscribeSessionUseCase;
 import com.a105.zani.postclass.domain.model.PipelineStatus;
@@ -232,6 +233,9 @@ class PostClassTranscriptionIntegrationTest {
 
     @Autowired
     private TryStartTranscriptionUseCase tryStartTranscriptionUseCase;
+
+    @Autowired
+    private RecoverStalledTranscriptionsUseCase recoverStalledTranscriptionsUseCase;
 
     @Autowired
     private TranscribeSessionUseCase transcribeSessionUseCase;
@@ -668,6 +672,47 @@ class PostClassTranscriptionIntegrationTest {
         assertEquals(
                 "기본 발화",
                 chunkPort.findAllBySessionId(sessionId).get(0).segments().get(0).text());
+    }
+
+    // ---- 재기동 복구 (프로세스가 죽어 남은 작업) ----
+
+    @Test
+    void 워커_없이_남은_TRANSCRIBING_작업이_복구_없이는_영구_정지한다() throws IOException {
+        // 이것이 복구가 필요한 이유다. 후보 조회는 next_attempt_at 이 없는 TRANSCRIBING 을 "실행 중" 으로
+        // 보고 제외하므로, 워커가 사라지면 아무도 그 세션을 다시 보지 않는다.
+        insertTrackFile(instructorId, TrackSource.MICROPHONE, 0);
+        enqueueJob();
+        assertTrue(tryStartTranscriptionUseCase.tryStart(sessionId), "최초 시작이 TRANSCRIBING 으로 옮긴다");
+
+        assertEquals(PipelineStatus.TRANSCRIBING.name(), status());
+        assertNull(nextAttemptAt());
+        assertFalse(
+                pipelineJobPort
+                        .findDueTranscriptionSessionIds(clock.instant(), 10)
+                        .contains(sessionId),
+                "복구 전에는 후보에 담기지 않는다");
+    }
+
+    @Test
+    void 기동_복구가_수동_개입_없이_전사를_이어간다() throws IOException {
+        // 기존 재기동 테스트는 markRetry 를 직접 불러 복구를 흉내 냈다. 여기서는 복구 경로만 쓴다.
+        insertTrackFile(instructorId, TrackSource.MICROPHONE, 0);
+        enqueueJob();
+        tryStartTranscriptionUseCase.tryStart(sessionId);
+        int attemptsBefore = attemptCount();
+
+        int recovered = recoverStalledTranscriptionsUseCase.recover();
+
+        assertTrue(recovered >= 1);
+        assertEquals(attemptsBefore, attemptCount(), "크래시는 단계 실패가 아니므로 시도 횟수를 올리지 않는다");
+        assertTrue(pipelineJobPort
+                .findDueTranscriptionSessionIds(clock.instant(), 10)
+                .contains(sessionId));
+
+        dispatch();
+
+        assertEquals(PipelineStatus.ANALYZING.name(), status());
+        assertEquals(1, transcriptRows());
     }
 
     // ---- 8. 녹화 준비 경쟁 ----

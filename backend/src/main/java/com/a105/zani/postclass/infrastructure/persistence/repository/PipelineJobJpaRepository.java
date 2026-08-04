@@ -130,6 +130,26 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     int clearRetryWait(@Param("sessionId") Long sessionId, @Param("changedAt") Instant changedAt);
 
     /**
+     * 워커 없이 남은 {@code TRANSCRIBING} 작업에 대기 시각을 채워 다시 발견되게 한다.
+     *
+     * <p>조건이 {@code next_attempt_at is null} 인 것이 핵심이다. 재시도 대기 중인 작업은 이미 발견 대상이므로 건드리지 않고, "실행 중" 으로 보이는 행만 되살린다. <b>시도
+     * 횟수는 올리지 않는다</b> — 크래시는 단계 실패가 아니다.
+     *
+     * <p>기동 시점 전용이다. 그때는 이 인스턴스의 워커가 없으므로 조건에 걸리는 행은 모두 고아다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.nextAttemptAt = :now, job.updatedAt = :now
+             where job.status = :transcribingStatus and job.nextAttemptAt is null
+            """)
+    int requeueStalledTranscriptions(@Param("transcribingStatus") String transcribingStatus, @Param("now") Instant now);
+
+    default int requeueStalledTranscriptions(Instant now) {
+        return requeueStalledTranscriptions(PipelineStatus.TRANSCRIBING.name(), now);
+    }
+
+    /**
      * 전사를 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터.
      *
      * <p>{@code QUEUED} 전체와, 재시도 기한이 지난 {@code TRANSCRIBING} 만 고른다. {@code next_attempt_at} 이 {@code null} 인

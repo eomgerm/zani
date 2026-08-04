@@ -23,7 +23,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param leaseDuration 청크 선점의 유효 기간. 이 시간이 지나면 선점한 실행이 죽은 것으로 보고 다른 실행이 회수한다. <b>GMS timeout(180초)보다 넉넉해야 한다</b> — 호출이
  *     상한까지 걸린 뒤 결과를 기록할 여유가 없으면, 살아 있는 작업의 청크를 다른 실행이 가져가고 원래 작업의 쓰기는 fencing 에 걸려 버려진다. 그러면 같은 청크를 두 번 호출하게 된다. 반대로 너무
  *     길면 실제로 죽은 실행의 청크가 그만큼 묶여 있는다
- * @param maxUploadBytes 실질 업로드 상한(24 MiB). 목표 시간으로 자른 뒤 이 값을 넘는 청크만 반으로 다시 자른다 — 파일 내부에서도 비트레이트가 변해 평균 역산을 믿을 수 없다
+ * @param maxUploadBytes 실질 업로드 상한(24 MiB). <b>업로드 직전 가드이고 자동 반분은 하지 않는다</b> — 넘는 청크는 GMS 를 호출하지 않고 비재시도 실패로 끊는다. 실측
+ *     비트레이트(104.8~127 kbps)로 10분이면 7.9~9.5 MB 라 한도에 세 배 넘는 여유가 있어, 걸린다면 {@code chunk-duration} 을 낮춰 대응한다
  * @param concurrency GMS 청크 호출 동시성. 오케스트레이션 자체는 항상 1이고 이 값은 업로드에만 적용된다
  * @param silencePrefilterEnabled 무음 사전 판별. 기본 OFF(S15P11A105-292)
  */

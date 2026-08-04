@@ -96,6 +96,32 @@ public interface PipelineJobPort {
     List<Long> findDueTranscriptionSessionIds(Instant now, int limit);
 
     /**
+     * 프로세스가 죽어 남은 {@code TRANSCRIBING} 작업을 다시 발견되게 만든다. <b>시도 횟수는 올리지 않는다.</b>
+     *
+     * <p>{@link #findDueTranscriptionSessionIds} 는 {@code next_attempt_at} 이 {@code null} 인 {@code TRANSCRIBING} 을 "실행
+     * 중" 으로 보고 제외한다. 그것이 실행 중인 세션을 매 주기마다 다시 집는 것을 막는 장치인데, 워커가 사라지면 같은 조건이 반대로 작동한다.
+     *
+     * <pre>
+     * 서버 종료·크래시 → TRANSCRIBING + next_attempt_at = null 로 남음
+     *   → 실제로 도는 워커는 없음
+     *   → findDue 가 영원히 담지 않음 → 청크 lease 가 만료돼도 회수할 세션이 디스패치되지 않는다
+     * </pre>
+     *
+     * <p>그래서 기동 시 한 번 대기 시각을 채워 재시도 대기 상태로 만든다. 그 뒤는 평소 경로와 같다 — {@code findDue} 가 담고
+     * {@code TryStartTranscriptionUseCase} 가 대기를 풀고 이어간다. 성공한 청크는 체크포인트가 막아 다시 호출되지 않는다.
+     *
+     * <p><b>시도 횟수를 올리지 않는 이유.</b> 크래시는 GMS 실패가 아니다. 올리면 배포 한 번에 재시도 예산이 깎여, 실제로는 한 번도 실패하지 않은 세션이 상한에 걸린다. 무한 재기동이 예산을
+     * 못 쓰는 문제는 8시간 마감이 대신 막는다.
+     *
+     * <p><b>기동 시점에만 부른다.</b> 그때는 이 인스턴스의 워커가 아직 없다. 주기적으로 부르면 살아서 도는 세션까지 재시도 대기로 만들어 같은 세션이 겹쳐 돈다(청크 fencing 이 결과를 지켜
+     * 주긴 하지만 GMS 호출이 낭비된다).
+     *
+     * @return 되살린 작업 수
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    int requeueStalledTranscriptions(Instant now);
+
+    /**
      * 현재 단계를 유지한 채 재시도 대기만 푼다. <b>시도 횟수는 보존한다.</b>
      *
      * <p>재시도 선점 전용이다. {@link #updateStatus} 를 쓸 수 없는 이유는 그쪽이 시도 횟수를 0 으로 되돌리기 때문이다 — 그러면 실패를 반복하는 단계가 상한에 걸리지 않고 영원히
