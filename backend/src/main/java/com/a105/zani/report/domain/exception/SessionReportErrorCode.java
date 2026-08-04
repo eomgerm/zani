@@ -5,7 +5,8 @@ import com.a105.zani.common.error.ErrorType;
 
 public enum SessionReportErrorCode implements ErrorCode {
     INVALID_SESSION_REPORT(ErrorType.BAD_REQUEST, "SESSION_REPORT_001", "Invalid session report"),
-    INVALID_SESSION_SECTION(ErrorType.BAD_REQUEST, "SESSION_REPORT_002", "Invalid session section");
+    INVALID_SESSION_SECTION(ErrorType.BAD_REQUEST, "SESSION_REPORT_002", "Invalid session section"),
+    SESSION_ALREADY_ANALYZED(ErrorType.CONFLICT, "SESSION_REPORT_003", "Session report already exists");
 
     private final ErrorType type;
     private final String code;
