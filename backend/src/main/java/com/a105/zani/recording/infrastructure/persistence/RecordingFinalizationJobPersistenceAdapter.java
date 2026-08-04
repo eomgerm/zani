@@ -7,7 +7,6 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,15 +28,22 @@ public class RecordingFinalizationJobPersistenceAdapter implements RecordingFina
     private final RecordingFinalizationJobJpaRepository repository;
 
     @Override
-    @Transactional
-    public int enqueueEndedSessions(int limit, Instant now) {
+    @Transactional(readOnly = true)
+    public List<Long> findUnqueuedRecordedSessionIds() {
         try {
-            int inserted = 0;
-            for (Long sessionId : repository.findUnqueuedEndedSessionIds(Pageable.ofSize(limit))) {
-                inserted += repository.insertIgnore(
-                        TsidGenerator.generate(), sessionId, RecordingFinalizationStatus.PENDING.name(), now);
-            }
-            return inserted;
+            return repository.findUnqueuedRecordedSessionIds();
+        } catch (DataAccessException failure) {
+            throw new FinalizationJobStoreException(failure);
+        }
+    }
+
+    @Override
+    @Transactional
+    public boolean enqueueSession(Long sessionId, Instant now) {
+        try {
+            return repository.insertIgnore(
+                            TsidGenerator.generate(), sessionId, RecordingFinalizationStatus.PENDING.name(), now)
+                    == 1;
         } catch (DataAccessException failure) {
             throw new FinalizationJobStoreException(failure);
         }

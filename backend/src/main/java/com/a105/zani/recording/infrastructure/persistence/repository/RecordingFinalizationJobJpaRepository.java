@@ -16,14 +16,14 @@ import com.a105.zani.recording.infrastructure.persistence.entity.RecordingFinali
 public interface RecordingFinalizationJobJpaRepository extends JpaRepository<RecordingFinalizationJobJpaEntity, Long> {
 
     @Query(value = """
-                    select session.id
-                      from sessions session
-                     where session.status = 'ENDED'
-                       and exists (select 1 from recordings recording where recording.session_id = session.id)
-                       and not exists (select 1 from recording_finalization_jobs job where job.session_id = session.id)
-                     order by session.id asc
+                    select distinct recording.session_id
+                      from recordings recording
+                     where not exists (
+                           select 1 from recording_finalization_jobs job
+                            where job.session_id = recording.session_id)
+                     order by recording.session_id asc
                     """, nativeQuery = true)
-    List<Long> findUnqueuedEndedSessionIds(Pageable pageable);
+    List<Long> findUnqueuedRecordedSessionIds();
 
     @Modifying
     @Query(value = """

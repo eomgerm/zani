@@ -12,6 +12,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.a105.zani.recording.application.enqueuefinalizations.EnqueueEndedRecordingSessionsUseCase;
 import com.a105.zani.recording.application.finalizejob.FinalizationJobLease;
 import com.a105.zani.recording.application.finalizejob.RecordingFinalizationJobPort;
 import com.a105.zani.recording.application.finalizerecording.FinalizeRecordingUseCase;
@@ -29,6 +30,7 @@ import com.a105.zani.recording.infrastructure.config.RecordingFinalizationExecut
 public class RecordingFinalizationScheduler {
 
     private final Executor executor;
+    private final EnqueueEndedRecordingSessionsUseCase enqueueEndedRecordingSessionsUseCase;
     private final RecordingFinalizationJobPort jobPort;
     private final FinalizeRecordingUseCase finalizeRecordingUseCase;
     private final RecordingFinalizationDispatchProperties properties;
@@ -36,11 +38,13 @@ public class RecordingFinalizationScheduler {
 
     public RecordingFinalizationScheduler(
             @Qualifier(RecordingFinalizationExecutorConfig.EXECUTOR) Executor executor,
+            EnqueueEndedRecordingSessionsUseCase enqueueEndedRecordingSessionsUseCase,
             RecordingFinalizationJobPort jobPort,
             FinalizeRecordingUseCase finalizeRecordingUseCase,
             RecordingFinalizationDispatchProperties properties,
             Clock clock) {
         this.executor = executor;
+        this.enqueueEndedRecordingSessionsUseCase = enqueueEndedRecordingSessionsUseCase;
         this.jobPort = jobPort;
         this.finalizeRecordingUseCase = finalizeRecordingUseCase;
         this.properties = properties;
@@ -52,7 +56,7 @@ public class RecordingFinalizationScheduler {
         Instant now = clock.instant();
         List<Long> due;
         try {
-            jobPort.enqueueEndedSessions(properties.batchSize(), now);
+            enqueueEndedRecordingSessionsUseCase.enqueue(properties.batchSize(), now);
             due = jobPort.findDueSessionIds(now, properties.batchSize());
         } catch (RuntimeException unavailable) {
             log.warn("Could not discover recording finalization jobs", unavailable);

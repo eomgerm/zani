@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.a105.zani.common.persistence.TsidGenerator;
+import com.a105.zani.recording.application.enqueuefinalizations.EnqueueEndedRecordingSessionsUseCase;
 import com.a105.zani.recording.application.finalizejob.FinalizationJobLease;
 import com.a105.zani.recording.application.finalizejob.RecordingFinalizationJobPort;
 import com.a105.zani.recording.domain.model.RecordingFinalizationStatus;
@@ -27,6 +28,9 @@ class RecordingFinalizationJobPersistenceAdapterTest {
 
     @Autowired
     private RecordingFinalizationJobPort port;
+
+    @Autowired
+    private EnqueueEndedRecordingSessionsUseCase enqueueEndedRecordingSessionsUseCase;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -54,8 +58,8 @@ class RecordingFinalizationJobPersistenceAdapterTest {
         insertRecording(live);
         createSession("ENDED");
 
-        port.enqueueEndedSessions(100, NOW);
-        port.enqueueEndedSessions(100, NOW.plusSeconds(1));
+        enqueueEndedRecordingSessionsUseCase.enqueue(100, NOW);
+        enqueueEndedRecordingSessionsUseCase.enqueue(100, NOW.plusSeconds(1));
 
         assertEquals(1, jobCount(ended));
         assertEquals(0, jobCount(live));
@@ -181,7 +185,7 @@ class RecordingFinalizationJobPersistenceAdapterTest {
     private long queuedSession() {
         long sessionId = createSession("ENDED");
         insertRecording(sessionId);
-        port.enqueueEndedSessions(100, NOW);
+        enqueueEndedRecordingSessionsUseCase.enqueue(100, NOW);
         assertEquals(1, jobCount(sessionId));
         return sessionId;
     }

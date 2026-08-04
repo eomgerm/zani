@@ -7,7 +7,11 @@ import java.util.Optional;
 /** 최종 병합 작업 큐. 모든 변경은 짧은 자체 트랜잭션으로 끝나며 worker 실행을 감싸지 않는다. */
 public interface RecordingFinalizationJobPort {
 
-    int enqueueEndedSessions(int limit, Instant now);
+    /** 녹화는 있지만 아직 병합 작업이 만들어지지 않은 세션 ID를 찾는다. */
+    List<Long> findUnqueuedRecordedSessionIds();
+
+    /** 세션 하나를 병합 대기열에 멱등하게 등록한다. */
+    boolean enqueueSession(Long sessionId, Instant now);
 
     List<Long> findDueSessionIds(Instant now, int limit);
 
