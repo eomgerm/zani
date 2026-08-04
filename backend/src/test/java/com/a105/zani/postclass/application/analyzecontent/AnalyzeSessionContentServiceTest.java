@@ -22,6 +22,7 @@ import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisC
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisResult;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisUseCase;
 import com.a105.zani.report.domain.exception.InvalidSessionReportException;
+import com.a105.zani.report.domain.exception.SessionAlreadyAnalyzedException;
 import com.a105.zani.report.domain.exception.SessionReportErrorCode;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextResult;
 import com.a105.zani.session.application.getpostclasscontext.GetPostClassContextUseCase;
@@ -230,6 +231,25 @@ class AnalyzeSessionContentServiceTest {
 
         assertThrows(ContentAnalysisFailedException.class, this::analyze);
         assertTrue(analysisRequests.isEmpty());
+    }
+
+    /**
+     * 경합에서 진 시도는 실패가 아니다.
+     *
+     * <p>존재 확인과 저장 사이에 다른 시도가 먼저 적재하면 유니크 제약이 이쪽을 막고 어댑터가 {@code SessionAlreadyAnalyzedException} 을 올린다. 결과는 "이미 있다"와
+     * 같으므로 실패로 올리면 파이프라인이 성공한 일을 실패로 기록하고 재시도를 태운다.
+     */
+    @Test
+    void treatsALostRaceAsAlreadyAnalysed() {
+        AnalyzeSessionContentService raced = new AnalyzeSessionContentService(
+                getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                    throw new SessionAlreadyAnalyzedException();
+                });
+
+        AnalyzeSessionContentResult result = raced.analyze(new AnalyzeSessionContentCommand(SESSION_ID));
+
+        assertFalse(result.analyzed());
+        assertEquals(0, result.sectionCount());
     }
 
     /** 이미 적재된 세션은 적재하는 쪽이 건너뛴다. 그 사실이 결과에 그대로 드러나야 한다(세션당 1회). */
