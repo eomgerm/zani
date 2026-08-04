@@ -175,6 +175,31 @@ class GmsContentAnalysisHttpAdapterTest {
         assertThat(outcome.analysis().sections().getLast().title()).isEqualTo("뒤 구간");
     }
 
+    /**
+     * 구간 사이의 빈 시간을 앞 구간에 붙인다.
+     *
+     * <p>프롬프트로는 안정적으로 되지 않는다 — 같은 요청에 한 번은 이어지고 한 번은 발화 순간만 덮는 구간이 왔다(실측). 공백이 남으면 수업 중간 시각이 어느 구간에도 속하지 않아 집중도 그래프와 클립
+     * 타임스탬프가 가리킬 구간을 찾지 못한다. 앞뒤 끝은 늘리지 않는다 — 무음에 주제 라벨을 붙이는 쪽이 더 틀린 값이다.
+     */
+    @Test
+    void fillsGapsBetweenSectionsSoTheTimelineIsContinuous() {
+        Fixture fixture = fixture();
+        String gapped = section("앞 구간", 2_000, 32_000) + "," + section("뒤 구간", 195_000, 226_000);
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(gapped)), MediaType.APPLICATION_JSON));
+
+        ContentAnalysisOutcome outcome = fixture.adapter().analyze(request());
+
+        assertThat(outcome.value()).isPresent();
+        // 앞 구간의 끝이 뒤 구간의 시작까지 늘어난다.
+        assertThat(outcome.analysis().sections().getFirst().startOffsetMs()).isEqualTo(2_000);
+        assertThat(outcome.analysis().sections().getFirst().endOffsetMs()).isEqualTo(195_000);
+        // 마지막 구간의 끝과 첫 구간의 시작은 모델이 준 값 그대로다.
+        assertThat(outcome.analysis().sections().getLast().endOffsetMs()).isEqualTo(226_000);
+    }
+
     /** 수업 길이를 넘는 구간은 재생할 수 없는 지점을 가리킨다. 저장 전에 버린다. */
     @Test
     void rejectsASectionThatEndsAfterTheClass() {

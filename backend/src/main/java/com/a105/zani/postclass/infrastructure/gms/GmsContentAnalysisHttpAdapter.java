@@ -302,8 +302,35 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
         // 순서만 어긋난 응답은 되살린다. temperature 0 이라 재시도해도 같은 순서가 오므로, 여기서 정렬하지
         // 않으면 그 세션은 리포트를 영영 받지 못한다. 진짜 겹침은 적재 애그리거트가 그대로 거절한다.
         sections.sort(Comparator.comparingLong(AnalyzedSection::startOffsetMs));
-        log.info("Content analysis returned {} sections after {}ms", sections.size(), elapsedMs);
-        return ContentAnalysisOutcome.success(new ContentAnalysis(classSummary, List.copyOf(sections)));
+        List<AnalyzedSection> stitched = stitchInteriorGaps(sections);
+        log.info("Content analysis returned {} sections after {}ms", stitched.size(), elapsedMs);
+        return ContentAnalysisOutcome.success(new ContentAnalysis(classSummary, stitched));
+    }
+
+    /**
+     * 구간 사이의 빈 시간을 앞 구간에 붙여 타임라인이 이어지게 한다.
+     *
+     * <p>프롬프트로는 안 된다. "구간은 수업 전체를 빈틈없이 덮는다"를 지시해도 모델이 발화 순간만 덮는 구간을 내는 실행이 있었다(실측: 같은 요청에 한 번은 이어지고 한 번은 11구간에 내부 공백
+     * 10개). 그러면 수업 중간 시각이 어느 구간에도 속하지 않아, 집중도 흐름 그래프의 x축 경계와 클립 타임스탬프가 가리킬 구간을 찾지 못한다.
+     *
+     * <p>앞뒤 끝은 건드리지 않는다. 첫 발화 전 몇 초와 마지막 발화 뒤의 무음까지 늘려 붙이면, 아무 내용도 없는 시간이 주제 구간의 라벨을 갖게 된다 — 그쪽이 더 틀린 값이다. 메우는 것은 <b>구간
+     * 사이</b>뿐이다.
+     */
+    private List<AnalyzedSection> stitchInteriorGaps(List<AnalyzedSection> sections) {
+        List<AnalyzedSection> stitched = new ArrayList<>(sections.size());
+        for (int index = 0; index < sections.size(); index++) {
+            AnalyzedSection section = sections.get(index);
+            boolean last = index == sections.size() - 1;
+            long endOffsetMs =
+                    last ? section.endOffsetMs() : sections.get(index + 1).startOffsetMs();
+            if (endOffsetMs <= section.startOffsetMs()) {
+                // 다음 구간이 이 구간 안에서 시작한다(겹침). 늘리지 않고 그대로 둔다 — 겹침 판정은 적재
+                // 애그리거트가 소유하고, 여기서 손대면 진짜 겹침이 가려진다.
+                endOffsetMs = section.endOffsetMs();
+            }
+            stitched.add(new AnalyzedSection(section.title(), section.summary(), section.startOffsetMs(), endOffsetMs));
+        }
+        return List.copyOf(stitched);
     }
 
     private AnalyzedSection convert(SectionResponse section, long classDurationMs) {
