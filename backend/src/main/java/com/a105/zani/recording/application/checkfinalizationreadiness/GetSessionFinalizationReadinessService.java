@@ -5,8 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.a105.zani.session.domain.model.Session;
-import com.a105.zani.session.domain.repository.SessionRepository;
+import com.a105.zani.session.application.checkended.CheckSessionEndedUseCase;
 
 /** 세션 종료와 전체 Track Egress/outbox 종결 여부를 함께 판정한다. */
 @Slf4j
@@ -15,13 +14,12 @@ import com.a105.zani.session.domain.repository.SessionRepository;
 public class GetSessionFinalizationReadinessService implements GetSessionFinalizationReadinessUseCase {
 
     private final GetSessionFinalizationReadinessQueryPort readinessQueryPort;
-    private final SessionRepository sessionRepository;
+    private final CheckSessionEndedUseCase checkSessionEndedUseCase;
 
     @Override
     @Transactional(readOnly = true)
     public FinalizationReadiness check(Long sessionId) {
-        Session session = sessionRepository.findById(sessionId).orElse(null);
-        if (session == null || !session.isEnded()) {
+        if (!checkSessionEndedUseCase.isEnded(sessionId)) {
             log.info("Session is not ended, recording finalization must wait: sessionId={}", sessionId);
             return FinalizationReadiness.IN_PROGRESS;
         }
