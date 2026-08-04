@@ -25,7 +25,9 @@ import org.springframework.web.client.RestClient;
  *
  * <ul>
  *   <li>{@code gmsRestClient} — 기본값({@code read-timeout})
- *   <li>{@code gmsTranscriptionRestClient} — 전사 전용({@code transcribe-timeout}, Content-Length 확정)
+ *   <li>{@code gmsTranscriptionRestClient} — 실시간 전사 전용({@code transcribe-timeout}, Content-Length 확정)
+ *   <li>{@code gmsPostclassTranscriptionRestClient} — 사후 배치 전사 전용({@code postclass-transcribe-timeout}, Content-Length
+ *       확정). 실시간과 나누는 이유는 timeout 판단이 반대라서다 — 그쪽은 느린 응답을 끊는 것이 이득이고 배치는 기다려야 한다
  *   <li>{@code gmsTipRestClient} — 팁 문구 전용({@code tip-timeout})
  * </ul>
  */
