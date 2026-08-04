@@ -1,0 +1,31 @@
+package com.a105.zani.recording.application.finalizejob;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+/** 최종 병합 작업 큐. 모든 변경은 짧은 자체 트랜잭션으로 끝나며 worker 실행을 감싸지 않는다. */
+public interface RecordingFinalizationJobPort {
+
+    int enqueueEndedSessions(int limit, Instant now);
+
+    List<Long> findDueSessionIds(Instant now, int limit);
+
+    Optional<FinalizationJobLease> tryClaim(Long sessionId, Instant leaseUntil, Instant now);
+
+    Optional<FinalizationJobLease> beginAttempt(FinalizationJobLease lease, Instant now);
+
+    boolean markWaiting(FinalizationJobLease lease, Instant nextAttemptAt, Instant now);
+
+    boolean markRetry(FinalizationJobLease lease, String error, Instant nextAttemptAt, Instant now);
+
+    boolean markFailed(FinalizationJobLease lease, String error, Instant now);
+
+    boolean markCompleted(
+            FinalizationJobLease lease,
+            String manifestPath,
+            String outputPath,
+            long outputSizeBytes,
+            String outputSha256,
+            Instant now);
+}
