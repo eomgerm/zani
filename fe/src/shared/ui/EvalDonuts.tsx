@@ -22,7 +22,8 @@ export function EvalDonuts({ data }: { data: EvalDatum[] }) {
   const [openName, setOpenName] = useState<string | null>(null);
 
   return (
-    <div className="grid grid-cols-2 place-items-center gap-x-2 gap-y-[18px]">
+    /* 부모가 flex 라 폭을 스스로 잡지 않으면 내용만큼 줄어 왼쪽으로 몰린다. */
+    <div className="grid w-full grid-cols-2 place-items-center gap-x-2 gap-y-[18px]">
       {data.map((d) => {
         const pdata = [
           { name: "v", value: d.value },

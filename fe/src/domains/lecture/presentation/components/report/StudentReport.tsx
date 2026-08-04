@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, PICTOGRAMS, PictoClock, PictoDoc, PictoPen } from "@/shared/ui";
+import { Badge, PICTOGRAMS, PictoPen } from "@/shared/ui";
 import { StudentAttentionTimeline } from "@/domains/report";
 import { recommendations, studentGlance, studentSummary } from "../../fixtures";
 
@@ -102,30 +102,33 @@ export function StudentReport({ lectureId, sessionId, onJumpToClip }: Props) {
               강의 내용과 어려워했던 구간을 바탕으로 AI가 맞춤 퀴즈를 만들었어요.
             </div>
           </div>
-          <div className="z-report-box flex flex-1 flex-col px-5 py-[18px]">
-            <div className="flex min-h-[120px] flex-1 items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e7f7f1,#f2fbf8)]">
-              <PictoPen size={44} />
+          {/*
+            띠를 반 폭에 맞춰 세로로 세운 것이다. 초록을 카드 전체에 쓰면 이 블록이 "다음에 할
+            것"으로 먼저 읽힌다 — 옆 칸의 추천 목록과 역할이 갈린다.
+          */}
+          <div className="relative flex flex-1 flex-col items-center justify-center gap-5 overflow-hidden rounded-2xl bg-primary px-6 py-7">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -left-[18%] -top-[46%] w-[62%] rounded-full bg-white/[.13] pb-[62%]"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-[54%] -right-[10%] w-[68%] rounded-full bg-white/10 pb-[68%]"
+            />
+            <span className="relative z-10 flex size-[86px] items-center justify-center rounded-full bg-surface/90">
+              <PictoPen size={40} />
+            </span>
+            <div className="relative z-10 w-full">
+              <Link
+                href={`/my-lectures/${lectureId}/quiz`}
+                className="z-btn w-full rounded-[13px] bg-surface py-3.5 text-[15px] text-[#0e7f5b]"
+              >
+                퀴즈 풀어보기
+              </Link>
+              <div className="mt-2.5 rounded-[11px] bg-white/20 py-2.5 text-center text-[13px] font-extrabold text-white">
+                총 5문제 · 약 3분
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2.5">
-              {[
-                { icon: <PictoDoc size={16} />, text: "총 5문제" },
-                { icon: <PictoClock size={16} />, text: "약 3분" },
-              ].map((t) => (
-                <div
-                  key={t.text}
-                  className="flex items-center justify-center gap-[9px] rounded-[11px] bg-canvas px-3.5 py-3 text-[13px] font-bold text-ink-label"
-                >
-                  {t.icon}
-                  {t.text}
-                </div>
-              ))}
-            </div>
-            <Link
-              href={`/my-lectures/${lectureId}/quiz`}
-              className="z-btn z-btn-primary z-btn-block mt-3"
-            >
-              퀴즈 풀어보기 ›
-            </Link>
           </div>
         </div>
       </div>
