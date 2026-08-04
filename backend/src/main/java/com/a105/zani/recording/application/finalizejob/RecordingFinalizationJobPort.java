@@ -8,7 +8,7 @@ import java.util.Optional;
 public interface RecordingFinalizationJobPort {
 
     /** 녹화는 있지만 아직 병합 작업이 만들어지지 않은 세션 ID를 찾는다. */
-    List<Long> findUnqueuedRecordedSessionIds();
+    List<Long> findUnqueuedRecordedSessionIds(int limit);
 
     /** 세션 하나를 병합 대기열에 멱등하게 등록한다. */
     boolean enqueueSession(Long sessionId, Instant now);

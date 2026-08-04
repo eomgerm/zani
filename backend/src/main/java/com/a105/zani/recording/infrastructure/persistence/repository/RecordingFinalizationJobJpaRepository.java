@@ -23,7 +23,7 @@ public interface RecordingFinalizationJobJpaRepository extends JpaRepository<Rec
                             where job.session_id = recording.session_id)
                      order by recording.session_id asc
                     """, nativeQuery = true)
-    List<Long> findUnqueuedRecordedSessionIds();
+    List<Long> findUnqueuedRecordedSessionIds(Pageable pageable);
 
     @Modifying
     @Query(value = """

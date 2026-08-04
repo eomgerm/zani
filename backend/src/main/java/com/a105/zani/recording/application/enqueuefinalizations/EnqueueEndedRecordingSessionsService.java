@@ -15,12 +15,15 @@ import com.a105.zani.session.application.checkended.CheckSessionEndedUseCase;
 @RequiredArgsConstructor
 public class EnqueueEndedRecordingSessionsService implements EnqueueEndedRecordingSessionsUseCase {
 
+    /** 지원 동시 규모(30)를 넘겨 조회해 진행 중 세션이 등록 batch를 가리지 않게 한다. */
+    private static final int MINIMUM_DISCOVERY_WINDOW = 64;
+
     private final RecordingFinalizationJobPort jobPort;
     private final CheckSessionEndedUseCase checkSessionEndedUseCase;
 
     @Override
     public int enqueue(int limit, Instant now) {
-        List<Long> candidates = jobPort.findUnqueuedRecordedSessionIds();
+        List<Long> candidates = jobPort.findUnqueuedRecordedSessionIds(Math.max(limit, MINIMUM_DISCOVERY_WINDOW));
         Set<Long> endedSessionIds = checkSessionEndedUseCase.endedSessionIds(candidates);
         int inserted = 0;
         for (Long sessionId : candidates) {
