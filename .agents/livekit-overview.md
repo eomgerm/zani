@@ -26,7 +26,7 @@ flowchart TB
         LK["LiveKit SFU"]
         RM[("Redis Media")]
         EG["Track Egress"]
-        FF["FFmpeg·Whisper Worker"]
+        FF["FFmpeg"]
         FS[("/srv/zani/recordings")]
     end
 
@@ -56,7 +56,10 @@ flowchart TB
 | LiveKit | Room, Participant, Track, SFU, 재연결 | ZANI 회원·초대·DB 업무 규칙 |
 | Spring WebSocket | 채팅, 손들기, 반응, 화면 공유 상태, 종료 안내 | 카메라·마이크 전송 |
 | Track Egress | 허용된 단일 원본 Track 저장 | 최종 레이아웃 결정 |
-| FFmpeg | 종료 후 영상·음성 시간축 정렬과 최종 MP4 | 실시간 통화 |
+| FFmpeg | 종료 후 영상·음성 시간축 정렬과 최종 MP4, 사후 전사용 OGG 분할 | 실시간 통화, 전사 |
+
+전사는 자체 Whisper 워커를 두지 않는다. 사후 전사는 마이크 트랙 OGG 를 FFmpeg 로 잘라 SSAFY
+GMS `whisper-1` 에 올린다(2026-07-31 결정, S15P11A105-247). 이 저장소에 Whisper 모델·워커는 없다.
 
 ## 5. 주요 식별자
 

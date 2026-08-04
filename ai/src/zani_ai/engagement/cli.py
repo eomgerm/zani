@@ -547,6 +547,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0k", "E0-K", "E0-K (lr 1e-3, step decay, 300 epochs)"),
         ("e0l", "E0-L", "E0-L (K-1 순서형 이진 헤드, 동결 백본 2단계)"),
         ("e0-10", "E0-10", "E0-10 (E0와 동일, 10-seed 비교 기준선)"),
+        ("e0m", "E0-M", "E0-M (공유 백본 softmax·ordinal dual head, 확률 혼합)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
@@ -578,14 +579,15 @@ def build_parser() -> argparse.ArgumentParser:
                 required=True,
                 help="go reliability_manifest.json produced by analyze-label-reliability",
             )
-        if protocol == "E0-L":
+        if protocol in ("E0-L", "E0-M"):
             reproduce.add_argument(
                 "--stage1",
                 type=Path,
                 required=True,
                 help=(
-                    "completed E0 output directory; seed n freezes the backbone of "
-                    "<dir>/seed-<n>/best.pt"
+                    "completed E0 (E0-10 for E0-M) output directory; seed n freezes "
+                    "the backbone of <dir>/seed-<n>/best.pt, and for E0-M its "
+                    "softmax head as well"
                 ),
             )
         reproduce.set_defaults(handler=_reproduce(protocol))

@@ -14,11 +14,38 @@ import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
 import { useSessionRole } from "./useSessionRole";
+import type { ClipSeekRequest } from "@/domains/report";
 
 const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
     active ? "border-primary text-ink" : "border-transparent text-ink-fainter"
   }`;
+
+/**
+ * 역할이 확정되기 전까지 두 탭이 함께 쓰는 안내.
+ *
+ * <p>역할을 모르는 채로 본문을 그리면 리포트 탭은 어느 엔드포인트를 부를지 모르고, 클립 탭은
+ * 강사용 목업(다른 강의 제목·박제된 재생 시간·fixture 전사)을 학생에게 먼저 보여 준 뒤 실제
+ * 화면으로 바꾼다. 잠깐이라도 그럴듯한 가짜를 보여주느니 아무것도 그리지 않는다.
+ */
+function RoleNotice({ status }: { status: "loading" | "unknown" }) {
+  return status === "loading" ? (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoClockMuted size={44} />
+      </div>
+      <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
+    </div>
+  ) : (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoLock size={44} />
+      </div>
+      <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
+      <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
+    </div>
+  );
+}
 
 /**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
@@ -39,14 +66,17 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
   const [tab, setTab] = useState<"clip" | "report">("clip");
 
   /**
-   * 구간 상세의 "복습 클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린다.
+   * 구간 상세의 "클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린 뒤 그 시각을 넘긴다.
    *
-   * <p>실제 재생 위치 이동은 플레이어가 붙는 S15P11A105-113·257 이 맡는다. 여기서는 넘겨받은
-   * 시각을 그대로 들고 있다 — 값을 버리면 그때 다시 배선해야 한다.
+   * <p>nonce 를 함께 올리는 이유: 같은 구간을 연달아 누르면 시각이 같아 상태가 바뀌지 않고,
+   * 그러면 두 번째 이동이 묻힌다. 실제 재생 위치 이동은 학생 플레이어(113)가 맡는다.
    */
-  const [pendingSeekSeconds, setPendingSeekSeconds] = useState<number | null>(null);
+  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(null);
   const jumpToClip = (offsetSeconds: number) => {
-    setPendingSeekSeconds(offsetSeconds);
+    setSeekRequest((previous) => ({
+      seconds: offsetSeconds,
+      nonce: (previous?.nonce ?? 0) + 1,
+    }));
     setTab("clip");
     window.scrollTo({ top: 0 });
   };
@@ -129,24 +159,17 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
             </button>
           </div>
 
-          {tab === "clip" ? (
-            <ReportClipTab title={lecture.title} seekSeconds={pendingSeekSeconds} />
-          ) : roleStatus === "loading" ? (
-            /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 flex justify-center">
-                <PictoClockMuted size={44} />
-              </div>
-              <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
-            </div>
-          ) : roleStatus === "unknown" ? (
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 flex justify-center">
-                <PictoLock size={44} />
-              </div>
-              <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
-              <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
-            </div>
+          {roleStatus !== "ready" ? (
+            /* 두 탭 모두 역할을 기다린다. 클립 탭도 예외가 아니다 — 목업을 먼저 보여 주면
+               학생이 남의 강의 전사를 자기 수업으로 읽는다. */
+            <RoleNotice status={roleStatus} />
+          ) : tab === "clip" ? (
+            <ReportClipTab
+              title={lecture.title}
+              sessionId={lectureId}
+              isStudent={role === "STUDENT"}
+              seekRequest={seekRequest}
+            />
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           ) : (
