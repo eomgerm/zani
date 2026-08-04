@@ -12,14 +12,26 @@ beforeEach(() => {
 
 describe("useSessionRole", () => {
   it("returns the role for the session", async () => {
-    const request = vi.fn().mockResolvedValue([
-      { sessionId: "s1", inviteCode: "AAA", status: "ENDED", role: "STUDENT" },
-    ]);
+    const session = {
+      sessionId: "s1",
+      inviteCode: "AAA",
+      title: "자료구조",
+      instructorName: "박서준",
+      status: "ENDED",
+      role: "STUDENT",
+      startedAt: "2026-08-03T09:00:00Z",
+      endedAt: "2026-08-03T10:00:00Z",
+      participantCount: 20,
+      reportStatus: "COMPLETED",
+      rejoinable: false,
+    };
+    const request = vi.fn().mockResolvedValue([session]);
 
     const { result } = renderHook(() => useSessionRole("s1", { request }));
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(result.current.role).toBe("STUDENT");
+    expect(result.current.session).toEqual(session);
   });
 
   it("reports unknown instead of guessing when the session is missing", async () => {
@@ -30,6 +42,7 @@ describe("useSessionRole", () => {
     await waitFor(() => expect(result.current.status).toBe("unknown"));
     // 강사로 가정하면 학생이 집단 경로를 불러 403 을 받는다.
     expect(result.current.role).toBeNull();
+    expect(result.current.session).toBeNull();
   });
 
   it("reports unknown when the request fails", async () => {
@@ -38,5 +51,6 @@ describe("useSessionRole", () => {
     const { result } = renderHook(() => useSessionRole("s1", { request }));
 
     await waitFor(() => expect(result.current.status).toBe("unknown"));
+    expect(result.current.session).toBeNull();
   });
 });

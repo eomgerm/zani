@@ -9,7 +9,7 @@ import {
   PictoLock,
   PictoWarn,
 } from "@/shared/ui";
-import { lectures } from "./fixtures";
+import { formatSessionStartedAt, toMyLecture } from "./myLectures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
@@ -49,20 +49,13 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
 
 /**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
- * 탭 전환·구간 선택·상세 모달은 시연용 로컬 상태로 동작한다.
+ *
+ * <p>제목·날짜·역할은 모두 세션 목록 응답에서 온다. fixture 를 폴백으로 두지 않는다 — 실제 세션
+ * id 는 fixture 에 없어 늘 첫 강의로 떨어지고, 그러면 남의 강의 제목을 내 리포트로 읽는다. 게다가
+ * 그 fixture 는 강사라서 학생이 강사용 경로를 불러 403 을 받는다(설계 문서 §2.7).
  */
 export function ReportScreen({ lectureId }: { lectureId: string }) {
-  const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  // 제목·날짜·클립 탭은 아직 fixture 다(110 범위). 역할만 서버 값으로 판정한다 — 실제 세션 id 는
-  // fixture 에 없어 늘 첫 강의(강사)로 떨어지고, 그러면 학생이 강사용 경로를 불러 403 을 받는다.
-  const { status: roleStatus, role } = useSessionRole(lectureId);
-  const isInstructor = roleStatus === "ready" ? role === "INSTRUCTOR" : lecture.role === "instructor";
-  const failed = lecture.status === "FAILED";
-
-  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
-  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
-  const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
-
+  const { status: roleStatus, role, session } = useSessionRole(lectureId);
   const [tab, setTab] = useState<"clip" | "report">("clip");
 
   /**
@@ -81,7 +74,33 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     window.scrollTo({ top: 0 });
   };
 
-  const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
+  // 역할과 세션을 모르는 채로는 제목도 탭도 그릴 수 없다. 어느 엔드포인트를 부를지 모르고, 클립
+  // 탭은 강사용 목업을 학생에게 먼저 보여 준 뒤 실제 화면으로 바꾼다. 그럴듯한 가짜를 잠깐이라도
+  // 보여주느니 아무것도 그리지 않는다.
+  if (roleStatus !== "ready" || session === null || role === null) {
+    return (
+      <>
+        <div className="mb-5 flex items-center gap-4">
+          <Link
+            href="/my-lectures"
+            aria-label="내 강의실 목록으로 돌아가기"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full border border-shell-toggle bg-surface text-ink-sub no-underline hover:bg-[#f3f5f3]"
+          >
+            <ChevronLeftIcon size={17} />
+          </Link>
+        </div>
+        <RoleNotice status={roleStatus === "loading" ? "loading" : "unknown"} />
+      </>
+    );
+  }
+
+  const lecture = toMyLecture(session);
+  const isInstructor = role === "INSTRUCTOR";
+  const failed = lecture.status === "FAILED";
+  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
+  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+  const ready = lecture.status === "COMPLETED";
+  const meta = `${lecture.dur} | ${formatSessionStartedAt(session.startedAt)}`;
 
   return (
     <>
@@ -159,11 +178,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
             </button>
           </div>
 
-          {roleStatus !== "ready" ? (
-            /* 두 탭 모두 역할을 기다린다. 클립 탭도 예외가 아니다 — 목업을 먼저 보여 주면
-               학생이 남의 강의 전사를 자기 수업으로 읽는다. */
-            <RoleNotice status={roleStatus} />
-          ) : tab === "clip" ? (
+          {tab === "clip" ? (
             <ReportClipTab
               title={lecture.title}
               sessionId={lectureId}

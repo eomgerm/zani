@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/domains/auth";
 import {
   requestSessionList,
+  type SessionSummary,
   type SessionListRequester,
 } from "../infrastructure/sessionListApi";
 
@@ -16,6 +17,7 @@ export type SessionRoleStatus = "loading" | "ready" | "unknown";
 export type UseSessionRoleResult = {
   readonly status: SessionRoleStatus;
   readonly role: SessionRole | null;
+  readonly session: SessionSummary | null;
 };
 
 export type UseSessionRoleOptions = {
@@ -47,6 +49,7 @@ export function useSessionRole(
     sessionId: "",
     status: "loading",
     role: null,
+    session: null,
   });
 
   useEffect(() => {
@@ -63,15 +66,15 @@ export function useSessionRole(
         if (!active) return;
         const found = sessions.find((session) => session.sessionId === sessionId);
         if (found === undefined || (found.role !== "INSTRUCTOR" && found.role !== "STUDENT")) {
-          setAnswer({ sessionId, status: "unknown", role: null });
+          setAnswer({ sessionId, status: "unknown", role: null, session: null });
           return;
         }
-        setAnswer({ sessionId, status: "ready", role: found.role });
+        setAnswer({ sessionId, status: "ready", role: found.role, session: found });
       })
       .catch((caught: unknown) => {
         // 취소는 실패가 아니다. 화면을 떠났거나 토큰이 갱신되어 다시 조회하는 경우다.
         if (!active || controller.signal.aborted) return;
-        setAnswer({ sessionId, status: "unknown", role: null });
+        setAnswer({ sessionId, status: "unknown", role: null, session: null });
         console.warn("세션 역할 조회 실패", caught);
       });
 
@@ -82,6 +85,6 @@ export function useSessionRole(
   }, [sessionId, accessToken, request]);
 
   return answer.sessionId === sessionId
-    ? { status: answer.status, role: answer.role }
-    : { status: "loading", role: null };
+    ? { status: answer.status, role: answer.role, session: answer.session }
+    : { status: "loading", role: null, session: null };
 }
