@@ -76,7 +76,11 @@ postclass:
     # 그쪽은 "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 겸용하면 두
     # 마운트가 갈리는 날 조용히 깨진다. 파일 경로의 정본은 DB recording_files.storage_key 이고, 이 루트는
     # 그 상대 경로의 기준점일 뿐이다 — 디렉터리를 나열하지 않는다(마운트에 o+r 이 없어 나열도 안 된다).
-    source-root: ${POSTCLASS_SOURCE_ROOT:/srv/zani/recordings/track-egress}
+    #
+    # 기본값은 호스트 경로가 아니라 컨테이너 안의 마운트 지점(/out)이다. compose 가 호스트
+    # /srv/zani/recordings/track-egress 를 여기에 붙인다. 호스트 경로를 기본값으로 두면 환경변수를
+    # 빠뜨린 배포가 컨테이너에 없는 경로를 보며 조용히 파일을 못 찾는다.
+    source-root: ${POSTCLASS_SOURCE_ROOT:/out}
     # 청크를 만들 작업 디렉터리. 원본 마운트는 read-only 라 산출물은 반드시 여기에 쓴다.
     # 트랙 하나를 분할·처리·정리한 뒤 다음 트랙으로 넘어가므로 피크는 트랙 하나 크기(3시간이면 약 170MB)다.
     # 모든 종료 경로에서 삭제한다.

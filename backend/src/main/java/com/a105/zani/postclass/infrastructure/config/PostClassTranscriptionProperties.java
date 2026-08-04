@@ -9,7 +9,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * 사후 전사 실행 설정(S15P11A105-247).
  *
  * @param sourceRoot Track Egress 원본을 읽을 루트. {@code recording.base-path} 와 값이 같아도 뜻이 다르다 — 그쪽은 LiveKit 에 넘길 출력 경로이고 이쪽은
- *     우리가 읽을 마운트 경로다. 겸용하면 두 마운트가 갈리는 날 조용히 깨진다
+ *     우리가 읽을 마운트 경로다. 겸용하면 두 마운트가 갈리는 날 조용히 깨진다. 기본값은 <b>컨테이너 안의 마운트 지점</b>({@code /out})이다 — 호스트 경로를 기본값으로 두면 환경변수를
+ *     빠뜨린 배포가 컨테이너에 없는 경로를 보며 조용히 파일을 못 찾는다
  * @param workDir 청크를 만들 디렉터리. 원본 마운트가 read-only 라 산출물은 반드시 여기로 간다
  * @param ffmpegPath OGG stream-copy 분할에 쓴다. 재인코딩은 하지 않는다
  * @param ffprobePath 산출물 검증에 쓴다
@@ -28,7 +29,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  */
 @ConfigurationProperties(prefix = "postclass.transcription")
 public record PostClassTranscriptionProperties(
-        @DefaultValue("/srv/zani/recordings/track-egress") String sourceRoot,
+        @DefaultValue("/out") String sourceRoot,
         @DefaultValue("/tmp/zani-postclass") String workDir,
         @DefaultValue("ffmpeg") String ffmpegPath,
         @DefaultValue("ffprobe") String ffprobePath,
