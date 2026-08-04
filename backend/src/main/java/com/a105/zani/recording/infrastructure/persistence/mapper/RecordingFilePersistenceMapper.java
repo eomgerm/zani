@@ -34,9 +34,30 @@ public class RecordingFilePersistenceMapper {
                 trackSource(entity.getTrackSource()),
                 entity.getFileType(),
                 entity.getStorageKey(),
-                entity.getLivekitTrackSid(),
+                effectiveTrackSid(entity),
                 entity.getStartedOffsetMs(),
                 entity.getEndedOffsetMs());
+    }
+
+    /**
+     * 이 파일이 속한 Track SID. 파일 값이 없으면 <b>부모 Egress 의 값</b>으로 채운다.
+     *
+     * <p>한 Egress 가 파일을 여러 개 남기면 {@code UK(recording_id, livekit_track_sid)} 때문에 첫 행만 SID 를 갖고 나머지는 NULL 로 저장된다
+     * ({@code RecordingWebhookService} 의 기존 규칙). 컬럼을 그대로 읽으면 후속 파일의 발화가 어느 발행 구간에서 나왔는지 알 수 없는데, 같은 Egress 이므로 SID 는
+     * 하나이고 그 값이 부모 행에 남아 있다.
+     *
+     * <p>둘 다 없는 것은 V12 이전 행이다. 그때는 Egress 시작 시 SID 를 적어 두지 않았고 지금 복원할 방법이 없으므로 {@code null} 로 둔다 — 그 한 경우만 최종 문서에서
+     * {@code trackSid: null} 이 된다.
+     *
+     * <p><b>이 값은 컬럼 값이 아니라 해석된 값이다.</b> 그래서 {@link RecordingFile#restored} 로 만든 객체를 그대로 저장해서는 안 된다. 저장하면 후속 파일의
+     * {@code livekit_track_sid} 에 부모 SID 가 들어가 UNIQUE 제약을 건드린다. 쓰기 경로는 {@code trackFile}·{@code legacyTrackFile} 로만
+     * 들어온다.
+     */
+    private String effectiveTrackSid(RecordingFileJpaEntity entity) {
+        if (entity.getLivekitTrackSid() != null) {
+            return entity.getLivekitTrackSid();
+        }
+        return entity.getRecording() == null ? null : entity.getRecording().getLivekitTrackSid();
     }
 
     /**

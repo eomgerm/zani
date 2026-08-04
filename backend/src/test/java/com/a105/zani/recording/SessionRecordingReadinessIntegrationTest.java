@@ -16,11 +16,13 @@ import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.gettrackfiles.GetSessionRecordingSnapshotUseCase;
 import com.a105.zani.recording.application.gettrackfiles.RecordingReadiness;
 import com.a105.zani.recording.application.gettrackfiles.SessionRecordingSnapshot;
+import com.a105.zani.recording.application.gettrackfiles.SessionTrackFile;
 import com.a105.zani.recording.application.port.RecordingOutboxType;
 import com.a105.zani.recording.domain.model.RecordingStatus;
 import com.a105.zani.recording.domain.model.TrackSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -114,16 +116,21 @@ class SessionRecordingReadinessIntegrationTest {
     }
 
     private long insertRecording(RecordingStatus status, TrackSource source) {
+        return insertRecording(status, source, null);
+    }
+
+    private long insertRecording(RecordingStatus status, TrackSource source, String trackSid) {
         long id = TsidGenerator.generate();
         jdbcTemplate.update(
                 "INSERT INTO recordings (id, session_id, livekit_egress_id, session_participant_id, track_source,"
-                        + " recording_type, attempt_number, status, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, 'TRACK', 1, ?, ?, ?)",
+                        + " livekit_track_sid, recording_type, attempt_number, status, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, 'TRACK', 1, ?, ?, ?)",
                 id,
                 sessionId,
                 "EG_" + UUID.randomUUID(),
                 participantId,
                 source == null ? null : source.name(),
+                trackSid,
                 status.name(),
                 java.sql.Timestamp.from(NOW),
                 java.sql.Timestamp.from(NOW));
@@ -164,6 +171,35 @@ class SessionRecordingReadinessIntegrationTest {
                 participantId,
                 "raw/instructor/mic-" + UUID.randomUUID(),
                 "TR_" + UUID.randomUUID(),
+                java.sql.Timestamp.from(NOW));
+    }
+
+    /** 한 Egress 의 두 번째 이후 파일. {@code livekit_track_sid} 가 NULL 인 것이 정상이다(UNIQUE 제약). */
+    private void insertFollowUpFile(long recordingId) {
+        jdbcTemplate.update(
+                "INSERT INTO recording_files (id, session_id, recording_id, session_participant_id, file_type,"
+                        + " track_source, storage_key, livekit_track_sid, started_offset_ms, ended_offset_ms,"
+                        + " created_at) VALUES (?, ?, ?, ?, 'TRACK', 'MICROPHONE', ?, NULL, 600000, 1200000, ?)",
+                TsidGenerator.generate(),
+                sessionId,
+                recordingId,
+                participantId,
+                "raw/instructor/mic-followup-" + UUID.randomUUID(),
+                java.sql.Timestamp.from(NOW));
+    }
+
+    /** 파일 컬럼에 SID 를 직접 넣는다. 첫 파일이 그렇게 저장된다. */
+    private void insertFileWithSid(long recordingId, String trackSid) {
+        jdbcTemplate.update(
+                "INSERT INTO recording_files (id, session_id, recording_id, session_participant_id, file_type,"
+                        + " track_source, storage_key, livekit_track_sid, started_offset_ms, ended_offset_ms,"
+                        + " created_at) VALUES (?, ?, ?, ?, 'TRACK', 'MICROPHONE', ?, ?, 0, 600000, ?)",
+                TsidGenerator.generate(),
+                sessionId,
+                recordingId,
+                participantId,
+                "raw/instructor/mic-first-" + UUID.randomUUID(),
+                trackSid,
                 java.sql.Timestamp.from(NOW));
     }
 
@@ -263,6 +299,38 @@ class SessionRecordingReadinessIntegrationTest {
 
         assertEquals(RecordingReadiness.SETTLED, readiness());
         assertTrue(useCase.findBySessionId(sessionId).files().isEmpty());
+    }
+
+    @Test
+    void 멀티파일_Egress_의_후속_파일도_부모_SID_로_같은_값을_낸다() {
+        // 한 Egress 가 파일을 여러 개 남기면 UK(recording_id, livekit_track_sid) 때문에 첫 행만 SID 를
+        // 갖고 나머지는 NULL 로 저장된다. 컬럼을 그대로 읽으면 후속 파일의 발화가 어느 발행 구간인지
+        // 알 수 없는데, 같은 Egress 이므로 SID 는 하나이고 그 값이 부모 행에 남아 있다.
+        String trackSid = "TR_multifile_" + UUID.randomUUID().toString().substring(0, 8);
+        long recording = insertRecording(RecordingStatus.COMPLETE, TrackSource.MICROPHONE, trackSid);
+        insertFileWithSid(recording, trackSid);
+        insertFollowUpFile(recording);
+
+        List<SessionTrackFile> files = useCase.findBySessionId(sessionId).files();
+
+        assertEquals(2, files.size());
+        assertEquals(
+                List.of(trackSid, trackSid),
+                files.stream().map(SessionTrackFile::livekitTrackSid).toList(),
+                "첫 파일과 후속 파일이 같은 Track SID 를 내야 한다");
+    }
+
+    @Test
+    void 파일과_부모_모두_SID_가_없는_legacy_행은_null_로_남는다() {
+        // V12 이전에는 Egress 시작 시 SID 를 적어 두지 않았고 지금 복원할 방법이 없다.
+        // 이 한 경우만 최종 문서에서 trackSid: null 이 된다.
+        long recording = insertRecording(RecordingStatus.COMPLETE, TrackSource.MICROPHONE, null);
+        insertFollowUpFile(recording);
+
+        List<SessionTrackFile> files = useCase.findBySessionId(sessionId).files();
+
+        assertEquals(1, files.size());
+        assertNull(files.get(0).livekitTrackSid());
     }
 
     @Test
