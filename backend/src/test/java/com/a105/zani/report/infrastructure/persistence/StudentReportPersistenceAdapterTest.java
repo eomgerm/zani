@@ -97,7 +97,7 @@ class StudentReportPersistenceAdapterTest {
     private SaveStudentAnalysisCommand command(long sessionId, long participantId, int recommendationCount) {
         List<SaveStudentAnalysisCommand.Recommendation> recommendations = List.of(
                         new SaveStudentAnalysisCommand.Recommendation("CONFUSED", "이차방정식", "다시 보기", 0L, 30_000L),
-                        new SaveStudentAnalysisCommand.Recommendation("REPEAT", "인수분해", "복습", 60_000L, 90_000L))
+                        new SaveStudentAnalysisCommand.Recommendation("LOW_ENGAGEMENT", "인수분해", "복습", 60_000L, 90_000L))
                 .subList(0, recommendationCount);
         return new SaveStudentAnalysisCommand(sessionId, participantId, "참여도 요약", recommendations);
     }

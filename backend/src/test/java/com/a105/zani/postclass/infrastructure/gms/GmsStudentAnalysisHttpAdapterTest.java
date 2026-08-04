@@ -53,6 +53,10 @@ class GmsStudentAnalysisHttpAdapterTest {
                 .andExpect(content().string(containsString("max_completion_tokens")))
                 .andExpect(content().string(not(containsString("\"max_tokens\""))))
                 .andExpect(content().string(containsString("json_schema")))
+                // 근거 유형 다섯 가지가 스키마 enum 과 프롬프트에 함께 실려야 한다. 좁힌 REPEAT 는 없어야 한다.
+                .andExpect(content().string(containsString("NO_RESPONSE")))
+                .andExpect(content().string(containsString("LOW_ENGAGEMENT")))
+                .andExpect(content().string(not(containsString("REPEAT"))))
                 .andExpect(content().string(containsString("student-001")))
                 .andExpect(content().string(not(containsString(String.valueOf(SESSION_ID)))))
                 .andExpect(content().string(not(containsString(String.valueOf(PARTICIPANT_ID)))))

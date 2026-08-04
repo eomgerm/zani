@@ -767,8 +767,8 @@ CROSS JOIN (
            1440000 AS `started_offset_ms`, 1859000 AS `ended_offset_ms`
     UNION ALL SELECT 2, 'MISSED', 'Context API 리렌더링', '놓침 응답과 프롬프트 미응답이 같은 구간에 함께 있었습니다.', 520000, 921000
     UNION ALL SELECT 3, 'QUESTION', '상태관리 라이브러리 비교', '직접 남긴 비공개 질문이 이 개념 설명 구간을 가리킵니다.', 1860000, 2519000
-    UNION ALL SELECT 4, 'REPEAT', 'props drilling 과 상태 위치', '같은 개념에서 확인 필요 신호가 반복됐습니다.', 0, 519000
-    UNION ALL SELECT 5, 'REPEAT', 'Zustand 스토어 구조', '실습 구간에서 같은 지점을 여러 번 되짚었습니다.', 2520000, 3079000
+    UNION ALL SELECT 4, 'LOW_ENGAGEMENT', 'props drilling 과 상태 위치', '이 구간에서 참여도 판정이 낮게 이어졌습니다.', 0, 519000
+    UNION ALL SELECT 5, 'NO_RESPONSE', 'Zustand 스토어 구조', '확인 프롬프트에 응답이 없었습니다.', 2520000, 3079000
 ) t;
 
 INSERT INTO `quizzes` (`id`, `student_report_id`, `title`, `description`, `estimated_duration_minutes`,

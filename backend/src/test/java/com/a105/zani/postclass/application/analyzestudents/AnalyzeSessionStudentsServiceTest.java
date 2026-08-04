@@ -112,7 +112,7 @@ class AnalyzeSessionStudentsServiceTest {
                 new StudentAnalysis.RecommendationDraft(1, "CONFUSED", "1구간", "설명"),
                 new StudentAnalysis.RecommendationDraft(9, "CONFUSED", "범위 밖", "설명"),
                 new StudentAnalysis.RecommendationDraft(2, "BORED", "미정의 유형", "설명"),
-                new StudentAnalysis.RecommendationDraft(1, "REPEAT", "같은 구간 중복", "설명"),
+                new StudentAnalysis.RecommendationDraft(1, "LOW_ENGAGEMENT", "같은 구간 중복", "설명"),
                 new StudentAnalysis.RecommendationDraft(2, "MISSED", "2구간", "설명")));
 
         service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
