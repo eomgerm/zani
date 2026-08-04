@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/domains/auth";
+import { PictoWarn } from "@/shared/ui";
 import { canonicalInviteCode } from "../domain/inviteCode";
 import {
   JoinSessionRequestError,
@@ -170,7 +171,7 @@ export function PrejoinScreen({
               data-testid="browser-unsupported-panel"
               className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-[22px] bg-[#1a1d30] px-[30px] text-center"
             >
-              <span className="text-4xl">🚫</span>
+              <PictoWarn size={36} />
               <div className="text-lg font-extrabold text-white">
                 이 브라우저에서는 장치 테스트를 할 수 없어요
               </div>

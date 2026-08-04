@@ -15,10 +15,9 @@ import com.a105.zani.postclass.application.port.ContentAnalysisLine;
 import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
-import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptQuery;
-import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
-import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
-import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
+import com.a105.zani.postclass.application.port.TranscriptPort;
+import com.a105.zani.postclass.domain.model.TranscriptDocument;
+import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 import com.a105.zani.report.application.exception.InvalidSessionAnalysisException;
 import com.a105.zani.report.application.exception.SessionAnalysisAlreadyStoredException;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
@@ -48,7 +47,7 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
 
     private static final String SILENT_CLASS_SUMMARY = "이 수업에서는 전사할 발화가 없었습니다.";
 
-    private final GetSessionTranscriptUseCase getSessionTranscriptUseCase;
+    private final TranscriptPort transcriptPort;
     private final GetPostClassContextUseCase getPostClassContextUseCase;
     private final ContentAnalysisPort contentAnalysisPort;
     private final SaveSessionAnalysisUseCase saveSessionAnalysisUseCase;
@@ -58,12 +57,12 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         Long sessionId = command.sessionId();
         GetPostClassContextResult context = getPostClassContextUseCase.get(new GetPostClassContextQuery(sessionId));
         long classDurationMs = classDurationMs(context, sessionId);
-        GetSessionTranscriptResult transcript = readTranscript(sessionId);
+        TranscriptDocument transcript = readTranscript(sessionId);
         long rangeMs = analysisRangeMs(classDurationMs, transcript);
 
         String classSummary;
         List<SessionSectionDraft> sections;
-        if (transcript.lines().isEmpty()) {
+        if (transcript.segments().isEmpty()) {
             // 무음 수업. GMS 를 부르지 않는다 — 보낼 내용이 없고, 빈 전사로 물으면 모델이 없는 내용을 지어낸다.
             classSummary = SILENT_CLASS_SUMMARY;
             sections = List.of(new SessionSectionDraft(SILENT_CLASS_TITLE, SILENT_CLASS_SUMMARY, 0, rangeMs));
@@ -89,9 +88,9 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
      * <p>전사 범위를 상한으로 인정해도 검증이 헐거워지지 않는다 — 모델에게는 전사에 있는 오프셋만 보여 주므로, 그보다 큰 값은 여전히 거절된다. 구간이 가리키는 지점도 녹화가 실제로 덮는 구간이라 재생할
      * 수 있다.
      */
-    private long analysisRangeMs(long classDurationMs, GetSessionTranscriptResult transcript) {
-        long transcriptEndMs = transcript.lines().stream()
-                .mapToLong(TranscriptLine::endOffsetMs)
+    private long analysisRangeMs(long classDurationMs, TranscriptDocument transcript) {
+        long transcriptEndMs = transcript.segments().stream()
+                .mapToLong(TranscriptDocumentSegment::endOffsetMs)
                 .max()
                 .orElse(0);
         return Math.max(classDurationMs, transcriptEndMs);
@@ -143,9 +142,10 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
         return classDuration.toMillis();
     }
 
-    private GetSessionTranscriptResult readTranscript(Long sessionId) {
-        GetSessionTranscriptResult transcript = getSessionTranscriptUseCase
-                .get(new GetSessionTranscriptQuery(sessionId))
+    /** 저장된 전사를 읽는다. 문서 해석 실패는 {@link TranscriptPort} 가 예외로 구분해 주므로(빈 값은 "전사가 아직 없다" 뿐), 여기서는 없는 경우와 미완결만 판단한다. */
+    private TranscriptDocument readTranscript(Long sessionId) {
+        TranscriptDocument transcript = transcriptPort
+                .findBySessionId(sessionId)
                 .orElseThrow(() -> {
                     // 전사 단계가 아직 끝나지 않았다. 기다리면 결과가 달라지므로 재시도 대상이다.
                     log.warn("전사가 없어 공통 분석을 멈춥니다. sessionId={}", sessionId);
@@ -165,9 +165,10 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
      * 남는다).
      */
     private ContentAnalysis requestAnalysis(
-            Long sessionId, String lectureTitle, long classDurationMs, GetSessionTranscriptResult transcript) {
-        List<ContentAnalysisLine> lines = transcript.lines().stream()
-                .map(line -> new ContentAnalysisLine(line.startOffsetMs(), line.endOffsetMs(), line.text()))
+            Long sessionId, String lectureTitle, long classDurationMs, TranscriptDocument transcript) {
+        // 화자는 넘기지 않는다. GMS 에는 세션 식별자를 보낼 수 없고(가이드 §9) 구간 경계는 내용과 시각에서 나온다.
+        List<ContentAnalysisLine> lines = transcript.segments().stream()
+                .map(segment -> new ContentAnalysisLine(segment.startOffsetMs(), segment.endOffsetMs(), segment.text()))
                 .toList();
         ContentAnalysisOutcome outcome =
                 contentAnalysisPort.analyze(new ContentAnalysisRequest(lectureTitle, classDurationMs, lines));

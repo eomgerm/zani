@@ -10,5 +10,7 @@ import com.a105.zani.postclass.domain.model.PipelineStatus;
  * @param status 현재 단계
  * @param attemptCount 현재 단계의 시도 횟수. 단계가 바뀌면 0 으로 돌아간다 — 재시도 예산은 단계마다 따로 준다
  * @param queuedAt 작업이 등록된 시각(= 메모 확정 시각). 8시간 마감의 기준점이다
+ * @param nextAttemptAt 이 시각 이후에 현재 단계를 재시도할 수 있다. 대기 중이 아니면 {@code null}. 재시도 선점 판단에 필요하다 — 단계만 보면 "실행 중인 TRANSCRIBING"
+ *     과 "실패해서 재시도를 기다리는 TRANSCRIBING" 을 구분할 수 없다
  */
-public record PipelineJobState(PipelineStatus status, int attemptCount, Instant queuedAt) {}
+public record PipelineJobState(PipelineStatus status, int attemptCount, Instant queuedAt, Instant nextAttemptAt) {}

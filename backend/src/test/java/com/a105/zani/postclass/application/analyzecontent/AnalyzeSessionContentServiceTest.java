@@ -15,9 +15,11 @@ import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
 import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
-import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptResult;
-import com.a105.zani.recording.application.getsessiontranscript.GetSessionTranscriptUseCase;
-import com.a105.zani.recording.application.getsessiontranscript.TranscriptLine;
+import com.a105.zani.postclass.application.port.TranscriptPort;
+import com.a105.zani.postclass.domain.model.ConfidenceMethod;
+import com.a105.zani.postclass.domain.model.TranscriptDocument;
+import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
+import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.report.application.exception.InvalidSessionAnalysisException;
 import com.a105.zani.report.application.exception.SessionAnalysisAlreadyStoredException;
 import com.a105.zani.report.application.savesessionanalysis.SaveSessionAnalysisCommand;
@@ -43,8 +45,8 @@ class AnalyzeSessionContentServiceTest {
     private static final long CLASS_DURATION_MS = 45 * 60 * 1_000L;
 
     private GetPostClassContextResult context = new GetPostClassContextResult("React 상태 관리", STARTED_AT, ENDED_AT);
-    private Optional<GetSessionTranscriptResult> transcript = Optional.of(new GetSessionTranscriptResult(
-            false, List.of(new TranscriptLine(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."))));
+    private Optional<TranscriptDocument> transcript =
+            Optional.of(document(segment(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다.")));
     private ContentAnalysisOutcome analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
             "React 상태 관리를 다뤘다.", List.of(new AnalyzedSection("상태 관리", "useState 와 useReducer 를 비교했다.", 0, 600_000))));
 
@@ -52,7 +54,20 @@ class AnalyzeSessionContentServiceTest {
     private final List<SaveSessionAnalysisCommand> savedCommands = new ArrayList<>();
 
     private final GetPostClassContextUseCase getPostClassContextUseCase = query -> context;
-    private final GetSessionTranscriptUseCase getSessionTranscriptUseCase = query -> transcript;
+    /** 읽기만 쓰는 페이크. {@code save} 는 이 유스케이스가 부르지 않으므로 불리면 그 자체가 결함이다. */
+    private final TranscriptPort transcriptPort = new TranscriptPort() {
+
+        @Override
+        public void save(Long sessionId, TranscriptDocument document, Instant now) {
+            throw new UnsupportedOperationException("공통 분석은 전사를 쓰지 않는다");
+        }
+
+        @Override
+        public Optional<TranscriptDocument> findBySessionId(Long sessionId) {
+            return transcript;
+        }
+    };
+
     private final ContentAnalysisPort contentAnalysisPort = request -> {
         analysisRequests.add(request);
         return analysis;
@@ -64,7 +79,28 @@ class AnalyzeSessionContentServiceTest {
     };
 
     private final AnalyzeSessionContentService service = new AnalyzeSessionContentService(
-            getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, saveSessionAnalysisUseCase);
+            transcriptPort, getPostClassContextUseCase, contentAnalysisPort, saveSessionAnalysisUseCase);
+
+    /** 247 계약의 세그먼트. 분석이 쓰는 것은 오프셋과 본문뿐이라 추적 필드는 고정값으로 채운다. */
+    private static TranscriptDocumentSegment segment(long startOffsetMs, long endOffsetMs, String text) {
+        return new TranscriptDocumentSegment(
+                1_000_000_003_001L,
+                TrackSource.MICROPHONE,
+                "TR_test",
+                startOffsetMs,
+                endOffsetMs,
+                text,
+                -0.21,
+                0.811,
+                ConfidenceMethod.EXP_AVG_LOGPROB,
+                0.02,
+                1_000_000_010_001L,
+                0);
+    }
+
+    private static TranscriptDocument document(TranscriptDocumentSegment... segments) {
+        return TranscriptDocument.complete("ko", List.of(segments));
+    }
 
     private AnalyzeSessionContentResult analyze() {
         return service.analyze(new AnalyzeSessionContentCommand(SESSION_ID));
@@ -109,11 +145,9 @@ class AnalyzeSessionContentServiceTest {
     @Test
     void acceptsATranscriptThatRunsPastTheSessionEnd() {
         long pastTheEndMs = CLASS_DURATION_MS + 8_000;
-        transcript = Optional.of(new GetSessionTranscriptResult(
-                false,
-                List.of(
-                        new TranscriptLine(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."),
-                        new TranscriptLine(CLASS_DURATION_MS - 2_000, pastTheEndMs, "마지막 정리까지 녹화가 조금 더 돌았습니다."))));
+        transcript = Optional.of(document(
+                segment(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."),
+                segment(CLASS_DURATION_MS - 2_000, pastTheEndMs, "마지막 정리까지 녹화가 조금 더 돌았습니다.")));
         analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
                 "React 상태 관리를 다뤘다.",
                 List.of(new AnalyzedSection("상태 관리", "useState 와 useReducer 를 비교했다.", 0, pastTheEndMs))));
@@ -129,7 +163,7 @@ class AnalyzeSessionContentServiceTest {
     /** 무음 수업은 단일 구간으로 폴백한다. 구간이 비면 뒤 단계가 읽을 경계가 사라진다. */
     @Test
     void fallsBackToASingleSectionForASilentClass() {
-        transcript = Optional.of(new GetSessionTranscriptResult(false, List.of()));
+        transcript = Optional.of(document());
 
         AnalyzeSessionContentResult result = analyze();
 
@@ -182,7 +216,7 @@ class AnalyzeSessionContentServiceTest {
                         new AnalyzedSection("앞 구간", "겹치는 구간이다.", 0, 600_000),
                         new AnalyzedSection("뒤 구간", "앞 구간과 겹친다.", 300_000, 900_000))));
         AnalyzeSessionContentService rejecting = new AnalyzeSessionContentService(
-                getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                transcriptPort, getPostClassContextUseCase, contentAnalysisPort, command -> {
                     // 실제 적재 유스케이스와 같은 계약: 애그리거트의 거절을 애플리케이션 경계 예외로 바꿔 올린다.
                     throw new InvalidSessionAnalysisException(
                             new InvalidSessionReportException(SessionReportErrorCode.INVALID_SESSION_REPORT));
@@ -219,8 +253,8 @@ class AnalyzeSessionContentServiceTest {
     /** 미완결 전사로 분석하면 타임라인이 수업 일부만 덮는다. */
     @Test
     void failsWhenTheTranscriptIsStillPartial() {
-        transcript =
-                Optional.of(new GetSessionTranscriptResult(true, List.of(new TranscriptLine(0, 1_000, "일부만 전사됨"))));
+        transcript = Optional.of(new TranscriptDocument(
+                TranscriptDocument.SCHEMA_VERSION, "ko", true, List.of(segment(0, 1_000, "일부만 전사됨"))));
 
         assertThrows(ContentAnalysisFailedException.class, this::analyze);
         assertTrue(analysisRequests.isEmpty());
@@ -244,7 +278,7 @@ class AnalyzeSessionContentServiceTest {
     @Test
     void treatsALostRaceAsAlreadyAnalysed() {
         AnalyzeSessionContentService raced = new AnalyzeSessionContentService(
-                getSessionTranscriptUseCase, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                transcriptPort, getPostClassContextUseCase, contentAnalysisPort, command -> {
                     throw new SessionAnalysisAlreadyStoredException(new IllegalStateException("unique violation"));
                 });
 
@@ -258,7 +292,7 @@ class AnalyzeSessionContentServiceTest {
     @Test
     void reportsNotAnalyzedWhenTheReportAlreadyExists() {
         AnalyzeSessionContentService alreadySaved = new AnalyzeSessionContentService(
-                getSessionTranscriptUseCase,
+                transcriptPort,
                 getPostClassContextUseCase,
                 contentAnalysisPort,
                 command -> new SaveSessionAnalysisResult(command.sessionId(), false, 0));

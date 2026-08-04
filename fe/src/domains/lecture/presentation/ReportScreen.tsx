@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DownloadIcon } from "@/shared/ui";
+import { DownloadIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import { learnSegments, lectures } from "./fixtures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -14,6 +14,32 @@ const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
     active ? "border-primary text-ink" : "border-transparent text-ink-fainter"
   }`;
+
+/**
+ * 역할이 확정되기 전까지 두 탭이 함께 쓰는 안내.
+ *
+ * <p>역할을 모르는 채로 본문을 그리면 리포트 탭은 어느 엔드포인트를 부를지 모르고, 클립 탭은
+ * 강사용 목업(다른 강의 제목·박제된 재생 시간·fixture 전사)을 학생에게 먼저 보여 준 뒤 실제
+ * 화면으로 바꾼다. 잠깐이라도 그럴듯한 가짜를 보여주느니 아무것도 그리지 않는다.
+ */
+function RoleNotice({ status }: { status: "loading" | "unknown" }) {
+  return status === "loading" ? (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoClockMuted size={44} />
+      </div>
+      <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
+    </div>
+  ) : (
+    <div className="px-5 py-[70px] text-center text-ink-fainter">
+      <div className="mb-3.5 flex justify-center">
+        <PictoLock size={44} />
+      </div>
+      <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
+      <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
+    </div>
+  );
+}
 
 /**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
@@ -70,8 +96,8 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
 
       {failed && (
         <div className="mb-2 flex items-center gap-3.5 rounded-2xl border border-line-muted bg-primary-softer px-[22px] py-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-xl text-danger">
-            ⚠️
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft">
+            <PictoWarn size={22} />
           </span>
           <div className="flex-1">
             <div className="font-extrabold">결과를 생성하지 못했어요</div>
@@ -90,7 +116,9 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
            왜 볼 것이 없는지만 짧게 알린다. */
         !failed && (
           <div className="mt-[22px] px-5 py-[70px] text-center text-ink-fainter">
-            <div className="mb-3.5 text-[44px]">⏳</div>
+            <div className="mb-3.5 flex justify-center">
+              <PictoClockMuted size={44} />
+            </div>
             <div className="mb-1 font-bold text-ink-muted">아직 분석이 끝나지 않았어요</div>
             <div className="text-[13.5px]">분석이 완료되면 리포트를 확인할 수 있어요.</div>
           </div>
@@ -115,20 +143,16 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
             </button>
           </div>
 
-          {tab === "clip" ? (
-            <ReportClipTab title={lecture.title} />
-          ) : roleStatus === "loading" ? (
-            /* 역할을 모르는 채로 그리면 어느 엔드포인트를 부를지도 모른다. 어느 쪽도 그리지 않는다. */
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 text-[44px]">⏳</div>
-              <div className="font-bold text-ink-muted">리포트를 불러오는 중이에요</div>
-            </div>
-          ) : roleStatus === "unknown" ? (
-            <div className="px-5 py-[70px] text-center text-ink-fainter">
-              <div className="mb-3.5 text-[44px]">🔒</div>
-              <div className="mb-1 font-bold text-ink-muted">이 수업의 리포트를 볼 수 없어요</div>
-              <div className="text-[13.5px]">내가 참여한 수업이 맞는지 확인해 주세요.</div>
-            </div>
+          {roleStatus !== "ready" ? (
+            /* 두 탭 모두 역할을 기다린다. 클립 탭도 예외가 아니다 — 목업을 먼저 보여 주면
+               학생이 남의 강의 전사를 자기 수업으로 읽는다. */
+            <RoleNotice status={roleStatus} />
+          ) : tab === "clip" ? (
+            <ReportClipTab
+              title={lecture.title}
+              sessionId={lectureId}
+              isStudent={role === "STUDENT"}
+            />
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} activeSeg={activeSeg} onSelect={onSelectSeg} />
           ) : (

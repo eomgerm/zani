@@ -7,12 +7,14 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.postclass.application.exception.PipelineJobUnavailableException;
 import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.application.port.PipelineJobState;
 import com.a105.zani.postclass.domain.model.PipelineStatus;
+import com.a105.zani.postclass.infrastructure.persistence.entity.PipelineJobJpaEntity;
 import com.a105.zani.postclass.infrastructure.persistence.repository.PipelineJobJpaRepository;
 
 /** pipeline_jobs 영속 어댑터. 등록은 INSERT IGNORE 로 session_id UNIQUE 충돌을 호출자 트랜잭션 오염 없이 흡수한다. */
@@ -37,10 +39,34 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
     @Override
     public Optional<PipelineJobState> findForUpdate(Long sessionId) {
         try {
-            return pipelineJobJpaRepository
-                    .findForUpdate(sessionId)
-                    .map(job -> new PipelineJobState(
-                            PipelineStatus.valueOf(job.getStatus()), job.getAttemptCount(), job.getCreatedAt()));
+            return pipelineJobJpaRepository.findForUpdate(sessionId).map(PipelineJobPersistenceAdapter::toState);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public Optional<PipelineJobState> find(Long sessionId) {
+        try {
+            return pipelineJobJpaRepository.findBySessionId(sessionId).map(PipelineJobPersistenceAdapter::toState);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    private static PipelineJobState toState(PipelineJobJpaEntity job) {
+        return new PipelineJobState(
+                PipelineStatus.valueOf(job.getStatus()),
+                job.getAttemptCount(),
+                job.getCreatedAt(),
+                job.getNextAttemptAt());
+    }
+
+    @Override
+    @Transactional
+    public int requeueStalledTranscriptions(Instant now) {
+        try {
+            return pipelineJobJpaRepository.requeueStalledTranscriptions(now);
         } catch (DataAccessException exception) {
             throw new PipelineJobUnavailableException(exception);
         }
@@ -68,6 +94,24 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
     public void markFailed(Long sessionId, String error, Instant changedAt) {
         try {
             pipelineJobJpaRepository.markFailed(sessionId, truncate(error), changedAt);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public List<Long> findDueTranscriptionSessionIds(Instant now, int limit) {
+        try {
+            return pipelineJobJpaRepository.findDueTranscriptionSessionIds(now, limit);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void clearRetryWait(Long sessionId, Instant changedAt) {
+        try {
+            pipelineJobJpaRepository.clearRetryWait(sessionId, changedAt);
         } catch (DataAccessException exception) {
             throw new PipelineJobUnavailableException(exception);
         }

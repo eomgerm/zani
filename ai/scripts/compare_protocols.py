@@ -34,7 +34,22 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
+from zani_ai.engagement.contracts import low_engagement_metrics
+
 RESULTS_FILENAME = "test_results.json"
+
+#: Low-engagement key in `contracts.low_engagement_metrics` -> column label.
+#: Derived from each seed's confusion matrix, so protocols finalized before this
+#: view existed (E0-10, E0-L) can be judged on it without retraining -- which is
+#: the whole point, since S15P11A105-289 compares against E0-10's finished run.
+LOW_ENGAGEMENT_METRICS = {
+    "recall": "저참여 recall",
+    "false_positive_rate": "저참여 FPR",
+    "precision": "저참여 precision",
+    "f1": "저참여 F1",
+    "consecutive_detection_rate": "3연속 검출률",
+    "false_alarms_per_90min": "90분당 오탐",
+}
 
 #: Metric key in the per-seed ``test`` block -> column label. macro-F1 and QWK
 #: come first because the success bar is stated on those two.
@@ -61,6 +76,13 @@ VALIDATION_METRICS = {
 #: sign looks.
 DECISION_THRESHOLD = 0.01
 
+#: The pre-registered low-engagement gate from S15P11A105-289. Constants rather
+#: than flags: a gate whose bar can be passed on the command line is a bar chosen
+#: after seeing the numbers.
+LOW_ENGAGEMENT_RECALL_GAIN = 0.03
+FALSE_ALARM_BUDGET_PER_90MIN = 0.5
+MAXIMUM_ACCURACY_DROP = 0.01
+
 #: ``z_0.975 + z_0.80`` -- the two-sided alpha 0.05, 80% power constant. Normal
 #: approximation rather than a noncentral t, which slightly understates the
 #: requirement at these sample sizes; that direction is the safe one for a bar
@@ -77,6 +99,8 @@ class Protocol:
     seeds: tuple[int, ...]
     metrics: dict[str, list[float]]
     adjacent_shares: list[float]
+    #: Per-seed low-vs-high metrics, keyed as in `LOW_ENGAGEMENT_METRICS`.
+    low_engagement: dict[str, list[float]]
     pooled_confusion: np.ndarray
     #: True when QWK/within-1 were recomputed from the confusion matrix because
     #: the run predates those metrics being recorded.
@@ -175,6 +199,10 @@ def _load(directory: Path) -> Protocol:
         seeds=tuple(int(record["seed"]) for record in records),
         metrics=metrics,
         adjacent_shares=[_adjacent_share(matrix) for matrix in confusions],
+        low_engagement={
+            key: [low_engagement_metrics(matrix.tolist())[key] for matrix in confusions]
+            for key in LOW_ENGAGEMENT_METRICS
+        },
         pooled_confusion=np.sum(confusions, axis=0),
         derived_ordinal=derived,
         runtime=_runtime(directory),
@@ -426,6 +454,58 @@ def _verdict(baseline: Protocol, variant: Protocol) -> list[str]:
     return lines
 
 
+def _low_engagement_verdict(baseline: Protocol, variant: Protocol) -> list[str]:
+    """The S15P11A105-289 gate: more detection, bounded false alarms and accuracy.
+
+    Reported beside :func:`_verdict` rather than replacing it. The two answer
+    different questions and can disagree -- a mixture that trades 4-class
+    accuracy for detection is designed to fail one and pass the other -- so
+    collapsing them into one line would hide the trade being made.
+
+    Each criterion also carries whether the seed counts in hand could have
+    detected the difference it is judging, for the same reason the 검출한계 column
+    exists: a gain under the detectable minimum is not a pass, it is unmeasured.
+    """
+    recall_gain = statistics.fmean(variant.low_engagement["recall"]) - statistics.fmean(
+        baseline.low_engagement["recall"]
+    )
+    accuracy_drop = statistics.fmean(baseline.metrics["accuracy"]) - statistics.fmean(
+        variant.metrics["accuracy"]
+    )
+    false_alarms = statistics.fmean(variant.low_engagement["false_alarms_per_90min"])
+    detectable = _detectable_difference(
+        baseline.low_engagement["recall"], variant.low_engagement["recall"]
+    )
+    criteria = (
+        (
+            f"저참여 recall {recall_gain * 100:+.2f}%p "
+            f"(기준 +{LOW_ENGAGEMENT_RECALL_GAIN * 100:.2f}%p)",
+            recall_gain >= LOW_ENGAGEMENT_RECALL_GAIN,
+        ),
+        (
+            f"90분당 오탐 {false_alarms:.3f}회 (기준 {FALSE_ALARM_BUDGET_PER_90MIN:.2f}회 이하)",
+            false_alarms <= FALSE_ALARM_BUDGET_PER_90MIN,
+        ),
+        (
+            f"accuracy 하락 {accuracy_drop * 100:+.2f}%p "
+            f"(기준 {MAXIMUM_ACCURACY_DROP * 100:.2f}%p 이하)",
+            accuracy_drop <= MAXIMUM_ACCURACY_DROP,
+        ),
+    )
+    lines = [f"  {'O' if passed else 'X'} {text}" for text, passed in criteria]
+    lines.append("")
+    if detectable is not None:
+        lines.append(f"  저참여 recall 검출한계: {detectable * 100:.2f}%p")
+        if abs(recall_gain) < detectable:
+            lines.append(
+                "  차이가 검출한계보다 작습니다 — 이 seed 수로는 판정할 수 없습니다"
+            )
+    lines.append(
+        f"  저참여 판정: {'채택 조건 충족' if all(passed for _, passed in criteria) else '미충족'}"
+    )
+    return lines
+
+
 def _compare_validation(baseline_dir: Path, variant_dir: Path, minimum_gain: float) -> int:
     baseline = _load_validation(baseline_dir)
     variant = _load_validation(variant_dir)
@@ -509,6 +589,27 @@ def main() -> int:
     print(_table(header, rows))
     print(_detection_note(len(baseline.seeds), len(variant.seeds)))
 
+    # A separate table because it answers a different question. The one above
+    # ranks 4-class quality; this one is the binary decision the product actually
+    # makes, and a protocol can move the two in opposite directions -- which is
+    # exactly what E0-L did against E0-10 and why E0-M exists.
+    print("\n저참여(Not-Engaged + Barely-Engaged) 이진 판정")
+    print(
+        _table(
+            header,
+            [
+                _row(label, baseline.low_engagement[key], variant.low_engagement[key])
+                for key, label in LOW_ENGAGEMENT_METRICS.items()
+            ],
+        )
+    )
+    print(
+        "\n3연속 검출률과 90분당 오탐은 인접 10초 창이 독립이라고 가정한 근사입니다 "
+        "(.agents/attention-coaching-context.md §3.3).\n"
+        "실사용에서는 연속 창이 서로 비슷해 양쪽 모두 이 값보다 높게 나오므로, "
+        "프로토콜 간 비교에만 쓰고 절대값으로 읽지 마십시오."
+    )
+
     print(f"\n오분류 총계: {_error_total(baseline)} → {_error_total(variant)}")
     for protocol in (baseline, variant):
         print(
@@ -520,6 +621,8 @@ def main() -> int:
 
     print()
     print("\n".join(_verdict(baseline, variant)))
+    print()
+    print("\n".join(_low_engagement_verdict(baseline, variant)))
     return 0
 
 

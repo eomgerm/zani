@@ -12,7 +12,9 @@ import torch
 
 from zani_ai.engagement import training as training_module
 from zani_ai.engagement.model import (
+    DUAL_HEAD,
     EngagementTransformer,
+    MixingProtocol,
     ModelConfig,
     monotone_cumulative_probabilities,
     ordinal_binary_class_probabilities,
@@ -679,6 +681,10 @@ _TINY_MODEL = ModelConfig(d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=
 _ORDINAL_MODEL = ModelConfig(
     d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=0, head="ordinal_binary"
 )
+#: E0-M's head (ticket 289). Also two-stage, so it shares the guards below.
+_DUAL_MODEL = ModelConfig(
+    d_model=16, nhead=4, num_layers=1, mlp_dim=8, dropout=0, head=DUAL_HEAD
+)
 
 
 def _stage1_checkpoint(tmp_path: Path, features: Path) -> Path:
@@ -885,18 +891,28 @@ def test_a_stage1_checkpoint_from_other_data_is_rejected(tmp_path: Path) -> None
 
 @pytest.mark.parametrize(
     ("model", "with_stage1"),
-    [(_ORDINAL_MODEL, False), (_TINY_MODEL, True)],
-    ids=["head-without-stage1", "stage1-without-head"],
+    [
+        (_ORDINAL_MODEL, False),
+        (_DUAL_MODEL, False),
+        (_TINY_MODEL, True),
+    ],
+    ids=["ordinal-without-stage1", "dual-without-stage1", "stage1-without-head"],
 )
-def test_the_head_and_its_stage1_come_together(
+def test_a_two_stage_head_and_its_stage1_come_together(
     tmp_path: Path, model: ModelConfig, with_stage1: bool
 ) -> None:
+    """Both ordinal heads freeze a prior run, and neither works without one.
+
+    A head with no pretrained backbone trains from scratch, and a frozen backbone
+    under a plain softmax head is E0 with its encoder switched off. Neither is a
+    protocol this repo has, so the pairing is enforced rather than assumed.
+    """
     features = tmp_path / "features"
     features.mkdir()
     _write_manifest(features)
     stage1 = _stage1_checkpoint(tmp_path, features) if with_stage1 else None
 
-    with pytest.raises(ValueError, match="requires stage1_checkpoint"):
+    with pytest.raises(ValueError, match="stage1_checkpoint"):
         train_model(
             TrainingConfig(
                 features_root=features,
@@ -907,6 +923,37 @@ def test_the_head_and_its_stage1_come_together(
                 device="cpu",
                 model=model,
                 stage1_checkpoint=stage1,
+                mixing=MixingProtocol() if model.head == DUAL_HEAD else None,
+            ),
+            evaluate_test=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("model", "mixing"),
+    [(_DUAL_MODEL, None), (_ORDINAL_MODEL, MixingProtocol())],
+    ids=["dual-without-grid", "grid-without-dual"],
+)
+def test_the_dual_head_and_its_mixing_grid_come_together(
+    tmp_path: Path, model: ModelConfig, mixing: MixingProtocol | None
+) -> None:
+    """Without a grid the dual head has no deployed output to select at all."""
+    features = tmp_path / "features"
+    features.mkdir()
+    _write_manifest(features)
+
+    with pytest.raises(ValueError, match="mixing"):
+        train_model(
+            TrainingConfig(
+                features_root=features,
+                output_dir=tmp_path / "stage2",
+                max_epochs=1,
+                batch_size=4,
+                patience=1,
+                device="cpu",
+                model=model,
+                stage1_checkpoint=_stage1_checkpoint(tmp_path, features),
+                mixing=mixing,
             ),
             evaluate_test=False,
         )

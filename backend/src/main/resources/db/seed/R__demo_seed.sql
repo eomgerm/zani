@@ -273,30 +273,45 @@ VALUES
     (1000000005006, @s1, 'Zustand 실습', '실습으로 개념을 굳힌 구간이다. 참여도가 가장 높았다.', 2520000, 3079000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
     (1000000005007, @s1, '정리와 질문', '핵심 개념을 정리하고 마무리한 구간이다.', 3080000, 4440000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
--- transcript_document 는 S15P11A105-247 이 확정한 계약(schemaVersion 1)을 따른다. 화자는 실명이 아니라
--- session_participants.id 이고, 오프셋 키는 startOffsetMs/endOffsetMs(수업 시작 기준 ms)다.
--- 공통 분석(S15P11A105-248)이 이 문서를 읽어 구간을 만들므로 키 이름이 어긋나면 구간이 만들어지지 않는다.
+-- transcript_document 의 정본 형태는 S15P11A105-247 에서 정했다(TranscriptDocument / TranscriptDocumentSegment).
+-- 이 시드는 그 형태를 그대로 따른다 — 시드와 파이프라인 산출물이 다르면 리포트 화면이 시연에서만 동작한다.
+--
+-- 바뀐 것 셋.
+--   1. 화자가 실명 문자열이 아니라 `sessionParticipantId` 다. 이름을 JSON 에 굳히면 개인정보가 남고,
+--      표시 이름이 바뀌면 옛 전사와 새 전사의 같은 사람이 다르게 보인다. 실명은 화면이 참여자 행에서 읽는다.
+--   2. `version` → `schemaVersion`, `startedOffsetMs`/`endedOffsetMs` → `startOffsetMs`/`endOffsetMs`.
+--   3. 신뢰도 삼종(`avgLogprob`·`confidence`·`noSpeechProb`)과 추적용 `recordingFileId`·`trackSid`·`chunkIndex` 추가.
+--      `confidence` 는 `exp(avgLogprob)` 이고 원값과 계산 방법(`confidenceMethod`)을 함께 남긴다 — 식을 바꿀 때
+--      옛 값과 구분해야 하고, 소비자가 "0.8 이 무엇의 0.8 인가" 를 알아야 한다.
+--      추적 좌표가 둘인 이유: `recordingFileId` 는 체크포인트 행으로, `trackSid` 는 LiveKit 발행 구간으로 간다.
+--      재접속·재발행은 같은 참가자라도 다른 Track SID 를 만들므로 그 구분은 `trackSid` 로만 가능하다.
+--
+-- 화자·파일 대응은 위 recording_files 블록과 맞춘다(파일 id = 1000000010000 + (참가자 id - 1000000003000)).
+--   1000000003001 강사 → 1000000010001,  3002~3004 학생 → 10002~10004
+-- `trackSid` 도 같은 블록의 값을 그대로 쓴다(TR_demo_ + LPAD(참가자 id - 1000000003000, 4)).
+-- `chunkIndex` 는 10분(600,000ms) 청크 기준 순번이다(postclass.transcription.chunk-duration 기본값).
+-- 이 세션의 마이크 파일은 started_offset_ms 가 0 이라 절대 시각과 파일 기준 시각이 같다.
 INSERT INTO `transcripts` (`id`, `session_id`, `transcript_document`, `created_at`, `updated_at`)
 VALUES (1000000006001, @s1, CAST('{
   "schemaVersion": 1,
   "language": "ko",
   "partial": false,
   "segments": [
-    {"startOffsetMs": 2000, "endOffsetMs": 32000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다."},
-    {"startOffsetMs": 195000, "endOffsetMs": 226000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요."},
-    {"startOffsetMs": 400000, "endOffsetMs": 431000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다."},
-    {"startOffsetMs": 520000, "endOffsetMs": 551000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "먼저 Context API의 리렌더링 이슈를 이해해야 합니다."},
-    {"startOffsetMs": 730000, "endOffsetMs": 745000, "sessionParticipantId": 1000000003002, "source": "MICROPHONE", "text": "Context랑 Redux는 어떤 기준으로 골라야 하나요?"},
-    {"startOffsetMs": 755000, "endOffsetMs": 790000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다."},
-    {"startOffsetMs": 922000, "endOffsetMs": 940000, "sessionParticipantId": 1000000003003, "source": "MICROPHONE", "text": "선생님, Context 값이 바뀌면 왜 하위 전체가 리렌더되나요?"},
-    {"startOffsetMs": 948000, "endOffsetMs": 980000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "좋은 질문이에요. Provider value의 참조가 바뀌기 때문입니다."},
-    {"startOffsetMs": 1145000, "endOffsetMs": 1180000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요."},
-    {"startOffsetMs": 1450000, "endOffsetMs": 1490000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다."},
-    {"startOffsetMs": 1650000, "endOffsetMs": 1662000, "sessionParticipantId": 1000000003004, "source": "MICROPHONE", "text": "useCallback도 같이 써야 하나요?"},
-    {"startOffsetMs": 1672000, "endOffsetMs": 1705000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "함수를 props로 넘길 때만 필요하니 상황에 맞게 쓰면 됩니다."},
-    {"startOffsetMs": 1865000, "endOffsetMs": 1900000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "다음으로 외부 상태 관리 라이브러리를 비교해볼게요."},
-    {"startOffsetMs": 2520000, "endOffsetMs": 2560000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "Zustand로 같은 예제를 다시 구현하면 훨씬 간결해집니다."},
-    {"startOffsetMs": 3080000, "endOffsetMs": 3125000, "sessionParticipantId": 1000000003001, "source": "MICROPHONE", "text": "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요."}
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 2000, "endOffsetMs": 32000, "text": "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다.", "avgLogprob": -0.21, "confidence": 0.811, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.02, "recordingFileId": 1000000010001, "chunkIndex": 0},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 195000, "endOffsetMs": 226000, "text": "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요.", "avgLogprob": -0.18, "confidence": 0.835, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.01, "recordingFileId": 1000000010001, "chunkIndex": 0},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 400000, "endOffsetMs": 431000, "text": "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다.", "avgLogprob": -0.25, "confidence": 0.779, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.03, "recordingFileId": 1000000010001, "chunkIndex": 0},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 520000, "endOffsetMs": 551000, "text": "먼저 Context API의 리렌더링 이슈를 이해해야 합니다.", "avgLogprob": -0.19, "confidence": 0.827, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.02, "recordingFileId": 1000000010001, "chunkIndex": 0},
+    {"sessionParticipantId": 1000000003002, "source": "MICROPHONE", "trackSid": "TR_demo_0002", "startOffsetMs": 730000, "endOffsetMs": 745000, "text": "Context랑 Redux는 어떤 기준으로 골라야 하나요?", "avgLogprob": -0.42, "confidence": 0.657, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.09, "recordingFileId": 1000000010002, "chunkIndex": 1},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 755000, "endOffsetMs": 790000, "text": "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다.", "avgLogprob": -0.22, "confidence": 0.803, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.02, "recordingFileId": 1000000010001, "chunkIndex": 1},
+    {"sessionParticipantId": 1000000003003, "source": "MICROPHONE", "trackSid": "TR_demo_0003", "startOffsetMs": 922000, "endOffsetMs": 940000, "text": "선생님, Context 값이 바뀌면 왜 하위 전체가 리렌더되나요?", "avgLogprob": -0.38, "confidence": 0.684, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.07, "recordingFileId": 1000000010003, "chunkIndex": 1},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 948000, "endOffsetMs": 980000, "text": "좋은 질문이에요. Provider value의 참조가 바뀌기 때문입니다.", "avgLogprob": -0.15, "confidence": 0.861, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.01, "recordingFileId": 1000000010001, "chunkIndex": 1},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 1145000, "endOffsetMs": 1180000, "text": "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요.", "avgLogprob": -0.24, "confidence": 0.787, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.02, "recordingFileId": 1000000010001, "chunkIndex": 1},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 1450000, "endOffsetMs": 1490000, "text": "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다.", "avgLogprob": -0.20, "confidence": 0.819, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.02, "recordingFileId": 1000000010001, "chunkIndex": 2},
+    {"sessionParticipantId": 1000000003004, "source": "MICROPHONE", "trackSid": "TR_demo_0004", "startOffsetMs": 1650000, "endOffsetMs": 1662000, "text": "useCallback도 같이 써야 하나요?", "avgLogprob": -0.34, "confidence": 0.712, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.06, "recordingFileId": 1000000010004, "chunkIndex": 2},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 1672000, "endOffsetMs": 1705000, "text": "함수를 props로 넘길 때만 필요하니 상황에 맞게 쓰면 됩니다.", "avgLogprob": -0.27, "confidence": 0.763, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.03, "recordingFileId": 1000000010001, "chunkIndex": 2},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 1865000, "endOffsetMs": 1900000, "text": "다음으로 외부 상태 관리 라이브러리를 비교해볼게요.", "avgLogprob": -0.29, "confidence": 0.748, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.03, "recordingFileId": 1000000010001, "chunkIndex": 3},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 2520000, "endOffsetMs": 2560000, "text": "Zustand로 같은 예제를 다시 구현하면 훨씬 간결해집니다.", "avgLogprob": -0.31, "confidence": 0.733, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.04, "recordingFileId": 1000000010001, "chunkIndex": 4},
+    {"sessionParticipantId": 1000000003001, "source": "MICROPHONE", "trackSid": "TR_demo_0001", "startOffsetMs": 3080000, "endOffsetMs": 3125000, "text": "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요.", "avgLogprob": -0.33, "confidence": 0.719, "confidenceMethod": "EXP_AVG_LOGPROB", "noSpeechProb": 0.04, "recordingFileId": 1000000010001, "chunkIndex": 5}
   ]
 }' AS JSON), '2026-07-14 02:40:00.000000', '2026-07-14 02:40:00.000000');
 
@@ -350,9 +365,15 @@ UNION ALL
 SELECT 1000000009026, @s1, 'EG_demo_track_0026', 'TRACK', 1, 'COMPLETE', @s1_started_at, @s1_ended_at, @s1_started_at, @s1_ended_at;
 
 -- file_type 은 TRACK 하나뿐이다. V1 주석의 HLS·COMPOSITE·AUDIO 는 쓰이지 않는다(RecordingFile.TYPE_TRACK).
+--
+-- track_source 를 채운다(V12). 비워 두면 사후 전사(S15P11A105-247)의 마이크 트랙 필터가 이 시드에서
+-- 아무 파일도 고르지 못해, 시연 데이터로는 전사 경로를 한 번도 밟을 수 없다. 파일명에 이미 종류가 들어
+-- 있지만 그 문자열을 파싱해 추정하지 않는다 — 화자·트랙 종류의 정본은 컬럼이다(V12 주석).
 INSERT INTO `recording_files` (`id`, `session_id`, `recording_id`, `session_participant_id`, `file_type`,
-                               `storage_key`, `livekit_track_sid`, `started_offset_ms`, `ended_offset_ms`, `created_at`)
+                               `track_source`, `storage_key`, `livekit_track_sid`, `started_offset_ms`,
+                               `ended_offset_ms`, `created_at`)
 SELECT 1000000010000 + (p.`id` - 1000000003000), @s1, 1000000009000 + (p.`id` - 1000000003000), p.`id`, 'TRACK',
+       'MICROPHONE',
        CONCAT(
            IF(p.`role` = 'INSTRUCTOR',
               'raw/instructor/instructor-microphone-TR_demo_',
@@ -363,10 +384,10 @@ SELECT 1000000010000 + (p.`id` - 1000000003000), @s1, 1000000009000 + (p.`id` - 
 FROM `session_participants` p
 WHERE p.`session_id` = @s1
 UNION ALL
-SELECT 1000000010025, @s1, 1000000009025, 1000000003001, 'TRACK',
+SELECT 1000000010025, @s1, 1000000009025, 1000000003001, 'TRACK', 'SCREEN_SHARE',
        'raw/instructor/instructor-screen-share-TR_demo_0025', 'TR_demo_0025', 1140000, 3080000, @s1_ended_at
 UNION ALL
-SELECT 1000000010026, @s1, 1000000009026, 1000000003001, 'TRACK',
+SELECT 1000000010026, @s1, 1000000009026, 1000000003001, 'TRACK', 'SCREEN_SHARE_AUDIO',
        'raw/instructor/instructor-screen-share-audio-TR_demo_0026', 'TR_demo_0026', 1140000, 3080000, @s1_ended_at;
 
 
