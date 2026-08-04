@@ -284,7 +284,8 @@ export function PictoLink({ size = 22, className }: PictoProps) {
 }
 
 /**
- * 잠금. 시안 세트에 없어 같은 문법(솔리드 + 뮤티드 회색)으로 자체 제작했다 — 디자인 확인 필요.
+ * 잠금. 시안 세트에 없어 같은 문법(솔리드 + 뮤티드 회색)으로 자체 제작했고, 디자인 오너
+ * 확인을 거쳐 시안 카탈로그(ZANI Icons.dc.html)에도 추가됐다(2026-08-04).
  * 권한 없음 안내에 쓰므로 muted 계열(#b9c1ce)을 따른다.
  */
 export function PictoLock({ size = 22, className }: PictoProps) {
@@ -437,7 +438,7 @@ export function PictoWarn({ size = 22, className }: PictoProps) {
 
 /**
  * 카탈로그 이름 → 컴포넌트. fixture 등 데이터 파일이 JSX 없이 아이콘을 가리킬 때 쓴다.
- * 키는 시안 카탈로그(ZANI Icons.dc.html) 파일명과 같다. `lock`만 자체 제작분이다.
+ * 키는 시안 카탈로그(ZANI Icons.dc.html) 파일명과 같다.
  */
 export const PICTOGRAMS = {
   bars: PictoBars,
