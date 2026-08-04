@@ -1,0 +1,7 @@
+**
+!backend/
+!backend/**
+!infrastructure/
+!infrastructure/media/
+!infrastructure/media/finalize-recording.sh
+!infrastructure/media/finalize_recording.py

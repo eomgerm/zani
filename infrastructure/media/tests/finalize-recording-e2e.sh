@@ -34,6 +34,7 @@ ffmpeg -y -hide_banner -loglevel error -f lavfi -i "sine=frequency=660:duration=
   -c:a libvorbis "$raw/student-001-mic-001.ogg"
 ffmpeg -y -hide_banner -loglevel error -f lavfi -i "sine=frequency=220:duration=2" \
   -c:a libvorbis "$raw/instructor-screen-audio-001.ogg"
+sha256sum "$raw"/* > "$session_dir/source.sha256"
 
 cat > "$session_dir/manifest.json" <<'JSON'
 {
@@ -56,11 +57,20 @@ cat > "$session_dir/manifest.json" <<'JSON'
 JSON
 
 output="$session_dir/final/lecture.mp4"
-bash "$media_dir/finalize-recording.sh" --manifest "$session_dir/manifest.json" --output "$output"
+lock_dir="$session_dir/locks"
+mkdir -p "$lock_dir"
+bash "$media_dir/finalize-recording.sh" \
+  --manifest "$session_dir/manifest.json" \
+  --session-dir "$session_dir" \
+  --lock-dir "$lock_dir" \
+  --output "$output"
 
 # 검증
 [[ -f "$output" ]] || { echo "FAIL: output not created"; exit 1; }
 [[ ! -f "$output.partial" ]] || { echo "FAIL: partial not renamed"; exit 1; }
+[[ -f "$lock_dir/.finalize.lock" ]] || { echo "FAIL: lock was not created in --lock-dir"; exit 1; }
+[[ "$(stat -c '%a' "$output")" == "640" ]] || { echo "FAIL: output mode is not 0640"; exit 1; }
+sha256sum --check --status "$session_dir/source.sha256" || { echo "FAIL: source track changed"; exit 1; }
 
 probe() { ffprobe -v error "$@" -of default=noprint_wrappers=1:nokey=1 "$output"; }
 vcodec=$(probe -select_streams v:0 -show_entries stream=codec_name)

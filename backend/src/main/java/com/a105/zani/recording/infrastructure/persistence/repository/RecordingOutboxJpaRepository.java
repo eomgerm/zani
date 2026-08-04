@@ -17,6 +17,10 @@ import com.a105.zani.recording.infrastructure.persistence.entity.RecordingOutbox
  */
 public interface RecordingOutboxJpaRepository extends JpaRepository<RecordingOutboxJpaEntity, Long> {
 
+    /** 최종 MP4 합성은 모든 파일 Track Egress outbox의 종결을 기다린다. 링버퍼용 outbox는 호출부가 종류로 제외한다. */
+    long countBySessionIdAndOutboxTypeAndStatusIn(
+            Long sessionId, String outboxType, java.util.Collection<String> statuses);
+
     /**
      * 세션의 특정 종류·상태 outbox 의 payload 만 읽는다(S15P11A105-247).
      *

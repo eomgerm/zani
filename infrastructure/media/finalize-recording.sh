@@ -7,7 +7,8 @@
 # 트리거·DB orchestration 은 이 스크립트를 호출하는 상위 작업(S15P11A105-68) 범위다.
 #
 # 사용법:
-#   finalize-recording.sh --manifest <path> --output <path> [--session-dir <dir>]
+#   finalize-recording.sh --manifest <path> --output <path>
+#     [--session-dir <dir>] [--lock-dir <dir>]
 #
 # 종료 코드: finalize_recording.py 의 코드를 그대로 전달한다.
 #   0 성공 / 2 manifest 오류 / 3 필수 영상 없음 / 4 입력 검증 실패
@@ -24,6 +25,7 @@ python_bin=${PYTHON_BIN:-python3}
 manifest=""
 output=""
 session_dir=""
+lock_dir=""
 
 usage() {
   sed -n '3,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -34,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --manifest) manifest=${2:-}; shift 2 ;;
     --output) output=${2:-}; shift 2 ;;
     --session-dir) session_dir=${2:-}; shift 2 ;;
+    --lock-dir) lock_dir=${2:-}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit "$EXIT_USAGE" ;;
   esac
@@ -49,7 +52,11 @@ if [[ ! -f "$manifest" ]]; then
   exit "$EXIT_USAGE"
 fi
 
-lock_root=${session_dir:-$(dirname "$manifest")}
+lock_root=${lock_dir:-${session_dir:-$(dirname "$manifest")}}
+if [[ ! -d "$lock_root" ]]; then
+  echo "error: lock directory not found: $lock_root" >&2
+  exit "$EXIT_USAGE"
+fi
 lock_file="$lock_root/.finalize.lock"
 
 # 세션별 flock (비차단). 이미 처리 중이면 중복 병합하지 않는다.
@@ -78,4 +85,6 @@ fi
 
 # 검증 성공한 partial 만 동일 파일시스템에서 atomic rename 한다.
 mv -f -- "$output.partial" "$output"
+# backend UID 10001이 만들기 때문에 소유자는 그대로 두고, 117 재생 경로가 읽을 수 있는 최소 권한만 고정한다.
+chmod 0640 "$output"
 echo "finalized: $output" >&2
