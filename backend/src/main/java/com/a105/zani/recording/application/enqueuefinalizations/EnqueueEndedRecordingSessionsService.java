@@ -1,6 +1,8 @@
 package com.a105.zani.recording.application.enqueuefinalizations;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,12 +20,14 @@ public class EnqueueEndedRecordingSessionsService implements EnqueueEndedRecordi
 
     @Override
     public int enqueue(int limit, Instant now) {
+        List<Long> candidates = jobPort.findUnqueuedRecordedSessionIds();
+        Set<Long> endedSessionIds = checkSessionEndedUseCase.endedSessionIds(candidates);
         int inserted = 0;
-        for (Long sessionId : jobPort.findUnqueuedRecordedSessionIds()) {
+        for (Long sessionId : candidates) {
             if (inserted >= limit) {
                 break;
             }
-            if (checkSessionEndedUseCase.isEnded(sessionId) && jobPort.enqueueSession(sessionId, now)) {
+            if (endedSessionIds.contains(sessionId) && jobPort.enqueueSession(sessionId, now)) {
                 inserted++;
             }
         }

@@ -1,6 +1,7 @@
 package com.a105.zani.session.domain.repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,10 @@ public interface SessionRepository {
     List<Session> findLiveStartedBefore(Instant startedBefore, int limit);
 
     Optional<Session> findById(Long id);
+
+    default List<Session> findByIds(Collection<Long> ids) {
+        return ids.stream().map(this::findById).flatMap(Optional::stream).toList();
+    }
 
     Optional<Session> findByInviteCode(String inviteCode);
 }
