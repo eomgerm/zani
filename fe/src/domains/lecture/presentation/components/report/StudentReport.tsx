@@ -55,7 +55,8 @@ export function StudentReport({
 
   const glance = [
     { icon: "target", label: "집중 구간 비율", value: ratioText(attention.status, ratio) },
-    { icon: "chat", label: "공개 채팅", value: countText(activity?.publicChatCount) },
+    // 채팅 행 수가 아니라 AI 가 질문으로 판단한 발화 수다. 판정이 없으면 "0개" 가 아니라 빈 자리다.
+    { icon: "chat", label: "질문 수", value: countText(activity?.questionCount, "개") },
     { icon: "question", label: "헷갈림 표시", value: countText(activity?.confusedCount) },
     { icon: "pin", label: "놓침 표시", value: countText(activity?.missedCount) },
   ] as const;
@@ -264,9 +265,12 @@ function ReportNotice({
   );
 }
 
-/** 값이 오지 않았으면 0 이 아니라 빈 자리다 — "0회" 는 안 했다는 뜻이라 거짓이 된다. */
-const countText = (count: number | undefined): string =>
-  count === undefined ? "—" : `${count}회`;
+/**
+ * 값이 오지 않았으면 0 이 아니라 빈 자리다 — "0회" 는 안 했다는 뜻이라 거짓이 된다. 질문 수는
+ * 리포트가 있어도 판정이 없을 수 있어(`null`) 같은 규칙을 쓴다.
+ */
+const countText = (count: number | null | undefined, unit = "회"): string =>
+  count === undefined || count === null ? "—" : `${count}${unit}`;
 
 /**
  * 비율 타일 문구. 측정 가능한 칸이 없으면 "0%" 가 아니라 측정 불가다(REPORT-S-007) — 카메라를

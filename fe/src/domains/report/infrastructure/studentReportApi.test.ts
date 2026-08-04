@@ -48,7 +48,7 @@ describe("requestStudentReport", () => {
   it("활동 집계·참여 요약·복습 추천을 읽는다", async () => {
     respondWith(
       envelope({
-        activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1 },
+        activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1, questionCount: 2 },
         participationSummary: "공개 채팅으로 질문했어요.",
         recommendations: [recommendation(1)],
       }),
@@ -56,7 +56,12 @@ describe("requestStudentReport", () => {
 
     const report = await requestStudentReport("s1", "token");
 
-    expect(report.activity).toEqual({ publicChatCount: 3, confusedCount: 2, missedCount: 1 });
+    expect(report.activity).toEqual({
+      publicChatCount: 3,
+      confusedCount: 2,
+      missedCount: 1,
+      questionCount: 2,
+    });
     expect(report.participationSummary).toBe("공개 채팅으로 질문했어요.");
     expect(report.recommendations[0]).toEqual({
       recommendationType: "CONFUSED",
@@ -78,7 +83,33 @@ describe("requestStudentReport", () => {
 
     const report = await requestStudentReport("s1", "token");
 
-    expect(report.activity).toEqual({ publicChatCount: 3, confusedCount: 0, missedCount: 0 });
+    expect(report.activity).toMatchObject({
+      publicChatCount: 3,
+      confusedCount: 0,
+      missedCount: 0,
+    });
+  });
+
+  it("질문 수는 판정이 없으면 null, 0 이면 0 이다 — 둘을 뭉치지 않는다", async () => {
+    const activityWith = (questionCount: unknown) =>
+      envelope({
+        activity: { publicChatCount: 1, confusedCount: 0, missedCount: 0, questionCount },
+        participationSummary: "요약",
+        recommendations: [],
+      });
+
+    // 0 은 모델이 "질문이 없었다"고 판단한 값이다. null 로 낮추면 판정을 버리는 셈이 된다.
+    respondWith(activityWith(0));
+    await expect(requestStudentReport("s1", "token")).resolves.toMatchObject({
+      activity: { questionCount: 0 },
+    });
+
+    for (const absent of [undefined, null, -1, Number.NaN, "2"]) {
+      respondWith(activityWith(absent));
+      await expect(requestStudentReport("s1", "token")).resolves.toMatchObject({
+        activity: { questionCount: null },
+      });
+    }
   });
 
   it("activity 가 아예 없어도 0 으로 그린다 — 요약·추천까지 함께 잃지 않는다", async () => {
@@ -86,7 +117,12 @@ describe("requestStudentReport", () => {
 
     const report = await requestStudentReport("s1", "token");
 
-    expect(report.activity).toEqual({ publicChatCount: 0, confusedCount: 0, missedCount: 0 });
+    expect(report.activity).toEqual({
+      publicChatCount: 0,
+      confusedCount: 0,
+      missedCount: 0,
+      questionCount: null,
+    });
     expect(report.participationSummary).toBe("요약");
   });
 

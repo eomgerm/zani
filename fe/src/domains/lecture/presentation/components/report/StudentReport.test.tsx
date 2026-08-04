@@ -30,7 +30,7 @@ import {
 import { QuizSummaryError } from "@/domains/report/infrastructure/quizSummaryApi";
 
 const reportWith = (overrides: Partial<StudentReportData> = {}): StudentReportData => ({
-  activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1 },
+  activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1, questionCount: 2 },
   participationSummary: "공개 채팅으로 질문을 남겼어요.",
   recommendations: [
     {
@@ -81,10 +81,36 @@ describe("StudentReport", () => {
 
     // 측정 가능한 세 칸 중 2.5 이상이 둘 → 67%. 값 없는 칸은 분모에서 뺀다.
     expect(await screen.findByText("67%")).toBeInTheDocument();
-    expect(await screen.findByText("3회")).toBeInTheDocument();
+    // 질문 수는 개, 프롬프트 응답 집계는 회로 센다.
+    expect(await screen.findByText("2개")).toBeInTheDocument();
+    expect(screen.getByText("질문 수")).toBeInTheDocument();
     expect(screen.getByText("2회")).toBeInTheDocument();
     expect(screen.getByText("1회")).toBeInTheDocument();
-    expect(screen.getByText("공개 채팅")).toBeInTheDocument();
+  });
+
+  it("질문 수 판정이 없으면 0개가 아니라 빈 자리다", async () => {
+    renderReport({
+      reportRequest: async () =>
+        reportWith({
+          activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1, questionCount: null },
+        }),
+    });
+
+    // 나머지 집계는 그대로 나온다 — 한 칸이 비었다고 카드를 통째로 비우지 않는다.
+    expect(await screen.findByText("2회")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("0개")).not.toBeInTheDocument();
+  });
+
+  it("질문 수가 0 이면 0개로 적는다 — 판정이 없는 것과 다르다", async () => {
+    renderReport({
+      reportRequest: async () =>
+        reportWith({
+          activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1, questionCount: 0 },
+        }),
+    });
+
+    expect(await screen.findByText("0개")).toBeInTheDocument();
   });
 
   it("참여도 요약을 서버 문장 그대로 보여준다", async () => {

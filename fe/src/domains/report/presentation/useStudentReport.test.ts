@@ -8,7 +8,7 @@ import { StudentReportError, type StudentReport } from "../infrastructure/studen
 import { useStudentReport } from "./useStudentReport";
 
 const report: StudentReport = {
-  activity: { publicChatCount: 3, confusedCount: 1, missedCount: 0 },
+  activity: { publicChatCount: 3, confusedCount: 1, missedCount: 0, questionCount: 2 },
   participationSummary: "요약",
   recommendations: [],
 };

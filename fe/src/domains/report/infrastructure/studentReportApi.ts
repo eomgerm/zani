@@ -37,6 +37,14 @@ export type StudentReport = {
     readonly publicChatCount: number;
     readonly confusedCount: number;
     readonly missedCount: number;
+    /**
+     * AI 가 공개 채팅에서 질문인 발화만 세어 판단한 질문 수. 판정이 없으면 `null` 이며 0 이
+     * 아니다 — 0 은 질문을 안 했다는 뜻이라 "판정이 없다"와 다르다.
+     *
+     * <p>앞의 셋과 달리 서버가 행을 센 값이 아니다. 공개 채팅에는 질문만 있지 않아서
+     * ("감사합니다", "네") 행을 세면 그것까지 질문이 된다.
+     */
+    readonly questionCount: number | null;
   };
   readonly participationSummary: string;
   readonly recommendations: readonly StudentRecommendation[];
@@ -70,6 +78,13 @@ const arrayOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : [
 /** 횟수는 0 이상 정수다. 음수·소수·NaN 이 오면 "3.9회"·"-2회" 가 화면에 나가므로 낮춘다. */
 const countOf = (value: unknown): number =>
   isFiniteNumber(value) && value > 0 ? Math.trunc(value) : 0;
+
+/**
+ * 판정이 있을 수도 없을 수도 있는 횟수. 없음(`null`)과 0 을 가른다 — 여기서 0 은 모델이 "질문이
+ * 없었다"고 판단한 값이라 버리면 안 된다. 숫자가 아니거나 음수면 판정으로 볼 수 없어 `null` 이다.
+ */
+const countOrNull = (value: unknown): number | null =>
+  isFiniteNumber(value) && value >= 0 ? Math.trunc(value) : null;
 
 /**
  * 깨진 추천만 버린다. 목록 전체를 버리지 않는다 — 하나가 깨졌다고 나머지 근거 있는 추천을
@@ -158,6 +173,7 @@ export const requestStudentReport: StudentReportRequester = async (
       publicChatCount: countOf(activity?.publicChatCount),
       confusedCount: countOf(activity?.confusedCount),
       missedCount: countOf(activity?.missedCount),
+      questionCount: countOrNull(activity?.questionCount),
     },
     // 요약이 비어도 집계와 추천은 살린다. 한 필드 때문에 카드 셋을 함께 잃지 않는다.
     participationSummary:
