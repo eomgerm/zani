@@ -64,7 +64,17 @@ class ModerationApiIntegrationTest {
         @Bean
         @Primary
         MediaModerationPort stubMediaModerationPort() {
-            return (sessionId, identity) -> NEXT_CHANGE.get();
+            return new MediaModerationPort() {
+                @Override
+                public MediaMuteChange muteMicrophone(long sessionId, String identity) {
+                    return NEXT_CHANGE.get();
+                }
+
+                @Override
+                public MediaMuteChange muteScreenShare(long sessionId, String identity) {
+                    throw new UnsupportedOperationException("강사 제어는 화면 공유를 멈추지 않는다");
+                }
+            };
         }
     }
 
