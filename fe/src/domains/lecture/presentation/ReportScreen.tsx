@@ -57,6 +57,7 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
 export function ReportScreen({
   lectureId,
   initialTab = "clip",
+  initialSeekSeconds = null,
 }: {
   lectureId: string;
   /**
@@ -66,6 +67,11 @@ export function ReportScreen({
    * 보다 나갔는데 클립 탭으로 되돌아와, 방금까지 보던 자리를 다시 찾아 들어가야 한다.
    */
   initialTab?: "clip" | "report";
+  /**
+   * 클립 탭을 열 때 곧바로 이동할 시각(초). 퀴즈 해설의 "관련 강의 구간 다시 보기" 가 주소로
+   * 넘긴다. 값이 없으면 녹화 자체의 초기 위치에서 시작한다.
+   */
+  initialSeekSeconds?: number | null;
 }) {
   const { status: roleStatus, role, session } = useSessionRole(lectureId);
   const [tab, setTab] = useState<"clip" | "report">(initialTab);
@@ -76,7 +82,9 @@ export function ReportScreen({
    * <p>nonce 를 함께 올리는 이유: 같은 구간을 연달아 누르면 시각이 같아 상태가 바뀌지 않고,
    * 그러면 두 번째 이동이 묻힌다. 실제 재생 위치 이동은 학생 플레이어(113)가 맡는다.
    */
-  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(null);
+  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(
+    initialSeekSeconds === null ? null : { seconds: initialSeekSeconds, nonce: 1 },
+  );
   const jumpToClip = (offsetSeconds: number) => {
     setSeekRequest((previous) => ({
       seconds: offsetSeconds,
@@ -133,6 +141,8 @@ export function ReportScreen({
         {ready && tab === "report" && (
           <button
             type="button"
+            /* 아직 만들 문서가 없다. 눌러도 아무 일이 없으면 고장으로 읽히므로 상태를 말해 준다. */
+            onClick={() => window.alert("준비 중입니다.")}
             className="z-btn z-btn-primary shrink-0 gap-2 rounded-xl px-[22px] py-[13px] text-sm"
           >
             <DownloadIcon />
