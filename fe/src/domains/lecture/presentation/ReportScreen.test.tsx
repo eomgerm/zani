@@ -19,6 +19,8 @@ const role = vi.hoisted(() => ({
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
 // report 도메인 카드들은 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐고 무엇이 전달됐는지만 본다.
+// 이 파일이 보는 것은 ReportScreen 의 배치(어느 탭에 무엇이 걸리는지)다. 카드 안쪽은 각자의
+// 테스트가 본다 — 여기서는 조회하지 않는 껍데기로 바꿔 끼운다.
 vi.mock("@/domains/report", () => ({
   GroupAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="group-timeline">{sessionId}</div>
@@ -29,6 +31,11 @@ vi.mock("@/domains/report", () => ({
   StudentReportClip: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-clip">{sessionId}</div>
   ),
+  useInstructorReport: () => ({ status: "loading", report: null, retry: () => {} }),
+  useGroupAttentionTimeline: () => ({ status: "loading", timeline: null, retry: () => {} }),
+  focusedIntervalRatio: () => null,
+  focusedRatioBand: () => "보통",
+  formatOffset: (seconds: number) => String(seconds),
 }));
 
 import { ReportScreen } from "./ReportScreen";
