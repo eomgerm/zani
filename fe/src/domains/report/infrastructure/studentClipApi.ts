@@ -88,10 +88,10 @@ const parseTranscriptSegment = (value: unknown): TranscriptSegment | null => {
 };
 
 /**
- * 봉투를 열어 `data` 객체를 꺼낸다. `isSuccess` 가 참이 아니거나 `data` 가 객체가 아니면
- * 계약 위반이므로 던진다.
+ * 봉투를 열어 `data` 객체를 꺼낸다. `isSuccess` 가 참이 아니거나 `data` 가 객체가 아니면 계약
+ * 위반이라 `null` 이다 — 무엇을 던질지는 어댑터가 자기 실패 어휘로 정한다(강사 어댑터도 쓴다).
  */
-const dataOf = (envelope: unknown, status: number): Record<string, unknown> => {
+export const clipEnvelopeData = (envelope: unknown): Record<string, unknown> | null => {
   if (
     typeof envelope !== "object" ||
     envelope === null ||
@@ -99,10 +99,38 @@ const dataOf = (envelope: unknown, status: number): Record<string, unknown> => {
     typeof (envelope as { data?: unknown }).data !== "object" ||
     (envelope as { data?: unknown }).data === null
   ) {
-    throw new StudentClipError("Student clip response had an invalid envelope.", status);
+    return null;
   }
 
   return (envelope as { data: Record<string, unknown> }).data;
+};
+
+/**
+ * 클립 응답 본문을 계약 모양으로 옮긴다. 학생 복습 클립과 강사 수업 클립(308)이 같은 계약을
+ * 읽으므로 결측 처리·정렬·범위 낮춤 규칙을 이 함수 하나가 소유한다 — 두 곳에 두면 한쪽만
+ * 고쳐진다(BE 의 SessionTranscriptQuery 와 같은 선택).
+ */
+export const parseClip = (data: Record<string, unknown>): StudentClip => {
+  const recordingUrl =
+    typeof data.recordingUrl === "string" && data.recordingUrl.length > 0
+      ? data.recordingUrl
+      : null;
+
+  // 커서(현재 구간) 계산이 정렬을 전제하므로 여기서 한 번 보장한다. 서버가 정렬해 보내는 것이
+  // 계약이지만, 순서가 어긋난 응답이 재생 중 하이라이트를 엉뚱한 행으로 보내면 안 된다.
+  const transcript = arrayOf(data.transcript)
+    .map(parseTranscriptSegment)
+    .filter((segment): segment is TranscriptSegment => segment !== null)
+    .sort((a, b) => a.startSeconds - b.startSeconds);
+
+  return {
+    recordingUrl,
+    durationSeconds:
+      isFiniteNumber(data.durationSeconds) && data.durationSeconds >= 0 ? data.durationSeconds : 0,
+    transcript,
+    seekTimestamp:
+      isFiniteNumber(data.seekTimestamp) && data.seekTimestamp >= 0 ? data.seekTimestamp : 0,
+  };
 };
 
 /**
@@ -142,26 +170,10 @@ export const requestStudentClip: StudentClipRequester = async (sessionId, access
     throw new StudentClipError("Student clip response was not valid JSON.", response.status);
   }
 
-  const data = dataOf(envelope, response.status);
+  const data = clipEnvelopeData(envelope);
+  if (data === null) {
+    throw new StudentClipError("Student clip response had an invalid envelope.", response.status);
+  }
 
-  const recordingUrl =
-    typeof data.recordingUrl === "string" && data.recordingUrl.length > 0
-      ? data.recordingUrl
-      : null;
-
-  // 커서(현재 구간) 계산이 정렬을 전제하므로 여기서 한 번 보장한다. 서버가 정렬해 보내는 것이
-  // 계약이지만, 순서가 어긋난 응답이 재생 중 하이라이트를 엉뚱한 행으로 보내면 안 된다.
-  const transcript = arrayOf(data.transcript)
-    .map(parseTranscriptSegment)
-    .filter((segment): segment is TranscriptSegment => segment !== null)
-    .sort((a, b) => a.startSeconds - b.startSeconds);
-
-  return {
-    recordingUrl,
-    durationSeconds:
-      isFiniteNumber(data.durationSeconds) && data.durationSeconds >= 0 ? data.durationSeconds : 0,
-    transcript,
-    seekTimestamp:
-      isFiniteNumber(data.seekTimestamp) && data.seekTimestamp >= 0 ? data.seekTimestamp : 0,
-  };
+  return parseClip(data);
 };
