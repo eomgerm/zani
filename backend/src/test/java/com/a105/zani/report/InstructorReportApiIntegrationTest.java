@@ -90,6 +90,7 @@ class InstructorReportApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
+        jdbcTemplate.update("DELETE FROM group_alerts WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
@@ -116,16 +117,33 @@ class InstructorReportApiIntegrationTest {
                 .andExpect(jsonPath("$.data.insights[0].startedOffsetMs").value(4_800_000L));
     }
 
-    /** 한눈에 보기 타일이 쓰는 값이다. 집중 구간 비율은 여기 없다 — 집중 흐름 응답에서 화면이 계산한다. */
+    /**
+     * 한눈에 보기 타일이 쓰는 값이다. 집중 구간 비율은 여기 없다 — 집중 흐름 응답에서 화면이 계산한다.
+     *
+     * <p><b>0 이 아닌 값으로 단언한다.</b> 학생 수와 알림 수는 report 소유가 아닌 테이블을 네이티브 SQL 로 세어 온다. 소유 도메인이 스키마를 바꾸면 컴파일이 아니라 이 테스트에서만
+     * 드러나는데, 0 을 기대하면 "정말 0 건" 과 "못 세었다" 가 구분되지 않아 지키는 시늉만 하게 된다.
+     */
     @Test
     void 한눈에_보기_집계를_함께_내린다() throws Exception {
         insertPublishedReport();
+        insertGroupAlert(600_000L);
+        insertGroupAlert(1_200_000L);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
                 // 강사는 세지 않는다. 이 세션의 참가자 셋 중 학생은 둘이다.
                 .andExpect(jsonPath("$.data.stats.studentCount").value(2))
                 .andExpect(jsonPath("$.data.stats.durationSeconds").value(4_440))
+                .andExpect(jsonPath("$.data.stats.alertCount").value(2));
+    }
+
+    /** 알림이 없는 수업은 정말 0 이다. 위 케이스와 갈려야 "세고 있다" 가 증명된다. */
+    @Test
+    void 알림이_없으면_0_이다() throws Exception {
+        insertPublishedReport();
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stats.alertCount").value(0));
     }
 
@@ -263,6 +281,20 @@ class InstructorReportApiIntegrationTest {
                 evaluationType,
                 score,
                 utc(now),
+                utc(now));
+    }
+
+    /** 이해도 알림 한 건. 값 자체는 세는 대상이 아니라 행 수만 쓰이므로 최소한만 채운다. */
+    private void insertGroupAlert(long occurredOffsetMs) {
+        jdbcTemplate.update(
+                "INSERT INTO group_alerts (id, session_id, alert_type, window_started_offset_ms,"
+                        + " window_ended_offset_ms, numerator_count, denominator_count, occurred_offset_ms,"
+                        + " created_at) VALUES (?, ?, 'CHECK_NEEDED', ?, ?, 8, 20, ?, ?)",
+                REPORT_ID + 40 + occurredOffsetMs / 600_000L,
+                ENDED_SESSION_ID,
+                occurredOffsetMs,
+                occurredOffsetMs + 30_000L,
+                occurredOffsetMs,
                 utc(now));
     }
 

@@ -98,9 +98,14 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     window.scrollTo({ top: 0 });
   };
 
-  // 서버가 답하기 전에는 제목 자리를 비운다. fixture 를 먼저 보여 주면 남의 수업 제목과 길이가
-  // 잠깐 뜨고, 실제로 그 길이(1시간 32분)가 아래 "수업 시간"(1시간 14분)과 어긋나 보였다.
-  const title = served?.title ?? (roleStatus === "loading" ? "" : lecture.title);
+  /**
+   * 서버가 준 제목만 적는다. fixture 로 물러나지 않는다.
+   *
+   * <p>실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다. 그 값을 쓰면 로딩 중에는 남의 수업
+   * 제목이 잠깐 뜨고, 볼 권한이 없는 수업에서는 "React 상태관리 심화 / 이 수업의 리포트를 볼 수
+   * 없어요" 처럼 **없는 사실을 지어낸 화면**이 된다. 모르면 비워 두는 편이 낫다.
+   */
+  const title = served?.title ?? "";
   const meta = served ? `${served.dur} | ${startedLabel(served.startedAt)}` : "";
 
   return (

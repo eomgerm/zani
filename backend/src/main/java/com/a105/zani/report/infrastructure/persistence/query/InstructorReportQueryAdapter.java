@@ -22,6 +22,13 @@ import com.a105.zani.report.infrastructure.persistence.repository.InstructorRepo
  *
  * <p>엔티티가 밖으로 나가는 지점을 이 클래스 하나로 좁힌다. 자식 둘을 지연 로딩으로 따라가지 않고 리포트 ID 로 각각 한 번씩 조회하는 이유: 컬렉션 둘을 함께 조인하면 곱집합이 되고(스코어 4 ×
  * 인사이트 5 = 20 행), 지연 로딩으로 두면 트랜잭션 밖에서 열릴 위험이 남는다.
+ *
+ * <p><b>{@code session_participants}·{@code group_alerts} 는 report 소유가 아니다.</b> 의도한 읽기 전용 프로젝션이며 네이티브 SQL 로 세기만 하고 쓰지
+ * 않는다 — {@code InstructorAnalysisContextQueryAdapter}(250) 와 같은 방식이다. 세는 값 둘을 위해 세션 도메인에 유스케이스를 새로 뚫으면, 읽기 하나 늘 때마다 소유
+ * 도메인에 조회 API 가 하나씩 생긴다.
+ *
+ * <p>대가는 컴파일 시점 검사가 없다는 것이다. 소유 도메인이 테이블이나 컬럼을 바꾸면 여기서는 조용히 깨지고 {@code InstructorReportApiIntegrationTest} 에서만 드러난다.
+ * 그래서 그 테스트는 두 값이 <b>0 이 아닌 값</b>으로 오는 것까지 단언한다 — 0 을 세는 것과 못 세는 것이 구분되지 않으면 지키는 시늉만 하는 셈이다.
  */
 @Component
 @RequiredArgsConstructor

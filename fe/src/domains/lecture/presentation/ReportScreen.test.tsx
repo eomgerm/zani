@@ -172,6 +172,18 @@ describe("ReportScreen", () => {
     expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
   });
 
+  it("볼 수 없는 수업의 제목을 지어내지 않는다", () => {
+    role.status = "unknown";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // fixture 로 물러나면 "React 상태관리 심화 / 볼 수 없어요" 가 되어 없는 사실이 생긴다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("");
+    expect(screen.queryByText(/React 상태관리 심화/)).not.toBeInTheDocument();
+  });
+
   it("explains when the role cannot be determined", () => {
     role.status = "unknown";
     role.role = null;
