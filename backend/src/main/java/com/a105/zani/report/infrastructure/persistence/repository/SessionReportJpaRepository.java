@@ -17,6 +17,9 @@ public interface SessionReportJpaRepository extends JpaRepository<SessionReportJ
     /** 게시 전 초안은 조회 대상이 아니다. 화면에 나갈 값은 게시된 행에서만 나온다. */
     Optional<SessionReportJpaEntity> findBySessionIdAndPublishedAtIsNotNull(Long sessionId);
 
+    /** 게시 여부만 필요한 곳(수업 클립 게이트)용. 행을 실어 오지 않는다. */
+    boolean existsBySessionIdAndPublishedAtIsNotNull(Long sessionId);
+
     /**
      * 아직 공개되지 않은 리포트에만 공개 시각을 찍는다. 위 조회가 화면에 값을 내보내기 시작하는 지점이 여기다(S15P11A105-304).
      *
