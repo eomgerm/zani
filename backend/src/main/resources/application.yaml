@@ -257,6 +257,11 @@ attention:
     # 뜻이 다르므로 함께 움직이지 않는다.
     focus-bucket: ${ATTENTION_TIMELINE_FOCUS_BUCKET:PT30S}
     focus-coverage-floor: ${ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR:0.7}
+    # 집계 대상 최소 인원. 이 수 미만인 칸은 집단 값을 감춘다(NFR-SEC-007 · REPORT-I-005). 기본값 5 가
+    # 운영 기준이며, 참가자가 5명을 못 넘는 시연 세션에서만 낮춘다 — 그런 세션은 지금 전 구간이 비어
+    # 강사 화면에 그래프가 없는 것처럼 보인다. 1 로 두면 한 학생의 값이 그대로 집단 평균이 되어
+    # 익명성이 사라진다(REPORT-I-002).
+    minimum-eligible: ${ATTENTION_TIMELINE_MINIMUM_ELIGIBLE:5}
 
 coaching-trigger:
   # 최근 5분 유의 학생 비율의 하한. 이 값 이상이면 트리거한다(확정 문서 §7).

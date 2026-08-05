@@ -54,22 +54,21 @@ import { useAttentionTimeline, type UseAttentionTimelineResult } from "./useAtte
  * <p>값은 서버가 계산한 것을 그대로 그린다. 비율은 표시할 때만 100 을 곱한다.
  */
 
-/** 5명 미만이면 서버가 값을 `null` 로 감춘다(REPORT-I-005). 그 판단을 화면이 뒤집지 않는다. */
-const MIN_AGGREGATE_HEADCOUNT = 5;
-
 /**
- * 인원이 모자라 감춘 구간을 찾는다. 값을 다시 세지 않고 인원 수만 본다.
+ * 값이 없어 선이 끊기는 구간을 찾는다. 판정 기준을 화면이 다시 들고 있지 않는다 — 서버가 감춘 칸은
+ * `focusLevel` 이 `null` 이다.
  *
- * <p>판정은 30초 격자로 한다. 서버가 그 칸에 걸친 5초 스냅샷의 최솟값을 담아 주므로(§2.10),
- * 5초 점을 따로 보지 않는다.
+ * <p>최소 인원(REPORT-I-005)은 서버 설정값이라 화면이 그 숫자를 알 수 없다. 숫자를 여기에 또 적으면
+ * 설정을 낮춘 환경에서 값이 있는 구간까지 회색으로 덮는다. 70% 커버리지 게이트로 빈 칸도 같이
+ * 들어오는데, 강사에게는 둘 다 "그릴 값이 없는 구간" 이라 구분할 이유가 없다.
  */
-const shortageRunsOf = (
+const blankRunsOf = (
   points: readonly GroupFocusPoint[],
   intervalSeconds: number,
 ): { start: number; end: number }[] => {
   const runs: { start: number; end: number }[] = [];
   for (const point of points) {
-    if (point.eligibleCount >= MIN_AGGREGATE_HEADCOUNT) continue;
+    if (point.focusLevel !== null) continue;
     const last = runs[runs.length - 1];
     if (last !== undefined && last.end === point.offsetSeconds) {
       last.end = point.offsetSeconds + intervalSeconds;
@@ -176,7 +175,7 @@ export function GroupAttentionTimeline({
 
     const total =
       durationSeconds > 0 ? durationSeconds : focusFlow.points.length * focusFlow.intervalSeconds;
-    const shortages = shortageRunsOf(focusFlow.points, focusFlow.intervalSeconds);
+    const blanks = blankRunsOf(focusFlow.points, focusFlow.intervalSeconds);
 
     // 흐름을 수업 내용 구간으로 나눠 그린다. 248 이 구간을 채우기 전 세션은 한 줄로 그린다.
     const hasSections = sections.length > 0;
@@ -217,9 +216,9 @@ export function GroupAttentionTimeline({
               <CartesianGrid horizontal vertical={false} stroke="#eef0f6" />
 
               {/* 선이 끊기는 자리를 다 덮는다 — 빈 칸에만 맞추면 왼쪽에 흰 틈이 남는다. */}
-              {shortages.map((run) => (
+              {blanks.map((run) => (
                 <ReferenceArea
-                  key={`shortage-${run.start}`}
+                  key={`blank-${run.start}`}
                   yAxisId="level"
                   x1={Math.max(0, run.start - focusFlow.intervalSeconds)}
                   x2={run.end}
@@ -347,7 +346,7 @@ export function GroupAttentionTimeline({
               aria-hidden="true"
               className="h-2 w-4 rounded-[3px] border border-line-light bg-[#c9cdde]/[.55]"
             />
-            인원 부족
+            값 없음
           </span>
         </div>
       </div>
