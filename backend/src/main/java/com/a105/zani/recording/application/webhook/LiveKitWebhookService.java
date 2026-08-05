@@ -14,14 +14,16 @@ import com.a105.zani.recording.application.exception.RecordingNotReadyException;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressCommand;
 import com.a105.zani.recording.application.orchestrate.RequestTrackEgressUseCase;
 import com.a105.zani.recording.application.port.AudioStreamEgressRegistryPort;
-import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
-import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookEventPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookVerifierPort;
 import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackException;
 import com.a105.zani.recording.domain.model.Recording;
 import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.domain.model.RecordingFile;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
+import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionCommand;
+import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
@@ -32,19 +34,21 @@ import com.a105.zani.session.domain.repository.SessionRepository;
  * LiveKit webhook 처리: 서명 검증 → 이벤트 내구 저장(event_id UNIQUE로 중복 차단) → 처리 → PROCESSED 마킹.
  *
  * <p>전 과정이 한 트랜잭션이다: 처리 중 예외가 나면 이벤트 행까지 함께 롤백되어 LiveKit 재전송에서 처음부터 재처리되고(5xx 응답), 성공하면 파일·상태·PROCESSED가 원자적으로 커밋된다. 동시
- * 중복 전송은 event_id UNIQUE 잠금이 직렬화한다. track_published는 녹화 정책을 거쳐 Track Egress를 등록하고, egress_*는 recordings 상태와
- * recording_files를 갱신한다. 상태는 역행하지 않으며(도메인 가드), 종결 전이가 실제로 일어난 경우에만 파일을 저장해 재처리 중복을 막는다.
+ * 중복 전송은 event_id UNIQUE 잠금이 직렬화한다. participant_joined는 세션 참여자의 사후 자료 접근 자격을 확정하고, track_published는 녹화 정책을 거쳐 Track
+ * Egress를 등록하고, egress_*는 recordings 상태와 recording_files를 갱신한다. 상태는 역행하지 않으며(도메인 가드), 종결 전이가 실제로 일어난 경우에만 파일을 저장해 재처리
+ * 중복을 막는다.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
+public class LiveKitWebhookService implements ProcessLiveKitWebhookUseCase {
 
     private static final String PARTICIPANT_IDENTITY_PREFIX = "p-";
 
-    private final RecordingWebhookVerifierPort verifierPort;
-    private final RecordingWebhookEventPort eventStore;
+    private final LiveKitWebhookVerifierPort verifierPort;
+    private final LiveKitWebhookEventPort eventStore;
     private final RequestTrackEgressUseCase requestTrackEgressUseCase;
+    private final ConfirmParticipantConnectionUseCase confirmParticipantConnectionUseCase;
     private final RecordingRepository recordingRepository;
     private final RecordingFileRepository recordingFileRepository;
     private final SessionRepository sessionRepository;
@@ -55,8 +59,8 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
     @Override
     @Transactional
     public void process(String body, String authorizationHeader) {
-        RecordingWebhookEvent event = verifierPort.verify(body, authorizationHeader);
-        if (event.type() == RecordingWebhookEventType.IGNORED) {
+        LiveKitWebhookEvent event = verifierPort.verify(body, authorizationHeader);
+        if (event.type() == LiveKitWebhookEventType.IGNORED) {
             return;
         }
         if (!eventStore.begin(event.eventId(), event.type().name(), body)) {
@@ -69,6 +73,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
             return;
         }
         switch (event.type()) {
+            case PARTICIPANT_JOINED -> handleParticipantJoined(event);
             case TRACK_PUBLISHED -> handleTrackPublished(event);
             case EGRESS_STARTED, EGRESS_UPDATED -> handleEgressProgress(event);
             case EGRESS_ENDED -> handleEgressEnded(event);
@@ -84,14 +89,38 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
      * <p>근거를 두 겹으로 둔다. 이벤트 페이로드의 출력 종류가 1차다 — 외부 상태에 기대지 않아 Redis 가 죽어도 판정이 흔들리지 않는다. 페이로드에 track 정보가 없는 이벤트만 시작 시점에 남겨
      * 둔 표시로 되돌아간다.
      */
-    private boolean isAudioStreamEgress(RecordingWebhookEvent event) {
+    private boolean isAudioStreamEgress(LiveKitWebhookEvent event) {
         if (event.egressAudioStream() != null) {
             return event.egressAudioStream();
         }
         return audioStreamEgressRegistry.isAudioStream(event.egressId());
     }
 
-    private void handleTrackPublished(RecordingWebhookEvent event) {
+    /**
+     * 실제 미디어 연결을 사후 자료 접근 자격의 근거로 확정한다(FRD ACCESS-002). 입장 API 호출만으로는 자격이 생기지 않으므로 이 통지가 유일한 경로다.
+     *
+     * <p>시스템·Egress 참가자는 걸러야 하지만(가이드 §11) 별도 판별을 두지 않는다. 그들의 identity 는 {@code p-{sessionParticipantId\}} 규칙을 따르지 않아
+     * {@link #parseParticipantId}에서 자연히 빠진다.
+     *
+     * <p>연결 시각은 webhook 수신 시각으로 둔다. 페이로드의 발생 시각을 쓰려면 이벤트 모델에 필드를 늘려야 하는데, 자격 판정은 "연결했는가"이지 밀리초 정밀도가 아니다.
+     */
+    private void handleParticipantJoined(LiveKitWebhookEvent event) {
+        if (event.sessionId() == null) {
+            log.debug("participant_joined without session context, event={}", event.eventId());
+            return;
+        }
+        parseParticipantId(event.participantIdentity())
+                .ifPresentOrElse(
+                        participantId ->
+                                confirmParticipantConnectionUseCase.confirm(new ConfirmParticipantConnectionCommand(
+                                        event.sessionId(), participantId, clock.instant())),
+                        () -> log.debug(
+                                "participant_joined from non-participant identity {} in session {}",
+                                event.participantIdentity(),
+                                event.sessionId()));
+    }
+
+    private void handleTrackPublished(LiveKitWebhookEvent event) {
         if (event.sessionId() == null || event.trackSid() == null || event.trackSource() == null) {
             log.debug("track_published without session/track context, event={}", event.eventId());
             return;
@@ -124,13 +153,13 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         }
     }
 
-    private void handleEgressProgress(RecordingWebhookEvent event) {
+    private void handleEgressProgress(LiveKitWebhookEvent event) {
         Recording recording = findRecording(event.egressId());
         recording.markRecording();
         recordingRepository.save(recording);
     }
 
-    private void handleEgressEnded(RecordingWebhookEvent event) {
+    private void handleEgressEnded(LiveKitWebhookEvent event) {
         Recording recording = findRecording(event.egressId());
         if (event.egressComplete() == null) {
             // 종결 상태가 아닌 egress_ended(비정상 페이로드)는 상태를 건드리지 않고 대조 작업에 맡긴다.
@@ -149,7 +178,7 @@ public class RecordingWebhookService implements ProcessRecordingWebhookUseCase {
         recordingRepository.save(recording);
     }
 
-    private void saveFiles(Recording recording, RecordingWebhookEvent event) {
+    private void saveFiles(Recording recording, LiveKitWebhookEvent event) {
         Session session =
                 sessionRepository.findById(recording.sessionId()).orElseThrow(RecordingNotReadyException::new);
         long timelineStartMs = session.startedAt().toEpochMilli();
