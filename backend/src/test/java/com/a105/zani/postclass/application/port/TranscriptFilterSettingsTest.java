@@ -65,8 +65,9 @@ class TranscriptFilterSettingsTest {
 
     @Test
     void 종결_부호로_끝나면_문장이_이어지지_않는다() {
-        // 재현 응답의 실제 질문. 물음표로 끝나므로 그 뒤에 0ms 로 붙은 "고맙습니다." 는 연속이 아니다.
-        assertFalse(DEFAULTS.sentenceContinues("체인링을 사용하면 조회수가 느려지지 않나요?"));
+        // 재현 응답에서 질문이 있던 자리. 물음표로 끝나므로 그 뒤에 0ms 로 붙은 "고맙습니다." 는 연속이
+        // 아니다. 실제 발화 원문은 쓰지 않는다 — 판정에 쓰이는 것은 마지막 글자뿐이다.
+        assertFalse(DEFAULTS.sentenceContinues("조회 성능이 어떻게 달라지는지 다시 설명해 주실 수 있나요?"));
         assertFalse(DEFAULTS.sentenceContinues("네, 여기까지 오늘 강의 마치도록 하겠습니다."));
         assertFalse(DEFAULTS.sentenceContinues("고맙습니다."));
         assertFalse(DEFAULTS.sentenceContinues("정말요!"));

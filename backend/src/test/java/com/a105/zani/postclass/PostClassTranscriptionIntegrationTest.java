@@ -563,12 +563,10 @@ class PostClassTranscriptionIntegrationTest {
                 List.of(
                         new TranscriptSegment(15_000, 18_000, "고맙습니다.", -0.21, 0.953),
                         new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.984),
+                        // 실제 세션의 발화 원문을 쓰지 않는다 — 확률값과 시각이 재현 대상이고 질문 내용은
+                        // 판정에 쓰이지 않는다. 이유는 AssembleTranscriptServiceTest 의 같은 상수에 적었다.
                         new TranscriptSegment(
-                                165_000,
-                                174_000,
-                                "체인링을 사용하면 하나의 인덱스에 데이터가 너무 많이 모일 수 있는데 그러면 조회수가 느려지지 않나요?",
-                                -0.309,
-                                0.176)));
+                                165_000, 174_000, "적재율이 높아지면 조회 성능이 어떻게 달라지는지 다시 설명해 주실 수 있나요?", -0.309, 0.176)));
         enqueueJob();
 
         dispatch();
@@ -577,7 +575,7 @@ class PostClassTranscriptionIntegrationTest {
         assertEquals(1, segmentCount());
         assertEquals(165_000L, segmentLong(0, "startOffsetMs"));
         assertEquals(174_000L, segmentLong(0, "endOffsetMs"));
-        assertTrue(document().contains("체인링"), "실제 질문은 유지돼야 한다");
+        assertTrue(document().contains("적재율"), "실제 질문은 유지돼야 한다");
         assertTrue(!document().contains("고맙습니다"), "환각은 최종 전사에서 빠져야 한다");
         // 계약은 그대로다. 전량 제거가 아니어도 partial 로 바뀌지 않는다.
         assertEquals("ANALYZING", status());

@@ -460,14 +460,30 @@ class AssembleTranscriptServiceTest {
     // ---------------------------------------------------------------------
     // 무음 환각 필터(S15P11A105-306)
     //
-    // 실측값을 fixture 로 고정한다. 2026-08-05 실제 세션의 학생 마이크 전사에서 환각 "고맙습니다." 는
-    // no_speech_prob 0.906~0.985 로 나왔고 실제 질문은 0.176 이었다. 관측값이 0.18~0.90 사이에
-    // 하나도 없다는 것이 기본 임곗값 0.8 의 근거이므로, 그 두 극단을 그대로 테스트에 넣는다.
+    // 실측 확률값과 시각을 fixture 로 고정한다. 2026-08-05 실제 세션의 학생 마이크 전사에서 환각
+    // "고맙습니다." 는 no_speech_prob 0.906~0.985 로 나왔고 실제 질문 세그먼트는 0.176 이었다.
+    // 관측값이 0.18~0.90 사이에 하나도 없다는 것이 기본 임곗값 0.8 의 근거이므로 두 극단을 그대로 넣는다.
+    //
+    // 학생 발화 원문은 넣지 않는다. 지워지면 안 되는 쪽의 텍스트는 형태만 같은 문장으로 대체했다 —
+    // 상수 주석에 근거를 적었다.
     // ---------------------------------------------------------------------
 
-    /** 관측된 실제 학생 질문. 이것이 지워지면 필터는 실패다. */
-    private static final String REAL_QUESTION = "체인링을 사용하면 하나의 인덱스에 데이터가 너무 많이 모일 수 있는데 그러면 조회수가 느려지지 않나요?";
+    /**
+     * 지워지면 안 되는 학생 질문 자리.
+     *
+     * <p><b>실제 세션의 발화 원문을 쓰지 않는다.</b> 실제 학생이 말한 문장을 저장소에 박으면 그 발화가 코드로 남는다. 이 fixture 의 검증력은 확률값·시각·순서와 <b>문장 끝의
+     * 물음표</b>에서 나오고, 질문의 내용은 판정에 쓰이지 않는다. 그래서 형태만 같은 문장으로 대체했다 — 긴 문장이고 종결 부호가 물음표다.
+     *
+     * <p>실측 확률값({@code 0.176})과 시각은 응답 그대로다. 그쪽이 이 테스트가 재현하는 대상이다.
+     */
+    private static final String STUDENT_QUESTION = "적재율이 높아지면 조회 성능이 어떻게 달라지는지 다시 설명해 주실 수 있나요?";
 
+    /**
+     * 환각 문구.
+     *
+     * <p>이쪽은 사람의 발화가 아니라 <b>모델이 무음 구간에서 만들어 낸 출력</b>이라 실측 문구를 그대로 둔다. 이 티켓이 존재하는 이유이고, 이 문구가 30초 간격으로 반복됐다는 사실 자체가 재현
+     * 조건이다.
+     */
     private static final String HALLUCINATION = "고맙습니다.";
 
     @Test
@@ -479,11 +495,11 @@ class AssembleTranscriptServiceTest {
                 List.of(
                         segment(15_000, 18_000, HALLUCINATION, 0.953),
                         segment(45_000, 48_000, HALLUCINATION, 0.984),
-                        segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
 
-        assertEquals(List.of(REAL_QUESTION), textsOf(transcriptPort.only()));
+        assertEquals(List.of(STUDENT_QUESTION), textsOf(transcriptPort.only()));
         assertEquals(1, result.segmentCount());
         assertEquals(2, result.filteredSegmentCount());
     }
@@ -543,12 +559,12 @@ class AssembleTranscriptServiceTest {
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(
                         segment(15_000, 18_000, HALLUCINATION, 0.953),
-                        segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         AssembleTranscriptResult result = disabled.assemble(
                 new AssembleTranscriptCommand(SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks));
 
-        assertEquals(List.of(HALLUCINATION, REAL_QUESTION), textsOf(port.only()));
+        assertEquals(List.of(HALLUCINATION, STUDENT_QUESTION), textsOf(port.only()));
         assertEquals(0, result.filteredSegmentCount(), "끈 상태에서는 센 것도 없어야 한다");
     }
 
@@ -596,13 +612,13 @@ class AssembleTranscriptServiceTest {
                         TranscriptionChunkStatus.SUCCEEDED,
                         List.of(
                                 segment(15_000, 18_000, HALLUCINATION, 0.940),
-                                segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                                segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         AssembleTranscriptResult result = assemble(
                 List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L), track(STUDENT_FILE, STUDENT, 600_000L)), chunks);
 
         List<TranscriptDocumentSegment> segments = transcriptPort.only().segments();
-        assertEquals(List.of("오늘은 해시 테이블을 다룹니다", "체이닝과 개방 주소법", REAL_QUESTION), textsOf(transcriptPort.only()));
+        assertEquals(List.of("오늘은 해시 테이블을 다룹니다", "체이닝과 개방 주소법", STUDENT_QUESTION), textsOf(transcriptPort.only()));
         // 학생 트랙은 수업 10분 뒤에 발행됐으므로 600_000 + 165_000 = 765_000 이고, 강사의 400_000 뒤다.
         assertEquals(
                 List.of(2_000L, 400_000L, 765_000L),
@@ -617,7 +633,9 @@ class AssembleTranscriptServiceTest {
                 STUDENT_FILE,
                 2,
                 TranscriptionChunkStatus.SUCCEEDED,
-                List.of(segment(5_000, 8_000, HALLUCINATION, 0.983), segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                List.of(
+                        segment(5_000, 8_000, HALLUCINATION, 0.983),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
 
@@ -645,7 +663,7 @@ class AssembleTranscriptServiceTest {
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(
                         segment(15_000, 18_000, HALLUCINATION, 0.953),
-                        segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         AssembleTranscriptResult first = assemble(tracks, chunks);
         RecordingTranscriptPort second = new RecordingTranscriptPort();
@@ -690,7 +708,7 @@ class AssembleTranscriptServiceTest {
                         segment(156_000, 159_000, HALLUCINATION, 0.1763685643672943),
                         segment(159_000, 162_000, HALLUCINATION, 0.1763685643672943),
                         segment(162_000, 165_000, HALLUCINATION, 0.1763685643672943),
-                        segment(165_000, 174_000, REAL_QUESTION, 0.1763685643672943),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.1763685643672943),
                         segment(174_000, 179_500, HALLUCINATION, 0.906367301940918), // seek=17400
                         segment(204_000, 209_500, HALLUCINATION, 0.9249671101570129), // seek=20400
                         segment(234_000, 239_500, HALLUCINATION, 0.9403244256973267)))); // seek=23400
@@ -701,7 +719,7 @@ class AssembleTranscriptServiceTest {
         assertEquals(6, result.segmentCount(), "같은 창의 5건 + 실제 질문");
         List<TranscriptDocumentSegment> stored = transcriptPort.only().segments();
         // 실제 질문은 시각까지 그대로 남는다.
-        assertEquals(REAL_QUESTION, stored.get(5).text());
+        assertEquals(STUDENT_QUESTION, stored.get(5).text());
         assertEquals(165_000, stored.get(5).startOffsetMs());
         assertEquals(174_000, stored.get(5).endOffsetMs());
         // 질문 바로 뒤에 0ms 로 붙은 환각은 살아남지 않는다.
@@ -785,12 +803,12 @@ class AssembleTranscriptServiceTest {
                 0,
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(
-                        segment(165_000, 174_000, REAL_QUESTION, 0.176),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176),
                         segment(174_000, 179_500, HALLUCINATION, 0.906))));
 
         AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
 
-        assertEquals(List.of(REAL_QUESTION), textsOf(transcriptPort.only()));
+        assertEquals(List.of(STUDENT_QUESTION), textsOf(transcriptPort.only()));
         assertEquals(1, result.filteredSegmentCount());
     }
 
@@ -875,11 +893,11 @@ class AssembleTranscriptServiceTest {
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(
                         segment(15_000, 18_000, HALLUCINATION, 0.953),
-                        segment(165_000, 174_000, REAL_QUESTION, 0.176))));
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
 
         RecordingTranscriptPort lenient = new RecordingTranscriptPort();
         service(lenient, 0.99).assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", tracks, chunks));
 
-        assertEquals(List.of(HALLUCINATION, REAL_QUESTION), textsOf(lenient.only()));
+        assertEquals(List.of(HALLUCINATION, STUDENT_QUESTION), textsOf(lenient.only()));
     }
 }

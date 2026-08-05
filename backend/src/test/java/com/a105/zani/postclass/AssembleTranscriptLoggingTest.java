@@ -43,7 +43,9 @@ class AssembleTranscriptLoggingTest {
     private static final Long STUDENT_FILE = 9_300_202L;
     private static final Instant NOW = Instant.parse("2026-08-05T02:00:00Z");
 
-    private static final String REAL_QUESTION = "체인링을 사용하면 하나의 인덱스에 데이터가 너무 많이 모일 수 있는데 그러면 조회수가 느려지지 않나요?";
+    /** 실제 세션의 발화 원문을 쓰지 않는다 — 이유는 {@link AssembleTranscriptServiceTest} 의 같은 상수에 적었다. */
+    private static final String STUDENT_QUESTION = "적재율이 높아지면 조회 성능이 어떻게 달라지는지 다시 설명해 주실 수 있나요?";
+
     private static final String HALLUCINATION = "고맙습니다.";
 
     private final Logger assemblyLogger = (Logger) LoggerFactory.getLogger(AssembleTranscriptService.class);
@@ -67,20 +69,20 @@ class AssembleTranscriptLoggingTest {
         assemble(List.of(
                 segment(15_000, 18_000, HALLUCINATION, 0.953),
                 segment(45_000, 48_000, HALLUCINATION, 0.984),
-                segment(165_000, 174_000, REAL_QUESTION, 0.176)));
+                segment(165_000, 174_000, STUDENT_QUESTION, 0.176)));
 
         String logged = renderedLog();
         assertThat(logged).doesNotContain(HALLUCINATION);
-        assertThat(logged).doesNotContain(REAL_QUESTION);
+        assertThat(logged).doesNotContain(STUDENT_QUESTION);
         // 실제 발화의 일부만 새어 나가는 것도 막는다.
-        assertThat(logged).doesNotContain("체인링");
+        assertThat(logged).doesNotContain("적재율");
         assertThat(logged).doesNotContain("고맙");
     }
 
     @Test
     void 필터_로그에_추적에_필요한_수치는_남긴다() {
         assemble(List.of(
-                segment(15_000, 18_000, HALLUCINATION, 0.953), segment(165_000, 174_000, REAL_QUESTION, 0.176)));
+                segment(15_000, 18_000, HALLUCINATION, 0.953), segment(165_000, 174_000, STUDENT_QUESTION, 0.176)));
 
         String logged = renderedLog();
         assertThat(logged).contains("sessionId=" + SESSION_ID);
