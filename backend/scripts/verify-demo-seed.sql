@@ -38,7 +38,6 @@ FROM (
     UNION ALL SELECT 'instructor_reports', COUNT(*), 1 FROM `instructor_reports` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'instructor_report_scores', COUNT(*), 4 FROM `instructor_report_scores` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'instructor_report_insights', COUNT(*), 4 FROM `instructor_report_insights` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
-    UNION ALL SELECT 'instructor_report_tips', COUNT(*), 4 FROM `instructor_report_tips` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'student_reports', COUNT(*), 23 FROM `student_reports` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'review_recommendations', COUNT(*), 15 FROM `review_recommendations` WHERE `id` BETWEEN 1000000000000 AND 1000000999999
     UNION ALL SELECT 'quizzes', COUNT(*), 3 FROM `quizzes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999

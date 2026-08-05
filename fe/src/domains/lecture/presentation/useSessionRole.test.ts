@@ -31,7 +31,8 @@ describe("useSessionRole", () => {
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(result.current.role).toBe("STUDENT");
-    expect(result.current.session).toEqual(session);
+    expect(result.current.lecture?.id).toBe("s1");
+    expect(result.current.lecture?.title).toBe("자료구조");
   });
 
   it("reports unknown instead of guessing when the session is missing", async () => {
@@ -42,7 +43,7 @@ describe("useSessionRole", () => {
     await waitFor(() => expect(result.current.status).toBe("unknown"));
     // 강사로 가정하면 학생이 집단 경로를 불러 403 을 받는다.
     expect(result.current.role).toBeNull();
-    expect(result.current.session).toBeNull();
+    expect(result.current.lecture).toBeNull();
   });
 
   it("reports unknown when the request fails", async () => {
@@ -51,6 +52,6 @@ describe("useSessionRole", () => {
     const { result } = renderHook(() => useSessionRole("s1", { request }));
 
     await waitFor(() => expect(result.current.status).toBe("unknown"));
-    expect(result.current.session).toBeNull();
+    expect(result.current.lecture).toBeNull();
   });
 });

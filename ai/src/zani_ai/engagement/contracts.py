@@ -36,6 +36,14 @@ SAMPLER_SCHEMES = ("none", "balanced")
 #: torch.
 TARGET_ENCODINGS = ("one_hot", "sord")
 
+#: Time-window augmentation methods for the training split. Both come from
+#: Iwana & Uchida (PLOS ONE 2021), whose 128-dataset survey ranks window warping
+#: first and slicing close behind; the same survey measures rotation,
+#: permutation and time warping as *harmful*, which is why they are absent here
+#: rather than merely unused. Kept beside the other scheme tuples so the CLI can
+#: list them without importing torch or numpy.
+AUGMENTATION_METHODS = ("window_warping", "window_slicing")
+
 #: The grades the product treats as "low engagement" -- `Not-Engaged` and
 #: `Barely-Engaged`. The browser sums their probabilities into the single number
 #: the 10-second decision reads (see `.agents/attention-coaching-context.md`
@@ -283,6 +291,7 @@ def load_dataset_contract(
 
 
 __all__ = [
+    "AUGMENTATION_METHODS",
     "CONSECUTIVE_LOW_DECISIONS",
     "DECISION_WINDOW_SECONDS",
     "LABELS",

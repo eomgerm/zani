@@ -7,7 +7,7 @@ vi.mock("@/domains/auth", () => ({ useAuth: () => auth }));
 const role = vi.hoisted(() => ({
   status: "ready" as "loading" | "ready" | "unknown",
   role: "STUDENT" as "INSTRUCTOR" | "STUDENT" | null,
-  session: null as Record<string, unknown> | null,
+  lecture: null as { id: string; title: string } | null,
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
@@ -80,7 +80,7 @@ beforeEach(() => {
   auth.accessToken = "token";
   role.status = "ready";
   role.role = "STUDENT";
-  role.session = { sessionId: SESSION_ID, title: "React 상태관리 심화" };
+  role.lecture = { id: SESSION_ID, title: "React 상태관리 심화" };
 });
 
 describe("QuizScreen", () => {
@@ -212,6 +212,13 @@ describe("QuizScreen", () => {
     });
 
     expect(await screen.findByText(message)).toBeInTheDocument();
+  });
+
+  it("조회는 끝났는데 문항이 없으면 준비 전이라고 말한다 — 영원히 불러오지 않는다", async () => {
+    renderQuiz({ request: async () => quizWith({ questions: [] }) });
+
+    expect(await screen.findByText("아직 퀴즈가 준비되지 않았어요")).toBeInTheDocument();
+    expect(screen.queryByText("퀴즈를 불러오는 중이에요")).not.toBeInTheDocument();
   });
 
   it("제출이 실패하면 이유를 알리고 답안을 그대로 둔다", async () => {

@@ -8,6 +8,7 @@ const lecture = (over: Partial<MyLecture> = {}): MyLecture => ({
   id: "l1",
   title: "CS 네트워크 기초",
   date: "2026-07-10",
+  startedAt: "2026-07-10T01:00:00Z",
   role: "student",
   status: "COMPLETED",
   dur: "1시간 12분",

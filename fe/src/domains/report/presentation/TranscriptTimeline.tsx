@@ -7,6 +7,13 @@ import type { TranscriptSegment } from "../infrastructure/studentClipApi";
 import { formatOffset } from "./offsetTime";
 import { activeSegmentIndex } from "./transcriptCursor";
 
+/**
+ * 활성 행을 목록 위쪽에서 이만큼 아래에 둔다.
+ *
+ * <p>0 으로 붙이면 직전 발화가 화면에서 완전히 사라져 문맥이 끊긴다. 가사 화면들도 현재 줄을 맨 위에 딱 붙이지 않고 한 줄 남을 만큼 띄운다.
+ */
+const ACTIVE_ROW_TOP_PADDING_PX = 8;
+
 export interface TranscriptTimelineProps {
   readonly segments: readonly TranscriptSegment[];
   /** 플레이어의 현재 재생 위치(초). 이 값을 따라 활성 행이 이동한다. */
@@ -26,6 +33,10 @@ export interface TranscriptTimelineProps {
  *
  * <p>재생을 따라 활성 행을 옮길 때, 포인터가 목록 위에 있으면 자동 스크롤을 멈춘다 —
  * 읽는 중인 목록이 밑에서 계속 끌려가면 원하는 행을 누를 수 없다.
+ *
+ * <p>자동 스크롤은 활성 행을 목록 **위쪽에 붙여** 따라간다(음악 앱 가사 화면과 같은 방식).
+ * `scrollIntoView({ block: "nearest" })` 처럼 "화면 밖일 때만 최소한으로" 움직이면 활성 행이
+ * 목록 아래쪽에 걸린 채로 남아, 다음에 무슨 말이 나오는지 보이지 않는다.
  */
 export function TranscriptTimeline({ segments, currentSeconds, onSeek }: TranscriptTimelineProps) {
   const activeIndex = activeSegmentIndex(segments, currentSeconds);
@@ -36,8 +47,21 @@ export function TranscriptTimeline({ segments, currentSeconds, onSeek }: Transcr
 
   useEffect(() => {
     if (hoveringRef.current) return;
-    // jsdom 에는 scrollIntoView 가 없다. 스크롤은 브라우저에서만 의미가 있는 동작이다.
-    activeRowRef.current?.scrollIntoView?.({ block: "nearest" });
+    const list = listRef.current;
+    const row = activeRowRef.current;
+    if (list === null || row === null) return;
+
+    // 컨테이너 기준 상대 위치로 계산한다. offsetTop 은 offsetParent 가 무엇이냐에 따라 값이 달라지는데,
+    // 이 패널은 바깥에서 absolute 래퍼에 담겨 쓰인다(StudentReportClip) — 그 차이에 기대면 조용히 어긋난다.
+    const delta = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    const target = list.scrollTop + delta - ACTIVE_ROW_TOP_PADDING_PX;
+    // 이미 그 자리면 건드리지 않는다. 매 timeupdate 마다 scrollTo 를 부르면 부드러운 스크롤이 계속 재시작된다.
+    if (Math.abs(target - list.scrollTop) < 1) return;
+
+    // 움직임을 줄여 달라고 한 사용자에게는 즉시 이동한다. 따라가는 것 자체가 목적이라 스크롤을 없애지는 않는다.
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    // jsdom 에는 scrollTo 가 없다. 스크롤은 브라우저에서만 의미가 있는 동작이다.
+    list.scrollTo?.({ top: target, behavior: reduceMotion ? "auto" : "smooth" });
   }, [activeIndex]);
 
   return (

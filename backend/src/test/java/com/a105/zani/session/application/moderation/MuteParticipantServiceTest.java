@@ -208,6 +208,11 @@ class MuteParticipantServiceTest {
             mutedIdentity = identity;
             return change;
         }
+
+        @Override
+        public MediaMuteChange muteScreenShare(long sessionId, String identity) {
+            throw new UnsupportedOperationException("강사 제어는 화면 공유를 멈추지 않는다");
+        }
     }
 
     private static class StubInteractionEvents implements InteractionEventRepository {

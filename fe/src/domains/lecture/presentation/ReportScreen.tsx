@@ -9,7 +9,7 @@ import {
   PictoLock,
   PictoWarn,
 } from "@/shared/ui";
-import { formatSessionStartedAt, toMyLecture } from "./myLectures";
+import { formatSessionStartedAt } from "./myLectures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
@@ -73,7 +73,7 @@ export function ReportScreen({
    */
   initialSeekSeconds?: number | null;
 }) {
-  const { status: roleStatus, role, session } = useSessionRole(lectureId);
+  const { status: roleStatus, role, lecture } = useSessionRole(lectureId);
   const [tab, setTab] = useState<"clip" | "report">(initialTab);
 
   /**
@@ -97,7 +97,7 @@ export function ReportScreen({
   // 역할과 세션을 모르는 채로는 제목도 탭도 그릴 수 없다. 어느 엔드포인트를 부를지 모르고, 클립
   // 탭은 강사용 목업을 학생에게 먼저 보여 준 뒤 실제 화면으로 바꾼다. 그럴듯한 가짜를 잠깐이라도
   // 보여주느니 아무것도 그리지 않는다.
-  if (roleStatus !== "ready" || session === null || role === null) {
+  if (roleStatus !== "ready" || lecture === null || role === null) {
     return (
       <>
         <div className="mb-5 flex items-center gap-4">
@@ -114,13 +114,12 @@ export function ReportScreen({
     );
   }
 
-  const lecture = toMyLecture(session);
   const isInstructor = role === "INSTRUCTOR";
   const failed = lecture.status === "FAILED";
   // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
   // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
   const ready = lecture.status === "COMPLETED";
-  const meta = `${lecture.dur} | ${formatSessionStartedAt(session.startedAt)}`;
+  const meta = `${lecture.dur} | ${formatSessionStartedAt(lecture.startedAt)}`;
 
   return (
     <>

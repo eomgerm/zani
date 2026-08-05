@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SessionSummary } from "../infrastructure/sessionListApi";
+import { toMyLecture, type MyLecture } from "./myLectures";
+
+/** 훅이 돌려주는 것은 세션 요약을 카드용으로 접은 값이다. 테스트도 같은 변환을 거친다. */
+const lectureOf = (sessionId: string, overrides: Partial<SessionSummary> = {}): MyLecture =>
+  toMyLecture(sessionOf(sessionId, overrides));
+
 // jsdom 에는 ResizeObserver 가 없다. 클립 탭이 품은 recharts 계열이 마운트되며 참조하므로 없으면
 // 렌더가 통째로 터진다. 크기를 재는 것이 이 테스트의 관심사는 아니다.
 vi.stubGlobal(
@@ -12,7 +19,7 @@ vi.stubGlobal(
   },
 );
 
-const sessionOf = (sessionId: string, overrides: Record<string, unknown> = {}) => ({
+const sessionOf = (sessionId: string, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
   sessionId,
   inviteCode: "ABC123",
   title: "React 상태 관리",
@@ -30,11 +37,12 @@ const sessionOf = (sessionId: string, overrides: Record<string, unknown> = {}) =
 const role = vi.hoisted(() => ({
   status: "ready" as "loading" | "ready" | "unknown",
   role: "INSTRUCTOR" as "INSTRUCTOR" | "STUDENT" | null,
-  session: null as Record<string, unknown> | null,
+  lecture: null as MyLecture | null,
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
-// 리포트 탭의 두 본문은 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐고 무엇이 전달됐는지만 본다.
+// 이 파일이 보는 것은 ReportScreen 의 배치(어느 탭에 무엇이 걸리는지)다. 두 리포트 본문과
+// report 도메인 카드 안쪽은 각자의 테스트가 본다 — 여기서는 조회하지 않는 껍데기로 바꿔 끼운다.
 vi.mock("./components/report/InstructorReport", () => ({
   InstructorReport: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="instructor-report">{sessionId}</div>
@@ -49,6 +57,15 @@ vi.mock("@/domains/report", () => ({
   StudentReportClip: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-clip">{sessionId}</div>
   ),
+  // 강사·학생 두 경로 모두에서 그려지는 공통 카드다. 역할 인자를 받지 않는다.
+  SessionSummaryCard: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="session-summary">{sessionId}</div>
+  ),
+  useInstructorReport: () => ({ status: "loading", report: null, retry: () => {} }),
+  useGroupAttentionTimeline: () => ({ status: "loading", timeline: null, retry: () => {} }),
+  focusedIntervalRatio: () => null,
+  focusedRatioBand: () => "보통",
+  formatOffset: (seconds: number) => String(seconds),
 }));
 
 import { ReportScreen } from "./ReportScreen";
@@ -64,7 +81,7 @@ const MOCK_CLIP_MARKER = "42:30 / 2:05:30";
 beforeEach(() => {
   role.status = "ready";
   role.role = "INSTRUCTOR";
-  role.session = sessionOf("s1");
+  role.lecture = lectureOf("s1");
 });
 
 describe("ReportScreen", () => {
@@ -77,7 +94,7 @@ describe("ReportScreen", () => {
     instructor.unmount();
 
     role.role = "STUDENT";
-    role.session = sessionOf("s1", { role: "STUDENT" });
+    role.lecture = lectureOf("s1", { role: "STUDENT" });
 
     render(<ReportScreen lectureId="s1" />);
     openReportTab();
@@ -102,7 +119,7 @@ describe("ReportScreen", () => {
   });
 
   it("제목과 시각을 세션 응답에서 읽는다 — fixture 로 흘러내리지 않는다", () => {
-    role.session = sessionOf("0123456789", { title: "예외 처리와 응답 코드" });
+    role.lecture = lectureOf("0123456789", { title: "예외 처리와 응답 코드" });
 
     render(<ReportScreen lectureId="0123456789" />);
 
@@ -112,7 +129,7 @@ describe("ReportScreen", () => {
   });
 
   it("세션 id 를 카드에 그대로 넘긴다", () => {
-    role.session = sessionOf("0123456789");
+    role.lecture = lectureOf("0123456789");
 
     render(<ReportScreen lectureId="0123456789" />);
     openReportTab();
@@ -123,7 +140,7 @@ describe("ReportScreen", () => {
   it("역할을 확인하는 동안에는 어느 쪽도 짐작하지 않는다", () => {
     role.status = "loading";
     role.role = null;
-    role.session = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s1" />);
 
@@ -133,10 +150,23 @@ describe("ReportScreen", () => {
     expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
   });
 
+  it("서버가 답하기 전에는 기다림을 실패로 말하지 않는다", () => {
+    role.status = "loading";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="s1" />);
+
+    // 아직 모르는 것을 "분석이 끝나지 않았어요" 로 말하면 기다림이 실패로 읽힌다.
+    expect(screen.queryByText(/아직 분석이 끝나지 않았어요/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/결과를 생성하지 못했어요/)).not.toBeInTheDocument();
+    expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
+  });
+
   it("역할을 알 수 없으면 이유를 알린다", () => {
     role.status = "unknown";
     role.role = null;
-    role.session = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s1" />);
 
@@ -145,7 +175,7 @@ describe("ReportScreen", () => {
 
   it("학생으로 확정된 경우에만 실제 클립 패널을 그린다", () => {
     role.role = "STUDENT";
-    role.session = sessionOf("s4", { role: "STUDENT" });
+    role.lecture = lectureOf("s4", { role: "STUDENT" });
 
     render(<ReportScreen lectureId="s4" />);
 
@@ -160,10 +190,24 @@ describe("ReportScreen", () => {
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
   });
 
+  it("수업 요약 카드는 학생과 강사가 같은 것을 쓴다", () => {
+    role.role = "STUDENT";
+    role.lecture = lectureOf("s4", { role: "STUDENT" });
+    const asStudent = render(<ReportScreen lectureId="s4" />);
+    expect(asStudent.getByTestId("session-summary")).toHaveTextContent("s4");
+    asStudent.unmount();
+
+    // 강사 클립 탭은 아직 목업이지만 요약 카드는 학생과 같은 것을 쓴다 — 요약은 공통 산출물이다.
+    role.role = "INSTRUCTOR";
+    role.lecture = lectureOf("s4");
+    const asInstructor = render(<ReportScreen lectureId="s4" />);
+    expect(asInstructor.getByTestId("session-summary")).toHaveTextContent("s4");
+  });
+
   it("역할을 확인하는 동안 목업 클립을 먼저 보여주지 않는다", () => {
     role.status = "loading";
     role.role = null;
-    role.session = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s4" />);
 
@@ -176,7 +220,7 @@ describe("ReportScreen", () => {
   it("역할을 알 수 없으면 목업 클립을 남기지 않는다", () => {
     role.status = "unknown";
     role.role = null;
-    role.session = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s4" />);
 
@@ -186,7 +230,7 @@ describe("ReportScreen", () => {
   });
 
   it("리포트 처리가 끝나지 않은 수업은 탭과 본문을 감춘다", () => {
-    role.session = sessionOf("s1", { reportStatus: "PROCESSING" });
+    role.lecture = lectureOf("s1", { reportStatus: "PROCESSING" });
 
     render(<ReportScreen lectureId="s1" />);
 
@@ -194,8 +238,16 @@ describe("ReportScreen", () => {
     expect(screen.queryByRole("button", { name: /리포트/ })).not.toBeInTheDocument();
   });
 
+  it("진행 중인 수업도 마찬가지다", () => {
+    role.lecture = lectureOf("s1", { status: "LIVE" });
+
+    render(<ReportScreen lectureId="s1" />);
+
+    expect(screen.getByText("아직 분석이 끝나지 않았어요")).toBeInTheDocument();
+  });
+
   it("분석이 실패한 수업은 실패 안내를 낸다", () => {
-    role.session = sessionOf("s1", { reportStatus: "FAILED" });
+    role.lecture = lectureOf("s1", { reportStatus: "FAILED" });
 
     render(<ReportScreen lectureId="s1" />);
 

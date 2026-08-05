@@ -108,6 +108,7 @@ public class StudentQuizPersistenceAdapter implements StudentQuizPort {
                                 question.getId(),
                                 question.getQuestionText(),
                                 question.getExplanation(),
+                                question.getSectionStartedOffsetMs(),
                                 question.getQuestionOrder(),
                                 optionsByQuestion.getOrDefault(question.getId(), List.of()),
                                 selectedByQuestion.get(question.getId())))

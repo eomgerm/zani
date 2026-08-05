@@ -11,6 +11,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.a105.zani.recording.application.exception.MediaNotReadyException;
+import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlQuery;
+import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlResult;
+import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlUseCase;
 import com.a105.zani.report.application.exception.NotSessionStudentReportException;
 import com.a105.zani.report.application.exception.ReportNotReadyException;
 import com.a105.zani.session.application.exception.NotSessionMemberException;
@@ -42,19 +46,23 @@ class GetStudentReportServiceTest {
     @Mock
     private StudentReportQueryPort queryPort;
 
+    @Mock
+    private IssueMediaUrlUseCase issueMediaUrlUseCase;
+
     private GetStudentReportService service;
 
     @BeforeEach
     void setUp() {
-        service = new GetStudentReportService(resolver, queryPort);
+        service = new GetStudentReportService(resolver, queryPort, issueMediaUrlUseCase);
     }
 
     @Test
-    @DisplayName("학생 본인의 활동·참여 요약·추천을 결과로 매핑한다")
+    @DisplayName("학생 본인의 활동·참여 요약·추천·전사와 재생 정보를 결과로 매핑한다")
     void maps_the_students_report() {
         givenStudentAccess(PARTICIPANT_ID);
         given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
                 .willReturn(Optional.of(reportView()));
+        givenIssuedMediaUrl("https://zani.test/media?token=abc");
 
         GetStudentReportResult result = service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID));
 
@@ -63,7 +71,46 @@ class GetStudentReportServiceTest {
                         new GetStudentReportResult.Activity(4L, 1L, 0L, 2),
                         "공개 채팅으로 질문하고 놓친 구간을 복습했다.",
                         List.of(new GetStudentReportResult.Recommendation(
-                                "CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1))));
+                                77L, "CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1)),
+                        "https://zani.test/media?token=abc",
+                        // 01:00 ~ 02:00 = 3,600 초
+                        3_600L,
+                        List.of(new GetStudentReportResult.TranscriptSegment(5L, 12L, "김학생", "여기가 이해가 안 돼요")),
+                        0L));
+    }
+
+    @Test
+    @DisplayName("최종 MP4가 아직 없으면 recordingUrl만 비우고 리포트는 그대로 준다")
+    void leaves_the_recording_url_empty_when_media_is_not_ready() {
+        givenStudentAccess(PARTICIPANT_ID);
+        given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
+                .willReturn(Optional.of(reportView()));
+        given(issueMediaUrlUseCase.issue(new IssueMediaUrlQuery(SESSION_ID, MEMBER_ID)))
+                .willThrow(new MediaNotReadyException());
+
+        GetStudentReportResult result = service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID));
+
+        assertThat(result.recordingUrl()).isNull();
+        // 녹화가 없다고 리포트 전체를 잃지 않는다 — 참여 요약과 추천은 그대로 보여야 한다.
+        assertThat(result.participationSummary()).isEqualTo("공개 채팅으로 질문하고 놓친 구간을 복습했다.");
+        assertThat(result.recommendations()).hasSize(1);
+        assertThat(result.transcript()).hasSize(1);
+        assertThat(result.durationSeconds()).isEqualTo(3_600L);
+    }
+
+    @Test
+    @DisplayName("종료 시각이 없는 과거 세션이면 길이는 0이다")
+    void reports_zero_duration_without_an_end_time() {
+        given(resolver.resolve(new ResolveEndedSessionParticipantQuery(SESSION_ID, MEMBER_ID)))
+                .willReturn(new ResolveEndedSessionParticipantResult(
+                        PARTICIPANT_ID, SessionParticipantRole.STUDENT, STARTED_AT, null));
+        given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
+                .willReturn(Optional.of(reportView()));
+        given(issueMediaUrlUseCase.issue(new IssueMediaUrlQuery(SESSION_ID, MEMBER_ID)))
+                .willThrow(new MediaNotReadyException());
+
+        assertThat(service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID)).durationSeconds())
+                .isZero();
     }
 
     @Test
@@ -73,10 +120,36 @@ class GetStudentReportServiceTest {
         givenStudentAccess(resolvedParticipantId);
         given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, resolvedParticipantId))
                 .willReturn(Optional.of(reportView()));
+        givenIssuedMediaUrl("https://zani.test/media?token=abc");
 
         service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID));
 
         then(queryPort).should().findBySessionIdAndParticipantId(SESSION_ID, resolvedParticipantId);
+    }
+
+    @Test
+    @DisplayName("녹화 주소는 요청자 본인 자격으로만 발급한다")
+    void issues_the_recording_url_for_the_caller() {
+        givenStudentAccess(PARTICIPANT_ID);
+        given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
+                .willReturn(Optional.of(reportView()));
+        givenIssuedMediaUrl("https://zani.test/media?token=abc");
+
+        service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID));
+
+        then(issueMediaUrlUseCase).should().issue(new IssueMediaUrlQuery(SESSION_ID, MEMBER_ID));
+    }
+
+    @Test
+    @DisplayName("리포트가 없으면 녹화 주소를 발급하지 않는다")
+    void does_not_issue_a_recording_url_without_a_report() {
+        givenStudentAccess(PARTICIPANT_ID);
+        given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID)))
+                .isInstanceOf(ReportNotReadyException.class);
+        then(issueMediaUrlUseCase).shouldHaveNoInteractions();
     }
 
     @Test
@@ -141,6 +214,11 @@ class GetStudentReportServiceTest {
                         participantId, SessionParticipantRole.STUDENT, STARTED_AT, ENDED_AT));
     }
 
+    private void givenIssuedMediaUrl(String mediaUrl) {
+        given(issueMediaUrlUseCase.issue(new IssueMediaUrlQuery(SESSION_ID, MEMBER_ID)))
+                .willReturn(new IssueMediaUrlResult(mediaUrl, ENDED_AT));
+    }
+
     private static StudentReportView reportView() {
         return new StudentReportView(
                 4L,
@@ -148,6 +226,8 @@ class GetStudentReportServiceTest {
                 0L,
                 2,
                 "공개 채팅으로 질문하고 놓친 구간을 복습했다.",
-                List.of(new StudentReportView.Recommendation("CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1)));
+                List.of(new StudentReportView.Recommendation(
+                        77L, "CONFUSED", "재귀 종료 조건", "종료 조건을 다시 확인한다.", 10L, 20L, 1)),
+                List.of(new StudentReportView.TranscriptSegment(5L, 12L, "김학생", "여기가 이해가 안 돼요")));
     }
 }

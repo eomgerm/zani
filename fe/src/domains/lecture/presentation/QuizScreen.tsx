@@ -34,7 +34,7 @@ export function QuizScreen({
   submitRequest?: QuizAnswersSubmitter;
 }) {
   // 제목은 세션 목록에서 온다. fixture 를 폴백으로 두면 실제 세션 id 를 못 찾아 남의 강의 제목이 걸린다.
-  const { session } = useSessionRole(lectureId);
+  const { lecture } = useSessionRole(lectureId);
   const quiz = useStudentQuiz({ sessionId: lectureId, request, submitRequest });
 
   const [idx, setIdx] = useState(0);
@@ -69,7 +69,7 @@ export function QuizScreen({
       </Link>
       <div className="flex-1">
         <div className="text-[15px] font-extrabold">
-          {session === null ? "AI 이해도 퀴즈" : `${session.title} · AI 이해도 퀴즈`}
+          {lecture === null ? "AI 이해도 퀴즈" : `${lecture.title} · AI 이해도 퀴즈`}
         </div>
         <div className="text-[12.5px] text-ink-faint">
           {showResult ? "결과 확인" : total === 0 ? "" : `${idx + 1} / ${total}`}
@@ -297,14 +297,19 @@ export function QuizScreen({
   );
 }
 
+/**
+ * `ready` 인데 여기까지 온 것은 문항이 하나도 없다는 뜻이다 — 조회는 끝났으므로 "불러오는 중" 은
+ * 영영 지나가지 않는 거짓말이 된다. 리포트의 퀴즈 카드와 같은 문구로 준비 전임을 알린다.
+ */
 const noticeKeyOf = (status: string): keyof typeof NOTICE =>
-  status === "forbidden" || status === "failed" || status === "notReady"
+  status === "forbidden" || status === "failed" || status === "notReady" || status === "ready"
     ? (status as keyof typeof NOTICE)
     : "loading";
 
 const NOTICE = {
   loading: "퀴즈를 불러오는 중이에요",
   notReady: "아직 퀴즈가 준비되지 않았어요",
+  ready: "아직 퀴즈가 준비되지 않았어요",
   forbidden: "이 수업의 퀴즈를 볼 수 없어요",
   failed: "퀴즈를 불러오지 못했어요",
 } as const;
@@ -312,6 +317,7 @@ const NOTICE = {
 const NOTICE_DETAIL = {
   loading: "잠시만 기다려 주세요.",
   notReady: "수업 분석이 끝나면 퀴즈를 풀 수 있어요.",
+  ready: "수업 분석이 끝나면 퀴즈를 풀 수 있어요.",
   forbidden: "내가 참여한 수업이 맞는지 확인해 주세요.",
   failed: "잠시 후 다시 시도해 주세요.",
 } as const;

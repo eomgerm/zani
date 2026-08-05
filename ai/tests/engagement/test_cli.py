@@ -141,6 +141,22 @@ def test_cli_registers_the_e0m_dual_head_protocol() -> None:
     assert finalize_args.output == Path("artifacts/engagement/e0m")
 
 
+def test_cli_registers_the_e0n_augmentation_protocol() -> None:
+    """E0-N is single-stage: it takes no `--stage1`, unlike E0-L and E0-M."""
+    parser = build_parser()
+
+    reproduce_args = parser.parse_args(
+        ["reproduce-e0n", "--features", "features", "--output", "artifacts/engagement/e0n"]
+    )
+    finalize_args = parser.parse_args(
+        ["finalize-e0n", "--features", "features", "--output", "artifacts/engagement/e0n"]
+    )
+
+    assert reproduce_args.output == Path("artifacts/engagement/e0n")
+    assert not hasattr(reproduce_args, "stage1")
+    assert finalize_args.output == Path("artifacts/engagement/e0n")
+
+
 @pytest.mark.parametrize("protocol", ["e0l", "e0m"])
 def test_a_two_stage_protocol_requires_the_stage1_argument(
     protocol: str, tmp_path: Path

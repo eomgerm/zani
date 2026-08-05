@@ -548,6 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0l", "E0-L", "E0-L (K-1 순서형 이진 헤드, 동결 백본 2단계)"),
         ("e0-10", "E0-10", "E0-10 (E0와 동일, 10-seed 비교 기준선)"),
         ("e0m", "E0-M", "E0-M (공유 백본 softmax·ordinal dual head, 확률 혼합)"),
+        ("e0n", "E0-N", "E0-N (학습 분할 시간 창 증강, window warping·slicing)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),

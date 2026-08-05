@@ -8,7 +8,7 @@
   "files": {
     "model": {
       "name": "engagement.onnx",
-      "sha256": "cde0d02a114635bf330cf96df27a9323f9da9458ffad43a351f55edd862a7884"
+      "sha256": "75c3cb316898594eeb7d12cf0b0820f7cf17f20b51222bfdb2fdea29787e16b6"
     },
     "metadata": {
       "name": "engagement.metadata.json",

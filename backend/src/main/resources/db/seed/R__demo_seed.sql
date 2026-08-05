@@ -17,7 +17,7 @@
 --   1000000016xxx coaching_history_response_counts                   1000000017xxx chat_messages
 --   1000000018xxx interaction_events 1000000019xxx session_reports   1000000020xxx instructor_reports
 --   1000000021xxx instructor_report_scores                           1000000022xxx instructor_report_insights
---   1000000023xxx instructor_report_tips                             1000000024xxx student_reports
+--   1000000024xxx student_reports
 --   1000000025xxx review_recommendations                             1000000026xxx quizzes
 --   1000000027xxx quiz_questions     1000000028xxx quiz_options      1000000029xxx quiz_answers
 --   1000000100000 ~ 1000000110212    attention_events (10,212행이라 별도 블록을 준다)
@@ -59,7 +59,6 @@ DELETE FROM `quiz_questions` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `quizzes` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `review_recommendations` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `student_reports` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
-DELETE FROM `instructor_report_tips` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `instructor_report_insights` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `instructor_report_scores` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
 DELETE FROM `instructor_reports` WHERE `id` BETWEEN 1000000000000 AND 1000000999999;
@@ -724,9 +723,11 @@ VALUES (1000000019001, @s1,
         '이번 수업은 지역 상태에서 출발해 props drilling, Context 리렌더링, 메모이제이션, 외부 상태관리 라이브러리 순으로 이어졌습니다. Context 구독과 리렌더링을 다룬 8~15분 구간에서 확인이 필요한 신호가 가장 많이 모였고, Zustand 실습 구간에서는 참여도가 수업 전체에서 가장 높았습니다.',
         '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000');
 
-INSERT INTO `instructor_reports` (`id`, `session_id`, `overall_feedback`, `published_at`, `created_at`, `updated_at`)
+-- question_count 는 공개 채팅 중 질문인 발화만 센 수다. 강사 리포트 "한눈에 보기" 가 이 값을 쓴다.
+INSERT INTO `instructor_reports` (`id`, `session_id`, `overall_feedback`, `question_count`, `published_at`, `created_at`, `updated_at`)
 VALUES (1000000020001, @s1,
         '전체 흐름은 개념 → 문제 → 해법 순으로 잘 짜여 있었습니다. 다만 Context 리렌더링을 설명한 구간에서 예제보다 원리를 먼저 다뤄 이해 확인 신호가 몰렸습니다. 실습 구간의 참여도가 뚜렷하게 높았던 만큼, 어려운 개념도 예제를 먼저 보여준 뒤 원리로 넘어가는 순서를 시도해볼 만합니다.',
+        12,
         '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000');
 
 -- 평가 분야 4종은 V1 주석이 정본이다.
@@ -737,25 +738,34 @@ VALUES
     (1000000021003, 1000000020001, 'INTERACTION', 71, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
     (1000000021004, 1000000020001, 'DIFFICULTY_CONTROL', 76, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
--- insight_type·tip_type 은 아직 정본 목록이 없다. 강사 리포트 조회 API 일감이 목록을 확정하면 여기도 함께 고친다.
-INSERT INTO `instructor_report_insights` (`id`, `instructor_report_id`, `insight_type`, `content`,
+-- 수업 인사이트 4장. 화면이 "수업 개선 TIP" 과 "인사이트" 를 하나로 합쳐 한 행이 제목·근거·제안·구간을 갖는다.
+-- content 는 근거이고 suggestion 은 제안이다. 구간이 둘 다 NULL 이면 전체 수업 대상이다.
+-- 유형(insight_type) 은 두지 않는다 — 제목을 AI 가 직접 짓고 화면 아이콘도 하나로 통일됐다.
+INSERT INTO `instructor_report_insights` (`id`, `instructor_report_id`, `title`, `content`, `suggestion`,
                                           `started_offset_ms`, `ended_offset_ms`, `created_at`, `updated_at`)
 VALUES
-    (1000000022001, 1000000020001, 'ATTENTION_DROP', 'Context 리렌더링 구간에서 이해 확인 신호가 집중적으로 발생했습니다.', 520000, 921000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000022002, 1000000020001, 'PRACTICE_EFFECT', '실습 구간의 참여도가 수업 전체에서 가장 높았습니다.', 2520000, 3079000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000022003, 1000000020001, 'RECOVERY_TREND', '후반부로 갈수록 참여도가 회복되는 흐름입니다.', NULL, NULL, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000022004, 1000000020001, 'QUESTION_RESPONSE', '질문이 몰린 구간의 응답 시간이 짧았습니다.', 922000, 1439000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
-
-INSERT INTO `instructor_report_tips` (`id`, `instructor_report_id`, `tip_type`, `title`, `content`, `created_at`, `updated_at`)
-VALUES
-    (1000000023001, 1000000020001, 'DIFFICULT_SECTION', '어려운 구간 보강', 'Context 리렌더링 구간에 예제와 실습 시간을 더 배치해 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000023002, 1000000020001, 'QUESTION_TIME', '질문 응답 시간 확보', '질문이 몰리는 구간 뒤에 답변 시간을 명시적으로 확보해 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000023003, 1000000020001, 'VISUAL_AID', '시각 자료 활용 강화', '리렌더 흐름을 다이어그램으로 먼저 보여주면 이해가 빨라집니다.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
-    (1000000023004, 1000000020001, 'PARTICIPATION', '학생 참여 유도', '개념 설명 뒤 짧은 확인 질문을 넣어 참여를 끌어올려 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
+    (1000000022001, 1000000020001, '어려운 구간 보강',
+     'Context 리렌더링 구간에서 이해 확인 신호가 집중적으로 발생하고 공개 질문도 같은 구간에 몰렸습니다.',
+     '추가 예시 코드와 실습 시간을 늘려보세요.',
+     520000, 921000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
+    (1000000022002, 1000000020001, '질문 응답 시간 확보',
+     '질문이 몰린 구간에서 다음 개념으로 넘어가는 간격이 짧았고, 그 구간의 확인 필요 비율도 함께 올라갔습니다.',
+     '중간중간 질문 시간을 명시적으로 확보해보세요.',
+     922000, 1439000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
+    (1000000022003, 1000000020001, '시각 자료 활용 강화',
+     '메모에 남긴 어려운 개념과 구간 요약이 겹치는 지점에서 설명이 말로만 이어졌습니다.',
+     '리렌더 흐름을 다이어그램으로 먼저 보여주면 이해가 빨라집니다.',
+     0, 519000, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'),
+    (1000000022004, 1000000020001, '학생 참여 유도',
+     '실습 구간의 참여도가 수업 전체에서 가장 높았고 손들기와 공개 채팅도 그 구간에 모였습니다.',
+     '개념 설명 후 간단한 확인 질문이나 실습 중간 점검을 넣어보세요.',
+     NULL, NULL, '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
 -- 리포트 요약은 학생 전원에게 채운다. 참가자 ID 에서 리포트 ID 를 계산한다(1000000003002 → 1000000024002).
--- question_count 는 세 번째 학생만 NULL 로 둔다. 분석이 질문 수를 내지 못한 리포트에서 화면이
--- "0개" 가 아니라 빈 자리를 그리는지 시연으로 확인할 수 있어야 한다.
+-- question_count 는 학생 셋이 세 가지 상태를 하나씩 갖게 한다. "한눈에 보기" 가 셋을 다르게 그려야 한다.
+--   3    질문을 남긴 학생
+--   0    분석은 됐지만 질문이 없던 학생 — "0개" 로 보여야 한다
+--   NULL 분석이 질문 수를 내지 못한 리포트 — "0개" 가 아니라 빈 자리로 보여야 한다
 INSERT INTO `student_reports` (`id`, `session_id`, `session_participant_id`, `participation_summary`,
                                `question_count`, `published_at`, `created_at`, `updated_at`)
 SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
@@ -765,8 +775,8 @@ SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
            ELSE '질문과 반응으로 수업에 활발히 참여했습니다. 메모이제이션 구간에서 확인이 필요한 신호가 반복됐습니다.'
        END,
        CASE (p.`id` - 1000000003001) % 3
-           WHEN 0 THEN 1
-           WHEN 1 THEN 3
+           WHEN 0 THEN 3
+           WHEN 1 THEN 0
            ELSE NULL
        END,
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
@@ -797,8 +807,8 @@ CROSS JOIN (
            1440000 AS `started_offset_ms`, 1859000 AS `ended_offset_ms`
     UNION ALL SELECT 2, 'MISSED', 'Context API 리렌더링', '놓침 응답과 프롬프트 미응답이 같은 구간에 함께 있었습니다.', 520000, 921000
     UNION ALL SELECT 3, 'QUESTION', '상태관리 라이브러리 비교', '직접 남긴 비공개 질문이 이 개념 설명 구간을 가리킵니다.', 1860000, 2519000
-    UNION ALL SELECT 4, 'REPEAT', 'props drilling 과 상태 위치', '같은 개념에서 확인 필요 신호가 반복됐습니다.', 0, 519000
-    UNION ALL SELECT 5, 'REPEAT', 'Zustand 스토어 구조', '실습 구간에서 같은 지점을 여러 번 되짚었습니다.', 2520000, 3079000
+    UNION ALL SELECT 4, 'LOW_ENGAGEMENT', 'props drilling 과 상태 위치', '이 구간에서 참여도 판정이 낮게 이어졌습니다.', 0, 519000
+    UNION ALL SELECT 5, 'NO_RESPONSE', 'Zustand 스토어 구조', '확인 프롬프트에 응답이 없었습니다.', 2520000, 3079000
 ) t;
 
 INSERT INTO `quizzes` (`id`, `student_report_id`, `title`, `description`, `estimated_duration_minutes`,
@@ -808,23 +818,28 @@ SELECT 1000000026000 + s.`slot`, 1000000024001 + s.`slot`, 'React 상태관리 �
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
 FROM (SELECT 1 AS `slot` UNION ALL SELECT 2 UNION ALL SELECT 3) s;
 
-INSERT INTO `quiz_questions` (`id`, `quiz_id`, `question_text`, `explanation`, `question_order`, `created_at`, `updated_at`)
+-- section_started_offset_ms 는 위 session_sections 의 시작 시각을 가리킨다. 문항 하나가 마지막
+-- 문항만 NULL 이다 — 근거 구간을 특정하지 못한 문항이 다시 보기 링크 없이 표시되는 상태를 화면이
+-- 다룰 수 있어야 하고, 시연 데이터가 그 경우를 한 건 포함해야 확인할 수 있다.
+INSERT INTO `quiz_questions` (`id`, `quiz_id`, `question_text`, `explanation`, `section_started_offset_ms`,
+                              `question_order`, `created_at`, `updated_at`)
 SELECT 1000000027000 + s.`slot` * 10 + t.`qorder`, 1000000026000 + s.`slot`,
-       t.`question_text`, t.`explanation`, t.`qorder`,
+       t.`question_text`, t.`explanation`, t.`section_started_offset_ms`, t.`qorder`,
        '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'
 FROM (SELECT 1 AS `slot` UNION ALL SELECT 2 UNION ALL SELECT 3) s
 CROSS JOIN (
     SELECT 1 AS `qorder`,
            'Context Provider 의 value 가 바뀔 때 하위 컴포넌트가 리렌더되는 주된 이유는?' AS `question_text`,
-           '객체 리터럴을 value 로 넘기면 매 렌더마다 새 참조가 만들어져, 이를 구독하는 하위 컴포넌트가 모두 리렌더됩니다.' AS `explanation`
+           '객체 리터럴을 value 로 넘기면 매 렌더마다 새 참조가 만들어져, 이를 구독하는 하위 컴포넌트가 모두 리렌더됩니다.' AS `explanation`,
+           520000 AS `section_started_offset_ms`
     UNION ALL SELECT 2, 'Provider value 의 불필요한 리렌더를 줄이는 가장 적절한 방법은?',
-           'value 를 useMemo 로 감싸 참조를 안정화하면 의존성이 실제로 바뀔 때만 새 참조가 생깁니다.'
+           'value 를 useMemo 로 감싸 참조를 안정화하면 의존성이 실제로 바뀔 때만 새 참조가 생깁니다.', 1440000
     UNION ALL SELECT 3, 'props drilling 에 대한 설명으로 옳은 것은?',
-           '실제로 사용하지 않는 중간 계층이 단지 아래로 props 를 전달만 하는 구조를 말합니다.'
+           '실제로 사용하지 않는 중간 계층이 단지 아래로 props 를 전달만 하는 구조를 말합니다.', 0
     UNION ALL SELECT 4, '외부 상태관리 라이브러리 도입을 고려할 만한 상황은?',
-           '전역 상태가 넓고 미들웨어나 복잡한 비동기 흐름이 필요할 때 라이브러리가 유리합니다.'
+           '전역 상태가 넓고 미들웨어나 복잡한 비동기 흐름이 필요할 때 라이브러리가 유리합니다.', 1860000
     UNION ALL SELECT 5, 'useCallback 이 실제로 필요한 경우는?',
-           'React.memo 된 자식에게 함수를 props 로 넘길 때 참조 안정화를 위해 필요합니다.'
+           'React.memo 된 자식에게 함수를 props 로 넘길 때 참조 안정화를 위해 필요합니다.', NULL
 ) t;
 
 -- 다섯 문제 모두 정답이 2번이다. 아래 응답 블록이 그 사실을 쓴다.
