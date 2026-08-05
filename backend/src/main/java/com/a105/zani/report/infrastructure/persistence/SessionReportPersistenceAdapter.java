@@ -1,5 +1,7 @@
 package com.a105.zani.report.infrastructure.persistence;
 
+import java.time.Instant;
+
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.hibernate.exception.ConstraintViolationException.ConstraintKind;
@@ -53,5 +55,11 @@ public class SessionReportPersistenceAdapter implements SessionReportRepository 
     @Override
     public boolean existsBySessionId(Long sessionId) {
         return sessionReportJpaRepository.existsBySessionId(sessionId);
+    }
+
+    /** 갱신 행 수를 그대로 판정에 쓴다. 쿼리에 {@code published_at is null} 조건이 있으므로 0 은 "이미 공개됐거나 리포트가 없다" 는 뜻이다. */
+    @Override
+    public boolean markPublished(Long sessionId, Instant publishedAt) {
+        return sessionReportJpaRepository.markPublished(sessionId, publishedAt) == 1;
     }
 }

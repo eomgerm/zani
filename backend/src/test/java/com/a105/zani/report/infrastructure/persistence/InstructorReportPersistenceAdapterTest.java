@@ -103,6 +103,17 @@ class InstructorReportPersistenceAdapterTest {
                 .containsExactly((java.sql.Timestamp) null);
     }
 
+    /** 공개 전 리포트가 갖춰졌는지 보는 조회다. 없는데 참을 주면 빈 강사 리포트가 공개되고 메일이 나간다. */
+    @Test
+    @DisplayName("세션별 리포트 존재를 답한다")
+    void reports_whether_the_session_has_an_instructor_report() {
+        assertThat(repository.existsBySessionId(sessionId)).isFalse();
+
+        repository.saveIfAbsent(report("종합 피드백입니다."));
+
+        assertThat(repository.existsBySessionId(sessionId)).isTrue();
+    }
+
     private long insertMember() {
         long id = TsidGenerator.generate();
         jdbcTemplate.update(
