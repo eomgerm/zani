@@ -26,7 +26,7 @@ public class InstructorReportController {
     private final GetInstructorReportUseCase getInstructorReportUseCase;
 
     @Operation(summary = "강사 리포트 조회", description = """
-                    종료된 수업의 **강사용** 리포트를 돌려줍니다. AI 가 만든 종합 피드백·분야별 평가·수업 인사이트·개선 팁으로 이루어집니다.
+                    종료된 수업의 **강사용** 리포트를 돌려줍니다. AI 가 만든 종합 피드백·분야별 평가·수업 인사이트로 이루어집니다.
 
                     - **학생 개인을 가리키는 값은 담기지 않습니다.** 특정 학생의 집중도나 응답을 이름과 함께 보는 화면이 아닙니다(REPORT-I-002).
                     - **집중 흐름 그래프는 이 응답에 없습니다.** `GET /api/v1/sessions/{sessionId}/reports/attention/group` 이 줍니다.
@@ -37,10 +37,13 @@ public class InstructorReportController {
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인이 필요합니다."),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "403",
-                description =
-                        "이 수업의 강사가 아닙니다(`MEDIA_TOKEN_002`). 학생·다른 강사·비참가자, 그리고 **아예 없는 세션 ID** 도 모두 여기로 옵니다 — 참가자 조회가 세션 조회보다 먼저라서입니다. 있는 수업과 없는 수업이 같은 응답을 받으므로 세션 ID 를 훑어 존재 여부를 캐낼 수 없습니다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = """
+                        이 수업의 강사가 아닙니다. 판정이 두 단계라 코드가 둘입니다.
+
+                        - `MEDIA_TOKEN_002` — 이 수업의 참가자가 아닙니다. **아예 없는 세션 ID** 도 여기로 옵니다(참가자 조회가 세션 조회보다 먼저라서입니다).
+                        - `SESSION_APP_006` — 참가자이긴 하나 강사가 아닙니다. 학생과 다른 강사가 여기로 옵니다.
+
+                        있는 수업과 없는 수업이 같은 응답을 받으므로 세션 ID 를 훑어 존재 여부를 캐낼 수 없습니다."""),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "404",
                 description = "리포트가 아직 만들어지지 않았습니다(`REPORT_002`). 학생 리포트와 같은 코드를 씁니다 — 잠시 뒤 다시 열면 됩니다."),

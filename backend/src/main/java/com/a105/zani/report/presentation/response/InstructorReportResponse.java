@@ -16,7 +16,7 @@ import com.a105.zani.report.application.listsessionsections.SessionSectionView;
  *
  * <p><b>집중 흐름은 여기 없다.</b> {@code GET /reports/attention/group} 이 준다. 같은 값을 두 경로로 내리면 계산 규칙이 바뀔 때 한쪽만 고쳐질 자리가 생긴다.
  */
-@Schema(description = "종료된 수업의 강사 리포트. AI 가 만든 종합 피드백·분야별 평가·인사이트·개선 팁으로 이루어진다.")
+@Schema(description = "종료된 수업의 강사 리포트. AI 가 만든 종합 피드백·분야별 평가·수업 인사이트로 이루어진다. 인사이트 한 장이 제목·근거·제안·구간을 함께 갖는다.")
 public record InstructorReportResponse(
         @Schema(description = "AI 가 생성한 수업 종합 피드백", example = "이번 수업은 전반적으로 논리적인 흐름과 단계적인 설명이…")
         String overallFeedback,
