@@ -96,6 +96,33 @@ public interface PipelineJobPort {
     List<Long> findDueTranscriptionSessionIds(Instant now, int limit);
 
     /**
+     * 분석을 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터 최대 limit 건.
+     *
+     * <p>{@code ANALYZING} 이면서 {@code next_attempt_at} 이 비었거나 {@code now} 이하인 작업을 담는다.
+     *
+     * <p><b>{@code next_attempt_at} 의 뜻이 전사와 반대다.</b> {@link #findDueTranscriptionSessionIds} 는 그 값이 비면 "실행 중" 으로 보고
+     * 제외한다. 분석은 반대로 "아직 아무도 잡지 않음" 으로 보고 담는데, 전사가 {@code ANALYZING} 으로 전이할 때 {@link #updateStatus} 가 그 값을 비우기 때문이다. 분석
+     * 단계에는 선점을 표시할 상태 이름이 따로 없어({@code VALIDATING} 은 세 분석이 다 끝나야 가는 자리다) 같은 컬럼을 임대 만료 시각으로 겸용한다.
+     *
+     * <p>이 조회는 선점이 아니다. 실제 시작은 잠금 읽기를 거치는 짧은 트랜잭션에서 따로 판정한다({@code TryClaimAnalysisUseCase}).
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    List<Long> findDueAnalysisSessionIds(Instant now, int limit);
+
+    /**
+     * 분석 실행권을 임대 만료 시각까지 잡는다. <b>시도 횟수는 보존한다.</b>
+     *
+     * <p>선점 전용이다. {@link #updateStatus} 는 시도 횟수를 0 으로 되돌려 실패를 반복하는 단계가 상한에 걸리지 않게 만들고, {@link #markRetry} 는 시도 횟수를 올려
+     * 선점만으로 재시도 예산을 깎는다. {@link #clearRetryWait} 는 값을 비우는데 분석에서는 그것이 "아무도 안 잡음" 이라 매 주기마다 다시 발견된다.
+     *
+     * <p>워커가 죽어도 임대가 만료되면 다음 주기가 이어받는다 — 전사와 달리 기동 시 복구({@link #requeueStalledTranscriptions})가 필요 없는 이유다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    void claimAnalysis(Long sessionId, Instant leaseUntil, Instant changedAt);
+
+    /**
      * 프로세스가 죽어 남은 {@code TRANSCRIBING} 작업을 다시 발견되게 만든다. <b>시도 횟수는 올리지 않는다.</b>
      *
      * <p>{@link #findDueTranscriptionSessionIds} 는 {@code next_attempt_at} 이 {@code null} 인 {@code TRANSCRIBING} 을 "실행

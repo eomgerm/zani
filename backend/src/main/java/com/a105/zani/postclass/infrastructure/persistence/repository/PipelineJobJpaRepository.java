@@ -176,6 +176,60 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
     }
 
     /**
+     * 분석을 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터.
+     *
+     * <p><b>{@code next_attempt_at} 의 뜻이 전사와 반대다.</b> 전사는 그 값이 비면 "실행 중" 으로 보고 제외하지만, 분석은 "아직 아무도 잡지 않음" 으로 보고 담는다. 전사가
+     * {@code ANALYZING} 으로 전이할 때 {@code updateStatus} 가 그 값을 비우기 때문이다.
+     *
+     * <p>대신 분석은 <b>선점할 때</b> 그 값을 임대 만료 시각으로 채운다({@link #claimAnalysis}). 그래서 세 가지 상태가 한 컬럼으로 갈린다.
+     *
+     * <pre>
+     * 비어 있음      전사가 방금 넘겼다. 아무도 안 잡았다        → 담는다
+     * 지금보다 과거  임대가 끝났거나 재시도 기한이 지났다        → 담는다
+     * 지금보다 미래  누가 처리 중이거나 재시도 대기 중이다      → 담지 않는다
+     * </pre>
+     *
+     * <p>이 조회는 선점이 아니다. 실제 시작은 잠금 읽기를 거치는 짧은 트랜잭션에서 따로 판정한다({@code TryClaimAnalysisUseCase}).
+     */
+    @Query("""
+            select job.sessionId from PipelineJobJpaEntity job
+             where job.status = :analyzingStatus
+               and (job.nextAttemptAt is null or job.nextAttemptAt <= :now)
+             order by job.createdAt asc
+            """)
+    List<Long> findDueAnalysisSessionIds(
+            @Param("analyzingStatus") String analyzingStatus, @Param("now") Instant now, Pageable pageable);
+
+    default List<Long> findDueAnalysisSessionIds(Instant now, int limit) {
+        return findDueAnalysisSessionIds(PipelineStatus.ANALYZING.name(), now, Pageable.ofSize(limit));
+    }
+
+    /**
+     * 분석 실행권을 임대 만료 시각까지 잡는다. <b>시도 횟수를 건드리지 않는다.</b>
+     *
+     * <p>기존 갱신 셋을 모두 쓸 수 없다.
+     *
+     * <ul>
+     *   <li>{@link #updateStatus} — 시도 횟수를 0 으로 되돌린다. 실패를 반복하는 단계가 상한에 걸리지 않고 영원히 재시도된다
+     *   <li>{@link #markRetry} — 시도 횟수를 올린다. 선점만으로 재시도 예산이 깎인다
+     *   <li>{@link #clearRetryWait} — 값을 비운다. 분석에서는 그것이 "아무도 안 잡음" 이라 매 주기마다 다시 발견된다
+     * </ul>
+     *
+     * <p>선점이 실패가 아니므로 예산을 건드리지 않고 발견 시각만 미룬다. 워커가 죽어도 임대가 만료되면 다음 주기가 이어받아 기동 시 복구가 필요 없다 — 전사에는 그 복구가 필요하다
+     * ({@link #requeueStalledTranscriptions}).
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("""
+            update PipelineJobJpaEntity job
+               set job.nextAttemptAt = :leaseUntil, job.updatedAt = :changedAt
+             where job.sessionId = :sessionId
+            """)
+    int claimAnalysis(
+            @Param("sessionId") Long sessionId,
+            @Param("leaseUntil") Instant leaseUntil,
+            @Param("changedAt") Instant changedAt);
+
+    /**
      * 아직 끝나지 않았는데 기준 시각보다 먼저 등록된 작업의 세션 ID. 오래 밀린 것부터.
      *
      * <p>미완료 단계를 <b>나열해서</b> 지목하는 이유: {@code status not in ('PUBLISHED','FAILED')} 로 뒤집어 쓰면 인덱스 선행 컬럼의 부정 조건이 되어 옵티마이저가

@@ -108,6 +108,28 @@ public class InMemoryPipelineJobPort implements PipelineJobPort {
     }
 
     @Override
+    public List<Long> findDueAnalysisSessionIds(Instant now, int limit) {
+        // 실제 쿼리와 같은 조건이고 전사와 반대다: ANALYZING 이면서 대기 시각이 비었거나(아무도 안 잡음)
+        // 지났으면(임대 만료·재시도 기한) 담는다. 미래면 누가 처리 중이다.
+        return rows.entrySet().stream()
+                .filter(entry -> entry.getValue().status == PipelineStatus.ANALYZING)
+                .filter(entry -> entry.getValue().nextAttemptAt == null
+                        || !entry.getValue().nextAttemptAt.isAfter(now))
+                .sorted(Comparator.comparing(entry -> entry.getValue().queuedAt))
+                .map(Map.Entry::getKey)
+                .limit(limit)
+                .toList();
+    }
+
+    @Override
+    public void claimAnalysis(Long sessionId, Instant leaseUntil, Instant changedAt) {
+        Row row = rows.get(sessionId);
+        // 단계와 시도 횟수는 그대로 둔다. 선점은 실패가 아니라 발견 시각을 미루는 것뿐이다.
+        row.nextAttemptAt = leaseUntil;
+        row.changedAt = changedAt;
+    }
+
+    @Override
     public int requeueStalledTranscriptions(Instant now) {
         int recovered = 0;
         for (Row row : rows.values()) {
