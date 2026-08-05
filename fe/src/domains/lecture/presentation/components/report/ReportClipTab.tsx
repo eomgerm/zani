@@ -1,9 +1,9 @@
-import { StudentReportClip, type ClipSeekRequest } from "@/domains/report";
-import { summarySections, transcript } from "../../fixtures";
+import { SessionSummaryCard, StudentReportClip, type ClipSeekRequest } from "@/domains/report";
+import { transcript } from "../../fixtures";
 
 interface Props {
   title: string;
-  /** 녹화·전사를 조회할 실제 세션 id. AI 요약은 아직 fixture 다. */
+  /** 녹화·전사·수업 요약을 조회할 실제 세션 id. */
   sessionId: string;
   /**
    * 학생만 실데이터 패널을 그린다. 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업으로
@@ -31,18 +31,8 @@ export function ReportClipTab({ title, sessionId, isStudent, seekRequest = null 
         <MockClipPanel title={title} seekSeconds={seekRequest?.seconds ?? null} />
       )}
 
-      {/* AI 요약 문서 */}
-      <div className="z-card px-7 py-6">
-        <div className="z-section-title mb-4">수업 요약 레포트</div>
-        <div className="flex flex-col gap-[18px]">
-          {summarySections.map((s) => (
-            <div key={s.h}>
-              <div className="mb-1.5 text-[14.5px] font-extrabold">{s.h}</div>
-              <p className="text-[13.5px] leading-[1.75] text-ink-sub">{s.p}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* 수업 요약 — isStudent 분기 밖에 두는 것이 의도다. 강사와 학생이 같은 문장을 본다(FRD §21). */}
+      <SessionSummaryCard sessionId={sessionId} />
     </>
   );
 }
