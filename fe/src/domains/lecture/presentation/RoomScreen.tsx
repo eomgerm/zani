@@ -714,7 +714,6 @@ function RoomScreenContent({
                 currentParticipantId={localParticipantId ?? undefined}
                 videoRefFor={participantVideos.refFor}
                 isInstructor={isInstructor}
-                narrow={panelOpen}
                 onMute={isConfirmedInstructor ? moderation.mute : undefined}
                 mutingIdentity={moderation.mutingIdentity}
               />
