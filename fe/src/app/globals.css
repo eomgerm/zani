@@ -91,8 +91,8 @@
   --breakpoint-wide: 1600px;
 
   /* fonts */
-  --font-sans: var(--font-space-grotesk), var(--font-noto-sans-kr), sans-serif;
-  --font-mono: var(--font-space-mono), monospace;
+  --font-sans: var(--font-noto-sans-kr), sans-serif;
+  --font-mono: var(--font-noto-sans-mono), monospace;
 
   /* shadows */
   /* 카드는 1px 테두리로 가른다. 그림자는 종이가 떠 보이지 않을 만큼만 남긴다(디자인 문서 §4). */
