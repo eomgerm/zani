@@ -125,7 +125,7 @@ export function StudentReportClip({
   }
 
   return (
-    <div className="grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
+    <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] items-stretch gap-5">
       <ReportPlayer
         /* 재조회로 URL 이 바뀌면 리마운트해 실패·재발급 이력을 처음부터 다시 시작한다. */
         key={report.recordingUrl ?? "no-recording"}

@@ -143,7 +143,7 @@ function PanelToggle({
       title={label}
       aria-label={label}
       aria-pressed={active}
-      className={`relative inline-flex size-11 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
+      className={`relative inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-[11px] border font-sans ${
         active
           ? "border-primary bg-[#0e2a20] text-[#2fbf88]"
           : "border-room-line bg-panel text-panel-soft"
@@ -524,13 +524,14 @@ function RoomScreenContent({
       <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
-        <div className="text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
+        <div className="shrink-0 text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
         {/*
           강의명은 서버가 미디어 토큰 응답으로 내려주므로 연결이 끝나기 전에는 알 수 없다.
           그 동안 "수업" 같은 최종값처럼 보이는 문구를 그리면 제목이 바뀌는 것처럼 보인다. 자리만 잡아 둔다.
           prop 은 테스트·스토리북 강제 지정용이다.
         */}
-        <div className="text-[14.5px] font-extrabold">
+        {/* 강의명 길이는 서버가 정한다. 줄이지 않으면 긴 제목이 오른쪽 토글을 화면 밖으로 밀어낸다. */}
+        <div className="min-w-0 truncate text-[14.5px] font-extrabold">
           {title ?? (
             <span
               data-testid="room-title-loading"
@@ -547,7 +548,7 @@ function RoomScreenContent({
         <button
           type="button"
           onClick={() => setView(view === "gallery" ? "speaker" : "gallery")}
-          className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[11px] border border-[#262b42] bg-[#151830] px-4 py-[9px] font-sans text-[13.5px] font-extrabold text-panel-soft transition-colors hover:bg-room-control"
+          className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[11px] border border-[#262b42] bg-[#151830] px-4 py-[9px] font-sans text-[13.5px] font-extrabold text-panel-soft transition-colors hover:bg-room-control"
         >
           ⊞ {view === "gallery" ? "발표자 보기" : "전체 보기"}
         </button>

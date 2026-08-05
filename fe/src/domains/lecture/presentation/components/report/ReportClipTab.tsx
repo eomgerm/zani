@@ -62,7 +62,7 @@ function MockClipPanel({ title, seekSeconds }: { title: string; seekSeconds: num
       : `${Math.floor(seekSeconds / 60)}:${pad(Math.round(seekSeconds % 60))}`;
 
   return (
-    <div className="mb-5 grid grid-cols-[1.35fr_1fr] items-stretch gap-5">
+    <div className="mb-5 grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] items-stretch gap-5">
       {/* 강의 영상 */}
       <div className="flex flex-col overflow-hidden rounded-2xl bg-panel-video shadow-[0_8px_30px_rgba(20,25,50,.22)]">
         <div className="relative flex aspect-video items-center justify-center bg-[linear-gradient(120deg,#1c2036,#20263f_55%,#1a1f34)]">

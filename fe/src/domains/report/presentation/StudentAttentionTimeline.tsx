@@ -171,7 +171,8 @@ export function StudentAttentionTimeline({
 
     return (
       <>
-        <div role="img" aria-label={chartLabel}>
+        {/* 좁아지면 상자 안에서만 가로로 스크롤한다 — 폭 값은 globals 의 z-chart-min 이 정한다. */}
+        <div role="img" aria-label={chartLabel} className="z-chart-min">
           <ResponsiveContainer width="100%" height={264}>
             <ComposedChart
               data={rows as FocusPoint[]}
@@ -323,7 +324,7 @@ export function StudentAttentionTimeline({
         </div>
       </div>
 
-      <div className="z-report-box px-6 pb-3 pt-[18px]">{body()}</div>
+      <div className="z-report-box z-chart-scroll px-6 pb-3 pt-[18px]">{body()}</div>
 
       {status === "ready" && timeline !== null && (
         <>
