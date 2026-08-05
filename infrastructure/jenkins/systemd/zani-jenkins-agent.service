@@ -20,7 +20,14 @@ NoNewPrivileges=false
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/zani-jenkins-agent /var/lib/zani-ci /opt/zani/application /opt/zani/frontend
+# ProtectSystem=strict remounts the whole filesystem read-only inside this unit's
+# mount namespace, and sudo raises privileges without leaving that namespace. So the
+# deploy wrapper's prepare_recording_directories() step hit EROFS on /srv/zani/recordings
+# even as root. The agent user stays locked out by file permissions regardless: /srv/zani
+# is drwxr-x--- root:root, and only the sudoers-audited wrapper writes there.
+# The path must exist before this unit starts; see infrastructure/application/README.md
+# for the fresh-host preparation command.
+ReadWritePaths=/var/lib/zani-jenkins-agent /var/lib/zani-ci /opt/zani/application /opt/zani/frontend /srv/zani/recordings
 
 [Install]
 WantedBy=multi-user.target
