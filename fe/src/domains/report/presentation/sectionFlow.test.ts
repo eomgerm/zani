@@ -4,6 +4,7 @@ import {
   sectionBounds,
   sectionColorOf,
   sectionLevelLabel,
+  sectionLevelNote,
   sectionIndexAt,
   sectionKeyOf,
   sectionMidpoint,
@@ -129,5 +130,26 @@ describe("단계 경계", () => {
     expect(sectionLevelLabel(3) === sectionLevelLabel(2.9)).toBe(false);
     expect(sectionColorOf(2) === sectionColorOf(1.9)).toBe(false);
     expect(sectionLevelLabel(2) === sectionLevelLabel(1.9)).toBe(false);
+  });
+});
+
+describe("sectionLevelNote", () => {
+  it("네 단계에 각각 다른 문구를 준다", () => {
+    const notes = [4, 3.2, 2.2, 1.2].map((level) => sectionLevelNote(level));
+
+    expect(new Set(notes).size).toBe(4);
+  });
+
+  it("값이 닿지 않은 단계를 앞당겨 말하지 않는다", () => {
+    // 2.9 는 아직 2단계다. 3단계 문구를 주면 색은 노란데 글자는 잘 따라갔다고 말하게 된다.
+    expect(sectionLevelNote(2.9)).toBe(sectionLevelNote(2));
+    expect(sectionLevelNote(3.9)).toBe(sectionLevelNote(3));
+    // 4단계 문구는 구간 안 모든 칸이 최상위 판정일 때만 나온다.
+    expect(sectionLevelNote(4)).not.toBe(sectionLevelNote(3.9));
+  });
+
+  it("값이 없으면 낮았다고 말하지 않는다", () => {
+    expect(sectionLevelNote(null)).toContain("기록이 없어요");
+    expect(sectionLevelNote(null)).not.toBe(sectionLevelNote(1));
   });
 });
