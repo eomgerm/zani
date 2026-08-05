@@ -64,16 +64,21 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
  * 탭 전환·구간 선택·상세 모달은 시연용 로컬 상태로 동작한다.
  */
 export function ReportScreen({ lectureId }: { lectureId: string }) {
+  // 클립 탭 목업만 아직 fixture 다. 실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다.
   const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  // 클립 탭 목업과 아래 ready·failed 판정은 아직 fixture 다. 실제 세션 id 는 fixture 에 없어 늘 첫
-  // 강의로 떨어지므로, 서버가 답한 뒤에는 그 값을 쓴다.
   const { status: roleStatus, role, lecture: served } = useSessionRole(lectureId);
   const isInstructor = roleStatus === "ready" ? role === "INSTRUCTOR" : lecture.role === "instructor";
-  const failed = lecture.status === "FAILED";
 
-  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
-  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
-  const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
+  /**
+   * 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
+   * 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+   *
+   * <p><b>서버가 답하기 전에는 감추지 않는다.</b> 아직 모르는 것을 "분석이 끝나지 않았어요" 로
+   * 말하면 기다림을 실패로 알리는 셈이다. 그 사이의 안내는 RoleNotice 가 맡는다.
+   */
+  const status = served?.status ?? null;
+  const failed = status === "FAILED";
+  const ready = status === null || (!failed && status !== "PROCESSING" && status !== "LIVE");
 
   const [tab, setTab] = useState<"clip" | "report">("clip");
 

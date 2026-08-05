@@ -21,6 +21,7 @@ const role = vi.hoisted(() => ({
     date: string;
     startedAt: string;
     dur: string;
+    status: "LIVE" | "PROCESSING" | "COMPLETED" | "FAILED";
   } | null,
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
@@ -61,6 +62,7 @@ const SERVED = {
   date: "2026-07-14",
   startedAt: "2026-07-14T01:00:00Z",
   dur: "1시간 14분",
+  status: "COMPLETED" as const,
 };
 
 beforeEach(() => {
@@ -128,6 +130,46 @@ describe("ReportScreen", () => {
     // 잠깐이라도 그럴듯한 가짜를 보여주느니 비워 둔다.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("");
     expect(screen.queryByText(/1시간 32분/)).not.toBeInTheDocument();
+  });
+
+  it("분석이 끝나지 않은 수업은 탭을 열지 않는다", () => {
+    role.lecture = { ...SERVED, status: "PROCESSING" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 고치기 전에는 fixture 폴백이 늘 COMPLETED 라 어떤 수업이든 탭이 열렸다.
+    expect(screen.getByText(/아직 분석이 끝나지 않았어요/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /리포트/ })).not.toBeInTheDocument();
+  });
+
+  it("진행 중인 수업도 마찬가지다", () => {
+    role.lecture = { ...SERVED, status: "LIVE" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    expect(screen.getByText(/아직 분석이 끝나지 않았어요/)).toBeInTheDocument();
+  });
+
+  it("분석에 실패한 수업은 이유를 알리고 탭을 닫는다", () => {
+    role.lecture = { ...SERVED, status: "FAILED" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    expect(screen.getByText(/결과를 생성하지 못했어요/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /리포트/ })).not.toBeInTheDocument();
+  });
+
+  it("서버가 답하기 전에는 기다림을 실패로 말하지 않는다", () => {
+    role.status = "loading";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 아직 모르는 것을 "분석이 끝나지 않았어요" 로 말하면 기다림이 실패로 읽힌다.
+    expect(screen.queryByText(/아직 분석이 끝나지 않았어요/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/결과를 생성하지 못했어요/)).not.toBeInTheDocument();
+    expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
   });
 
   it("explains when the role cannot be determined", () => {
