@@ -15,10 +15,20 @@ vi.stubGlobal(
 const role = vi.hoisted(() => ({
   status: "ready" as "loading" | "ready" | "unknown",
   role: "INSTRUCTOR" as "INSTRUCTOR" | "STUDENT" | null,
+  lecture: null as {
+    id: string;
+    title: string;
+    date: string;
+    startedAt: string;
+    dur: string;
+    status: "LIVE" | "PROCESSING" | "COMPLETED" | "FAILED";
+  } | null,
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
 // report 도메인 카드들은 여기서 검증할 대상이 아니다. 어느 쪽이 렌더됐고 무엇이 전달됐는지만 본다.
+// 이 파일이 보는 것은 ReportScreen 의 배치(어느 탭에 무엇이 걸리는지)다. 카드 안쪽은 각자의
+// 테스트가 본다 — 여기서는 조회하지 않는 껍데기로 바꿔 끼운다.
 vi.mock("@/domains/report", () => ({
   GroupAttentionTimeline: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="group-timeline">{sessionId}</div>
@@ -29,6 +39,15 @@ vi.mock("@/domains/report", () => ({
   StudentReportClip: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-clip">{sessionId}</div>
   ),
+  // 강사·학생 두 경로 모두에서 그려지는 공통 카드다. 역할 인자를 받지 않는다.
+  SessionSummaryCard: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="session-summary">{sessionId}</div>
+  ),
+  useInstructorReport: () => ({ status: "loading", report: null, retry: () => {} }),
+  useGroupAttentionTimeline: () => ({ status: "loading", timeline: null, retry: () => {} }),
+  focusedIntervalRatio: () => null,
+  focusedRatioBand: () => "보통",
+  formatOffset: (seconds: number) => String(seconds),
 }));
 
 import { ReportScreen } from "./ReportScreen";
@@ -41,9 +60,19 @@ const openReportTab = () => {
 /** 강사용 목업 패널에만 있는 박제된 재생 시간. 목업이 그려졌는지 가리는 표식으로 쓴다. */
 const MOCK_CLIP_MARKER = "42:30 / 2:05:30";
 
+const SERVED = {
+  id: "1000000002001",
+  title: "자바스크립트 비동기 마스터",
+  date: "2026-07-14",
+  startedAt: "2026-07-14T01:00:00Z",
+  dur: "1시간 14분",
+  status: "COMPLETED" as const,
+};
+
 beforeEach(() => {
   role.status = "ready";
   role.role = "INSTRUCTOR";
+  role.lecture = SERVED;
 });
 
 describe("ReportScreen", () => {
@@ -85,9 +114,84 @@ describe("ReportScreen", () => {
     expect(screen.queryByTestId("student-timeline")).not.toBeInTheDocument();
   });
 
+  it("헤더 제목과 수업 시간을 서버 값으로 적는다", () => {
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // fixture 로 떨어지면 첫 강의(React 상태관리 심화 · 1시간 32분)가 뜬다. 그 길이는 리포트의
+    // "수업 시간" 과 어긋나 한 화면에서 수업 길이가 둘로 보였다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("자바스크립트 비동기 마스터");
+    expect(screen.getByText(/1시간 14분/)).toBeInTheDocument();
+    expect(screen.queryByText(/1시간 32분/)).not.toBeInTheDocument();
+  });
+
+  it("서버가 답하기 전에는 남의 수업 제목을 먼저 보여주지 않는다", () => {
+    role.status = "loading";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 잠깐이라도 그럴듯한 가짜를 보여주느니 비워 둔다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("");
+    expect(screen.queryByText(/1시간 32분/)).not.toBeInTheDocument();
+  });
+
+  it("분석이 끝나지 않은 수업은 탭을 열지 않는다", () => {
+    role.lecture = { ...SERVED, status: "PROCESSING" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 고치기 전에는 fixture 폴백이 늘 COMPLETED 라 어떤 수업이든 탭이 열렸다.
+    expect(screen.getByText(/아직 분석이 끝나지 않았어요/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /리포트/ })).not.toBeInTheDocument();
+  });
+
+  it("진행 중인 수업도 마찬가지다", () => {
+    role.lecture = { ...SERVED, status: "LIVE" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    expect(screen.getByText(/아직 분석이 끝나지 않았어요/)).toBeInTheDocument();
+  });
+
+  it("분석에 실패한 수업은 이유를 알리고 탭을 닫는다", () => {
+    role.lecture = { ...SERVED, status: "FAILED" };
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    expect(screen.getByText(/결과를 생성하지 못했어요/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /리포트/ })).not.toBeInTheDocument();
+  });
+
+  it("서버가 답하기 전에는 기다림을 실패로 말하지 않는다", () => {
+    role.status = "loading";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 아직 모르는 것을 "분석이 끝나지 않았어요" 로 말하면 기다림이 실패로 읽힌다.
+    expect(screen.queryByText(/아직 분석이 끝나지 않았어요/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/결과를 생성하지 못했어요/)).not.toBeInTheDocument();
+    expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
+  });
+
+  it("볼 수 없는 수업의 제목을 지어내지 않는다", () => {
+    role.status = "unknown";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // fixture 로 물러나면 "React 상태관리 심화 / 볼 수 없어요" 가 되어 없는 사실이 생긴다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("");
+    expect(screen.queryByText(/React 상태관리 심화/)).not.toBeInTheDocument();
+  });
+
   it("explains when the role cannot be determined", () => {
     role.status = "unknown";
     role.role = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s1" />);
     openReportTab();
@@ -109,6 +213,18 @@ describe("ReportScreen", () => {
     // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
     expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+  });
+
+  it("shows the shared session summary card to a student and an instructor alike", () => {
+    role.role = "STUDENT";
+    const asStudent = render(<ReportScreen lectureId="s4" />);
+    expect(asStudent.getByTestId("session-summary")).toHaveTextContent("s4");
+    asStudent.unmount();
+
+    // 강사 클립 탭은 아직 목업이지만 요약 카드는 학생과 같은 것을 쓴다 — 요약은 공통 산출물이다.
+    role.role = "INSTRUCTOR";
+    const asInstructor = render(<ReportScreen lectureId="s4" />);
+    expect(asInstructor.getByTestId("session-summary")).toHaveTextContent("s4");
   });
 
   it("does not show the mock clip panel while the role is still loading", () => {

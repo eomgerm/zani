@@ -13,4 +13,14 @@ public interface MediaModerationPort {
      * @param identity 미디어 서버가 아는 참가자 식별자({@code p-{participantId}})
      */
     MediaMuteChange muteMicrophone(long sessionId, String identity);
+
+    /**
+     * 대상 참가자의 화면 공유 트랙을 끈다. 화면 오디오({@code SCREEN_SHARE_AUDIO})는 건드리지 않는다.
+     *
+     * <p><b>강사 제어가 아니라 단일성 강제용이다.</b> 세션당 활성 공유는 하나이고(FRD §10.2), 발급된 JWT 는 폐기할 수 없어 이미 올라온 트랙을 멈추려면 서버가 미디어 서버에 mute 를
+     * 보내는 수밖에 없다. 강사가 남의 공유를 중지시키는 동작은 범위 밖이다(2026-07-30 확정 — 강사 제어는 강제 음소거만).
+     *
+     * @param identity 미디어 서버가 아는 참가자 식별자({@code p-{participantId}})
+     */
+    MediaMuteChange muteScreenShare(long sessionId, String identity);
 }

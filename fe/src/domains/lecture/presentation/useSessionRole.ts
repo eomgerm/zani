@@ -7,6 +7,7 @@ import {
   requestSessionList,
   type SessionListRequester,
 } from "../infrastructure/sessionListApi";
+import { toMyLecture, type MyLecture } from "./myLectures";
 
 /** 이 수업에서 내 역할. 서버 응답의 `role` 을 그대로 쓴다. */
 export type SessionRole = "INSTRUCTOR" | "STUDENT";
@@ -16,6 +17,14 @@ export type SessionRoleStatus = "loading" | "ready" | "unknown";
 export type UseSessionRoleResult = {
   readonly status: SessionRoleStatus;
   readonly role: SessionRole | null;
+  /**
+   * 같은 응답에서 나온 이 수업의 요약(제목·날짜·길이 등).
+   *
+   * <p>역할을 찾느라 이미 목록을 받아 그 세션을 집어 든 참이다. 제목을 쓰겠다고 또 부를 이유가 없어
+   * 함께 돌려준다. 역할이 `ready` 가 아니면 `null` 이다 — 그때는 어느 세션인지 모른다는 뜻이므로
+   * 제목만 따로 아는 상태가 생기면 안 된다.
+   */
+  readonly lecture: MyLecture | null;
 };
 
 export type UseSessionRoleOptions = {
@@ -47,6 +56,7 @@ export function useSessionRole(
     sessionId: "",
     status: "loading",
     role: null,
+    lecture: null,
   });
 
   useEffect(() => {
@@ -63,15 +73,15 @@ export function useSessionRole(
         if (!active) return;
         const found = sessions.find((session) => session.sessionId === sessionId);
         if (found === undefined || (found.role !== "INSTRUCTOR" && found.role !== "STUDENT")) {
-          setAnswer({ sessionId, status: "unknown", role: null });
+          setAnswer({ sessionId, status: "unknown", role: null, lecture: null });
           return;
         }
-        setAnswer({ sessionId, status: "ready", role: found.role });
+        setAnswer({ sessionId, status: "ready", role: found.role, lecture: toMyLecture(found) });
       })
       .catch((caught: unknown) => {
         // 취소는 실패가 아니다. 화면을 떠났거나 토큰이 갱신되어 다시 조회하는 경우다.
         if (!active || controller.signal.aborted) return;
-        setAnswer({ sessionId, status: "unknown", role: null });
+        setAnswer({ sessionId, status: "unknown", role: null, lecture: null });
         console.warn("세션 역할 조회 실패", caught);
       });
 
@@ -82,6 +92,6 @@ export function useSessionRole(
   }, [sessionId, accessToken, request]);
 
   return answer.sessionId === sessionId
-    ? { status: answer.status, role: answer.role }
-    : { status: "loading", role: null };
+    ? { status: answer.status, role: answer.role, lecture: answer.lecture }
+    : { status: "loading", role: null, lecture: null };
 }
