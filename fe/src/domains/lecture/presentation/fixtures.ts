@@ -141,12 +141,7 @@ export const studentGlance: { icon: PictogramName; label: string; value: string 
 export const studentSummary =
   "전반적으로 높은 집중도와 활발한 참여가 돋보인 수업이었어요. 특히 상태관리 라이브러리 비교 구간에서 깊이 있는 질문을 남겨 이해를 확장했어요. 몇몇 구간에서는 잠깐 놓치거나 헷갈린 순간이 있었지만, 반복 확인과 질문을 통해 스스로 학습을 이어간 점이 인상적이에요.";
 
-/** 요약 레포트 문단 (수업 클립 탭의 AI 요약 문서) */
-export const summarySections = [
-  { h: "1. 상태 관리의 출발점", p: "useState는 컴포넌트의 지역 상태를 다루기에 적합하지만, 앱 전역에서 공유되는 상태에는 한계가 있습니다. 상태를 상위에서 하위로 props로 계속 전달하다 보면 props drilling 문제가 생기고, 중간 컴포넌트들이 데이터를 전달만 하는 통로가 됩니다." },
-  { h: "2. Context API와 리렌더링", p: "Context는 props drilling을 해결하지만, Provider의 value 참조가 바뀔 때마다 이를 구독하는 모든 하위 컴포넌트가 리렌더링됩니다. value로 객체 리터럴을 그대로 넘기면 매 렌더마다 새로운 참조가 만들어져 성능 문제가 발생할 수 있습니다." },
-  { h: "3. value 메모이제이션 패턴", p: "이 문제를 피하려면 Provider의 value를 useMemo로 감싸 참조를 안정화합니다. 함수를 함께 내려줄 때는 useCallback으로 함수 참조도 고정합니다. 다만 과도한 메모이제이션은 오히려 코드 복잡도를 높이므로, 실제 병목이 확인된 지점에만 적용하는 것이 좋습니다." },
-  { h: "4. 외부 상태 관리 라이브러리", p: "전역성이 크고 미들웨어나 비동기 흐름 제어가 필요하면 Redux, Zustand 같은 외부 라이브러리가 유리합니다. 특히 Zustand는 보일러플레이트가 적어 같은 예제를 훨씬 간결하게 구현할 수 있습니다." },
-  { h: "5. 정리와 선택 기준", p: "지역 상태는 useState, 좁은 범위의 공유 상태는 Context, 전역이거나 복잡한 상태 흐름은 라이브러리로 접근합니다. 무엇을 선택하든 리렌더링 비용과 참조 안정성을 이해하는 것이 핵심입니다." },
-];
+// 수업 클립 탭의 AI 요약 문서 fixture(`summarySections`)는 걷어냈다. 그 자리는 이제
+// SessionSummaryCard 가 `GET /api/v1/sessions/{sessionId}/reports/summary` 로 채운다.
+// 서버가 만드는 것은 5절 구조가 아니라 문단 하나다(S15P11A105-302).
 

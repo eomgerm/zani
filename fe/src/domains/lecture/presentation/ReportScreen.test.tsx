@@ -39,6 +39,10 @@ vi.mock("@/domains/report", () => ({
   StudentReportClip: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-clip">{sessionId}</div>
   ),
+  // 강사·학생 두 경로 모두에서 그려지는 공통 카드다. 역할 인자를 받지 않는다.
+  SessionSummaryCard: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="session-summary">{sessionId}</div>
+  ),
   useInstructorReport: () => ({ status: "loading", report: null, retry: () => {} }),
   useGroupAttentionTimeline: () => ({ status: "loading", timeline: null, retry: () => {} }),
   focusedIntervalRatio: () => null,
@@ -209,6 +213,18 @@ describe("ReportScreen", () => {
     // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
     expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
+  });
+
+  it("shows the shared session summary card to a student and an instructor alike", () => {
+    role.role = "STUDENT";
+    const asStudent = render(<ReportScreen lectureId="s4" />);
+    expect(asStudent.getByTestId("session-summary")).toHaveTextContent("s4");
+    asStudent.unmount();
+
+    // 강사 클립 탭은 아직 목업이지만 요약 카드는 학생과 같은 것을 쓴다 — 요약은 공통 산출물이다.
+    role.role = "INSTRUCTOR";
+    const asInstructor = render(<ReportScreen lectureId="s4" />);
+    expect(asInstructor.getByTestId("session-summary")).toHaveTextContent("s4");
   });
 
   it("does not show the mock clip panel while the role is still loading", () => {
