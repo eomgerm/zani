@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -118,6 +119,20 @@ class InstructorReportSecurityTest {
     }
 
     /**
+     * 403 의 코드가 판정 단계마다 다르다는 사실을 못 박는다.
+     *
+     * <p>참가자 여부(`MEDIA_TOKEN_002`)를 먼저 보고, 통과한 뒤에 역할(`SESSION_APP_006`)을 본다. 이 두 코드는 Swagger 문서에 그대로 적혀 있는데, 문서만 고쳐 두면
+     * 판정이 바뀔 때 조용히 어긋난다 — 실제로 한 번 어긋나 있었다.
+     *
+     * <p>코드가 갈려도 열거 통로는 열리지 않는다. 갈리는 기준이 "참가자인가" 이지 "세션이 있는가" 가 아니기 때문이다. 그 사실은 아래 테스트가 따로 지킨다.
+     */
+    @Test
+    void 참가자_아님과_강사_아님이_다른_코드로_온다() throws Exception {
+        report(STRANGER_ID).andExpect(jsonPath("$.code").value("MEDIA_TOKEN_002"));
+        report(STUDENT_ID).andExpect(jsonPath("$.code").value("SESSION_APP_006"));
+    }
+
+    /**
      * 세션 ID 를 훑어 존재 여부를 캐낼 수 없어야 한다.
      *
      * <p>있는 수업의 비참가자와 아예 없는 수업이 <b>같은 응답</b>을 받는 것이 그 조건이다. 참가자 조회를 세션 조회보다 먼저 하기 때문에 둘 다 403 으로 떨어진다 — 404 로 감추는 대신
@@ -135,6 +150,12 @@ class InstructorReportSecurityTest {
                 .getStatus();
 
         assertEquals(notAParticipant, noSuchSession, "있는 수업의 비참가자와 없는 수업이 다른 응답을 받으면 세션 ID 로 존재 여부를 캐낼 수 있다");
+
+        // 상태만 같고 코드가 갈리면 본문으로 존재 여부가 새어 나간다.
+        report(STRANGER_ID).andExpect(jsonPath("$.code").value("MEDIA_TOKEN_002"));
+        mockMvc.perform(get("/api/v1/sessions/{sessionId}/reports/instructor", 9_209_999L)
+                        .header("Authorization", "Bearer " + token(STRANGER_ID)))
+                .andExpect(jsonPath("$.code").value("MEDIA_TOKEN_002"));
     }
 
     @Test

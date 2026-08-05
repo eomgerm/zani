@@ -91,8 +91,6 @@ class InstructorReportApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
         jdbcTemplate.update(
-                "DELETE FROM student_reports WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
-        jdbcTemplate.update(
                 "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
@@ -282,21 +280,6 @@ class InstructorReportApiIntegrationTest {
                 suggestion,
                 startedOffsetMs,
                 endedOffsetMs,
-                utc(now),
-                utc(now));
-    }
-
-    /** 질문 수는 학생 리포트에 저장된 판정이다. {@code null} 은 "분석이 값을 내지 못함" 이며 0 이 아니다. */
-    private void insertStudentReport(long participantId, Integer questionCount) {
-        jdbcTemplate.update(
-                "INSERT INTO student_reports (id, session_id, session_participant_id, participation_summary,"
-                        + " question_count, published_at, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, '요약', ?, ?, ?, ?)",
-                participantId,
-                ENDED_SESSION_ID,
-                participantId,
-                questionCount,
-                utc(now),
                 utc(now),
                 utc(now));
     }
