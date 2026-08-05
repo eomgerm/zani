@@ -46,12 +46,15 @@ public class GetInstructorReportService implements GetInstructorReportUseCase {
                 .filter(found -> found.publishedAt() != null)
                 .orElseThrow(ReportNotReadyException::new);
 
+        InstructorReportCounts counts = queryPort.counts(query.sessionId());
+
         return new GetInstructorReportResult(
                 report.overallFeedback(),
-                queryPort.stats(query.sessionId(), durationSeconds(access)),
+                // 질문 수만 리포트 행에서 온다. AI 가 판단해 굳혀 둔 값이라 조회 시점에 세지 않는다(V19).
+                new InstructorReportStats(
+                        counts.studentCount(), durationSeconds(access), report.questionCount(), counts.alertCount()),
                 report.scores(),
                 report.insights(),
-                report.tips(),
                 // 248 이 내용 타임라인을 채우기 전에는 빈 목록이다. 리포트 자체는 정상이므로 오류로 다루지 않는다.
                 listSessionSections.list(new ListSessionSectionsQuery(query.sessionId())));
     }
