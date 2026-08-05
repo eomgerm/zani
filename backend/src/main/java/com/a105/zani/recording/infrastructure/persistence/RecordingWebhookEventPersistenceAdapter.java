@@ -9,14 +9,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.common.persistence.TsidGenerator;
 import com.a105.zani.recording.application.exception.WebhookEventStoreUnavailableException;
-import com.a105.zani.recording.application.port.RecordingWebhookEventPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookEventPort;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingWebhookEventJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.repository.RecordingWebhookEventJpaRepository;
 
 /** webhook 이벤트 내구 저장 어댑터. event_id UNIQUE + INSERT IGNORE로 중복 이벤트를 흡수하고, PROCESSED 여부로 재처리를 판정한다. */
 @Component
 @RequiredArgsConstructor
-public class RecordingWebhookEventPersistenceAdapter implements RecordingWebhookEventPort {
+public class RecordingWebhookEventPersistenceAdapter implements LiveKitWebhookEventPort {
 
     private final RecordingWebhookEventJpaRepository eventJpaRepository;
 

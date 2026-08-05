@@ -1,6 +1,7 @@
 package com.a105.zani.session.infrastructure.persistence;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,6 +52,13 @@ public class SessionPersistenceAdapter implements SessionRepository {
     @Override
     public Optional<Session> findById(Long id) {
         return sessionJpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<Session> findByIds(Collection<Long> ids) {
+        return sessionJpaRepository.findAllById(ids).stream()
+                .map(mapper::toDomain)
+                .toList();
     }
 
     @Override

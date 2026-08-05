@@ -6,6 +6,8 @@ package com.a105.zani.attention.domain.model.timeline;
  * @param startSeconds 구간 시작 초
  * @param endSeconds 구간 종료 초
  * @param title 구간 제목
+ * @param summary 구간 요약. 분석 전이거나 요약이 없으면 {@code null}
  * @param focusLevel 그 구간 안 30초 칸 값들의 단순 평균 1.00~4.00. 값이 하나도 없으면 {@code null} 이다
  */
-public record SectionFocusAverage(long startSeconds, long endSeconds, String title, Double focusLevel) {}
+public record SectionFocusAverage(
+        long startSeconds, long endSeconds, String title, String summary, Double focusLevel) {}

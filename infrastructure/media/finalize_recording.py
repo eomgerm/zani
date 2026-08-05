@@ -347,7 +347,9 @@ def decode_video(path: Path, out_raw: Path, duration_ms: int) -> tuple[int, int,
     width, height = ffprobe_dimensions(path)
     result = _run([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(path), "-map", "0:v:0", "-fps_mode", "passthrough",
+        # Debian 11 기반 운영 이미지의 FFmpeg 4.4.2에는 -fps_mode가 없다.
+        # 같은 의미의 legacy 옵션을 써 입력 프레임을 임의 복제·삭제하지 않는다.
+        "-i", str(path), "-map", "0:v:0", "-vsync", "0",
         "-pix_fmt", "yuv420p", "-f", "rawvideo", str(out_raw),
     ])
     if result.returncode != 0:

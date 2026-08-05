@@ -31,6 +31,7 @@ import {
   useChatUnread,
   useRaisedHands,
   useSessionChat,
+  useSessionEventToast,
   useModeration,
   useSessionReactions,
   type ReactionKind,
@@ -50,7 +51,12 @@ import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
 import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
-import { CoachTipCard } from "./components/room/CoachTipCard";
+import {
+  CoachTipCard,
+  COACH_TIP_PIP_PLACEMENT,
+  COACH_TIP_SHARE_PLACEMENT,
+  COACH_TIP_STAGE_PLACEMENT,
+} from "./components/room/CoachTipCard";
 import { useCoachingStatus } from "./useCoachingStatus";
 import { useCoachTipCard } from "./useCoachTipCard";
 import { useDocumentPictureInPicture } from "./useDocumentPictureInPicture";
@@ -245,6 +251,13 @@ function RoomScreenContent({
   const chatUnread = useChatUnread({
     myIdentity: localParticipantId,
     chatVisible: panelOpen && panel === "chat",
+  });
+  // 공유 중에는 메인 창이 공유 자료 뒤에 가려져 손들기·채팅을 놓친다. PiP 창이 떠 있는 동안만
+  // 실시간 알림을 토스트로 받아 그 창에 그린다(S15P11A105-295).
+  const pipToast = useSessionEventToast({
+    myIdentity: localParticipantId,
+    active: pipWindow !== null,
+    raisedIdentities: hands.raisedIdentities,
   });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
@@ -605,7 +618,7 @@ function RoomScreenContent({
                 {pipWindow &&
                   galleryParticipants.length > 0 &&
                   createPortal(
-                    <div className="flex h-screen flex-col bg-stage">
+                    <div className="relative flex h-screen flex-col bg-stage">
                       <div className="flex-1 overflow-y-auto p-2">
                         <RoomRoster
                           participants={galleryParticipants}
@@ -658,6 +671,27 @@ function RoomScreenContent({
                           <CloseIcon />
                         </button>
                       </div>
+                      {/* 수업 팁(강사). 공유 중에는 메인 창이 가려져 여기가 강사가 보는 유일한 표면이다.
+                          토스트와 달리 저절로 사라지지 않는다 — 강사가 읽고 닫아야 하는 카드다(299). */}
+                      {isConfirmedInstructor && coachTip.tip !== null && (
+                        <CoachTipCard
+                          tip={coachTip.tip}
+                          onDismiss={coachTip.dismiss}
+                          className={COACH_TIP_PIP_PLACEMENT}
+                        />
+                      )}
+                      {/* 공유 중 놓치기 쉬운 손들기·채팅 알림. 최신 한 건만 컨트롤 위에 겹쳐 그리고
+                          (key 로 리마운트해 등장 애니메이션을 다시 튼다), 클릭은 통과시켜 조작을 막지 않는다. */}
+                      {pipToast && (
+                        <div
+                          key={pipToast.key}
+                          role="status"
+                          data-testid="pip-toast"
+                          className="pointer-events-none absolute inset-x-2 bottom-16 z-10 animate-[zPop_.2s] truncate rounded-[14px] border border-room-edge bg-[#1e2138] px-4 py-2.5 text-center text-[12.5px] text-panel-soft"
+                        >
+                          {pipToast.message}
+                        </div>
+                      )}
                     </div>,
                     pipWindow.document.body,
                   )}
@@ -745,8 +779,17 @@ function RoomScreenContent({
               여기 있던 프로토타입 카드는 "학생 30%에게서 신호가 나타났어요" 라는 고정 문구라
               실제 집계와 무관했다(86).
             */}
-            {isConfirmedInstructor && coachTip.tip !== null && (
-              <CoachTipCard tip={coachTip.tip} onDismiss={coachTip.dismiss} />
+            {/*
+              미니 창이 떠 있으면 그쪽에만 그린다(아래 portal). 그 창이 열렸다는 것은 메인 창이
+              공유 자료 뒤로 가려졌다는 뜻이고, 닫아야 사라지는 카드를 두 곳에 띄우면 강사가
+              어느 쪽을 닫아야 하는지 알 수 없다.
+            */}
+            {isConfirmedInstructor && coachTip.tip !== null && pipWindow === null && (
+              <CoachTipCard
+                tip={coachTip.tip}
+                onDismiss={coachTip.dismiss}
+                className={shareActive ? COACH_TIP_SHARE_PLACEMENT : COACH_TIP_STAGE_PLACEMENT}
+              />
             )}
 
             {/* 플로팅 반응 */}

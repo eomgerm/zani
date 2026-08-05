@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // 강사 나가기가 세션을 실제로 종료하는지 본다. 어댑터 동작 자체는 endSessionApi.test 가 검증한다.
@@ -39,6 +39,11 @@ const chat = vi.hoisted(() => ({
 /** 읽지 않은 채팅 여부. 판정 규칙은 useChatUnread.test 가 검증하고, 여기서는 버튼 전달만 본다. */
 const chatUnread = vi.hoisted(() => ({ value: false }));
 
+/** PiP 알림 토스트. 판정 규칙은 useSessionEventToast.test 가 검증한다. */
+const sessionEventToast = vi.hoisted(() => ({
+  value: null as { key: string; message: string } | null,
+}));
+
 const hands = vi.hoisted(() => ({
   raisedIdentities: [] as string[],
   myHandRaised: false,
@@ -62,6 +67,7 @@ vi.mock("@/domains/interaction", () => ({
   SessionChannelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useSessionChat: () => chat,
   useChatUnread: () => chatUnread.value,
+  useSessionEventToast: () => sessionEventToast.value,
   useRaisedHands: () => hands,
   useSessionReactions: () => sessionReactions,
   useModeration: () => moderation,
@@ -162,6 +168,33 @@ vi.mock("./useScreenShare", () => ({
   useScreenShare: () => screenShare,
 }));
 
+// Document PiP 는 jsdom 에 없다. 창 생명주기는 훅이 소유하므로 여기서는 "창이 떠 있다" 상태만 만들고,
+// portal 대상이 되는 body 자리에 테스트 문서의 요소를 끼워 그 안에 그려진 것을 그대로 조회한다.
+const pip = vi.hoisted(() => ({
+  host: null as HTMLElement | null,
+  supported: false,
+  open: vi.fn(async () => null),
+  close: vi.fn(),
+}));
+vi.mock("./useDocumentPictureInPicture", () => ({
+  useDocumentPictureInPicture: () => ({
+    supported: pip.supported,
+    pipWindow:
+      pip.host === null ? null : ({ document: { body: pip.host } } as unknown as Window),
+    open: pip.open,
+    close: pip.close,
+  }),
+}));
+
+/** 미니 창이 열린 상태로 만든다. 반환값은 그 창의 body 에 해당하는 요소다. */
+const openPipWindow = () => {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  pip.supported = true;
+  pip.host = host;
+  return host;
+};
+
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
@@ -177,6 +210,11 @@ vi.mock("./useSessionPresence", () => ({
 }));
 
 import { RoomScreen } from "./RoomScreen";
+import {
+  COACH_TIP_PIP_PLACEMENT,
+  COACH_TIP_SHARE_PLACEMENT,
+  COACH_TIP_STAGE_PLACEMENT,
+} from "./components/room/CoachTipCard";
 
 const asStudent = () => {
   roomParticipants.participants = [
@@ -237,6 +275,11 @@ afterEach(() => {
   screenShare.blocked = false;
   screenShare.activeIdentity = null;
   screenShare.toggle.mockClear();
+  pip.host?.remove();
+  pip.host = null;
+  pip.supported = false;
+  pip.open.mockClear();
+  pip.close.mockClear();
   vi.useRealTimers();
 });
 
@@ -775,6 +818,52 @@ describe("RoomScreen coaching wiring", () => {
     deliverTip("t-1", "추가 설명이 필요해요");
 
     fireEvent.click(screen.getByRole("button", { name: "확인" }));
+
+    expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
+  });
+
+  // 공유 오버레이(z-[6])가 카드를 덮어 강사가 팁을 전혀 보지 못했다(299). 강사 본인이 아니라
+  // 학생이 공유해도 같은 오버레이가 뜨므로, 공유가 켜진 것만으로 재현된다.
+  it("keeps the tip card out from under the screen share overlay", () => {
+    asInstructor();
+    screenShare.active = true;
+    render(<RoomScreen sessionId="123" />);
+
+    deliverTip("t-1", "학생들이 자리를 비운 것 같아요");
+
+    const card = screen.getByTestId("coach-tip-card");
+    expect(card).toHaveTextContent("학생들이 자리를 비운 것 같아요");
+    expect(card.className).toContain(COACH_TIP_SHARE_PLACEMENT);
+    expect(card.className).not.toContain(COACH_TIP_STAGE_PLACEMENT);
+  });
+
+  // 공유 중인 강사는 메인 창이 공유 자료 뒤로 가려져 미니 창만 본다. 그 창에 팁이 없으면
+  // 오버레이를 걷어내도 정작 공유하는 본인은 여전히 못 본다.
+  it("moves the tip into the mini window while it is open", () => {
+    asInstructor();
+    screenShare.active = true;
+    screenShare.sharing = true;
+    const miniWindow = openPipWindow();
+    render(<RoomScreen sessionId="123" />);
+
+    deliverTip("t-1", "학생들이 자리를 비운 것 같아요");
+
+    // 닫아야 사라지는 카드라 두 창에 겹쳐 띄우지 않는다 — 어느 쪽을 닫아야 하는지 알 수 없다.
+    const cards = screen.getAllByTestId("coach-tip-card");
+    expect(cards).toHaveLength(1);
+    expect(miniWindow.contains(cards[0])).toBe(true);
+    expect(cards[0].className).toContain(COACH_TIP_PIP_PLACEMENT);
+  });
+
+  it("closes the tip from inside the mini window", () => {
+    asInstructor();
+    screenShare.active = true;
+    screenShare.sharing = true;
+    const miniWindow = openPipWindow();
+    render(<RoomScreen sessionId="123" />);
+    deliverTip("t-1", "학생들이 자리를 비운 것 같아요");
+
+    fireEvent.click(within(miniWindow).getByRole("button", { name: "확인" }));
 
     expect(screen.queryByTestId("coach-tip-card")).not.toBeInTheDocument();
   });

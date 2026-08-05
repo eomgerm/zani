@@ -16,6 +16,20 @@ readonly BACKEND_CONTAINER="zani-backend"
 readonly CI_JDK_IMAGE="eclipse-temurin:21.0.11_10-jdk-jammy"
 readonly CI_MYSQL_IMAGE="mysql:8.4.10"
 readonly CI_REDIS_IMAGE="redis@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7"
+readonly -a APPLICATION_RELEASE_PATHS=(
+  ".dockerignore"
+  "backend"
+  "infrastructure/application"
+  "infrastructure/media"
+)
+readonly -a REQUIRED_APPLICATION_RELEASE_FILES=(
+  ".dockerignore"
+  "backend/Dockerfile"
+  "infrastructure/application/compose.yaml"
+  "infrastructure/application/deploy-application.sh"
+  "infrastructure/media/finalize-recording.sh"
+  "infrastructure/media/finalize_recording.py"
+)
 
 log() {
   printf '[zani-deploy] %s\n' "$*"
@@ -50,6 +64,22 @@ require_ci_directory() {
   [[ -d "${directory}" ]] || die "Required CI directory is missing: ${directory}"
   [[ "$(stat -c '%U:%G:%a' "${directory}")" == "root:root:${mode}" ]] ||
     die "CI directory must be owned by root:root with mode ${mode}: ${directory}"
+}
+
+prepare_recording_directories() {
+  local root="/srv/zani/recordings"
+  local track_egress="${root}/track-egress"
+
+  # /finalized:rw와 /recordings:ro가 공유하는 호스트 정본. 앱 컨테이너 UID/GID 10001만 쓰고 읽는다.
+  install -d -o root -g 10001 -m 0770 "${root}"
+  [[ -d "${track_egress}" ]] || die "Track Egress directory is missing: ${track_egress}"
+  # Egress 쓰기(owner/group rwx)는 유지하고 앱 컨테이너에는 경로 통과(x)만 허용한다. 목록 읽기(r)는 주지 않는다.
+  chown root:root "${track_egress}"
+  chmod 0771 "${track_egress}"
+  [[ "$(stat -c '%u:%g:%a' "${root}")" == "0:10001:770" ]] ||
+    die "Recording root permissions are invalid: ${root}"
+  [[ "$(stat -c '%u:%g:%a' "${track_egress}")" == "0:0:771" ]] ||
+    die "Track Egress permissions are invalid: ${track_egress}"
 }
 
 validate_sha() {
@@ -92,6 +122,28 @@ archive_commit() {
 
   git -c safe.directory="${workspace}" -C "${workspace}" archive \
     --format=tar --output="${destination}" "${sha}" "$@"
+}
+
+validate_installed_wrapper() {
+  local workspace="$1"
+  local installed_wrapper="$2"
+  local repository_wrapper="${workspace}/infrastructure/application/deploy-application.sh"
+
+  [[ -f "${repository_wrapper}" ]] ||
+    die "Deployment wrapper is missing from the requested checkout: ${repository_wrapper}"
+  [[ -f "${installed_wrapper}" ]] || die "Installed deployment wrapper is missing: ${installed_wrapper}"
+  cmp -s "${installed_wrapper}" "${repository_wrapper}" ||
+    die "Installed deployment wrapper is stale. Review and install ${repository_wrapper} at /opt/zani/deploy/deploy-application before retrying."
+}
+
+validate_release_contents() {
+  local release_dir="$1"
+  local required_path
+
+  for required_path in "${REQUIRED_APPLICATION_RELEASE_FILES[@]}"; do
+    [[ -f "${release_dir}/${required_path}" ]] ||
+      die "Release is incomplete; missing ${required_path}: ${release_dir}. If this is not the current release, quarantine it before retrying the same SHA."
+  done
 }
 
 wait_for_container_command() {
@@ -243,10 +295,13 @@ deploy_backend() {
   validate_sha "${sha}"
   workspace="$(resolve_workspace "${requested_workspace}")"
   validate_checkout "${workspace}" "${sha}"
+  validate_installed_wrapper "${workspace}" "$(realpath -e "${BASH_SOURCE[0]}")"
   load_runtime_environment
 
   exec 9>"${DEPLOY_LOCK}"
   flock -n 9 || die "Another application deployment or rollback is already running."
+
+  prepare_recording_directories
 
   short_sha="${sha:0:12}"
   release_name="application-${short_sha}"
@@ -275,11 +330,13 @@ EOF
     [[ -r "${release_dir}/.zani-release" ]] || die "Existing release has no metadata: ${release_dir}"
     [[ "$(metadata_value "${release_dir}" GIT_SHA)" == "${sha}" ]] ||
       die "Existing release metadata does not match ${sha}."
+    validate_release_contents "${release_dir}"
   else
     mkdir -p "${staging_dir}"
-    archive_commit "${workspace}" "${sha}" "${archive}" backend infrastructure/application
+    archive_commit "${workspace}" "${sha}" "${archive}" "${APPLICATION_RELEASE_PATHS[@]}"
     tar -xf "${archive}" -C "${staging_dir}"
     rm -f -- "${archive}"
+    validate_release_contents "${staging_dir}"
     cat >"${staging_dir}/.zani-release" <<EOF
 GIT_SHA=${sha}
 BACKEND_IMAGE=${image}
@@ -367,10 +424,12 @@ show_status() {
 main() {
   require_root
   require_command docker
+  require_command cmp
   require_command flock
   require_command git
   require_command realpath
   require_command stat
+  require_command install
   require_command tar
   require_ci_directory "${CI_DOCKER}" 700
   require_ci_directory "${CI_LOCKS}" 755
@@ -401,4 +460,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

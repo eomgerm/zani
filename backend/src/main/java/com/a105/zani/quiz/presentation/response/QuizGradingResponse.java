@@ -32,7 +32,10 @@ public record QuizGradingResponse(
             @Schema(description = "정답 여부") boolean correct,
             @Schema(description = "학생이 선택한 보기 ID") Long selectedOptionId,
             @Schema(description = "정답 보기 ID") Long correctOptionId,
-            @Schema(description = "해설") String explanation) {
+            @Schema(description = "해설") String explanation,
+
+            @Schema(description = "관련 강의 구간 다시 보기의 재생 위치(ms). 근거 구간을 특정하지 못한 문항은 없다", example = "1450000")
+            Long sectionStartedOffsetMs) {
 
         private static QuestionGradingResponse from(SubmitQuizAnswersResult.QuestionGrading grading) {
             return new QuestionGradingResponse(
@@ -40,7 +43,8 @@ public record QuizGradingResponse(
                     grading.correct(),
                     grading.selectedOptionId(),
                     grading.correctOptionId(),
-                    grading.explanation());
+                    grading.explanation(),
+                    grading.sectionStartedOffsetMs());
         }
     }
 }

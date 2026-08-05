@@ -53,7 +53,7 @@ FFmpeg → 로컬 스토리지 : 종료 후 최종 MP4 합성
 - 세션 생성·목록·초대 코드 입장 API가 존재한다.
 - 세션 생성 즉시 `LIVE`와 `startedAt`을 저장하고 초대 코드를 반환한다.
 - Flyway V1 스키마와 `SessionParticipant` 모델·영속성 구현이 존재한다.
-- `POST /sessions/join` 시 `SessionParticipant.firstJoinedAt`을 즉시 기록한다.
+- `POST /sessions/join`은 참가 관계만 만들고 `SessionParticipant.firstJoinedAt`은 비워 둔다. 자격은 `participant_joined` webhook 이 확정한다(S15P11A105-267).
 - 강사의 `SessionParticipant`는 세션 생성 과정에서 만들지 않는다.
 - LiveKit SDK, RoomService, `/media-token`, `/start`, `/end`, Webhook, Egress 연동은 없다.
 - V1의 `recording_files.storage_key` 설명은 S3 객체 키로 남아 있어 로컬 상대 경로 정책에 맞춘 후속 migration과 코드 정리가 필요하다.
@@ -333,7 +333,7 @@ FRD 자체를 변경해야 하는 최종 결정은 두 개다.
 ## 14. 구현 시 주의
 
 - OpenAPI 계약을 먼저 갱신하고 FE 타입을 다시 생성한다.
-- 현재 `SessionParticipant.firstJoinedAt`은 API 입장 시점에 non-null이다. 목표는 LiveKit 첫 연결 시점이므로 새 Flyway migration과 모델 변경을 함께 검토한다.
+- `SessionParticipant.firstJoinedAt`은 nullable이며(V13) LiveKit `participant_joined` 통지에서만 채운다. NULL은 "연결 미확인 = 사후 자료 접근 자격 없음"이다.
 - 현재 `Session.startedAt`은 생성 시 non-null이다. `PREPARING`을 도입하면 실제 시작까지 nullable 또는 별도 시각 모델이 필요하다.
 - 현재 세션 생성은 강사 `SessionParticipant`를 만들지 않는다. identity와 역할 일관성을 위해 생성해야 한다.
 - 공유된 V1 migration을 직접 수정하지 말고 후속 버전 migration으로 상태·참가자·로컬 저장 경로 변경을 적용한다.

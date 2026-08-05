@@ -41,6 +41,7 @@ class AttentionTimelineControllerTest {
     private static final long LIVE_SESSION_ID = 9_300_911L;
     private static final long MISSING_SESSION_ID = 9_300_999L;
     private static final long INSTRUCTOR_PARTICIPANT_ID = 9_300_920L;
+    private static final long SECTION_ID_BASE = 9_300_925L;
 
     /** 학생 5명. 5명 미만 숨김 경계를 넘겨야 비율이 보인다. */
     private static final int STUDENT_COUNT = 5;
@@ -102,6 +103,8 @@ class AttentionTimelineControllerTest {
         jdbcTemplate.update(
                 "DELETE FROM attention_events WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update("DELETE FROM check_prompts WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
@@ -203,6 +206,28 @@ class AttentionTimelineControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sections").isArray())
                 .andExpect(jsonPath("$.data.sections.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("학생 구간에는 nullable 요약이 있고 강사 구간에는 요약 필드가 없다")
+    void only_personal_sections_contain_nullable_summaries() throws Exception {
+        insertSection(SECTION_ID_BASE, "함수의 정의", "정의역과 공역을 설명한 구간", 0L, 150_000L);
+        insertSection(SECTION_ID_BASE + 1, "합성 함수", null, 150_000L, 300_000L);
+
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/me", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(studentId(0))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections[0].summary").value("정의역과 공역을 설명한 구간"))
+                .andExpect(jsonPath("$.data.sections[1].summary").value(nullValue()));
+
+        String groupBody = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+                        .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(groupBody).doesNotContain("summary");
     }
 
     @Test
@@ -364,6 +389,20 @@ class AttentionTimelineControllerTest {
                 participantId,
                 outcome,
                 offsetMs,
+                utc(now));
+    }
+
+    private void insertSection(long id, String title, String summary, long startedOffsetMs, long endedOffsetMs) {
+        jdbcTemplate.update(
+                "INSERT INTO session_sections (id, session_id, title, summary, started_offset_ms,"
+                        + " ended_offset_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                id,
+                ENDED_SESSION_ID,
+                title,
+                summary,
+                startedOffsetMs,
+                endedOffsetMs,
+                utc(now),
                 utc(now));
     }
 }

@@ -9,10 +9,10 @@ import livekit.LivekitWebhook;
 import org.springframework.stereotype.Component;
 
 import com.a105.zani.recording.application.exception.InvalidWebhookSignatureException;
-import com.a105.zani.recording.application.port.RecordingWebhookVerifierPort;
+import com.a105.zani.recording.application.port.LiveKitWebhookVerifierPort;
 import com.a105.zani.recording.application.webhook.EgressFileResult;
-import com.a105.zani.recording.application.webhook.RecordingWebhookEvent;
-import com.a105.zani.recording.application.webhook.RecordingWebhookEventType;
+import com.a105.zani.recording.application.webhook.LiveKitWebhookEvent;
+import com.a105.zani.recording.application.webhook.LiveKitWebhookEventType;
 import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.session.application.port.MediaRoomPort;
 import com.a105.zani.session.application.port.MediaServerCredentials;
@@ -23,7 +23,7 @@ import com.a105.zani.session.application.port.MediaServerCredentials;
  * 받는다.
  */
 @Component
-public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPort {
+public class LiveKitWebhookVerifierAdapter implements LiveKitWebhookVerifierPort {
 
     private final MediaRoomPort mediaRoomPort;
     private volatile WebhookReceiver receiver;
@@ -33,7 +33,7 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
     }
 
     @Override
-    public RecordingWebhookEvent verify(String body, String authorizationHeader) {
+    public LiveKitWebhookEvent verify(String body, String authorizationHeader) {
         LivekitWebhook.WebhookEvent event;
         try {
             event = webhookReceiver().receive(body, bareToken(authorizationHeader));
@@ -42,7 +42,7 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
         }
         String roomName = event.hasRoom() ? event.getRoom().getName() : null;
         LivekitEgress.EgressInfo egress = event.hasEgressInfo() ? event.getEgressInfo() : null;
-        return new RecordingWebhookEvent(
+        return new LiveKitWebhookEvent(
                 event.getId(),
                 typeOf(event.getEvent()),
                 // room 이름 규칙(환경 포함)의 해석은 세션 도메인 port에 맡기고, 애플리케이션에는 세션 ID만 넘긴다.
@@ -80,13 +80,14 @@ public class LiveKitWebhookVerifierAdapter implements RecordingWebhookVerifierPo
         return current;
     }
 
-    private static RecordingWebhookEventType typeOf(String event) {
+    private static LiveKitWebhookEventType typeOf(String event) {
         return switch (event) {
-            case "track_published" -> RecordingWebhookEventType.TRACK_PUBLISHED;
-            case "egress_started" -> RecordingWebhookEventType.EGRESS_STARTED;
-            case "egress_updated" -> RecordingWebhookEventType.EGRESS_UPDATED;
-            case "egress_ended" -> RecordingWebhookEventType.EGRESS_ENDED;
-            default -> RecordingWebhookEventType.IGNORED;
+            case "participant_joined" -> LiveKitWebhookEventType.PARTICIPANT_JOINED;
+            case "track_published" -> LiveKitWebhookEventType.TRACK_PUBLISHED;
+            case "egress_started" -> LiveKitWebhookEventType.EGRESS_STARTED;
+            case "egress_updated" -> LiveKitWebhookEventType.EGRESS_UPDATED;
+            case "egress_ended" -> LiveKitWebhookEventType.EGRESS_ENDED;
+            default -> LiveKitWebhookEventType.IGNORED;
         };
     }
 

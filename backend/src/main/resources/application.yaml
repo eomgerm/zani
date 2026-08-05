@@ -71,6 +71,30 @@ postclass:
   # 30분 넘게 입력이 없는 강사 메모를 확정하는 주기(ISO-8601 duration).
   # 비활성 기준 30분 자체는 도메인 규칙(InstructorNote.INACTIVITY_WINDOW)이라 설정으로 열지 않는다.
   note-inactivity-sweep-delay: ${POSTCLASS_NOTE_INACTIVITY_SWEEP_DELAY:PT1M}
+  student-analysis:
+    # 학생 한 명분 출력 상한 — 요약 + 추천 5개 + 4지선다 5문항과 해설. 잘리면 finish_reason=length 로
+    # JSON 이 깨져 그 학생의 응답 전체를 버린다. 실측 소비가 1,159~1,413 토큰이라 두 배 넘는 여유를 둔다.
+    # 위의 content-analysis 와 값이 다른 이유는 산출물이 다르기 때문이다 — 그쪽은 구간 40개를 한 번에 낸다.
+    # 요청 바이트 임계는 설정으로 열지 않는다 — 게이트웨이 실측 상한 102,400B 에서 나온 값이라 환경별로
+    # 달라질 이유가 없고, 잘못 올리면 게이트웨이가 본문을 잘라 조용히 실패한다. 값과 근거는 코드에 있다.
+    max-completion-tokens: ${POSTCLASS_ANALYSIS_MAX_COMPLETION_TOKENS:3000}
+  content-analysis:
+    # 수업 요약과 구간 목록(최대 40개, 구간마다 제목·요약)의 출력 상한. 잘리면 finish_reason=length 로
+    # JSON 이 깨지고, 그것은 재시도할 수 없는 실패라 그 세션은 리포트를 영영 받지 못한다.
+    #
+    # 값은 스키마가 허용하는 최악을 덮는다: 구간 40개 × (제목 200자 + 요약 200자) + 전체 요약 1,000자에
+    # JSON 구조를 더해 약 11,000자다. 한국어는 토큰당 1자 안팎이라 여유를 두어 12,000 으로 둔다.
+    # 예산을 크게 잡아도 실제 청구는 쓴 토큰만이므로, 잘리는 쪽이 훨씬 비싸다.
+    # gpt-5.4-mini 같은 추론 모델은 reasoning 토큰도 이 예산에 함께 잡힌다.
+    # 요청 바이트 임계는 설정으로 열지 않는다 — 게이트웨이 실측 상한 102,400B 에서 나온 값이라 환경별로
+    # 달라질 이유가 없고, 잘못 올리면 게이트웨이가 본문을 잘라 조용히 실패한다. 값과 근거는 코드에 있다.
+    max-completion-tokens: ${POSTCLASS_CONTENT_ANALYSIS_MAX_COMPLETION_TOKENS:12000}
+  instructor-analysis:
+    # 종합 피드백 + 점수 4개 + 인사이트 4개(제목·근거·제안)가 들어갈 출력 상한. 잘리면
+    # finish_reason=length 로 JSON 이 깨져 그 세션의 응답 전체를 버린다.
+    # 요청 바이트 임계(92,160B)는 설정으로 열지 않는다 — 게이트웨이 실측 상한 102,400B 에서 나온 값이라
+    # 환경별로 달라질 이유가 없고, 잘못 올리면 게이트웨이가 본문을 잘라 조용히 실패한다.
+    max-completion-tokens: ${POSTCLASS_INSTRUCTOR_ANALYSIS_MAX_COMPLETION_TOKENS:3000}
   transcription:
     # 사후 전사가 Track Egress 원본 OGG 를 읽을 루트. recording.base-path 와 값이 같아도 뜻이 다르다 —
     # 그쪽은 "LiveKit 에 넘길 Egress 출력 경로"이고 이쪽은 "우리가 읽을 마운트 경로"다. 겸용하면 두
@@ -161,6 +185,12 @@ gms:
   # 팁 문구 전용 timeout. 실측에서 슬롯 1개 응답이 1.2~1.5초였다(프롬프트 100토큰 기준).
   # 전사 뒤에 붙는 단계라 여유를 크게 둘 이유가 없다.
   tip-timeout: ${GMS_TIP_TIMEOUT:6s}
+  analysis-model: ${GMS_ANALYSIS_MODEL:gpt-5.4-mini}
+  # 사후 분석 전용 timeout. 공통 분석(248)과 학생별 분석(249)이 함께 쓴다. 팁(6초)보다 크게 둔다 —
+  # 팁은 개념 하나를 뽑는 100토큰 프롬프트지만, 공통 분석은 수업 전체 전사를 읽고 구간 목록과 요약을,
+  # 학생별 분석은 요약 + 추천 5개 + 4지선다 5문항을 한 번에 만든다. 학생별 분석 실측은 8.4~10.1초였다.
+  # 사후 배치라 지연에 여유가 있다(8시간 SLA).
+  analysis-timeout: ${GMS_ANALYSIS_TIMEOUT:60s}
 
 coach:
   history-retry-delay: ${COACH_HISTORY_RETRY_DELAY:PT5S}
@@ -245,6 +275,22 @@ recording:
   outbox-relay-enabled: ${RECORDING_OUTBOX_RELAY_ENABLED:true}
   # outbox 릴레이 주기(ISO-8601 duration).
   outbox-relay-delay: ${RECORDING_OUTBOX_RELAY_DELAY:PT5S}
+  finalization:
+    # Track Egress 원본은 읽기 전용, manifest·MP4는 별도의 읽기/쓰기 마운트로 분리한다.
+    source-root: ${RECORDING_FINALIZATION_SOURCE_ROOT:/out}
+    output-root: ${RECORDING_FINALIZATION_OUTPUT_ROOT:/finalized}
+    worker-path: ${RECORDING_FINALIZATION_WORKER_PATH:/app/media/finalize-recording.sh}
+    # 최대 3시간 수업을 보수적으로 허용하되 timeout 시 자식 ffmpeg까지 강제 종료한다.
+    process-timeout: ${RECORDING_FINALIZATION_PROCESS_TIMEOUT:PT4H}
+    dispatch:
+      enabled: ${RECORDING_FINALIZATION_ENABLED:true}
+      poll-delay: ${RECORDING_FINALIZATION_POLL_DELAY:PT15S}
+      batch-size: ${RECORDING_FINALIZATION_BATCH_SIZE:5}
+      # 최대 4시간 프로세스 제한보다 길어야 살아 있는 worker의 실행권을 회수하지 않는다.
+      lease-duration: ${RECORDING_FINALIZATION_LEASE_DURATION:PT5H}
+      waiting-delay: ${RECORDING_FINALIZATION_WAITING_DELAY:PT15S}
+      retry-delay: ${RECORDING_FINALIZATION_RETRY_DELAY:PT1M}
+      max-attempts: ${RECORDING_FINALIZATION_MAX_ATTEMPTS:3}
 
 ---
 spring:

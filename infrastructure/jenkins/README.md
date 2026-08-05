@@ -47,10 +47,16 @@ The GitLab plugin supplies `gitlabBefore` and `gitlabAfter` from the authenticat
 
 | Changed paths | Queued job |
 | --- | --- |
-| `backend/**`, `infrastructure/application/**` | `zani-backend-dev` |
+| `.dockerignore`, `backend/**`, `infrastructure/application/**`, recording-finalization worker files | `zani-backend-dev` |
 | `fe/**`, `infrastructure/frontend/**` | `zani-frontend-dev` |
 | Both groups | Both jobs, serialized by the single agent executor |
-| Documentation, AI, media, or unrelated paths only | No deployment job |
+| Documentation, AI, or unrelated paths only | No deployment job |
+
+`infrastructure/media/finalize-recording.sh` and
+`infrastructure/media/finalize_recording.py` belong to the backend image because the
+application Dockerfile copies them into `/app/media`. A worker-only fix and a root
+`.dockerignore` change must therefore dispatch the backend job; media design documents
+and tests alone do not.
 
 The backend and frontend jobs have no webhook trigger. Both use `Jenkinsfile.deploy`, while each Job DSL definition fixes `COMPONENT` to its own single allowed value. The shared pipeline also checks that the Job name matches the component before selecting a hard-coded privileged wrapper. It requires a 40-character `GIT_SHA` selected by the dispatcher and verifies that it is an ancestor of `origin/dev`.
 
@@ -112,11 +118,33 @@ On a fresh Jenkins home, Job DSL writes the three job configurations during the 
 1. Checkout the `dev` commit.
 2. Verify the exact clean Git SHA.
 3. Run Spotless, JUnit, and `bootJar` with disposable CI MySQL and Redis.
-4. Export only tracked `backend/` and `infrastructure/application/` files using `git archive`.
+4. Export only tracked root `.dockerignore`, `backend/`, `infrastructure/application/`, and `infrastructure/media/` files using `git archive`.
 5. Create an immutable release and `zani/backend:git-<short-sha>` image.
 6. Recreate only `zani-backend` and wait for both Docker health and Actuator health.
 7. Switch `/opt/zani/application/current` only after the new backend is healthy.
 8. If health fails, restore the previously running release and image.
+
+The job invokes the root-owned wrapper at
+`/opt/zani/deploy/deploy-application`. Repository changes do not update that file.
+When the tracked wrapper changes, an operator must install the reviewed version
+before rerunning the backend job; the wrapper rejects a stale installed copy before
+host state changes. This keeps a repository push from replacing privileged host code.
+
+The release preflight requires these files before Docker runs:
+
+```text
+.dockerignore
+backend/Dockerfile
+infrastructure/application/compose.yaml
+infrastructure/application/deploy-application.sh
+infrastructure/media/finalize-recording.sh
+infrastructure/media/finalize_recording.py
+```
+
+If a failed build left an incomplete `application-<sha>` directory, do not retry
+that SHA until the path is confirmed inactive and moved to
+`/opt/zani/application/failed-releases/`. Do not use `docker cp`: a container
+replacement would discard the injected worker and violate the image/SHA contract.
 
 Manual rollback remains an operator action:
 
