@@ -35,7 +35,64 @@ describe("requestSessionSummary", () => {
   it("요약 문단을 그대로 읽는다", async () => {
     respondWith(envelope({ summary: SUMMARY }));
 
-    await expect(requestSessionSummary("s1", "token")).resolves.toEqual({ summary: SUMMARY });
+    await expect(requestSessionSummary("s1", "token")).resolves.toEqual({
+      summary: SUMMARY,
+      sections: [],
+    });
+  });
+
+  it("구간을 초 단위로 옮겨 읽는다", async () => {
+    respondWith(
+      envelope({
+        summary: SUMMARY,
+        sections: [
+          {
+            startedOffsetMs: 0,
+            endedOffsetMs: 600_000,
+            title: "상태 관리 개요",
+            summary: "지역 상태와 전역 상태를 가르는 기준을 설명했다.",
+          },
+        ],
+      }),
+    );
+
+    await expect(requestSessionSummary("s1", "token")).resolves.toEqual({
+      summary: SUMMARY,
+      sections: [
+        {
+          startSeconds: 0,
+          endSeconds: 600,
+          title: "상태 관리 개요",
+          summary: "지역 상태와 전역 상태를 가르는 기준을 설명했다.",
+        },
+      ],
+    });
+  });
+
+  it("구간이 없거나 배열이 아니면 빈 목록이다 — 요약은 그대로 그린다", async () => {
+    respondWith(envelope({ summary: SUMMARY, sections: null }));
+
+    // 구간을 싣기 전 서버와도 붙는다. 요약만 있는 세션에 오류를 내면 그 세션은 아무것도 못 본다.
+    await expect(requestSessionSummary("s1", "token")).resolves.toMatchObject({ sections: [] });
+  });
+
+  it("깨진 구간만 버리고 나머지는 남긴다", async () => {
+    respondWith(
+      envelope({
+        summary: SUMMARY,
+        sections: [
+          { startedOffsetMs: 0, endedOffsetMs: 600_000, title: "", summary: "" },
+          { startedOffsetMs: 600_000, endedOffsetMs: 1_200_000, title: "제목만 있는 구간" },
+        ],
+      }),
+    );
+
+    const result = await requestSessionSummary("s1", "token");
+
+    // 요약이 없는 구간은 제목으로도 자리를 말한다. 제목·요약이 둘 다 빈 구간만 버린다.
+    expect(result.sections).toEqual([
+      { startSeconds: 600, endSeconds: 1200, title: "제목만 있는 구간", summary: "" },
+    ]);
   });
 
   it("세션 id를 이스케이프한다", async () => {
