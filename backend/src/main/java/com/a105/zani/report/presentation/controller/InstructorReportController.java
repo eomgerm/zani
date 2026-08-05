@@ -40,8 +40,7 @@ public class InstructorReportController {
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "403",
                 description =
-                        "이 수업의 강사가 아닙니다. 학생·다른 강사·비참가자가 모두 여기에 해당합니다(`MEDIA_TOKEN_002`). **비참가자에게도 404 가 아니라 403 이 갑니다** — 세션 ID 를 훑어 존재 여부를 캐낼 수 있다는 뜻이므로, 감추려면 비참가자만 404 로 갈라야 합니다."),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "그런 세션이 없습니다."),
+                        "이 수업의 강사가 아닙니다(`MEDIA_TOKEN_002`). 학생·다른 강사·비참가자, 그리고 **아예 없는 세션 ID** 도 모두 여기로 옵니다 — 참가자 조회가 세션 조회보다 먼저라서입니다. 있는 수업과 없는 수업이 같은 응답을 받으므로 세션 ID 를 훑어 존재 여부를 캐낼 수 없습니다."),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
                 description =
