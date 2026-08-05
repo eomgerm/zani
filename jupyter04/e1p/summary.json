@@ -482,25 +482,83 @@
           "size_bytes": 331
         }
       }
+    },
+    {
+      "seed": 49,
+      "status": "complete",
+      "feature_manifest_sha256": "c980e7ac75dd43e3a57f1338ce9b22a81e2230d0b9137e3344c1c77db88ac9e2",
+      "configuration_sha256": "75d43a54dd388461861a136106c9e1a7c95644b5d6c6c117f7bee29909aea1c8",
+      "inputs": {
+        "landmark_graph": {
+          "path": "/home/j-i15a105/zani/ai/datasets/processed/engagenet/landmark_78_v1_graph.npz",
+          "sha256": "43e24c9385c5e6134912d01ccca8d38e0806f98e926497ea99cc8f1b4a17bf02",
+          "size_bytes": 74152
+        }
+      },
+      "environment": {
+        "python": "3.12.6",
+        "pytorch": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "cuda_available": true,
+        "requested_device": "cuda",
+        "cuda_device": {
+          "index": 0,
+          "name": "NVIDIA L40S",
+          "capability": [
+            8,
+            9
+          ]
+        },
+        "cublas_workspace_config": ":4096:8"
+      },
+      "best_epoch": 40,
+      "validation": {
+        "accuracy": 0.6694677871148459,
+        "macro_f1": 0.5608765293011473,
+        "within_one_accuracy": 0.9337068160597572,
+        "quadratic_weighted_kappa": 0.7179987113094528
+      },
+      "artifacts": {
+        "checkpoint": {
+          "path": "seed-49/best.pt",
+          "sha256": "c3717922a453bec9b3152de0c6931ff0f8bd71d8d9ffa33c0636c671544e0e70",
+          "size_bytes": 3601727
+        },
+        "metrics": {
+          "path": "seed-49/metrics.json",
+          "sha256": "ca5cdeebc66130ecb3ff4d2eda431026de64c427367a56d4e2c586259cf9df39",
+          "size_bytes": 61997
+        },
+        "onnx_model": {
+          "path": "seed-49/onnx/engagement.onnx",
+          "sha256": "cc649621d219afea230cda8f0bcdc70048e836ff4048e07c336a703d7b14e817",
+          "size_bytes": 3573602
+        },
+        "onnx_metadata": {
+          "path": "seed-49/onnx/engagement.metadata.json",
+          "sha256": "befc4d29a73f82bcc24bb543c06e4083b5fd1e6a5287262d15b97cee0f3251ea",
+          "size_bytes": 331
+        }
+      }
     }
   ],
   "aggregate": {
-    "completed_seed_count": 7,
+    "completed_seed_count": 8,
     "validation_accuracy": {
-      "mean": 0.6599973322662398,
-      "sample_standard_deviation": 0.011504295756100262
+      "mean": 0.6611811391223156,
+      "sample_standard_deviation": 0.011164812395087582
     },
     "validation_macro_f1": {
-      "mean": 0.5588208950963468,
-      "sample_standard_deviation": 0.011194290927285133
+      "mean": 0.5590778493719469,
+      "sample_standard_deviation": 0.010389351170268677
     },
     "validation_within_one_accuracy": {
-      "mean": 0.9338402027477658,
-      "sample_standard_deviation": 0.006433517119635055
+      "mean": 0.9338235294117647,
+      "sample_standard_deviation": 0.005956466152477786
     },
     "validation_quadratic_weighted_kappa": {
-      "mean": 0.7165139230630521,
-      "sample_standard_deviation": 0.010123531765518097
+      "mean": 0.7166995215938522,
+      "sample_standard_deviation": 0.009387258797086098
     }
   }
 }
