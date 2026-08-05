@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import com.a105.zani.postclass.application.exception.InstructorAnalysisContextMissingException;
+import com.a105.zani.postclass.application.port.GmsContentSizeGuard;
 import com.a105.zani.postclass.application.port.InstructorAnalysis;
 import com.a105.zani.postclass.application.port.InstructorAnalysisPort;
 import com.a105.zani.postclass.application.port.InstructorAnalysisRequest;
@@ -32,16 +33,6 @@ import com.a105.zani.report.application.saveinstructoranalysis.SaveInstructorAna
 public class AnalyzeSessionInstructorService implements AnalyzeSessionInstructorUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(AnalyzeSessionInstructorService.class);
-
-    /**
-     * GMS 로 보낼 데이터 부분의 바이트 상한.
-     *
-     * <p>게이트웨이 실측 상한이 102,400 B 다(GMS 가이드 §4.1 — 바이트 단위 이분 탐색). 초과하면 게이트웨이가 본문을 잘라 전달하고 업스트림이 "model not found" 를 돌려주므로
-     * <b>크기 문제라는 사실이 오류 메시지에 드러나지 않는다.</b> 남는 10 KiB 가 chat completions 봉투와 시스템 프롬프트의 몫이다.
-     *
-     * <p>설정으로 열지 않는다. 환경별로 달라질 이유가 없고, 잘못 올리면 조용한 절단을 부른다.
-     */
-    private static final int MAX_REQUEST_DATA_BYTES = 92_160;
 
     /** 인사이트 상한. {@code report} 도메인에 같은 값이 있지만 그 상수를 import 하지 않는다 — 모듈 경계를 원시 값으로 유지한다. */
     private static final int MAX_INSIGHTS = 4;
@@ -120,8 +111,8 @@ public class AnalyzeSessionInstructorService implements AnalyzeSessionInstructor
         InstructorAnalysisRequest folded = raw.withChats(foldChats(context.chats(), context.sections()));
         if (!fits(folded)) {
             log.warn(
-                    "Instructor analysis skipped: request exceeds {}B even with chats folded to {} per section",
-                    MAX_REQUEST_DATA_BYTES,
+                    "Instructor analysis skipped: escaped content exceeds {}B even with chats folded to {} per section",
+                    GmsContentSizeGuard.MAX_ESCAPED_CONTENT_BYTES,
                     MAX_CHAT_EXCERPTS_PER_SECTION);
             return Optional.empty();
         }
@@ -134,12 +125,13 @@ public class AnalyzeSessionInstructorService implements AnalyzeSessionInstructor
     }
 
     /**
-     * 보낼 데이터의 UTF-8 바이트가 임계 안인지 본다.
+     * 보낼 데이터가 상한 안인지 본다.
      *
-     * <p>애플리케이션이 재는 이유: 넘었을 때 무엇을 낮출지 정하는 것은 업무 판단이고, 어댑터는 그 판단을 되돌릴 방법이 없다.
+     * <p>애플리케이션이 재는 이유: 넘었을 때 무엇을 낮출지 정하는 것은 업무 판단이고, 어댑터는 그 판단을 되돌릴 방법이 없다. 재는 방법 자체는 학생별 분석과 공유한다
+     * ({@link GmsContentSizeGuard}).
      */
     private boolean fits(InstructorAnalysisRequest request) {
-        return objectMapper.writeValueAsBytes(request.dataPayload()).length <= MAX_REQUEST_DATA_BYTES;
+        return GmsContentSizeGuard.fits(objectMapper, request.dataPayload());
     }
 
     /** 구간마다 앞에서 {@value #MAX_CHAT_EXCERPTS_PER_SECTION} 개만 남긴다. 구간 밖 채팅도 같은 수만큼 남긴다. */
