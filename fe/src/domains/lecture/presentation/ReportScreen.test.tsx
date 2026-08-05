@@ -15,6 +15,13 @@ vi.stubGlobal(
 const role = vi.hoisted(() => ({
   status: "ready" as "loading" | "ready" | "unknown",
   role: "INSTRUCTOR" as "INSTRUCTOR" | "STUDENT" | null,
+  lecture: null as {
+    id: string;
+    title: string;
+    date: string;
+    startedAt: string;
+    dur: string;
+  } | null,
 }));
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
@@ -48,9 +55,18 @@ const openReportTab = () => {
 /** 강사용 목업 패널에만 있는 박제된 재생 시간. 목업이 그려졌는지 가리는 표식으로 쓴다. */
 const MOCK_CLIP_MARKER = "42:30 / 2:05:30";
 
+const SERVED = {
+  id: "1000000002001",
+  title: "자바스크립트 비동기 마스터",
+  date: "2026-07-14",
+  startedAt: "2026-07-14T01:00:00Z",
+  dur: "1시간 14분",
+};
+
 beforeEach(() => {
   role.status = "ready";
   role.role = "INSTRUCTOR";
+  role.lecture = SERVED;
 });
 
 describe("ReportScreen", () => {
@@ -92,9 +108,32 @@ describe("ReportScreen", () => {
     expect(screen.queryByTestId("student-timeline")).not.toBeInTheDocument();
   });
 
+  it("헤더 제목과 수업 시간을 서버 값으로 적는다", () => {
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // fixture 로 떨어지면 첫 강의(React 상태관리 심화 · 1시간 32분)가 뜬다. 그 길이는 리포트의
+    // "수업 시간" 과 어긋나 한 화면에서 수업 길이가 둘로 보였다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("자바스크립트 비동기 마스터");
+    expect(screen.getByText(/1시간 14분/)).toBeInTheDocument();
+    expect(screen.queryByText(/1시간 32분/)).not.toBeInTheDocument();
+  });
+
+  it("서버가 답하기 전에는 남의 수업 제목을 먼저 보여주지 않는다", () => {
+    role.status = "loading";
+    role.role = null;
+    role.lecture = null;
+
+    render(<ReportScreen lectureId="1000000002001" />);
+
+    // 잠깐이라도 그럴듯한 가짜를 보여주느니 비워 둔다.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("");
+    expect(screen.queryByText(/1시간 32분/)).not.toBeInTheDocument();
+  });
+
   it("explains when the role cannot be determined", () => {
     role.status = "unknown";
     role.role = null;
+    role.lecture = null;
 
     render(<ReportScreen lectureId="s1" />);
     openReportTab();
