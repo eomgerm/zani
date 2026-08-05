@@ -1,5 +1,8 @@
 package com.a105.zani.report.infrastructure.persistence;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 class InstructorReportPersistenceAdapterTest {
+
+    private static final Instant PUBLISHED_AT = Instant.parse("2026-08-05T03:00:00Z");
 
     @Autowired
     private InstructorReportRepository repository;
@@ -93,6 +98,41 @@ class InstructorReportPersistenceAdapterTest {
         assertThat(scoreRowsOf(reportId)).isEqualTo(4);
     }
 
+    /**
+     * 강사 리포트 조회가 이 시각으로 열람 가능 여부를 정한다. 찍히지 않으면 점수·인사이트가 다 있어도 화면은 "아직 리포트가 만들어지지 않았어요" 를 그린다(S15P11A105-312).
+     *
+     * <p>읽을 때 {@code LocalDateTime} 을 쓰는 이유: {@code published_at} 은 시간대 없는 {@code DATETIME(6)} 이고 값은 UTC 다.
+     * {@code Instant} 로 읽으면 JVM 기본 시간대(KST)로 해석되어 9시간 어긋난 값이 통과한다.
+     */
+    @Test
+    @DisplayName("공개 시각을 UTC 로 찍는다")
+    void stamps_the_published_time_in_utc() {
+        repository.saveIfAbsent(report("종합 피드백입니다."));
+
+        assertThat(repository.markPublished(sessionId, PUBLISHED_AT)).isTrue();
+
+        assertThat(publishedAtOfSession()).isEqualTo(PUBLISHED_AT);
+    }
+
+    /** 재시도가 시각을 덮으면 안 된다. 공개는 되돌릴 수 없는 일이라 두 번째 호출이 성공한 것처럼 보이면 안 된다. */
+    @Test
+    @DisplayName("이미 공개된 리포트는 시각을 덮지 않는다")
+    void refuses_to_restamp_an_already_published_report() {
+        repository.saveIfAbsent(report("종합 피드백입니다."));
+        repository.markPublished(sessionId, PUBLISHED_AT);
+
+        assertThat(repository.markPublished(sessionId, PUBLISHED_AT.plusSeconds(600)))
+                .isFalse();
+
+        assertThat(publishedAtOfSession()).isEqualTo(PUBLISHED_AT);
+    }
+
+    @Test
+    @DisplayName("리포트가 없으면 공개하지 않는다")
+    void refuses_to_publish_a_missing_report() {
+        assertThat(repository.markPublished(sessionId, PUBLISHED_AT)).isFalse();
+    }
+
     @Test
     @DisplayName("published_at 은 채우지 않는다 — 공개는 파이프라인이 일괄로 한다")
     void leaves_published_at_null() {
@@ -142,6 +182,15 @@ class InstructorReportPersistenceAdapterTest {
     private static String inviteCode(long id) {
         String encoded = Long.toString(Math.abs(id), 36).toUpperCase();
         return encoded.length() <= 8 ? encoded : encoded.substring(encoded.length() - 8);
+    }
+
+    private Instant publishedAtOfSession() {
+        return jdbcTemplate
+                .queryForObject(
+                        "SELECT published_at FROM instructor_reports WHERE session_id = ?",
+                        LocalDateTime.class,
+                        sessionId)
+                .toInstant(ZoneOffset.UTC);
     }
 
     private int questionCountOf(long reportId) {

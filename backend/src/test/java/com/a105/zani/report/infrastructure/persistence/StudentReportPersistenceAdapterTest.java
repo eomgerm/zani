@@ -1,6 +1,8 @@
 package com.a105.zani.report.infrastructure.persistence;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,9 +24,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StudentReportPersistenceAdapterTest {
 
     private static final Instant SESSION_STARTED_AT = Instant.parse("2026-08-03T01:00:00Z");
+    private static final Instant PUBLISHED_AT = Instant.parse("2026-08-05T03:00:00Z");
 
     @Autowired
     private SaveStudentAnalysisUseCase saveStudentAnalysisUseCase;
+
+    @Autowired
+    private StudentReportPersistenceAdapter adapter;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -96,6 +102,58 @@ class StudentReportPersistenceAdapterTest {
                         Integer.class,
                         reportId.get()))
                 .isZero();
+    }
+
+    /**
+     * 공개는 세션 단위다 — 그 세션의 학생 리포트 전부가 같은 시각으로 열린다.
+     *
+     * <p>읽을 때 {@code LocalDateTime} 을 쓰는 이유: {@code published_at} 은 시간대 없는 {@code DATETIME(6)} 이고 값은 UTC 다.
+     * {@code Instant} 로 읽으면 JVM 기본 시간대(KST)로 해석되어 9시간 어긋난 값이 통과한다.
+     */
+    @Test
+    void publishesEveryStudentReportOfTheSessionInUtc() {
+        long sessionId = insertSession();
+        long first = insertStudent(sessionId);
+        long second = insertStudent(sessionId);
+        saveStudentAnalysisUseCase.save(command(sessionId, first, 1));
+        saveStudentAnalysisUseCase.save(command(sessionId, second, 1));
+
+        assertThat(adapter.markPublished(sessionId, PUBLISHED_AT)).isEqualTo(2);
+
+        assertThat(publishedAtOf(sessionId)).containsExactly(PUBLISHED_AT, PUBLISHED_AT);
+    }
+
+    /** 재시도가 시각을 덮으면 알림이 발송 대상을 찾는 기준이 흔들린다. 다른 세션은 애초에 대상이 아니다. */
+    @Test
+    void keepsTheFirstTimeAndLeavesOtherSessionsAlone() {
+        long sessionId = insertSession();
+        saveStudentAnalysisUseCase.save(command(sessionId, insertStudent(sessionId), 1));
+        long otherSessionId = insertSession();
+        saveStudentAnalysisUseCase.save(command(otherSessionId, insertStudent(otherSessionId), 1));
+        adapter.markPublished(sessionId, PUBLISHED_AT);
+
+        assertThat(adapter.markPublished(sessionId, PUBLISHED_AT.plusSeconds(600)))
+                .isZero();
+
+        assertThat(publishedAtOf(sessionId)).containsExactly(PUBLISHED_AT);
+        assertThat(publishedAtOf(otherSessionId)).containsOnlyNulls();
+    }
+
+    /** 학생이 없는 수업은 갱신할 행이 없다. 실패가 아니라 0 이다. */
+    @Test
+    void publishesNothingWhenTheSessionHasNoStudentReport() {
+        assertThat(adapter.markPublished(insertSession(), PUBLISHED_AT)).isZero();
+    }
+
+    private List<Instant> publishedAtOf(long sessionId) {
+        return jdbcTemplate
+                .queryForList(
+                        "SELECT published_at FROM student_reports WHERE session_id = ? ORDER BY id",
+                        LocalDateTime.class,
+                        sessionId)
+                .stream()
+                .map(at -> at == null ? null : at.toInstant(ZoneOffset.UTC))
+                .toList();
     }
 
     private SaveStudentAnalysisCommand command(long sessionId, long participantId, int recommendationCount) {

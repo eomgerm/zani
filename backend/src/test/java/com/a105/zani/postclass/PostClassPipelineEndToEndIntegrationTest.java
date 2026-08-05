@@ -91,6 +91,9 @@ class PostClassPipelineEndToEndIntegrationTest {
         assertThat(sectionCount()).isPositive();
         assertThat(studentReportParticipantIds()).containsExactly(student);
         assertThat(instructorReportCount()).isEqualTo(1);
+        // 강사·학생 리포트 조회도 각자 자기 공개 시각으로 열람 가능 여부를 정한다. 여기가 비면 리포트가 만들어져도 아무도 열 수 없다(S15P11A105-312).
+        assertThat(instructorPublishedAtCount()).isEqualTo(1);
+        assertThat(studentPublishedAtCount()).isEqualTo(1);
     }
 
     /** 공개 시각이 곧 발송 트리거다(S15P11A105-116). 이 조회가 세션을 담지 못하면 리포트가 만들어져도 메일이 나가지 않는다. */
@@ -238,6 +241,20 @@ class PostClassPipelineEndToEndIntegrationTest {
         return jdbcTemplate.queryForList(
                 "SELECT session_participant_id FROM student_reports WHERE session_id = ?" + " ORDER BY id ASC",
                 Long.class,
+                sessionId);
+    }
+
+    private int instructorPublishedAtCount() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM instructor_reports WHERE session_id = ? AND published_at IS NOT NULL",
+                Integer.class,
+                sessionId);
+    }
+
+    private int studentPublishedAtCount() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM student_reports WHERE session_id = ? AND published_at IS NOT NULL",
+                Integer.class,
                 sessionId);
     }
 

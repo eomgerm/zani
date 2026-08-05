@@ -1,5 +1,8 @@
 package com.a105.zani.report.infrastructure.persistence;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,7 +25,8 @@ import com.a105.zani.report.domain.repository.InstructorReportRepository;
  *
  * <p>인사이트 TSID 를 목록 순서대로 발급한다 — 표시 순서 컬럼이 없어 {@code id} 오름차순이 그 순서를 대신한다.
  *
- * <p>{@code published_at} 은 채우지 않는다. 저장과 공개는 분리돼 있고, 공개는 파이프라인의 {@code VALIDATING -> PUBLISHED} 단계가 일괄로 한다.
+ * <p>저장 시점에는 {@code published_at} 을 채우지 않는다. 저장과 공개는 분리돼 있고, 공개는 파이프라인의 {@code VALIDATING -> PUBLISHED} 단계가
+ * {@link #markPublished} 로 한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -60,6 +64,14 @@ public class InstructorReportPersistenceAdapter implements InstructorReportRepos
              WHERE session_id = ?
             """;
 
+    /** {@code published_at is null} 조건이 있어 이미 공개된 행은 시각이 덮이지 않는다. */
+    private static final String MARK_PUBLISHED = """
+            UPDATE instructor_reports
+               SET published_at = ?, updated_at = ?
+             WHERE session_id = ?
+               AND published_at IS NULL
+            """;
+
     private final JdbcTemplate jdbcTemplate;
 
     @Override
@@ -92,6 +104,18 @@ public class InstructorReportPersistenceAdapter implements InstructorReportRepos
             jdbcTemplate.batchUpdate(INSERT_INSIGHT, insightRows);
         }
         return Optional.of(reportId);
+    }
+
+    /**
+     * {@code published_at} 은 시간대 없는 {@code DATETIME(6)} 이고 값은 UTC 로 쓰인다.
+     *
+     * <p>{@code Timestamp} 로 넘기지 않는 이유: JDBC 가 JVM 기본 시간대로 변환해 KST 만큼 어긋난다. Hibernate 의 {@code jdbc.time_zone=UTC} 는
+     * 여기에 적용되지 않는다 — 이 어댑터는 JdbcTemplate 로 직접 쓴다.
+     */
+    @Override
+    public boolean markPublished(Long sessionId, Instant publishedAt) {
+        LocalDateTime at = LocalDateTime.ofInstant(publishedAt, ZoneOffset.UTC);
+        return jdbcTemplate.update(MARK_PUBLISHED, at, at, sessionId) == 1;
     }
 
     /** 점수는 유형별 한 행(UK)이고 조회가 유형으로 찾으므로 순회 순서가 필요 없다. */

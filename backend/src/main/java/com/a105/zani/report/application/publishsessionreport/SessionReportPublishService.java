@@ -1,6 +1,7 @@
 package com.a105.zani.report.application.publishsessionreport;
 
 import java.time.Clock;
+import java.time.Instant;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.a105.zani.report.domain.repository.InstructorReportRepository;
 import com.a105.zani.report.domain.repository.SessionReportRepository;
+import com.a105.zani.report.domain.repository.StudentReportRepository;
 
 /**
  * 리포트가 갖춰졌는지 보고 공개 시각을 확정한다.
@@ -24,6 +26,7 @@ public class SessionReportPublishService implements PublishSessionReportUseCase 
 
     private final SessionReportRepository sessionReportRepository;
     private final InstructorReportRepository instructorReportRepository;
+    private final StudentReportRepository studentReportRepository;
     private final Clock clock;
 
     @Override
@@ -37,12 +40,17 @@ public class SessionReportPublishService implements PublishSessionReportUseCase 
             log.warn("강사 리포트가 없어 공개하지 않습니다. sessionId={}", sessionId);
             return PublishSessionReportOutcome.REPORTS_MISSING;
         }
-        if (!sessionReportRepository.markPublished(sessionId, clock.instant())) {
+        Instant publishedAt = clock.instant();
+        if (!sessionReportRepository.markPublished(sessionId, publishedAt)) {
             // 다른 실행이 먼저 공개했다. 시각을 덮지 않는다 — 알림은 그 값으로 발견 여부를 정한다.
             log.info("이미 공개된 세션이라 공개 시각을 그대로 둡니다. sessionId={}", sessionId);
             return PublishSessionReportOutcome.ALREADY_PUBLISHED;
         }
-        log.info("세션 리포트를 공개했습니다. sessionId={}", sessionId);
+        // 강사·학생 리포트도 같은 시각으로 공개한다. 세 조회가 각자 자기 테이블의 공개 시각으로 열람 가능 여부를 정하므로,
+        // 공통 리포트에만 찍으면 분석이 끝난 리포트를 강사도 학생도 영구히 열 수 없다.
+        instructorReportRepository.markPublished(sessionId, publishedAt);
+        int publishedStudentReports = studentReportRepository.markPublished(sessionId, publishedAt);
+        log.info("세션 리포트를 공개했습니다. sessionId={}, studentReports={}", sessionId, publishedStudentReports);
         return PublishSessionReportOutcome.PUBLISHED;
     }
 }
