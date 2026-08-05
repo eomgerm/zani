@@ -16,6 +16,18 @@ import { StudentReport } from "./components/report/StudentReport";
 import { useSessionRole } from "./useSessionRole";
 import type { ClipSeekRequest } from "@/domains/report";
 
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** `2026-07-14T01:00:00Z` → `2026.07.14 (화) 10:00`. 강사가 기억하는 것은 UTC 가 아니라 자기 시계다. */
+function startedLabel(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+
+  const pad = (value: number) => `${value}`.padStart(2, "0");
+  const date = `${at.getFullYear()}.${pad(at.getMonth() + 1)}.${pad(at.getDate())}`;
+  return `${date} (${WEEKDAYS[at.getDay()]}) ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
 const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
     active ? "border-primary text-ink" : "border-transparent text-ink-fainter"
@@ -52,16 +64,21 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
  * 탭 전환·구간 선택·상세 모달은 시연용 로컬 상태로 동작한다.
  */
 export function ReportScreen({ lectureId }: { lectureId: string }) {
+  // 클립 탭 목업만 아직 fixture 다. 실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다.
   const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  // 제목·날짜·클립 탭은 아직 fixture 다(110 범위). 역할만 서버 값으로 판정한다 — 실제 세션 id 는
-  // fixture 에 없어 늘 첫 강의(강사)로 떨어지고, 그러면 학생이 강사용 경로를 불러 403 을 받는다.
-  const { status: roleStatus, role } = useSessionRole(lectureId);
+  const { status: roleStatus, role, lecture: served } = useSessionRole(lectureId);
   const isInstructor = roleStatus === "ready" ? role === "INSTRUCTOR" : lecture.role === "instructor";
-  const failed = lecture.status === "FAILED";
 
-  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
-  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
-  const ready = !failed && lecture.status !== "PROCESSING" && lecture.status !== "LIVE";
+  /**
+   * 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
+   * 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+   *
+   * <p><b>서버가 답하기 전에는 감추지 않는다.</b> 아직 모르는 것을 "분석이 끝나지 않았어요" 로
+   * 말하면 기다림을 실패로 알리는 셈이다. 그 사이의 안내는 RoleNotice 가 맡는다.
+   */
+  const status = served?.status ?? null;
+  const failed = status === "FAILED";
+  const ready = status === null || (!failed && status !== "PROCESSING" && status !== "LIVE");
 
   const [tab, setTab] = useState<"clip" | "report">("clip");
 
@@ -81,7 +98,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     window.scrollTo({ top: 0 });
   };
 
-  const meta = `${lecture.dur} | ${lecture.date.replace(/-/g, ".")} (목) 14:00`;
+  /**
+   * 서버가 준 제목만 적는다. fixture 로 물러나지 않는다.
+   *
+   * <p>실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다. 그 값을 쓰면 로딩 중에는 남의 수업
+   * 제목이 잠깐 뜨고, 볼 권한이 없는 수업에서는 "React 상태관리 심화 / 이 수업의 리포트를 볼 수
+   * 없어요" 처럼 **없는 사실을 지어낸 화면**이 된다. 모르면 비워 두는 편이 낫다.
+   */
+  const title = served?.title ?? "";
+  const meta = served ? `${served.dur} | ${startedLabel(served.startedAt)}` : "";
 
   return (
     <>
@@ -95,7 +120,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           <ChevronLeftIcon size={17} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
+          <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
         {/* 다운로드는 리포트 탭에서만 노출한다(클립 탭에는 내려받을 문서가 없다). */}
