@@ -44,7 +44,6 @@ import com.a105.zani.recording.infrastructure.persistence.entity.RecordingWebhoo
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportInsightJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportScoreJpaEntity;
-import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportTipJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.ReviewRecommendationJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.SessionReportJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.SessionSectionJpaEntity;
@@ -82,7 +81,6 @@ class JpaEntityMappingTest {
             Map.entry(InstructorReportJpaEntity.class, "instructor_reports"),
             Map.entry(InstructorReportScoreJpaEntity.class, "instructor_report_scores"),
             Map.entry(InstructorReportInsightJpaEntity.class, "instructor_report_insights"),
-            Map.entry(InstructorReportTipJpaEntity.class, "instructor_report_tips"),
             Map.entry(SessionSectionJpaEntity.class, "session_sections"),
             Map.entry(ReviewRecommendationJpaEntity.class, "review_recommendations"),
             Map.entry(RecordingJpaEntity.class, "recordings"),
@@ -180,12 +178,6 @@ class JpaEntityMappingTest {
                     InstructorReportJpaEntity.class,
                     false,
                     "instructor_report_id"),
-            simple(
-                    InstructorReportTipJpaEntity.class,
-                    "instructorReport",
-                    InstructorReportJpaEntity.class,
-                    false,
-                    "instructor_report_id"),
             composite(
                     ChatMessageJpaEntity.class,
                     "senderParticipant",
@@ -246,7 +238,7 @@ class JpaEntityMappingTest {
 
     @Test
     void mapsEveryDdlTableToAnExplicitJpaEntity() {
-        assertEquals(30, ENTITY_TABLES.size());
+        assertEquals(29, ENTITY_TABLES.size());
 
         ENTITY_TABLES.forEach((entityClass, expectedTable) -> {
             assertNotNull(entityClass.getAnnotation(Entity.class), entityClass.getSimpleName());
@@ -275,8 +267,8 @@ class JpaEntityMappingTest {
 
     @Test
     void mapsEveryDdlForeignKeyAsReadOnlyLazyManyToOne() throws NoSuchFieldException {
-        assertEquals(32, ASSOCIATIONS.size());
-        assertEquals(32, countManyToOneFields());
+        assertEquals(31, ASSOCIATIONS.size());
+        assertEquals(31, countManyToOneFields());
 
         for (AssociationExpectation expectation : ASSOCIATIONS) {
             Field field = expectation.owner().getDeclaredField(expectation.fieldName());
