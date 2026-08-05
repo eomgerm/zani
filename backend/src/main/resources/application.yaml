@@ -243,6 +243,23 @@ attention:
       - mediapipe_98_v1
   timeline:
     # 리포트 타임라인 계산 임계값. 적지 않은 값은 TimelinePolicy.defaults() 를 쓴다.
+    # 아래 값들은 그 defaults() 와 같은 값을 다시 적은 것이다 — 코드만 보고는 조정 가능한지 알 수 없어
+    # 여기 드러낸다. 기본값의 출처는 여전히 TimelinePolicy.defaults() 이고 TimelinePolicyTest 가 지킨다.
+    # 세션 자동 종료 시각(Session.ACTIVE_DURATION)과 같은 값이다. 오프셋이 망가진 데이터에서 격자가
+    # 무한히 늘어나는 것을 막는 안전장치다.
+    max-duration: ${ATTENTION_TIMELINE_MAX_DURATION:PT3H}
+    # 시계열 격자 간격. 이 간격마다 집단 신호 점을 하나 찍는다.
+    sampling-interval: ${ATTENTION_TIMELINE_SAMPLING_INTERVAL:PT5S}
+    # 집단 비율이 참고하는 관찰창(FRD §18.2 의 최근 5분).
+    group-window: ${ATTENTION_TIMELINE_GROUP_WINDOW:PT5M}
+    # 이만큼 이어서 접속해야 집계 대상이 된다. 실시간 경로와 값을 맞춰야 한다.
+    required-connection: ${ATTENTION_TIMELINE_REQUIRED_CONNECTION:PT1M}
+    # 측정 불가가 이만큼 이어지면 분모에서 뺀다.
+    measurement-outage: ${ATTENTION_TIMELINE_MEASUREMENT_OUTAGE:PT1M}
+    # 확정된 유의 상태가 유효하게 남는 기간(확정 문서 §7.3).
+    significant-ttl: ${ATTENTION_TIMELINE_SIGNIFICANT_TTL:PT5M}
+    # 참여 상태 UNMEASURABLE 을 확정하는 연속 관측 수.
+    unmeasurable-run-length: ${ATTENTION_TIMELINE_UNMEASURABLE_RUN_LENGTH:3}
     # FRD §18.3 흐트러짐 구간 임계값. 원격 조정이 가능해야 한다는 요구사항 때문에 설정으로 뺀다.
     distraction-start-ratio: ${ATTENTION_TIMELINE_DISTRACTION_START_RATIO:0.30}
     distraction-start-hold: ${ATTENTION_TIMELINE_DISTRACTION_START_HOLD:PT20S}
@@ -294,6 +311,14 @@ audio-clip:
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
+  # 최종 MP4 를 읽어서 서빙할 마운트 경로. base-path 와 값이 같아도 뜻이 다르다 — 배포에서 두 마운트가
+  # 갈린다(RecordingProperties 참고).
+  media-root: ${RECORDING_MEDIA_ROOT:/srv/zani/recordings}
+  # 발급한 접근 주소의 유효 기간. 짧을수록 새어 나간 주소의 수명이 짧다.
+  media-url-ttl: ${RECORDING_MEDIA_URL_TTL:PT5M}
+  # 발급할 주소의 형식. {sessionId} 를 치환한다. 기본값은 로컬 주소이므로 배포에서는 반드시 덮어야
+  # 한다 — 이 값이 이메일 링크로 그대로 나가 티켓 311 이 났다.
+  media-url-template: ${RECORDING_MEDIA_URL_TEMPLATE:http://localhost:18080/api/v1/sessions/{sessionId}/media}
   # 운영에서는 항상 활성화한다. 수동 relay를 검증하는 통합 테스트만 false로 격리한다.
   outbox-relay-enabled: ${RECORDING_OUTBOX_RELAY_ENABLED:true}
   # outbox 릴레이 주기(ISO-8601 duration).
