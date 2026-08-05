@@ -116,6 +116,15 @@ services:
       RECORDING_FINALIZATION_WORKER_PATH: /app/media/finalize-recording.sh
       # 117 재생 API가 최종 lecture.mp4 를 읽는 별칭. 인증·Range 처리는 117이 소유한다.
       RECORDING_MEDIA_ROOT: /recordings
+      RECORDING_MEDIA_URL_TEMPLATE: "${RECORDING_MEDIA_URL_TEMPLATE:-https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media}"
+      NOTIFICATION_EMAIL_ENABLED: "${NOTIFICATION_EMAIL_ENABLED:-false}"
+      NOTIFICATION_EMAIL_FROM: "${NOTIFICATION_EMAIL_FROM:-}"
+      NOTIFICATION_APP_BASE_URL: "${NOTIFICATION_APP_BASE_URL:-https://i15a105.p.ssafy.io}"
+      SPRING_MAIL_HOST: "${SPRING_MAIL_HOST:-}"
+      SPRING_MAIL_PORT: "${SPRING_MAIL_PORT:-587}"
+      SPRING_MAIL_USERNAME: "${SPRING_MAIL_USERNAME:-}"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-true}"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:-true}"
     volumes:
       # Track Egress 원본을 사후 전사가 읽는다. 쓰기는 Egress 만 하므로 read-only 로 붙인다.
       # 호스트 track-egress 는 0771 root:root 여야 한다 — owner/group 의 rwx 는 Egress 쓰기용이고,
@@ -136,6 +145,7 @@ services:
       - livekit_api_key
       - livekit_api_secret
       - gms_api_key
+      - smtp_password
     ports:
       - 127.0.0.1:18080:8080
     networks:
@@ -191,3 +201,5 @@ secrets:
     file: /etc/zani/application/secrets/livekit_api_secret
   gms_api_key:
     file: /etc/zani/application/secrets/gms_api_key
+  smtp_password:
+    file: ${SMTP_PASSWORD_FILE:-/etc/zani/application/secrets/smtp_password}
