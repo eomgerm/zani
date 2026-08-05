@@ -100,7 +100,9 @@ class PostClassTranscriptionSchedulerTest {
                 Duration.ofMinutes(5),
                 25_165_824L,
                 2,
-                false);
+                false,
+                true,
+                0.8);
         return new PostClassTranscriptionScheduler(executor, port, tryStart, transcribe, properties, clock);
     }
 

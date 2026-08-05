@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.a105.zani.postclass.application.exception.TranscriptAssemblyInvalidException;
 import com.a105.zani.postclass.application.exception.TranscriptIncompleteException;
 import com.a105.zani.postclass.application.exception.TranscriptNotReadyException;
+import com.a105.zani.postclass.application.port.TranscriptFilterSettings;
 import com.a105.zani.postclass.application.port.TranscriptPort;
 import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
@@ -60,6 +61,7 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
 
     private final TranscriptPort transcriptPort;
     private final Clock clock;
+    private final TranscriptFilterSettings filterSettings;
 
     @Override
     @Transactional
@@ -72,10 +74,51 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         requireEveryChunkFinished(command);
 
         List<TranscriptDocumentSegment> segments = new ArrayList<>();
+        int totalSegmentCount = 0;
+        int filteredSegmentCount = 0;
+        int rescuedSegmentCount = 0;
         for (TranscriptionChunk chunk : command.chunks()) {
             TranscriptionTrack track = tracks.get(chunk.recordingFileId());
+            // 문서 세그먼트를 먼저 다 만든다. 이유가 둘이다. 필터를 앞에 두면 청크 경계 검사를 환각
+            // 세그먼트가 우회해 분할 오류 탐지가 약해지고(clampToChunk 참고), 인접성 판정에는 이웃의
+            // 확정된 시각이 필요하다.
+            List<TranscriptDocumentSegment> built =
+                    new ArrayList<>(chunk.segments().size());
             for (TranscriptSegment segment : chunk.segments()) {
-                segments.add(toDocumentSegment(track, chunk, segment));
+                built.add(toDocumentSegment(track, chunk, segment));
+            }
+            totalSegmentCount += built.size();
+
+            int filteredInChunk = 0;
+            int rescuedInChunk = 0;
+            for (int index = 0; index < built.size(); index++) {
+                TranscriptDocumentSegment candidate = built.get(index);
+                if (filterSettings.exceedsNoSpeechThreshold(candidate.noSpeechProb())) {
+                    if (continuesRealSpeech(built, index)) {
+                        rescuedInChunk++;
+                    } else {
+                        filteredInChunk++;
+                        continue;
+                    }
+                }
+                segments.add(candidate);
+            }
+            filteredSegmentCount += filteredInChunk;
+            rescuedSegmentCount += rescuedInChunk;
+            if (filteredInChunk > 0 || rescuedInChunk > 0) {
+                // 청크 단위로 남긴다 — 어느 트랙의 어느 구간이 통째로 무음이었는지는 운영에서 볼 일이다.
+                // 텍스트는 남기지 않는다: 이 로그의 목적은 몇 개가 빠졌는지이고, 무엇이 빠졌는지는 체크포인트에 있다.
+                log.info(
+                        "Filtered silence-hallucination segments: sessionId={}, recordingFileId={}, chunkIndex={},"
+                                + " chunkSegmentCount={}, filteredSegmentCount={}, rescuedSegmentCount={},"
+                                + " threshold={}",
+                        command.sessionId(),
+                        chunk.recordingFileId(),
+                        chunk.chunkIndex(),
+                        built.size(),
+                        filteredInChunk,
+                        rescuedInChunk,
+                        filterSettings.noSpeechThreshold());
             }
         }
         segments.sort(TIMELINE_ORDER);
@@ -83,18 +126,29 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         TranscriptDocument document = TranscriptDocument.complete(command.language(), segments);
         transcriptPort.save(command.sessionId(), document, clock.instant());
 
-        AssembleTranscriptResult result = summarize(segments);
+        AssembleTranscriptResult result = summarize(segments, filteredSegmentCount);
         if (result.segmentCount() == 0) {
-            // 실패가 아니다. 아무도 마이크를 열지 않은 수업이면 빈 전사가 사실이다. 다만 조용히 넘기면
-            // "왜 리포트가 비었나" 에 답할 근거가 없어진다.
-            log.warn("Assembled an empty transcript, no speech in any track: sessionId={}", command.sessionId());
+            // 실패가 아니다. 아무도 마이크를 열지 않은 수업이면 빈 전사가 사실이고, 필터가 전부 걸러 낸
+            // 것도 마찬가지다. 다만 조용히 넘기면 "왜 리포트가 비었나" 에 답할 근거가 없어진다.
+            // 두 경우를 구분해 남긴다 — 대응이 다르다(녹화를 보라 vs 임곗값을 보라).
+            log.warn(
+                    "Assembled an empty transcript: sessionId={}, totalSegmentCount={}, filteredSegmentCount={},"
+                            + " threshold={}",
+                    command.sessionId(),
+                    totalSegmentCount,
+                    filteredSegmentCount,
+                    filterSettings.noSpeechThreshold());
         } else {
             log.info(
-                    "Assembled transcript: sessionId={}, segments={}, speakers={}, lastEndOffsetMs={}",
+                    "Assembled transcript: sessionId={}, segments={}, speakers={}, lastEndOffsetMs={},"
+                            + " totalSegmentCount={}, filteredSegmentCount={}, rescuedSegmentCount={}",
                     command.sessionId(),
                     result.segmentCount(),
                     result.speakerCount(),
-                    result.lastEndOffsetMs());
+                    result.lastEndOffsetMs(),
+                    totalSegmentCount,
+                    filteredSegmentCount,
+                    rescuedSegmentCount);
         }
         return result;
     }
@@ -221,6 +275,51 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         throw new TranscriptNotReadyException();
     }
 
+    /**
+     * 무음 확률이 높은 세그먼트가 <b>실제 발화의 연속</b>인지 본다.
+     *
+     * <p>{@code no_speech_prob} 는 세그먼트 값이 아니라 30초 디코딩 창의 값이다(같은 {@code seek} 을 공유하는 세그먼트는 값이 전부 같다). 그래서 한 문장이 창 경계를
+     * 넘으면 뒷조각이 거의 무음인 다음 창의 값을 물려받아, 무음 확률만 보고 지우면 문장이 중간에서 끊긴다. 실측에서 강사의 {@code "을 반복하여 최단거리를 구합니다."} 가 {@code 0.964}
+     * 로 나왔는데, 그것은 바로 앞 조각과 시각이 정확히 맞물린 한 문장의 뒷부분이었다.
+     *
+     * <p>그래서 앞뒤 이웃 중 <b>앵커</b>(무음 확률이 임곗값 미만인 세그먼트)와 시각이 맞물린 것이 있으면 남긴다. 진짜 무음 환각은 앞뒤가 공백이다 — 같은 녹음에서 28.3초 공백 뒤에 나온
+     * 환각은 이 검사를 통과하지 못한다.
+     *
+     * <p><b>한계.</b> 같은 청크 안에서만 본다. 10분 청크가 갈리는 자리에서 문장이 쪼개지면 앵커가 다른 청크에 있어 찾지 못하고, 그때는 원래 규칙대로 빠진다. 청크마다 한 번뿐인 경계라 감수한다
+     * — 청크를 넘어 이웃을 찾으려면 조립이 트랙별 청크 순서를 다시 세워야 하고, 그 복잡도가 이득보다 크다.
+     */
+    private boolean continuesRealSpeech(List<TranscriptDocumentSegment> built, int index) {
+        return anchoredBefore(built, index) || anchoredAfter(built, index);
+    }
+
+    /** 앞 세그먼트가 실제 발화이고, 문장을 끝내지 않은 채로 이 세그먼트와 맞물려 있는가. */
+    private boolean anchoredBefore(List<TranscriptDocumentSegment> built, int index) {
+        if (index == 0) {
+            return false;
+        }
+        TranscriptDocumentSegment previous = built.get(index - 1);
+        return filterSettings.anchors(previous.noSpeechProb())
+                && filterSettings.adjacent(
+                        previous.endOffsetMs(), built.get(index).startOffsetMs())
+                && filterSettings.sentenceContinues(previous.text());
+    }
+
+    /**
+     * 이 세그먼트가 문장을 끝내지 않은 채로 뒤의 실제 발화와 맞물려 있는가.
+     *
+     * <p>종결 여부를 보는 대상이 앞쪽 검사와 다르다. 경계 {@code A -> B} 에서 문장이 이어지는지는 항상 <b>앞선 쪽</b>의 끝으로 판정하고, 이 경우 앞선 쪽이 후보 자신이다.
+     */
+    private boolean anchoredAfter(List<TranscriptDocumentSegment> built, int index) {
+        if (index + 1 >= built.size()) {
+            return false;
+        }
+        TranscriptDocumentSegment candidate = built.get(index);
+        TranscriptDocumentSegment next = built.get(index + 1);
+        return filterSettings.anchors(next.noSpeechProb())
+                && filterSettings.adjacent(candidate.endOffsetMs(), next.startOffsetMs())
+                && filterSettings.sentenceContinues(candidate.text());
+    }
+
     /** 세 겹을 더해 수업 기준 절대 시각으로 옮긴다. */
     private TranscriptDocumentSegment toDocumentSegment(
             TranscriptionTrack track, TranscriptionChunk chunk, TranscriptSegment segment) {
@@ -282,13 +381,13 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         return chunk.durationMs();
     }
 
-    private AssembleTranscriptResult summarize(List<TranscriptDocumentSegment> segments) {
+    private AssembleTranscriptResult summarize(List<TranscriptDocumentSegment> segments, int filteredSegmentCount) {
         Set<Long> speakers = new HashSet<>();
         long lastEndOffsetMs = 0;
         for (TranscriptDocumentSegment segment : segments) {
             speakers.add(segment.sessionParticipantId());
             lastEndOffsetMs = Math.max(lastEndOffsetMs, segment.endOffsetMs());
         }
-        return new AssembleTranscriptResult(segments.size(), speakers.size(), lastEndOffsetMs);
+        return new AssembleTranscriptResult(segments.size(), speakers.size(), lastEndOffsetMs, filteredSegmentCount);
     }
 }

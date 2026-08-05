@@ -23,6 +23,17 @@ import com.a105.zani.postclass.application.exception.TranscriptStoreUnavailableE
  * <p><b>영구 실패 정책.</b> 모든 청크가 {@code SUCCEEDED} 또는 {@code SKIPPED_SILENT} 일 때만 저장한다. {@code FAILED} 가 하나라도 있으면 저장하지 않는다
  * — 호출자는 {@code ANALYZING} 으로 넘기지 않고 파이프라인 실패로 처리한다.
  *
+ * <p><b>무음 환각 필터(S15P11A105-306).</b> 조립은 {@code noSpeechProb} 가 임곗값 이상인 세그먼트를 최종 문서에서 뺀다. 단 <b>앞뒤로 시각이 맞물린 실제 발화가 있으면
+ * 남긴다</b> — {@code no_speech_prob} 는 세그먼트가 아니라 30초 디코딩 창의 값이라, 창 경계를 넘어간 문장의 뒷부분이 무음 창의 값을 물려받는 일이 실제로 있다. 규칙과 실측 근거는
+ * {@link com.a105.zani.postclass.application.port.TranscriptFilterSettings} 에 있다. 이 단계에서 거르는 것이므로:
+ *
+ * <ul>
+ *   <li>GMS 응답과 {@code postclass_transcription_chunks.result_document} 는 <b>바뀌지 않는다</b>. 임곗값을 고쳐 재조립하면 GMS 없이 결과가 달라진다
+ *   <li>필터는 <b>실패가 아니다</b>. 전부 걸러져 세그먼트가 0개가 되어도 정상 저장이고 {@code partial} 은 여전히 {@code false} 다 — {@code partial=true} 는
+ *       "구간이 빠진 전사" 를 뜻하고 소비 계약이 하류에 없다
+ *   <li>남은 세그먼트는 <b>손대지 않는다</b>. 시각·화자·식별자·확률값 그대로이고, 빠진 자리를 메우거나 주변 시각을 당기지 않는다. 문서 형태와 {@code schemaVersion} 도 그대로다
+ * </ul>
+ *
  * <p><b>예외는 재시도 여부로 나뉜다.</b> 호출자가 {@code RecordPipelineFailureCommand.retryable} 에 그대로 옮길 수 있게 만든 구분이다. 하나로 합치면 두 방향으로
  * 틀린다 — 영구 실패를 상한까지 재시도해 예산을 태우거나, 아직 처리 중인 세션을 너무 일찍 최종 실패로 굳혀 남은 청크의 결과를 버린다.
  *

@@ -414,7 +414,9 @@ class PostClassTranscriptionIntegrationTest {
                                 settings.leaseDuration(),
                                 25_165_824L,
                                 2,
-                                false),
+                                false,
+                                true,
+                                0.8),
                         clock)
                 .dispatchDueTranscriptions();
     }
@@ -457,6 +459,27 @@ class PostClassTranscriptionIntegrationTest {
                 Long.class,
                 "$.segments[" + index + "]." + field,
                 sessionId);
+    }
+
+    /** 체크포인트 한 행이 들고 있는 GMS 원본 세그먼트. 최종 전사와 다른 것을 담는지 보려면 양쪽을 함께 읽어야 한다. */
+    private String checkpointDocument(long recordingFileId, int chunkIndex) {
+        return jdbcTemplate.queryForObject(
+                "SELECT result_document FROM postclass_transcription_chunks"
+                        + " WHERE session_id = ? AND recording_file_id = ? AND chunk_index = ?",
+                String.class,
+                sessionId,
+                recordingFileId,
+                chunkIndex);
+    }
+
+    private int checkpointSegmentCount(long recordingFileId, int chunkIndex) {
+        return jdbcTemplate.queryForObject(
+                "SELECT JSON_LENGTH(result_document) FROM postclass_transcription_chunks"
+                        + " WHERE session_id = ? AND recording_file_id = ? AND chunk_index = ?",
+                Integer.class,
+                sessionId,
+                recordingFileId,
+                chunkIndex);
     }
 
     private int segmentCount() {
@@ -522,6 +545,71 @@ class PostClassTranscriptionIntegrationTest {
         assertEquals(fileId, segmentLong(0, "recordingFileId"));
         assertEquals(1L, segmentLong(0, "chunkIndex"));
         assertEquals(instructorId, segmentLong(0, "sessionParticipantId"));
+    }
+
+    // ---- 2-1. 무음 환각 필터(S15P11A105-306) ----
+
+    @Test
+    void 무음_환각은_최종_전사에서_빠지고_체크포인트에는_남는다() {
+        // 실측 fixture. 2026-08-05 실제 세션에서 환각 "고맙습니다." 는 no_speech_prob 0.953/0.984 로,
+        // 실제 질문은 0.176 으로 나왔다. 기본 임곗값 0.8 이 그 사이를 가른다.
+        //
+        // 이 테스트의 핵심은 두 저장소가 다른 것을 담는다는 것이다. 최종 전사는 정제된 결과이고
+        // 체크포인트는 GMS 원본이다. 원본이 함께 지워지면 임곗값을 바꿔도 되돌릴 수 없다.
+        long studentId = createParticipant();
+        long studentFile = insertTrackFile(studentId, TrackSource.MICROPHONE, 0);
+        transcriptionPort.segments.put(
+                ScriptedTranscriptionPort.key(studentFile, 0),
+                List.of(
+                        new TranscriptSegment(15_000, 18_000, "고맙습니다.", -0.21, 0.953),
+                        new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.984),
+                        new TranscriptSegment(
+                                165_000,
+                                174_000,
+                                "체인링을 사용하면 하나의 인덱스에 데이터가 너무 많이 모일 수 있는데 그러면 조회수가 느려지지 않나요?",
+                                -0.309,
+                                0.176)));
+        enqueueJob();
+
+        dispatch();
+
+        // 최종 전사에는 실제 질문만 남는다.
+        assertEquals(1, segmentCount());
+        assertEquals(165_000L, segmentLong(0, "startOffsetMs"));
+        assertEquals(174_000L, segmentLong(0, "endOffsetMs"));
+        assertTrue(document().contains("체인링"), "실제 질문은 유지돼야 한다");
+        assertTrue(!document().contains("고맙습니다"), "환각은 최종 전사에서 빠져야 한다");
+        // 계약은 그대로다. 전량 제거가 아니어도 partial 로 바뀌지 않는다.
+        assertEquals("ANALYZING", status());
+        assertTrue(document().contains("\"schemaVersion\": 1") || document().contains("\"schemaVersion\":1"));
+        assertTrue(document().contains("\"partial\": false") || document().contains("\"partial\":false"));
+
+        // 체크포인트는 GMS 원본 3개를 그대로 들고 있다.
+        assertEquals(3, checkpointSegmentCount(studentFile, 0));
+        String checkpoint = checkpointDocument(studentFile, 0);
+        assertTrue(checkpoint.contains("고맙습니다"), "체크포인트에는 원본이 남아야 한다");
+        assertTrue(checkpoint.contains("0.953"), "무음 확률 원값도 남아야 한다");
+    }
+
+    @Test
+    void 전부_환각이면_빈_전사를_정상_저장하고_ANALYZING_으로_넘긴다() {
+        // 필터가 다 걷어 내도 실패가 아니다. 빈 전사를 저장하고 다음 단계로 간다 —
+        // 공통 분석이 빈 전사를 "무음 수업" 으로 처리하는 경로가 이미 있다.
+        long studentId = createParticipant();
+        long studentFile = insertTrackFile(studentId, TrackSource.MICROPHONE, 0);
+        transcriptionPort.segments.put(
+                ScriptedTranscriptionPort.key(studentFile, 0),
+                List.of(
+                        new TranscriptSegment(15_000, 18_000, "고맙습니다.", -0.21, 0.953),
+                        new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.906)));
+        enqueueJob();
+
+        dispatch();
+
+        assertEquals(1, transcriptRows());
+        assertEquals(0, segmentCount());
+        assertEquals("ANALYZING", status());
+        assertEquals(2, checkpointSegmentCount(studentFile, 0));
     }
 
     // ---- 3. 다중 화자 정렬 ----
