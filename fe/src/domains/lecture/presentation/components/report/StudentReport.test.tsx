@@ -27,7 +27,25 @@ import {
   AttentionTimelineError,
   type StudentAttentionTimeline as TimelineData,
 } from "@/domains/report/infrastructure/attentionTimelineApi";
-import { QuizSummaryError } from "@/domains/report/infrastructure/quizSummaryApi";
+import {
+  StudentQuizError,
+  type StudentQuiz,
+} from "@/domains/report/infrastructure/studentQuizApi";
+
+/** 카드는 문항 수와 예상 시간만 읽는다. 문항 본문은 퀴즈 화면의 관심사다. */
+const quizWith = (questionCount: number, estimatedDurationMinutes: number | null): StudentQuiz => ({
+  title: "퀴즈",
+  description: "",
+  estimatedDurationMinutes,
+  submitted: false,
+  questions: Array.from({ length: questionCount }, (_, index) => ({
+    questionId: `q${index}`,
+    order: index + 1,
+    text: `문항 ${index + 1}`,
+    options: [{ optionId: `q${index}o1`, order: 1, text: "보기" }],
+    grading: null,
+  })),
+});
 
 const reportWith = (overrides: Partial<StudentReportData> = {}): StudentReportData => ({
   activity: { publicChatCount: 3, confusedCount: 2, missedCount: 1, questionCount: 2 },
@@ -70,7 +88,7 @@ const renderReport = (
       onJumpToClip={() => {}}
       reportRequest={async () => reportWith()}
       attentionRequest={async () => timelineWith()}
-      quizRequest={async () => ({ questionCount: 5, estimatedDurationMinutes: 3 })}
+      quizRequest={async () => quizWith(5, 3)}
       {...props}
     />,
   );
@@ -260,7 +278,7 @@ describe("StudentReport", () => {
 
   it("예상 시간이 없으면 문항 수만 적는다 — '약 0분' 을 쓰지 않는다", async () => {
     renderReport({
-      quizRequest: async () => ({ questionCount: 4, estimatedDurationMinutes: null }),
+      quizRequest: async () => quizWith(4, null),
     });
 
     expect(await screen.findByText("총 4문제")).toBeInTheDocument();
@@ -269,7 +287,7 @@ describe("StudentReport", () => {
   it("퀴즈가 없으면 풀기 버튼을 내지 않는다 — 눌러도 빈 화면뿐이다", async () => {
     renderReport({
       quizRequest: async () => {
-        throw new QuizSummaryError("missing", 404);
+        throw new StudentQuizError("missing", 404);
       },
     });
 

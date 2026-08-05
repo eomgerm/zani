@@ -6,10 +6,10 @@ import {
   focusedIntervalRatio,
   formatOffset,
   StudentAttentionTimelineView,
-  useQuizSummary,
   useStudentAttentionTimeline,
+  useStudentQuiz,
   useStudentReport,
-  type QuizSummaryRequester,
+  type StudentQuizRequester,
   type StudentReportRequester,
   type StudentTimelineRequester,
 } from "@/domains/report";
@@ -23,7 +23,7 @@ interface Props {
   /** 테스트에서 조회를 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   reportRequest?: StudentReportRequester;
   attentionRequest?: StudentTimelineRequester;
-  quizRequest?: QuizSummaryRequester;
+  quizRequest?: StudentQuizRequester;
 }
 
 /**
@@ -48,7 +48,9 @@ export function StudentReport({
 }: Props) {
   const report = useStudentReport({ sessionId, request: reportRequest });
   const attention = useStudentAttentionTimeline(sessionId, attentionRequest);
-  const quiz = useQuizSummary({ sessionId, request: quizRequest });
+  const quiz = useStudentQuiz({ sessionId, request: quizRequest });
+  // 카드는 "몇 문제, 몇 분"만 쓴다. 문항이 하나도 없으면 풀 것이 없으므로 준비 전과 같이 다룬다.
+  const quizQuestionCount = quiz.quiz?.questions.length ?? 0;
 
   const activity = report.report?.activity;
   const ratio = focusedIntervalRatio(attention.timeline?.focusFlow.points ?? []);
@@ -181,7 +183,7 @@ export function StudentReport({
               <PictoPen size={40} />
             </span>
             <div className="relative z-10 w-full">
-              {quiz.summary === null ? (
+              {quizQuestionCount === 0 ? (
                 /* 풀 퀴즈가 없는데 버튼을 두면 눌러서 빈 화면을 만난다. 안내만 남긴다. */
                 <div className="rounded-[11px] bg-white/20 px-3 py-3.5 text-center text-[13px] font-extrabold text-white">
                   {QUIZ_NOTICE[quiz.status]}
@@ -204,7 +206,7 @@ export function StudentReport({
                     퀴즈 풀어보기
                   </Link>
                   <div className="mt-2.5 rounded-[11px] bg-white/20 py-2.5 text-center text-[13px] font-extrabold text-white">
-                    {quizMeta(quiz.summary.questionCount, quiz.summary.estimatedDurationMinutes)}
+                    {quizMeta(quizQuestionCount, quiz.quiz?.estimatedDurationMinutes ?? null)}
                   </div>
                 </>
               )}
@@ -253,8 +255,9 @@ const REPORT_NOTICE = {
 const QUIZ_NOTICE = {
   loading: "퀴즈를 불러오는 중이에요",
   notReady: "아직 퀴즈가 준비되지 않았어요",
+  forbidden: "이 수업의 퀴즈를 볼 수 없어요",
   failed: "퀴즈를 불러오지 못했어요",
-  // ready 인데 요약이 없으면 계약 위반이다. 빈 카드보다 "준비 전"이 사실에 가깝다.
+  // ready 인데 문항이 없으면 풀 것이 없다. 빈 카드보다 "준비 전"이 사실에 가깝다.
   ready: "아직 퀴즈가 준비되지 않았어요",
 } as const;
 

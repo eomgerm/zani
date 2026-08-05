@@ -18,10 +18,17 @@ export { InstructorNoteEditor } from "./presentation/InstructorNoteEditor";
 export { StudentReportClip } from "./presentation/StudentReportClip";
 export type { ClipSeekRequest } from "./presentation/StudentReportClip";
 export { useStudentReport } from "./presentation/useStudentReport";
-export { useQuizSummary } from "./presentation/useQuizSummary";
+export { useStudentQuiz } from "./presentation/useStudentQuiz";
 export { focusedIntervalRatio } from "./presentation/focusedIntervalRatio";
 export { formatOffset } from "./presentation/offsetTime";
-// 테스트가 조회를 갈아끼우기 위한 함수 서명. 어댑터 자체는 공개하지 않는다.
+// 테스트가 조회를 갈아끼우기 위한 함수 서명과, 퀴즈 화면이 다루는 값의 모양. 어댑터 자체는
+// 공개하지 않는다 — 퀴즈 화면은 훅으로만 서버와 이야기한다.
 export type { StudentReportRequester } from "./infrastructure/studentReportApi";
-export type { QuizSummaryRequester } from "./infrastructure/quizSummaryApi";
 export type { StudentTimelineRequester } from "./infrastructure/attentionTimelineApi";
+export type {
+  QuizAnswer,
+  QuizAnswersSubmitter,
+  QuizGrading,
+  QuizQuestion,
+  StudentQuizRequester,
+} from "./infrastructure/studentQuizApi";

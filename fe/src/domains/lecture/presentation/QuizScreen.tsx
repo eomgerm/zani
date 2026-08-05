@@ -2,248 +2,316 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { PictoLink, PictoSpark } from "@/shared/ui";
-import { lectures, quizData } from "./fixtures";
+import { PictoClockMuted, PictoLink, PictoLock, PictoSpark, PictoWarn } from "@/shared/ui";
+import {
+  useStudentQuiz,
+  type QuizAnswersSubmitter,
+  type QuizGrading,
+  type QuizQuestion,
+  type StudentQuizRequester,
+} from "@/domains/report";
+import { useSessionRole } from "./useSessionRole";
 
 /**
- * AI 이해도 퀴즈. 문항 풀이 → 정답/해설 → 결과 리뷰 흐름을 로컬 상태로 진행한다.
+ * AI 이해도 퀴즈.
  *
- * <p>문항은 아직 fixture 다. 다만 **되돌아갈 주소는 fixture 에서 뽑지 않는다** — 실제 세션 id 는
- * fixture 목록에 없어 `lectures[0]` 로 떨어지고, 그러면 뒤로가기가 `/my-lectures/s1/report` 처럼
- * 존재하지 않는 수업을 가리켜 "리포트를 볼 수 없어요" 로 끝난다. 이동에는 URL 로 받은 `lectureId`
- * 를 쓴다.
+ * <p><b>문항을 하나씩 보고 마지막에 한 번 제출한다.</b> 서버 계약이 일괄 제출이라 그렇다 —
+ * `POST .../quiz/answers` 는 모든 문항을 정확히 한 번씩 담아야 하고 제출 후에는 바꿀 수 없다.
+ * 그래서 문항별 즉시 채점은 만들 수 없고, 정답·해설은 제출 뒤 결과에서 한꺼번에 보여준다.
+ * 대신 제출 전에는 문항 사이를 오가며 답을 고쳐 쓸 수 있다.
+ *
+ * <p>이미 제출한 퀴즈로 다시 들어오면 조회 응답의 `submitted` 와 문항별 `grading` 으로 결과를
+ * 바로 그린다. 다시 풀 수 있는 길은 두지 않는다 — 서버가 재제출을 받지 않는다.
  */
-export function QuizScreen({ lectureId }: { lectureId: string }) {
-  // 제목만 fixture 에서 읽는다. 링크에 쓰면 위 주석의 문제가 생긴다.
-  const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  const total = quizData.length;
+export function QuizScreen({
+  lectureId,
+  request,
+  submitRequest,
+}: {
+  lectureId: string;
+  /** 테스트에서 조회·제출을 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
+  request?: StudentQuizRequester;
+  submitRequest?: QuizAnswersSubmitter;
+}) {
+  // 제목은 세션 목록에서 온다. fixture 를 폴백으로 두면 실제 세션 id 를 못 찾아 남의 강의 제목이 걸린다.
+  const { session } = useSessionRole(lectureId);
+  const quiz = useStudentQuiz({ sessionId: lectureId, request, submitRequest });
 
   const [idx, setIdx] = useState(0);
-  const [picked, setPicked] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [answers, setAnswers] = useState<number[]>([]);
-  const [done, setDone] = useState(false);
+  const [picked, setPicked] = useState<Readonly<Record<string, string>>>({});
 
-  const q = quizData[idx];
-  const correct = picked === q?.answer;
-  const score = answers.filter((a, i) => a === quizData[i].answer).length;
-  // 답을 낸 문항 중 틀린 것만 "다시 살펴볼 개념"으로 센다(프로토타입 reviewConcepts).
-  const reviewCount = answers.filter((a, i) => a !== quizData[i].answer).length;
-  const progressPct = done ? 100 : Math.round(((idx + (submitted ? 1 : 0)) / total) * 100);
+  const questions = quiz.quiz?.questions ?? [];
+  const total = questions.length;
+  const question = questions[Math.min(idx, Math.max(0, total - 1))];
+  const answeredCount = questions.filter((q) => picked[q.questionId] !== undefined).length;
 
-  const submit = () => {
-    if (picked === null) return;
-    setSubmitted(true);
-    setAnswers((prev) => [...prev.slice(0, idx), picked]);
-  };
-  const next = () => {
-    if (idx + 1 >= total) return setDone(true);
-    setIdx(idx + 1);
-    setPicked(null);
-    setSubmitted(false);
-  };
-  const restart = () => {
-    setIdx(0);
-    setPicked(null);
-    setSubmitted(false);
-    setAnswers([]);
-    setDone(false);
-  };
+  const showResult =
+    quiz.quiz?.submitted === true ||
+    quiz.submitStatus === "submitted" ||
+    quiz.submitStatus === "alreadySubmitted";
 
-  return (
-    <div className="min-h-screen bg-canvas px-6 py-7">
-      <div className="mx-auto max-w-[680px]">
-        <div className="mb-5 flex items-center gap-3.5">
-          <Link
-            href={`/my-lectures/${lectureId}/report?tab=report`}
-            className="z-btn size-[38px] shrink-0 rounded-xl border border-line-muted bg-surface text-base text-ink"
-          >
-            ←
-          </Link>
-          <div className="flex-1">
-            <div className="text-[15px] font-extrabold">{lecture.title} · AI 이해도 퀴즈</div>
-            <div className="text-[12.5px] text-ink-faint">
-              {done ? "결과 확인" : `${idx + 1} / ${total}`}
-            </div>
-          </div>
+  /** 방금 제출한 채점이 있으면 그것을, 없으면 조회에 실려 온 채점을 쓴다. */
+  const gradingOf = (q: QuizQuestion): QuizGrading | null =>
+    quiz.grading?.gradingByQuestionId[q.questionId] ?? q.grading;
+
+  const correctCount =
+    quiz.grading?.correctCount ?? questions.filter((q) => gradingOf(q)?.correct === true).length;
+  const reviewCount = total - correctCount;
+  const progressPct = showResult ? 100 : total === 0 ? 0 : Math.round((answeredCount / total) * 100);
+
+  const header = (
+    <div className="mb-5 flex items-center gap-3.5">
+      <Link
+        href={`/my-lectures/${lectureId}/report?tab=report`}
+        className="z-btn size-[38px] shrink-0 rounded-xl border border-line-muted bg-surface text-base text-ink"
+      >
+        ←
+      </Link>
+      <div className="flex-1">
+        <div className="text-[15px] font-extrabold">
+          {session === null ? "AI 이해도 퀴즈" : `${session.title} · AI 이해도 퀴즈`}
         </div>
-
-        <div className="mb-6 h-2 overflow-hidden rounded-full bg-[#e9ecf7]">
-          <div
-            className="h-full rounded-full bg-primary transition-[width] duration-200"
-            style={{ width: `${progressPct}%` }}
-          />
+        <div className="text-[12.5px] text-ink-faint">
+          {showResult ? "결과 확인" : total === 0 ? "" : `${idx + 1} / ${total}`}
         </div>
-
-        {!done ? (
-          <div className="z-card-lg px-[30px] py-7">
-            <span className="z-badge mb-4 rounded-full bg-primary-soft px-3 py-[5px] text-[12.5px] text-primary">
-              {q.concept}
-            </span>
-            <h1 className="mb-[22px] text-xl font-extrabold leading-[1.5] tracking-[-.3px]">
-              {q.q}
-            </h1>
-
-            <div className="flex flex-col gap-[11px]">
-              {q.opts.map((opt, i) => {
-                const isPicked = picked === i;
-                const isAnswer = i === q.answer;
-
-                // 제출 후에는 정답/내 오답만 색으로 남기고 나머지 보기는 흐리게 죽인다.
-                const optCls = !submitted
-                  ? isPicked
-                    ? "border-primary bg-primary-soft text-ink cursor-pointer"
-                    : "border-line-muted bg-surface text-ink cursor-pointer"
-                  : isAnswer
-                    ? "border-[#98e1c5] bg-primary-mint text-primary-dark cursor-default"
-                    : isPicked
-                      ? "border-[#f4b8c1] bg-[#fff0f2] text-danger cursor-default"
-                      : "border-line-mint bg-faint text-ink-fainter cursor-default";
-
-                // 제출 전에는 마크가 비어 있고, 제출 후 정답/오답에만 채워진다.
-                const markCls = !submitted
-                  ? "bg-transparent"
-                  : isAnswer
-                    ? "bg-[#15bd7d]"
-                    : isPicked
-                      ? "bg-danger"
-                      : "bg-transparent";
-
-                return (
-                  <button
-                    type="button"
-                    key={i}
-                    onClick={() => !submitted && setPicked(i)}
-                    className={`flex w-full items-center gap-[13px] rounded-[14px] border-[1.5px] px-[18px] py-4 text-left font-sans text-[14.5px] font-semibold ${optCls}`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`flex size-[22px] shrink-0 items-center justify-center rounded-full text-xs font-black text-white ${markCls}`}
-                    >
-                      {submitted && isAnswer ? "✓" : submitted && isPicked ? "✕" : ""}
-                    </span>
-                    <span className="flex-1">{opt}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {submitted && (
-              <div className="mt-[22px] rounded-[14px] border border-line-mint bg-[#f6f7fd] px-5 py-[18px]">
-                <div className="mb-2 flex items-center gap-2">
-                  <span
-                    className={`z-badge rounded-lg px-2.5 py-[3px] text-xs ${
-                      correct ? "bg-primary-mint text-primary-dark" : "bg-[#fff0f2] text-danger"
-                    }`}
-                  >
-                    {correct ? "정답" : "오답"}
-                  </span>
-                  <span className="text-[13.5px] font-extrabold text-ink-label">{q.concept}</span>
-                </div>
-                <p className="mb-3 text-[13.5px] leading-[1.65] text-ink-sub">{q.explain}</p>
-                <button className="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 font-sans text-[13px] font-extrabold text-primary">
-                  <PictoLink size={14} />
-                  관련 강의 구간 {q.t} 다시 보기
-                </button>
-              </div>
-            )}
-
-            <div className="mt-[22px] flex justify-end">
-              {submitted ? (
-                <button
-                  type="button"
-                  onClick={next}
-                  className="z-btn z-btn-primary rounded-[13px] px-7 py-[13px] text-[14.5px]"
-                >
-                  {idx + 1 >= total ? "결과 보기" : "다음 문제 →"}
-                </button>
-              ) : (
-                <button
-                  onClick={submit}
-                  disabled={picked === null}
-                  className={`z-btn z-btn-md text-[14.5px] text-white ${
-                    picked === null ? "cursor-not-allowed bg-disabled" : "z-btn-primary"
-                  }`}
-                >
-                  답안 제출
-                </button>
-              )}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="z-card-lg mb-[18px] px-8 py-[30px] text-center">
-              <div className="mb-2.5 flex justify-center">
-                <PictoSpark size={40} />
-              </div>
-              <h1 className="mb-2 text-[22px] font-extrabold">
-                {total}개 개념 중 {score}개를 확인했어요.
-              </h1>
-              <p className="text-[14.5px] text-ink-muted">
-                {reviewCount > 0
-                  ? `다시 살펴볼 개념이 ${reviewCount}개 있어요.`
-                  : "모든 개념을 잘 확인했어요"}
-              </p>
-            </div>
-
-            <div className="z-card-lg mb-[18px] px-6 py-[22px]">
-              <div className="mb-3.5 font-extrabold">문제별 정답과 해설</div>
-              <div className="flex flex-col gap-3.5">
-                {quizData.map((item, i) => {
-                  const ok = answers[i] === item.answer;
-                  return (
-                    <div
-                      key={i}
-                      className="flex gap-[13px] border-b border-primary-softer pb-3.5"
-                    >
-                      <span
-                        className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[13px] font-black text-white ${
-                          ok ? "bg-[#15bd7d]" : "bg-danger"
-                        }`}
-                      >
-                        {ok ? "✓" : "✕"}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-0.5 text-[11.5px] font-bold text-ink-faint">
-                          {item.concept}
-                        </div>
-                        <div className="mb-[5px] text-sm font-bold leading-[1.5]">{item.q}</div>
-                        <div className="mb-1 text-[13px] leading-[1.6] text-ink-sub">
-                          <b className="text-primary-dark">정답</b> · {item.opts[item.answer]}
-                        </div>
-                        <div className="mb-2 text-[13px] leading-[1.6] text-ink-faint">
-                          {item.explain}
-                        </div>
-                        <button
-                          type="button"
-                          className="cursor-pointer border-0 bg-transparent p-0 font-sans text-[12.5px] font-extrabold text-primary"
-                        >
-                          ▶ 관련 복습 구간 다시 보기
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={restart}
-                className="z-btn z-btn-block flex-1 border border-line-primary bg-surface text-primary"
-              >
-                다시 풀기
-              </button>
-              <Link
-                href={`/my-lectures/${lectureId}/report?tab=report`}
-                className="z-btn z-btn-primary z-btn-block flex-1"
-              >
-                학습 리포트로 돌아가기
-              </Link>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
+
+  const shell = (body: React.ReactNode) => (
+    <div className="min-h-screen bg-canvas px-6 py-7">
+      <div className="mx-auto max-w-[680px]">
+        {header}
+        {body}
+      </div>
+    </div>
+  );
+
+  if (quiz.status !== "ready" || question === undefined) {
+    return shell(
+      <div className="z-card-lg px-[30px] py-[70px] text-center text-ink-fainter">
+        <div className="mb-3.5 flex justify-center">
+          {quiz.status === "forbidden" ? (
+            <PictoLock size={44} />
+          ) : quiz.status === "failed" ? (
+            <PictoWarn size={44} />
+          ) : (
+            <PictoClockMuted size={44} />
+          )}
+        </div>
+        <div className="mb-1 font-bold text-ink-muted">{NOTICE[noticeKeyOf(quiz.status)]}</div>
+        <div className="text-[13.5px]">{NOTICE_DETAIL[noticeKeyOf(quiz.status)]}</div>
+        {quiz.status === "failed" && (
+          <button type="button" onClick={quiz.retry} className="z-btn z-btn-outline z-btn-md mt-4">
+            다시 시도
+          </button>
+        )}
+      </div>,
+    );
+  }
+
+  return shell(
+    <>
+      <div className="mb-6 h-2 overflow-hidden rounded-full bg-[#e9ecf7]">
+        <div
+          className="h-full rounded-full bg-primary transition-[width] duration-200"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+
+      {!showResult ? (
+        <div className="z-card-lg px-[30px] py-7">
+          <span className="z-badge mb-4 rounded-full bg-primary-soft px-3 py-[5px] text-[12.5px] text-primary">
+            문항 {idx + 1}
+          </span>
+          <h1 className="mb-[22px] text-xl font-extrabold leading-[1.5] tracking-[-.3px]">
+            {question.text}
+          </h1>
+
+          <div className="flex flex-col gap-[11px]">
+            {question.options.map((option) => {
+              const isPicked = picked[question.questionId] === option.optionId;
+              return (
+                <button
+                  type="button"
+                  key={option.optionId}
+                  aria-pressed={isPicked}
+                  onClick={() =>
+                    setPicked((prev) => ({ ...prev, [question.questionId]: option.optionId }))
+                  }
+                  className={`flex w-full cursor-pointer items-center gap-[13px] rounded-[14px] border-[1.5px] px-[18px] py-4 text-left font-sans text-[14.5px] font-semibold ${
+                    isPicked
+                      ? "border-primary bg-primary-soft text-ink"
+                      : "border-line-muted bg-surface text-ink"
+                  }`}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`flex size-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] ${
+                      isPicked ? "border-primary bg-primary" : "border-line-muted bg-surface"
+                    }`}
+                  />
+                  <span className="flex-1">{option.text}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {quiz.submitStatus === "failed" && (
+            <p className="mt-[18px] text-[13px] font-bold text-danger">
+              답안을 제출하지 못했어요. 잠시 후 다시 시도해 주세요.
+            </p>
+          )}
+
+          <div className="mt-[22px] flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setIdx((n) => Math.max(0, n - 1))}
+              disabled={idx === 0}
+              className={`z-btn z-btn-md text-[14.5px] ${
+                idx === 0
+                  ? "cursor-not-allowed border border-line-muted bg-surface text-ink-fainter"
+                  : "border border-line-primary bg-surface text-primary"
+              }`}
+            >
+              이전
+            </button>
+
+            {idx + 1 < total ? (
+              <button
+                type="button"
+                onClick={() => setIdx((n) => Math.min(total - 1, n + 1))}
+                className="z-btn z-btn-primary rounded-[13px] px-7 py-[13px] text-[14.5px]"
+              >
+                다음 문제 →
+              </button>
+            ) : (
+              /* 모든 문항을 채워야 서버가 받는다. 덜 고른 상태로 눌러 400 을 받게 두지 않는다. */
+              <button
+                type="button"
+                onClick={() =>
+                  quiz.submit(
+                    questions.map((q) => ({
+                      questionId: q.questionId,
+                      selectedOptionId: picked[q.questionId] as string,
+                    })),
+                  )
+                }
+                disabled={answeredCount < total || quiz.submitStatus === "submitting"}
+                className={`z-btn z-btn-md text-[14.5px] text-white ${
+                  answeredCount < total || quiz.submitStatus === "submitting"
+                    ? "cursor-not-allowed bg-disabled"
+                    : "z-btn-primary"
+                }`}
+              >
+                {quiz.submitStatus === "submitting"
+                  ? "제출 중…"
+                  : answeredCount < total
+                    ? `${total - answeredCount}문항 남았어요`
+                    : "제출하기"}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="z-card-lg mb-[18px] px-8 py-[30px] text-center">
+            <div className="mb-2.5 flex justify-center">
+              <PictoSpark size={40} />
+            </div>
+            <h1 className="mb-2 text-[22px] font-extrabold">
+              {total}개 개념 중 {correctCount}개를 확인했어요.
+            </h1>
+            <p className="text-[14.5px] text-ink-muted">
+              {reviewCount > 0
+                ? `다시 살펴볼 개념이 ${reviewCount}개 있어요.`
+                : "모든 개념을 잘 확인했어요"}
+            </p>
+          </div>
+
+          <div className="z-card-lg mb-[18px] px-6 py-[22px]">
+            <div className="mb-3.5 font-extrabold">문제별 정답과 해설</div>
+            <div className="flex flex-col gap-3.5">
+              {questions.map((q, i) => {
+                const grading = gradingOf(q);
+                const ok = grading?.correct === true;
+                const correctText = q.options.find(
+                  (option) => option.optionId === grading?.correctOptionId,
+                )?.text;
+                return (
+                  <div key={q.questionId} className="flex gap-[13px] border-b border-primary-softer pb-3.5">
+                    <span
+                      className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[13px] font-black text-white ${
+                        ok ? "bg-[#15bd7d]" : "bg-danger"
+                      }`}
+                    >
+                      {ok ? "✓" : "✕"}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-0.5 text-[11.5px] font-bold text-ink-faint">
+                        문항 {i + 1}
+                      </div>
+                      <div className="mb-[5px] text-sm font-bold leading-[1.5]">{q.text}</div>
+                      {correctText !== undefined && (
+                        <div className="mb-1 text-[13px] leading-[1.6] text-ink-sub">
+                          <b className="text-primary-dark">정답</b> · {correctText}
+                        </div>
+                      )}
+                      {grading !== null && grading.explanation.length > 0 && (
+                        <div className="mb-2 text-[13px] leading-[1.6] text-ink-faint">
+                          {grading.explanation}
+                        </div>
+                      )}
+                      {/*
+                        갈 시각을 아는 문항만 링크를 낸다. 근거 구간(sectionStartedOffsetMs)은 249 가
+                        채우기 시작하면 실려 오고, 그전에는 버튼이 나오지 않는다 — 갈 곳을 모르는
+                        버튼을 두면 눌러도 아무 일이 없거나 엉뚱한 자리로 간다.
+                      */}
+                      {grading?.sectionStartSeconds !== null &&
+                        grading?.sectionStartSeconds !== undefined && (
+                          <Link
+                            href={`/my-lectures/${lectureId}/report?tab=clip&seek=${grading.sectionStartSeconds}`}
+                            className="inline-flex items-center gap-1.5 text-[12.5px] font-extrabold text-primary no-underline"
+                          >
+                            <PictoLink size={14} />
+                            관련 강의 구간 다시 보기
+                          </Link>
+                        )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 다시 풀기는 없다 — 서버가 재제출을 받지 않는다(이미 제출된 퀴즈는 409). */}
+          <Link
+            href={`/my-lectures/${lectureId}/report?tab=report`}
+            className="z-btn z-btn-primary z-btn-block"
+          >
+            학습 리포트로 돌아가기
+          </Link>
+        </>
+      )}
+    </>,
+  );
 }
+
+const noticeKeyOf = (status: string): keyof typeof NOTICE =>
+  status === "forbidden" || status === "failed" || status === "notReady"
+    ? (status as keyof typeof NOTICE)
+    : "loading";
+
+const NOTICE = {
+  loading: "퀴즈를 불러오는 중이에요",
+  notReady: "아직 퀴즈가 준비되지 않았어요",
+  forbidden: "이 수업의 퀴즈를 볼 수 없어요",
+  failed: "퀴즈를 불러오지 못했어요",
+} as const;
+
+const NOTICE_DETAIL = {
+  loading: "잠시만 기다려 주세요.",
+  notReady: "수업 분석이 끝나면 퀴즈를 풀 수 있어요.",
+  forbidden: "내가 참여한 수업이 맞는지 확인해 주세요.",
+  failed: "잠시 후 다시 시도해 주세요.",
+} as const;
