@@ -85,13 +85,25 @@ public final class StudentSignalDigest {
             }
         }
 
+        /**
+         * 확인 프롬프트 응답 하나를 센다. 계약 값은 V5 가 정규화한 OK·CONFUSED·MISSED·NO_RESPONSE 넷이고, 컬럼이 NULL 인 행은 30초를 기다렸는데 답이 없었던 프롬프트다.
+         *
+         * <p>계약 밖 값을 미응답으로 접지 않는다. 이 집계가 모델이 {@code NO_RESPONSE} 유형을 고르는 근거가 되므로, 오타나 새로 생긴 값 하나가 학생에게 "응답하지 않은 구간" 이라고
+         * 잘못 말하게 된다. 세지 않으면 그 구간은 다른 근거로 판단되거나 추천되지 않을 뿐이다 — {@link #addAttention} 이 계약 밖 검출기 출력을 버리는 것과 같은 이유다.
+         */
         private void addPrompt(String response) {
-            // 응답 컬럼이 NULL 인 행은 30초를 기다렸는데 답이 없었던 프롬프트다.
-            switch (response == null ? "NO_RESPONSE" : response) {
+            if (response == null) {
+                noResponse++;
+                return;
+            }
+            switch (response) {
                 case "OK" -> ok++;
                 case "CONFUSED" -> confused++;
                 case "MISSED" -> missed++;
-                default -> noResponse++;
+                case "NO_RESPONSE" -> noResponse++;
+                default -> {
+                    // 계약 밖 값은 어느 칸에도 넣지 않는다.
+                }
             }
         }
 

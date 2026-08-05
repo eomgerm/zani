@@ -110,6 +110,25 @@ class StudentSignalDigestTest {
     }
 
     @Test
+    void doesNotCountAnOutOfContractResponseAsNoResponse() {
+        StudentObservations observations = new StudentObservations(
+                List.of(),
+                List.of(
+                        new StudentObservations.Prompt("SOMETHING_NEW", 1_000L),
+                        new StudentObservations.Prompt(null, 2_000L)),
+                List.of(),
+                List.of());
+
+        StudentSectionSignal first =
+                StudentSignalDigest.fold(observations, SECTIONS).getFirst();
+
+        // NULL 만 미응답이다. 계약 밖 값을 미응답으로 접으면 학생에게 "응답하지 않은 구간" 이라고 잘못 말한다.
+        assertThat(first.noResponseCount()).isEqualTo(1);
+        assertThat(first.okCount() + first.confusedCount() + first.missedCount())
+                .isZero();
+    }
+
+    @Test
     void keepsChatCountWhenExcerptsExceedTheBudget() {
         String longMessage = "가".repeat(300);
         StudentObservations observations = new StudentObservations(

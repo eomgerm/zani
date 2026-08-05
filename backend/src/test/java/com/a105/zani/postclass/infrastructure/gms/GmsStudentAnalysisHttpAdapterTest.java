@@ -17,6 +17,7 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
+import com.a105.zani.postclass.application.analyzestudents.AnalyzeSessionStudentsService;
 import com.a105.zani.postclass.application.analyzestudents.ConceptSection;
 import com.a105.zani.postclass.application.analyzestudents.SessionAnalysisContext;
 import com.a105.zani.postclass.application.analyzestudents.StudentObservations;
@@ -43,6 +44,12 @@ class GmsStudentAnalysisHttpAdapterTest {
 
     private static final long SESSION_ID = 7_311_064_012_345_678L;
     private static final long PARTICIPANT_ID = 7_311_064_087_654_321L;
+
+    /** GMS 게이트웨이의 JSON 본문 상한(가이드 §4.1, 바이트 단위 이분 탐색 실측). */
+    private static final int GATEWAY_BODY_LIMIT_BYTES = 102_400;
+
+    /** 실제로 전송된 본문 바이트. 인터셉터가 채운다. */
+    private int capturedBodyBytes;
 
     @Test
     void sendsAliasOnlyWithMaxCompletionTokensAndStrictSchema() {
@@ -81,6 +88,28 @@ class GmsStudentAnalysisHttpAdapterTest {
                 .extracting(StudentAnalysis.OptionDraft::correct)
                 .containsExactly(true, false, false, false);
         fixture.server().verify();
+    }
+
+    /**
+     * 길이 가드가 통과시킨 최대 크기 요청이 게이트웨이 상한 안에 드는지 본다.
+     *
+     * <p>가드는 사용자 메시지만 재고 봉투·시스템 프롬프트·응답 스키마는 상수 예산으로 덮는다. 그 예산이 실제보다 작으면 게이트웨이가 본문을 잘라 전달하고 업스트림이 "model not found" 를
+     * 돌려주므로 <b>크기 문제라는 사실이 오류에 드러나지 않는다.</b> 그래서 예산을 코드로 못박는다.
+     */
+    @Test
+    void keepsTheWholeRequestUnderTheGatewayLimitAtTheGuardThreshold() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andRespond(
+                        MockRestResponseCreators.withSuccess(chatResponse(analysisJson()), MediaType.APPLICATION_JSON));
+
+        StudentAnalysisRequest atThreshold = requestSizedToGuardThreshold();
+        fixture.adapter().analyze(atThreshold);
+
+        assertThat(capturedBodyBytes)
+                .as("가드가 통과시킨 최대 요청이 게이트웨이 상한을 넘으면 조용히 잘린다")
+                .isLessThanOrEqualTo(GATEWAY_BODY_LIMIT_BYTES);
     }
 
     @Test
@@ -140,11 +169,43 @@ class GmsStudentAnalysisHttpAdapterTest {
     private record Fixture(GmsStudentAnalysisHttpAdapter adapter, MockRestServiceServer server) {}
 
     private Fixture fixture() {
-        RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl(BASE_URL)
+                .requestInterceptor((request, body, execution) -> {
+                    capturedBodyBytes = body.length;
+                    return execution.execute(request, body);
+                });
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         GmsStudentAnalysisHttpAdapter adapter = new GmsStudentAnalysisHttpAdapter(
                 builder.build(), JsonMapper.builder().build(), gmsProperties(), new StudentAnalysisProperties(3_000));
         return new Fixture(adapter, server);
+    }
+
+    /**
+     * 길이 가드가 통과시키는 최대 크기에 맞춘 요청. 가드와 같은 방식(직렬화 → 문자열을 다시 직렬화)으로 재면서 관측을 늘려 임계 바로 아래까지 채운다.
+     *
+     * <p>관측을 짧은 레코드로 채우는 이유: 이스케이프 증가분은 바이트당 따옴표 수에 비례하므로 짧은 레코드가 많을수록 커진다. 최악에 가까운 모양으로 재야 예산이 실제로 버티는지 알 수 있다.
+     */
+    private StudentAnalysisRequest requestSizedToGuardThreshold() {
+        JsonMapper mapper = JsonMapper.builder().build();
+        SessionAnalysisContext context = new SessionAnalysisContext(
+                "이차방정식 심화", "판별식과 근의 공식을 다뤘다.", List.of(new ConceptSection(1, "판별식", "설명", 0L, 10_800_000L)));
+        List<StudentObservations.Attention> attentions = new java.util.ArrayList<>();
+        StudentAnalysisRequest request = null;
+        while (true) {
+            for (int i = 0; i < 200; i++) {
+                attentions.add(new StudentObservations.Attention("BARELY_ENGAGED", attentions.size() * 10_000L));
+            }
+            StudentAnalysisRequest candidate = StudentAnalysisRequest.raw(
+                    "student-001",
+                    context,
+                    new StudentObservations(List.copyOf(attentions), List.of(), List.of(), List.of()));
+            int escaped = mapper.writeValueAsBytes(mapper.writeValueAsString(candidate.promptPayload())).length;
+            if (escaped > AnalyzeSessionStudentsService.MAX_ESCAPED_CONTENT_BYTES) {
+                return request;
+            }
+            request = candidate;
+        }
     }
 
     private GmsProperties gmsProperties() {
