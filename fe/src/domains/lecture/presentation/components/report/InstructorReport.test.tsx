@@ -34,7 +34,6 @@ const reportWith = (overrides: Partial<InstructorReportData> = {}): InstructorRe
     { evaluationType: "STRUCTURE_FLOW", score: 84 },
   ],
   insights: [],
-  tips: [],
   ...overrides,
 });
 
@@ -145,26 +144,47 @@ describe("InstructorReport AI 수업 피드백", () => {
     expect(await screen.findByText("PACING")).toBeInTheDocument();
   });
 
-  it("관찰과 팁을 짝짓지 않고 각각의 카드로 둔다", async () => {
+  it("한 장에 제목·관찰·해 볼 것을 함께 그린다", async () => {
     renderReport({
       request: async () =>
         reportWith({
           insights: [
             {
-              insightType: "LOW_FOCUS_SECTION",
+              title: "어려운 구간 보강",
               content: "예외 처리 구간에서 집중도가 낮았어요.",
+              suggestion: "추가 예시 코드와 실습 시간을 늘려보세요.",
               startSeconds: 4800,
               endSeconds: 6000,
             },
           ],
-          tips: [{ tipType: "INTERACTION", title: "질문 시간 확보", content: "질문 시간을 두세요." }],
         }),
     });
 
-    expect(await screen.findByText("예외 처리 구간에서 집중도가 낮았어요.")).toBeInTheDocument();
-    expect(screen.getByText("질문 시간 확보")).toBeInTheDocument();
-    // 개수가 어긋나도 엉뚱한 관찰에 엉뚱한 처방이 붙지 않아야 한다.
-    expect(screen.getByText("질문 시간을 두세요.")).toBeInTheDocument();
+    // 296 시안의 카드 모양이다. 서버가 셋을 한 행으로 줘서 화면이 짝을 지을 일이 없다.
+    expect(await screen.findByText("어려운 구간 보강")).toBeInTheDocument();
+    expect(screen.getByText("예외 처리 구간에서 집중도가 낮았어요.")).toBeInTheDocument();
+    expect(screen.getByText("추가 예시 코드와 실습 시간을 늘려보세요.")).toBeInTheDocument();
+  });
+
+  it("제안이 없는 인사이트는 TIP 줄 없이 그린다", async () => {
+    renderReport({
+      request: async () =>
+        reportWith({
+          insights: [
+            {
+              title: "어려운 구간 보강",
+              content: "예외 처리 구간에서 집중도가 낮았어요.",
+              suggestion: "",
+              startSeconds: 4800,
+              endSeconds: null,
+            },
+          ],
+        }),
+    });
+
+    await screen.findByText("어려운 구간 보강");
+    // 빈 TIP 딱지만 남으면 제안이 있었는데 잃어버린 것처럼 보인다.
+    expect(screen.queryByText("TIP.")).not.toBeInTheDocument();
   });
 
   it("구간이 있는 인사이트를 누르면 그 시각으로 옮긴다", async () => {
@@ -175,8 +195,9 @@ describe("InstructorReport AI 수업 피드백", () => {
         reportWith({
           insights: [
             {
-              insightType: "LOW_FOCUS_SECTION",
+              title: "어려운 구간 보강",
               content: "예외 처리 구간에서 집중도가 낮았어요.",
+              suggestion: "",
               startSeconds: 4800,
               endSeconds: 6000,
             },
@@ -184,7 +205,7 @@ describe("InstructorReport AI 수업 피드백", () => {
         }),
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: /예외 처리 구간/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /어려운 구간 보강/ }));
 
     expect(onJumpToClip).toHaveBeenCalledWith(4800);
   });
@@ -195,8 +216,9 @@ describe("InstructorReport AI 수업 피드백", () => {
         reportWith({
           insights: [
             {
-              insightType: "OVERALL",
+              title: "전체 흐름",
               content: "후반부로 갈수록 회복됐어요.",
+              suggestion: "",
               startSeconds: null,
               endSeconds: null,
             },
@@ -206,11 +228,10 @@ describe("InstructorReport AI 수업 피드백", () => {
 
     await screen.findByText("후반부로 갈수록 회복됐어요.");
     // 갈 곳이 없는 카드에 눌리는 버튼을 두면 아무 일도 안 일어나는 클릭이 생긴다.
-    expect(screen.queryByRole("button", { name: /후반부/ })).not.toBeInTheDocument();
-    expect(screen.getByText("수업 전체")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /전체 흐름/ })).not.toBeInTheDocument();
   });
 
-  it("인사이트도 팁도 없으면 빈 자리를 설명한다", async () => {
+  it("인사이트가 없으면 빈 자리를 설명한다", async () => {
     renderReport({ request: async () => reportWith() });
 
     expect(await screen.findByText("수업 인사이트가 아직 없어요.")).toBeInTheDocument();

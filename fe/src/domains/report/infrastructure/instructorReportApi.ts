@@ -3,6 +3,11 @@
  *
  * <p>`GET /api/v1/sessions/{sessionId}/reports/instructor` (109).
  *
+ * <p><b>개선 팁이 따로 오지 않는다.</b> 250 이 `instructor_report_tips` 를 지우고 제안을 인사이트
+ * 안으로 접었다(V20). 인사이트 한 장이 제목·근거(`content`)·제안(`suggestion`)·구간을 함께 갖는데,
+ * 이것이 296 시안 카드의 모양 그대로다. 유형(`insightType`)도 사라졌다 — AI 가 제목을 직접 짓고
+ * 화면 아이콘도 하나라 유형으로 갈라야 할 표시가 없다.
+ *
  * <p><b>집중 흐름과 수업 내용 구간은 여기서 읽지 않는다.</b> 응답에 `sections` 가 들어 있지만
  * 화면은 그 값을 쓰지 않는다 — 집중 흐름 카드가 `GET /reports/attention/group` 에서 같은 구간을
  * 구간별 집중 단계까지 붙여 받아 이미 그리고 있다. 같은 값을 두 곳에서 읽으면 어느 쪽이 최신인지
@@ -24,19 +29,16 @@ export type InstructorScore = {
   readonly score: number;
 };
 
-/** 수업 인사이트 한 항목(관찰). 수업 전체를 가리키면 구간이 `null` 이다. */
+/** 수업 인사이트 한 장 — 제목·관찰·제안·구간. 수업 전체를 가리키면 구간이 `null` 이다. */
 export type InstructorInsight = {
-  readonly insightType: string;
+  /** AI 가 직접 지은 제목. 유형 목록이 없다. */
+  readonly title: string;
+  /** 그렇게 판단한 근거. 카드의 "관찰" 자리다. */
   readonly content: string;
+  /** AI 가 제시한 개선 제안. 카드의 "TIP" 자리이며 비어 있을 수 있다. */
+  readonly suggestion: string;
   readonly startSeconds: number | null;
   readonly endSeconds: number | null;
-};
-
-/** 개선 팁 한 항목(해 볼 것). */
-export type InstructorTip = {
-  readonly tipType: string;
-  readonly title: string;
-  readonly content: string;
 };
 
 export type InstructorReportStats = {
@@ -57,7 +59,6 @@ export type InstructorReport = {
   readonly stats: InstructorReportStats;
   readonly scores: readonly InstructorScore[];
   readonly insights: readonly InstructorInsight[];
-  readonly tips: readonly InstructorTip[];
 };
 
 export class InstructorReportError extends Error {
@@ -109,32 +110,28 @@ const parseScore = (value: unknown): InstructorScore | null => {
   return { evaluationType: type, score: Math.min(100, Math.max(0, Math.round(score.score))) };
 };
 
-/** 내용이 없는 인사이트는 눌러도 읽을 것이 없으므로 버린다. */
+/**
+ * 제목·관찰·제안 중 하나라도 있으면 카드가 선다. 셋 다 비면 빈 카드라 버린다.
+ *
+ * <p>셋 중 무엇이 비어도 나머지는 그린다 — 제안 없는 관찰도, 관찰 없는 제안도 강사에게는 읽을
+ * 말이다. 모델 응답에 기대는 값이라 서버 쪽도 셋 다 NULL 을 허용한다(V19).
+ */
 const parseInsight = (value: unknown): InstructorInsight | null => {
   const insight = objectOf(value);
   if (insight === null) return null;
 
+  const title = stringOf(insight.title);
   const content = stringOf(insight.content);
-  if (content.length === 0) return null;
+  const suggestion = stringOf(insight.suggestion);
+  if (title.length === 0 && content.length === 0 && suggestion.length === 0) return null;
 
   return {
-    insightType: stringOf(insight.insightType),
+    title,
     content,
+    suggestion,
     startSeconds: secondsOf(insight.startedOffsetMs),
     endSeconds: secondsOf(insight.endedOffsetMs),
   };
-};
-
-/** 제목과 내용 중 하나만 있어도 카드가 성립한다. 둘 다 없으면 빈 카드라 버린다. */
-const parseTip = (value: unknown): InstructorTip | null => {
-  const tip = objectOf(value);
-  if (tip === null) return null;
-
-  const title = stringOf(tip.title);
-  const content = stringOf(tip.content);
-  if (title.length === 0 && content.length === 0) return null;
-
-  return { tipType: stringOf(tip.tipType), title, content };
 };
 
 const parseStats = (value: unknown): InstructorReportStats => {
@@ -234,8 +231,5 @@ export const requestInstructorReport: InstructorReportRequester = async (
       .map(parseInsight)
       .filter((insight): insight is InstructorInsight => insight !== null)
       .sort((a, b) => (a.startSeconds ?? -1) - (b.startSeconds ?? -1)),
-    tips: arrayOf(data.tips)
-      .map(parseTip)
-      .filter((tip): tip is InstructorTip => tip !== null),
   };
 };

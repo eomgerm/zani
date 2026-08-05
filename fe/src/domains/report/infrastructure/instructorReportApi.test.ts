@@ -20,7 +20,6 @@ const body = (overrides: Record<string, unknown> = {}) => ({
   stats: { studentCount: 32, durationSeconds: 7500, questionCount: 184, alertCount: 7 },
   scores: [{ evaluationType: "DELIVERY", score: 88 }],
   insights: [],
-  tips: [],
   sections: [],
   ...overrides,
 });
@@ -46,8 +45,9 @@ describe("requestInstructorReport", () => {
         body({
           insights: [
             {
-              insightType: "LOW_FOCUS_SECTION",
+              title: "어려운 구간 보강",
               content: "예외 처리 구간에서 집중도가 낮았어요.",
+              suggestion: "추가 예시 코드와 실습 시간을 늘려보세요.",
               startedOffsetMs: 4_800_000,
               endedOffsetMs: 6_000_000,
             },
@@ -61,6 +61,8 @@ describe("requestInstructorReport", () => {
     // 화면의 이동 요청과 참여도 타임라인이 전부 초를 쓴다. 1000 배 어긋나면 엉뚱한 자리로 간다.
     expect(report.insights[0].startSeconds).toBe(4800);
     expect(report.insights[0].endSeconds).toBe(6000);
+    // 제안이 별도 목록이 아니라 같은 장에 실려 온다(V20).
+    expect(report.insights[0].suggestion).toBe("추가 예시 코드와 실습 시간을 늘려보세요.");
   });
 
   it("수업 전체를 가리키는 인사이트는 구간을 null 로 남긴다", async () => {
@@ -69,7 +71,7 @@ describe("requestInstructorReport", () => {
         body({
           insights: [
             {
-              insightType: "OVERALL",
+              title: "전체 흐름",
               content: "후반부로 갈수록 회복됐어요.",
               startedOffsetMs: null,
               endedOffsetMs: null,
@@ -150,9 +152,9 @@ describe("requestInstructorReport", () => {
       ok(
         body({
           insights: [
-            { insightType: "A", content: "늦은 구간", startedOffsetMs: 600_000 },
-            { insightType: "B", content: "전체", startedOffsetMs: null },
-            { insightType: "C", content: "이른 구간", startedOffsetMs: 60_000 },
+            { title: "A", content: "늦은 구간", startedOffsetMs: 600_000 },
+            { title: "B", content: "전체", startedOffsetMs: null },
+            { title: "C", content: "이른 구간", startedOffsetMs: 60_000 },
           ],
         }),
       ),
@@ -163,13 +165,15 @@ describe("requestInstructorReport", () => {
     expect(report.insights.map((i) => i.content)).toEqual(["전체", "이른 구간", "늦은 구간"]);
   });
 
-  it("제목만 있는 팁도 카드로 남긴다", async () => {
+  it("셋 중 하나만 있어도 인사이트 카드가 선다", async () => {
     stubFetch(
       ok(
         body({
-          tips: [
-            { tipType: "INTERACTION", title: "질문 시간 확보", content: "" },
-            { tipType: "NONE", title: "", content: "" },
+          insights: [
+            { title: "질문 시간 확보", content: "", suggestion: "" },
+            { title: "", content: "", suggestion: "중간중간 질문 시간을 두세요." },
+            // 셋 다 비면 빈 카드라 버린다.
+            { title: "", content: "", suggestion: "" },
           ],
         }),
       ),
@@ -177,8 +181,10 @@ describe("requestInstructorReport", () => {
 
     const report = await requestInstructorReport("9200001", "token");
 
-    expect(report.tips).toHaveLength(1);
-    expect(report.tips[0].title).toBe("질문 시간 확보");
+    // 제안 없는 관찰도, 관찰 없는 제안도 강사에게는 읽을 말이다.
+    expect(report.insights).toHaveLength(2);
+    expect(report.insights[0].title).toBe("질문 시간 확보");
+    expect(report.insights[1].suggestion).toBe("중간중간 질문 시간을 두세요.");
   });
 
   it("집계가 통째로 빠져도 던지지 않고 빈 값으로 그린다", async () => {

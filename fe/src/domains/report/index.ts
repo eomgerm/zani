@@ -29,7 +29,6 @@ export type {
   InstructorReportRequester,
   InstructorReportStats,
   InstructorScore,
-  InstructorTip,
 } from "./infrastructure/instructorReportApi";
 export { focusedIntervalRatio, focusedRatioBand, FOCUSED_LEVEL } from "./presentation/focusedRatio";
 export { formatOffset } from "./presentation/offsetTime";

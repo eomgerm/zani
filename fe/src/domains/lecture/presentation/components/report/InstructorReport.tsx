@@ -28,7 +28,6 @@ import {
   type InstructorReportStats,
   type InstructorReportStatus,
   type InstructorScore,
-  type InstructorTip,
 } from "@/domains/report";
 
 interface Props {
@@ -48,7 +47,7 @@ interface Props {
  * <p>제목은 박스 밖에 두고 내용만 박스에 담는다(디자인 문서 §6). 집중 흐름과 타임라인은 한
  * 응답에서 나오므로 report 도메인 컴포넌트가 두 블록을 함께 그린다.
  *
- * <p><b>응답 둘을 합쳐 그린다.</b> 리포트 본문(종합 피드백·평가·인사이트·팁·집계)은
+ * <p><b>응답 둘을 합쳐 그린다.</b> 리포트 본문(종합 피드백·평가·인사이트·집계)은
  * `GET /reports/instructor`(109) 가 주고, 집중 흐름과 수업 내용 구간은
  * `GET /reports/attention/group` 이 준다. 한눈에 보기의 "집중 구간 비율" 만 뒤쪽 응답에서 세므로
  * 조회는 여기서 한 번 하고 카드에는 `source` 로 넘긴다 — 카드가 자기 몫을 또 부르면 같은 큰 응답을
@@ -242,7 +241,7 @@ function Feedback({
 
         <div className="flex flex-col">
           <div className="mb-3.5 text-sm font-extrabold">수업 인사이트</div>
-          <Insights insights={report.insights} tips={report.tips} onJumpToClip={onJumpToClip} />
+          <Insights insights={report.insights} onJumpToClip={onJumpToClip} />
         </div>
       </div>
     </>
@@ -250,25 +249,22 @@ function Feedback({
 }
 
 /**
- * 관찰(인사이트)과 해 볼 것(팁).
+ * 수업 인사이트 목록.
  *
- * <p><b>둘을 짝지어 한 장으로 만들지 않는다.</b> 296 시안의 카드는 관찰과 TIP 이 한 장에 붙어
- * 있지만, 서버는 둘을 독립된 목록으로 주고 `insightType`·`tipType` 의 분류 체계도 서로 다르다.
- * 순서로 짝지으면 개수가 어긋나는 순간 엉뚱한 관찰에 엉뚱한 처방이 붙는다 — 강사가 그 말을 믿고
- * 다음 수업을 바꾸는 자리라 지어내면 안 된다. 카드 모양은 시안대로 두고 안쪽만 나눈다.
+ * <p>한 장에 제목·관찰·해 볼 것이 함께 있다(296 시안). 서버가 셋을 한 행으로 주므로 화면이 짝을
+ * 지을 일이 없다 — 250 이전에는 관찰과 팁이 분류 체계가 다른 별개 목록이라 순서로 짝지으면 엉뚱한
+ * 관찰에 엉뚱한 처방이 붙었다. 이제 그 위험이 스키마에서 사라졌다(V20).
  *
- * <p>인사이트에 구간이 있으면 눌러서 그 자리로 간다. 팁은 수업 전체에 대한 말이라 이동이 없다.
+ * <p>구간이 있으면 눌러서 그 자리로 간다. 수업 전체를 가리키는 인사이트는 갈 곳이 없다.
  */
 function Insights({
   insights,
-  tips,
   onJumpToClip,
 }: {
   insights: readonly InstructorInsight[];
-  tips: readonly InstructorTip[];
   onJumpToClip: (offsetSeconds: number) => void;
 }) {
-  if (insights.length === 0 && tips.length === 0) {
+  if (insights.length === 0) {
     return (
       <div className="z-report-box flex flex-1 items-center justify-center px-4 py-6">
         <p className="text-center text-[13px] text-ink-fainter">수업 인사이트가 아직 없어요.</p>
@@ -281,23 +277,10 @@ function Insights({
     <div className="flex max-h-[420px] min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       {insights.map((insight, index) => (
         <InsightCard
-          key={`insight-${index}-${insight.startSeconds ?? "all"}`}
+          key={`${index}-${insight.startSeconds ?? "all"}`}
           insight={insight}
           onJumpToClip={onJumpToClip}
         />
-      ))}
-      {tips.map((tip, index) => (
-        <div key={`tip-${index}-${tip.title}`} className="z-report-box px-4 py-3.5">
-          <div className="mb-1.5 flex items-start gap-1.5 text-[12.5px] font-extrabold">
-            <CheckMark />
-            <span>{tip.title.length > 0 ? tip.title : "개선 팁"}</span>
-          </div>
-          {/* 해 볼 것은 관찰과 달리 행동이라 이름을 붙여 초록으로 짚어 준다. */}
-          <div className="text-[11.5px] font-bold leading-[1.5] text-primary-dark">
-            <span className="mr-1 font-extrabold">TIP.</span>
-            {tip.content}
-          </div>
-        </div>
       ))}
     </div>
   );
@@ -314,20 +297,25 @@ function InsightCard({
 
   const body = (
     <>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-extrabold">
+      <div className="mb-1.5 flex items-start gap-1.5 text-[12.5px] font-extrabold">
         <CheckMark />
-        {at === null ? (
-          <span className="text-ink-faint">수업 전체</span>
-        ) : (
-          <span className="font-mono text-primary">
+        <span>{insight.title.length > 0 ? insight.title : "수업 인사이트"}</span>
+        {at !== null && (
+          <span className="ml-auto shrink-0 font-mono text-[11px] font-extrabold text-primary">
             {formatOffset(at)}
-            {insight.endSeconds !== null && insight.endSeconds > at
-              ? ` ~ ${formatOffset(insight.endSeconds)}`
-              : ""}
           </span>
         )}
       </div>
-      <p className="text-[11.5px] leading-[1.5] text-ink-faint">{insight.content}</p>
+      {insight.content.length > 0 && (
+        <p className="mb-2 text-[11.5px] leading-[1.5] text-ink-faint">{insight.content}</p>
+      )}
+      {/* 해 볼 것은 관찰과 달리 행동이라 이름을 붙여 초록으로 짚어 준다. */}
+      {insight.suggestion.length > 0 && (
+        <div className="text-[11.5px] font-bold leading-[1.5] text-primary-dark">
+          <span className="mr-1 font-extrabold">TIP.</span>
+          {insight.suggestion}
+        </div>
+      )}
     </>
   );
 
@@ -338,7 +326,7 @@ function InsightCard({
     <button
       type="button"
       onClick={() => onJumpToClip(at)}
-      className="z-report-box cursor-pointer px-4 py-3.5 text-left hover:border-line-primary hover:bg-[#f6faf8]"
+      className="z-report-box block w-full cursor-pointer px-4 py-3.5 text-left hover:border-line-primary hover:bg-[#f6faf8]"
     >
       {body}
     </button>

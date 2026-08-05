@@ -15,7 +15,6 @@ const report: InstructorReport = {
   stats: { studentCount: 3, durationSeconds: 600, questionCount: 2, alertCount: 1 },
   scores: [],
   insights: [],
-  tips: [],
 };
 
 const failing = (status: number): InstructorReportRequester => async () => {
