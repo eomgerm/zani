@@ -355,6 +355,16 @@ class TranscribeSessionServiceTest {
         }
 
         @Override
+        public List<Long> findDueAnalysisSessionIds(Instant now, int limit) {
+            throw new AssertionError("unexpected");
+        }
+
+        @Override
+        public void claimAnalysis(Long sessionId, Instant leaseUntil, Instant changedAt) {
+            throw new AssertionError("전사는 분석 실행권을 잡지 않는다");
+        }
+
+        @Override
         public void clearRetryWait(Long sessionId, Instant changedAt) {
             throw new AssertionError("unexpected");
         }

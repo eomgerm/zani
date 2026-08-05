@@ -83,5 +83,10 @@ class SessionAnalysisSaveServiceTest {
         public boolean existsBySessionId(Long sessionId) {
             return saved.stream().anyMatch(report -> report.sessionId().equals(sessionId));
         }
+
+        @Override
+        public boolean markPublished(Long sessionId, java.time.Instant publishedAt) {
+            throw new UnsupportedOperationException("적재는 공개하지 않는다");
+        }
     }
 }
