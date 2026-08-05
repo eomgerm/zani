@@ -126,8 +126,8 @@ class GetMyAttentionTimelineServiceTest {
             queryPort.observations.add(
                     ObservationRecords.at(MY_PARTICIPANT_ID, i * 10_000L, DetectorOutcome.HIGHLY_ENGAGED));
         }
-        listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞"));
-        listSessionSections.sections.add(new SessionSectionView(60_000L, 120_000L, "뒤"));
+        listSessionSections.sections.add(new SessionSectionView(0L, 60_000L, "앞", null));
+        listSessionSections.sections.add(new SessionSectionView(60_000L, 120_000L, "뒤", null));
 
         GetMyAttentionTimelineResult result = get();
 

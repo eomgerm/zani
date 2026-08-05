@@ -120,6 +120,12 @@ The stack preserves the `dev` profile's `spring.jpa.hibernate.ddl-auto=validate`
 
 ## Verification order
 
+Run the deployment-wrapper regression test without changing the host:
+
+```bash
+./infrastructure/application/tests/deploy-application.test.sh
+```
+
 1. `docker compose config`
 2. Build the backend image.
 3. Start MySQL and Application Redis and wait for healthy status.
@@ -130,5 +136,42 @@ The stack preserves the `dev` profile's `spring.jpa.hibernate.ddl-auto=validate`
 ## Immutable deployment and rollback
 
 Jenkins uses `deploy-application.sh` through a root-owned copy at `/opt/zani/deploy/deploy-application`. The wrapper validates the exact clean Git SHA, tests the backend with disposable MySQL and Redis containers, creates an immutable release and image, recreates only `zani-backend`, and switches `current` only after the health checks pass.
+
+The root-owned copy is an intentional privilege boundary and is not updated by a
+Git merge. Before a commit that changes `deploy-application.sh` can deploy, an
+operator must review and install the exact tracked file from that checkout:
+
+```bash
+sudo install -o root -g root -m 0755 \
+  /path/to/reviewed/checkout/infrastructure/application/deploy-application.sh \
+  /opt/zani/deploy/deploy-application
+```
+
+The wrapper compares itself with the requested checkout before changing the host.
+A mismatch fails with `Installed deployment wrapper is stale`; do not bypass this
+check by copying files into a running container.
+
+Application releases contain the tracked root `.dockerignore`, `backend/`,
+`infrastructure/application/`, and `infrastructure/media/`. The wrapper verifies
+the Compose file, Dockerfile, and recording-finalization worker files before the
+Docker build starts. An incomplete immutable release is never silently reused.
+
+If a build failed after creating `application-<sha>` and the same SHA must be
+retried, first prove that it is not the active release, then quarantine it outside
+the releases directory:
+
+```bash
+sudo /opt/zani/deploy/deploy-application status
+failed_release="application-0123456789ab"
+current_release="$(readlink -f /opt/zani/application/current)"
+candidate="/opt/zani/application/releases/${failed_release}"
+test "${candidate}" != "${current_release}"
+sudo install -d -o root -g root -m 0755 /opt/zani/application/failed-releases
+sudo mv -- "${candidate}" \
+  "/opt/zani/application/failed-releases/${failed_release}-failed"
+```
+
+Never move the path printed as `current_release`. Prefer a new commit SHA when the
+failed release does not need to be retried.
 
 The wrapper never changes Nginx, UFW, SSH, MySQL volumes, Application Redis volumes, or media services. Automatic release deletion is intentionally disabled. See `../jenkins/README.md` for the complete CI/CD boundary and rollback procedure.

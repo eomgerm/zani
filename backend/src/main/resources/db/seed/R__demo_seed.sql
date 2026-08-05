@@ -754,8 +754,10 @@ VALUES
     (1000000023004, 1000000020001, 'PARTICIPATION', '학생 참여 유도', '개념 설명 뒤 짧은 확인 질문을 넣어 참여를 끌어올려 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
 -- 리포트 요약은 학생 전원에게 채운다. 참가자 ID 에서 리포트 ID 를 계산한다(1000000003002 → 1000000024002).
--- question_count 는 요약과 같은 CASE 로 갈라 세 학생이 서로 다른 값을 갖게 한다. "한눈에 보기" 가
--- 0개인 학생도 표시할 수 있어야 하므로 0 을 한 건 포함한다.
+-- question_count 는 학생 셋이 세 가지 상태를 하나씩 갖게 한다. "한눈에 보기" 가 셋을 다르게 그려야 한다.
+--   3    질문을 남긴 학생
+--   0    분석은 됐지만 질문이 없던 학생 — "0개" 로 보여야 한다
+--   NULL 분석이 질문 수를 내지 못한 리포트 — "0개" 가 아니라 빈 자리로 보여야 한다
 INSERT INTO `student_reports` (`id`, `session_id`, `session_participant_id`, `participation_summary`,
                                `question_count`, `published_at`, `created_at`, `updated_at`)
 SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
@@ -764,7 +766,11 @@ SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
            WHEN 1 THEN '도입과 실습 구간의 참여도가 특히 높았습니다. 개념 설명이 이어진 중반 구간은 다시 확인해 두면 좋겠습니다.'
            ELSE '질문과 반응으로 수업에 활발히 참여했습니다. 메모이제이션 구간에서 확인이 필요한 신호가 반복됐습니다.'
        END,
-       CASE (p.`id` - 1000000003001) % 3 WHEN 0 THEN 1 WHEN 1 THEN 0 ELSE 3 END,
+       CASE (p.`id` - 1000000003001) % 3
+           WHEN 0 THEN 3
+           WHEN 1 THEN 0
+           ELSE NULL
+       END,
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
 FROM `session_participants` p
 WHERE p.`session_id` = @s1 AND p.`role` = 'STUDENT';

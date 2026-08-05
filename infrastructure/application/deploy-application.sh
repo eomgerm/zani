@@ -16,6 +16,20 @@ readonly BACKEND_CONTAINER="zani-backend"
 readonly CI_JDK_IMAGE="eclipse-temurin:21.0.11_10-jdk-jammy"
 readonly CI_MYSQL_IMAGE="mysql:8.4.10"
 readonly CI_REDIS_IMAGE="redis@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7"
+readonly -a APPLICATION_RELEASE_PATHS=(
+  ".dockerignore"
+  "backend"
+  "infrastructure/application"
+  "infrastructure/media"
+)
+readonly -a REQUIRED_APPLICATION_RELEASE_FILES=(
+  ".dockerignore"
+  "backend/Dockerfile"
+  "infrastructure/application/compose.yaml"
+  "infrastructure/application/deploy-application.sh"
+  "infrastructure/media/finalize-recording.sh"
+  "infrastructure/media/finalize_recording.py"
+)
 
 log() {
   printf '[zani-deploy] %s\n' "$*"
@@ -108,6 +122,28 @@ archive_commit() {
 
   git -c safe.directory="${workspace}" -C "${workspace}" archive \
     --format=tar --output="${destination}" "${sha}" "$@"
+}
+
+validate_installed_wrapper() {
+  local workspace="$1"
+  local installed_wrapper="$2"
+  local repository_wrapper="${workspace}/infrastructure/application/deploy-application.sh"
+
+  [[ -f "${repository_wrapper}" ]] ||
+    die "Deployment wrapper is missing from the requested checkout: ${repository_wrapper}"
+  [[ -f "${installed_wrapper}" ]] || die "Installed deployment wrapper is missing: ${installed_wrapper}"
+  cmp -s "${installed_wrapper}" "${repository_wrapper}" ||
+    die "Installed deployment wrapper is stale. Review and install ${repository_wrapper} at /opt/zani/deploy/deploy-application before retrying."
+}
+
+validate_release_contents() {
+  local release_dir="$1"
+  local required_path
+
+  for required_path in "${REQUIRED_APPLICATION_RELEASE_FILES[@]}"; do
+    [[ -f "${release_dir}/${required_path}" ]] ||
+      die "Release is incomplete; missing ${required_path}: ${release_dir}. If this is not the current release, quarantine it before retrying the same SHA."
+  done
 }
 
 wait_for_container_command() {
@@ -259,6 +295,7 @@ deploy_backend() {
   validate_sha "${sha}"
   workspace="$(resolve_workspace "${requested_workspace}")"
   validate_checkout "${workspace}" "${sha}"
+  validate_installed_wrapper "${workspace}" "$(realpath -e "${BASH_SOURCE[0]}")"
   load_runtime_environment
 
   exec 9>"${DEPLOY_LOCK}"
@@ -293,12 +330,13 @@ EOF
     [[ -r "${release_dir}/.zani-release" ]] || die "Existing release has no metadata: ${release_dir}"
     [[ "$(metadata_value "${release_dir}" GIT_SHA)" == "${sha}" ]] ||
       die "Existing release metadata does not match ${sha}."
+    validate_release_contents "${release_dir}"
   else
     mkdir -p "${staging_dir}"
-    archive_commit "${workspace}" "${sha}" "${archive}" \
-      .dockerignore backend infrastructure/application infrastructure/media
+    archive_commit "${workspace}" "${sha}" "${archive}" "${APPLICATION_RELEASE_PATHS[@]}"
     tar -xf "${archive}" -C "${staging_dir}"
     rm -f -- "${archive}"
+    validate_release_contents "${staging_dir}"
     cat >"${staging_dir}/.zani-release" <<EOF
 GIT_SHA=${sha}
 BACKEND_IMAGE=${image}
@@ -386,6 +424,7 @@ show_status() {
 main() {
   require_root
   require_command docker
+  require_command cmp
   require_command flock
   require_command git
   require_command realpath
@@ -421,4 +460,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
