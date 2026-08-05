@@ -49,6 +49,9 @@ export interface StudentReportClipProps {
 /**
  * 학생 복습 클립 패널 — 공통 녹화 플레이어 + 실명 화자 전사(REPORT-S-001).
  *
+ * <p>강사 수업 클립({@code InstructorReportClip})도 requester 만 강사 엔드포인트로 바꿔 이 패널을
+ * 그대로 쓴다 — 상태 안내·플레이어·전사 배선이 역할과 무관해서다.
+ *
  * <p>이동 명령의 합류 지점이다. 지금은 전사 행 클릭 하나뿐이지만, 모든 명령은 `seekTo` 로
  * 모여 하나의 `SeekRequest` 흐름으로 플레이어에 내려간다 — nonce 를 한 곳에서 찍어야
  * 증가가 보장되고, 같은 시각을 연속으로 눌러도 두 번째가 무시되지 않는다.

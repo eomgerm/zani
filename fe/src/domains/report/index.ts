@@ -18,6 +18,8 @@ export {
 export { InstructorNoteEditor } from "./presentation/InstructorNoteEditor";
 export { StudentReportClip } from "./presentation/StudentReportClip";
 export type { ClipSeekRequest } from "./presentation/StudentReportClip";
+// 같은 클립 패널을 강사 엔드포인트로 조회하는 변형. 어느 경로를 부를지는 도메인 안에서 정한다.
+export { InstructorReportClip } from "./presentation/InstructorReportClip";
 export { SessionSummaryCard } from "./presentation/SessionSummaryCard";
 export { useStudentReport } from "./presentation/useStudentReport";
 export { useStudentQuiz } from "./presentation/useStudentQuiz";

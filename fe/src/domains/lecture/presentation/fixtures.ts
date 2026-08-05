@@ -81,24 +81,9 @@ export const participantTiles = participants.map((p) => ({
   handRaised: p.hand,
 }));
 
-/** 리포트 - 수업 내용 전사 */
-export const transcript = [
-  { t: "00:02", speaker: "박서준", text: "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다." },
-  { t: "03:15", speaker: "박서준", text: "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요." },
-  { t: "06:40", speaker: "박서준", text: "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다." },
-  { t: "08:40", speaker: "박서준", text: "먼저 Context API의 리렌더링 이슈를 이해해야 합니다." },
-  { t: "12:10", speaker: "정하윤", text: "Context랑 Redux는 어떤 기준으로 골라야 하나요?" },
-  { t: "12:35", speaker: "박서준", text: "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다." },
-  { t: "15:22", speaker: "김도현", text: "선생님, Context 값이 바뀌면 왜 하위 전체가 리렌더되나요?" },
-  { t: "15:48", speaker: "박서준", text: "좋은 질문이에요. Provider value의 참조가 바뀌기 때문입니다." },
-  { t: "19:05", speaker: "박서준", text: "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요." },
-  { t: "24:10", speaker: "박서준", text: "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다." },
-  { t: "27:30", speaker: "이지은", text: "useCallback도 같이 써야 하나요?" },
-  { t: "27:52", speaker: "박서준", text: "함수를 props로 넘길 때만 필요하니 상황에 맞게 쓰면 됩니다." },
-  { t: "31:05", speaker: "박서준", text: "다음으로 외부 상태 관리 라이브러리를 비교해볼게요." },
-  { t: "42:00", speaker: "박서준", text: "Zustand로 같은 예제를 다시 구현하면 훨씬 간결해집니다." },
-  { t: "51:20", speaker: "박서준", text: "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요." },
-];
+/* 수업 클립 탭의 전사 fixture(`transcript`)는 308 이 강사용 목업과 함께 걷어냈다. 녹화·전사는
+   학생이 GET /reports/student, 강사가 GET /reports/instructor/clip 로 받는다 — 화면에 박제된 남의 수업
+   문장이 실제 수업으로 읽히는 일이 없어야 한다. */
 
 /* 강사 리포트(분야별 평가·수업 인사이트·한눈에 보기·종합 피드백) fixture 는 110 이,
    학생 리포트(한눈에 보기·참여 요약·복습 추천) fixture 는 297 이 걷어냈다. 값은 각각
