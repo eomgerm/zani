@@ -120,6 +120,12 @@ The stack preserves the `dev` profile's `spring.jpa.hibernate.ddl-auto=validate`
 
 ## Verification order
 
+Run the deployment-wrapper regression test without changing the host:
+
+```bash
+./infrastructure/application/tests/deploy-application.test.sh
+```
+
 1. `docker compose config`
 2. Build the backend image.
 3. Start MySQL and Application Redis and wait for healthy status.
