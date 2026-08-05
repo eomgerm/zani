@@ -98,7 +98,9 @@ public interface PipelineJobPort {
     /**
      * 분석을 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터 최대 limit 건.
      *
-     * <p>{@code ANALYZING} 이면서 {@code next_attempt_at} 이 비었거나 {@code now} 이하인 작업을 담는다.
+     * <p>{@code ANALYZING}·{@code VALIDATING} 이면서 {@code next_attempt_at} 이 비었거나 {@code now} 이하인 작업을 담는다.
+     * {@code VALIDATING} 을 포함하는 이유는 {@link com.a105.zani.postclass.domain.model.PipelineStatus#analysisStages()} 에 적어
+     * 두었다.
      *
      * <p><b>{@code next_attempt_at} 의 뜻이 전사와 반대다.</b> {@link #findDueTranscriptionSessionIds} 는 그 값이 비면 "실행 중" 으로 보고
      * 제외한다. 분석은 반대로 "아직 아무도 잡지 않음" 으로 보고 담는데, 전사가 {@code ANALYZING} 으로 전이할 때 {@link #updateStatus} 가 그 값을 비우기 때문이다. 분석

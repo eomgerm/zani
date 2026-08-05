@@ -189,19 +189,30 @@ public interface PipelineJobJpaRepository extends JpaRepository<PipelineJobJpaEn
      * 지금보다 미래  누가 처리 중이거나 재시도 대기 중이다      → 담지 않는다
      * </pre>
      *
+     * <p><b>{@code VALIDATING} 도 담는다.</b> 오케스트레이터는 세 분석을 끝낸 뒤 {@code VALIDATING} 으로 옮기고 공개를 시도하는데, 리포트가 아직 갖춰지지 않아 공개가
+     * 거절되면 작업이 그 단계에 남는다. {@code ANALYZING} 만 담으면 그 세션은 다시 발견되지 않아 8시간 마감까지 멈춘다. 이어받은 실행은 세 분석의 멱등 겹을 GMS 없이 통과해 공개만 다시
+     * 시도한다.
+     *
      * <p>이 조회는 선점이 아니다. 실제 시작은 잠금 읽기를 거치는 짧은 트랜잭션에서 따로 판정한다({@code TryClaimAnalysisUseCase}).
      */
     @Query("""
             select job.sessionId from PipelineJobJpaEntity job
-             where job.status = :analyzingStatus
+             where job.status in :analysisStatuses
                and (job.nextAttemptAt is null or job.nextAttemptAt <= :now)
              order by job.createdAt asc
             """)
     List<Long> findDueAnalysisSessionIds(
-            @Param("analyzingStatus") String analyzingStatus, @Param("now") Instant now, Pageable pageable);
+            @Param("analysisStatuses") Collection<String> analysisStatuses,
+            @Param("now") Instant now,
+            Pageable pageable);
 
     default List<Long> findDueAnalysisSessionIds(Instant now, int limit) {
-        return findDueAnalysisSessionIds(PipelineStatus.ANALYZING.name(), now, Pageable.ofSize(limit));
+        return findDueAnalysisSessionIds(
+                PipelineStatus.analysisStages().stream()
+                        .map(PipelineStatus::name)
+                        .toList(),
+                now,
+                Pageable.ofSize(limit));
     }
 
     /**

@@ -36,8 +36,8 @@ public class TryClaimAnalysisService implements TryClaimAnalysisUseCase {
             log.debug("분석 대상 작업이 없습니다. sessionId={}", sessionId);
             return false;
         }
-        if (state.status() != PipelineStatus.ANALYZING) {
-            // 이미 다음 단계로 넘어갔거나 아직 전사 중이다.
+        if (!PipelineStatus.analysisStages().contains(state.status())) {
+            // 이미 공개·실패로 끝났거나 아직 전사 중이다.
             log.debug("분석 단계가 아닙니다. sessionId={}, status={}", sessionId, state.status());
             return false;
         }

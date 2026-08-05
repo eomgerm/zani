@@ -83,9 +83,19 @@ class TryClaimAnalysisServiceTest {
     @DisplayName("분석 단계가 아니면 잡지 않는다")
     void refuses_a_job_in_another_stage() {
         pipelineJobPort.enqueue(SESSION_ID, QUEUED_AT);
-        pipelineJobPort.updateStatus(SESSION_ID, PipelineStatus.VALIDATING, QUEUED_AT);
+        pipelineJobPort.updateStatus(SESSION_ID, PipelineStatus.TRANSCRIBING, QUEUED_AT);
 
         assertFalse(service.tryClaim(SESSION_ID, LEASE));
+    }
+
+    /** 공개가 거절돼 VALIDATING 에 남은 작업이다. 잡지 않으면 그 세션은 8시간 마감까지 멈춘다. */
+    @Test
+    @DisplayName("공개를 기다리는 VALIDATING 작업도 잡는다")
+    void claims_a_validating_job_waiting_to_publish() {
+        pipelineJobPort.enqueue(SESSION_ID, QUEUED_AT);
+        pipelineJobPort.updateStatus(SESSION_ID, PipelineStatus.VALIDATING, QUEUED_AT);
+
+        assertTrue(service.tryClaim(SESSION_ID, LEASE));
     }
 
     /** 후보 조회와 이 호출 사이에 작업이 사라졌다. 예외로 올리면 스케줄 주기가 통째로 끊긴다. */

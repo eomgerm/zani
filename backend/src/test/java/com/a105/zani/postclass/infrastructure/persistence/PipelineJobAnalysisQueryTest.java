@@ -93,6 +93,19 @@ class PipelineJobAnalysisQueryTest {
         assertThat(candidates()).isEmpty();
     }
 
+    /**
+     * 공개가 거절되면 작업은 {@code VALIDATING} 에 남는다. 담지 않으면 그 세션은 8시간 마감까지 멈춘다.
+     *
+     * <p>이어받은 실행은 세 분석의 멱등 겹을 GMS 없이 통과해 공개만 다시 시도한다.
+     */
+    @Test
+    @DisplayName("공개를 기다리는 VALIDATING 작업도 담는다")
+    void picks_up_a_validating_job_waiting_to_publish() {
+        insertJob(OLDER_SESSION_ID, PipelineStatus.VALIDATING, now.minusSeconds(600), now.minusSeconds(1), 1);
+
+        assertThat(candidates()).containsExactly(OLDER_SESSION_ID);
+    }
+
     @Test
     @DisplayName("건수 제한을 지킨다")
     void honours_the_limit() {
