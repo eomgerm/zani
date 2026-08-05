@@ -70,9 +70,8 @@ class GmsContentAnalysisHttpAdapterTest {
 
     private static ContentAnalysisRequest request() {
         return new ContentAnalysisRequest(
-                "React 상태 관리",
                 CLASS_DURATION_MS,
-                List.of(new ContentAnalysisLine(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다.")));
+                List.of(new ContentAnalysisLine("instructor", 2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다.")));
     }
 
     /** 모델이 스키마대로 낸 본문을 chat completions 응답 봉투에 넣는다. */
@@ -117,7 +116,7 @@ class GmsContentAnalysisHttpAdapterTest {
         assertThat(outcome.analysis().sections().getFirst().title()).isEqualTo("상태 관리");
     }
 
-    /** 세션 식별자를 보내지 않는다(GMS 가이드 §9). 전사 본문과 제목·시각만 나간다. */
+    /** 세션 식별자를 보내지 않는다(GMS 가이드 §9). 전사 본문과 별칭·시각만 나간다. */
     @Test
     void sendsNoSessionIdentifier() {
         Fixture fixture = fixture();
@@ -129,6 +128,27 @@ class GmsContentAnalysisHttpAdapterTest {
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
 
         assertThat(fixture.adapter().analyze(request()).value()).isPresent();
+    }
+
+    /**
+     * 화자 별칭은 실어 보내고 수업 제목은 보내지 않는다.
+     *
+     * <p>별칭은 강사 설명과 학생 질문을 가르는 데 필요하고 되돌릴 수 없는 값이다(가이드 §9.2). 수업 제목은 강사 자유 입력이라 실명·이메일이 섞일 수 있어 §9.3 에 걸린다 —
+     * {@code ContentAnalysisRequest} 에 필드를 두지 않았지만, 어댑터가 다른 경로로 제목을 넣지 않는지도 본문에서 확인한다.
+     */
+    @Test
+    void sendsSpeakerAliasesButNoLectureTitle() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                // 전사는 user 메시지 안에 JSON 문자열로 들어가 한 번 더 escape 된다.
+                .andExpect(content().string(containsString("\\\"speaker\\\":\\\"instructor\\\"")))
+                .andExpect(content().string(not(containsString("lectureTitle"))))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
+
+        assertThat(fixture.adapter().analyze(request()).value()).isPresent();
+        fixture.server().verify();
     }
 
     /**
@@ -317,7 +337,7 @@ class GmsContentAnalysisHttpAdapterTest {
         // 한 줄 약 300바이트 × 600줄 = 약 180KB. 예산(92,160B)의 두 배쯤이다.
         String text = "가".repeat(100);
         for (int index = 0; index < 600; index++) {
-            lines.add(new ContentAnalysisLine(index * 3_000L, index * 3_000L + 2_000L, text));
+            lines.add(new ContentAnalysisLine("instructor", index * 3_000L, index * 3_000L + 2_000L, text));
         }
 
         fixture.server()
@@ -328,8 +348,8 @@ class GmsContentAnalysisHttpAdapterTest {
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
 
-        ContentAnalysisOutcome outcome = fixture.adapter()
-                .analyze(new ContentAnalysisRequest("React 상태 관리", CLASS_DURATION_MS, List.copyOf(lines)));
+        ContentAnalysisOutcome outcome =
+                fixture.adapter().analyze(new ContentAnalysisRequest(CLASS_DURATION_MS, List.copyOf(lines)));
 
         assertThat(outcome.value()).isPresent();
         fixture.server().verify();

@@ -56,20 +56,24 @@ class GmsContentAnalysisLiveCheckTest {
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    /** 주제가 세 번 바뀌는 모의 전사. 구간이 하나로 뭉치는지 나뉘는지 눈으로 확인할 수 있게 만든다. */
+    /**
+     * 주제가 세 번 바뀌는 모의 전사. 구간이 하나로 뭉치는지 나뉘는지 눈으로 확인할 수 있게 만든다.
+     *
+     * <p>학생 질문 한 줄({@code student-001})을 강사 발화 사이에 끼워 둔다. 질문에 구간이 갈리면 안 된다는 프롬프트 규칙이 실제 모델에서 지켜지는지가 이 검사로만 드러난다.
+     */
     private static List<ContentAnalysisLine> mockTranscript() {
         return List.of(
-                new ContentAnalysisLine(2_000, 32_000, "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다."),
-                new ContentAnalysisLine(195_000, 226_000, "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요."),
-                new ContentAnalysisLine(400_000, 431_000, "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다."),
-                new ContentAnalysisLine(520_000, 551_000, "먼저 Context API의 리렌더링 이슈를 이해해야 합니다."),
-                new ContentAnalysisLine(730_000, 745_000, "Context랑 Redux는 어떤 기준으로 골라야 하나요?"),
-                new ContentAnalysisLine(755_000, 790_000, "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다."),
-                new ContentAnalysisLine(1_145_000, 1_180_000, "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요."),
-                new ContentAnalysisLine(1_450_000, 1_490_000, "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다."),
-                new ContentAnalysisLine(1_865_000, 1_900_000, "다음으로 외부 상태 관리 라이브러리를 비교해볼게요."),
-                new ContentAnalysisLine(2_530_000, 2_570_000, "이제 Zustand로 직접 스토어를 만들어 보겠습니다."),
-                new ContentAnalysisLine(3_080_000, 3_120_000, "정리하면 상태의 범위를 먼저 정하고 도구를 고르는 순서입니다."));
+                new ContentAnalysisLine("instructor", 2_000, 32_000, "자, 오늘은 React의 상태 관리를 깊이 있게 다뤄보겠습니다."),
+                new ContentAnalysisLine("instructor", 195_000, 226_000, "useState는 지역 상태에 적합하지만 전역 상태는 다른 접근이 필요해요."),
+                new ContentAnalysisLine("instructor", 400_000, 431_000, "상태를 여러 단계로 내려주다 보면 props drilling 문제가 생깁니다."),
+                new ContentAnalysisLine("instructor", 520_000, 551_000, "먼저 Context API의 리렌더링 이슈를 이해해야 합니다."),
+                new ContentAnalysisLine("student-001", 730_000, 745_000, "Context랑 Redux는 어떤 기준으로 골라야 하나요?"),
+                new ContentAnalysisLine("instructor", 755_000, 790_000, "전역성이 크고 미들웨어가 필요하면 라이브러리, 아니면 Context가 낫습니다."),
+                new ContentAnalysisLine("instructor", 1_145_000, 1_180_000, "예제 코드로 리렌더가 어디서 발생하는지 확인해볼게요."),
+                new ContentAnalysisLine("instructor", 1_450_000, 1_490_000, "그래서 useMemo로 value를 메모이즈하는 패턴이 나옵니다."),
+                new ContentAnalysisLine("instructor", 1_865_000, 1_900_000, "다음으로 외부 상태 관리 라이브러리를 비교해볼게요."),
+                new ContentAnalysisLine("instructor", 2_530_000, 2_570_000, "이제 Zustand로 직접 스토어를 만들어 보겠습니다."),
+                new ContentAnalysisLine("instructor", 3_080_000, 3_120_000, "정리하면 상태의 범위를 먼저 정하고 도구를 고르는 순서입니다."));
     }
 
     @Test
@@ -109,7 +113,7 @@ class GmsContentAnalysisLiveCheckTest {
                 new ContentAnalysisProperties(12_000));
 
         ContentAnalysisOutcome outcome =
-                adapter.analyze(new ContentAnalysisRequest("React 상태 관리 심화", CLASS_DURATION_MS, mockTranscript()));
+                adapter.analyze(new ContentAnalysisRequest(CLASS_DURATION_MS, mockTranscript()));
 
         System.out.println("[live] model=" + model + " failure=" + outcome.failure());
         outcome.value().ifPresent(analysis -> {

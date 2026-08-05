@@ -3,6 +3,7 @@ package com.a105.zani.postclass.application.analyzecontent;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import com.a105.zani.postclass.application.exception.ContentAnalysisFailedExcept
 import com.a105.zani.postclass.application.port.AnalyzedSection;
 import com.a105.zani.postclass.application.port.ContentAnalysis;
 import com.a105.zani.postclass.application.port.ContentAnalysisFailure;
+import com.a105.zani.postclass.application.port.ContentAnalysisLine;
 import com.a105.zani.postclass.application.port.ContentAnalysisOutcome;
 import com.a105.zani.postclass.application.port.ContentAnalysisPort;
 import com.a105.zani.postclass.application.port.ContentAnalysisRequest;
@@ -44,7 +46,15 @@ class AnalyzeSessionContentServiceTest {
 
     private static final long CLASS_DURATION_MS = 45 * 60 * 1_000L;
 
-    private GetPostClassContextResult context = new GetPostClassContextResult("React 상태 관리", STARTED_AT, ENDED_AT);
+    private static final long INSTRUCTOR_PARTICIPANT_ID = 1_000_000_003_001L;
+    private static final long STUDENT_PARTICIPANT_ID = 1_000_000_003_002L;
+    /** 참여자 표에 없는 화자. 전사에는 있는데 참여자 행이 사라진 세션을 흉내 낸다. */
+    private static final long ORPHAN_PARTICIPANT_ID = 1_000_000_003_999L;
+
+    private static final Map<Long, String> ALIASES =
+            Map.of(INSTRUCTOR_PARTICIPANT_ID, "instructor", STUDENT_PARTICIPANT_ID, "student-001");
+
+    private GetPostClassContextResult context = new GetPostClassContextResult(STARTED_AT, ENDED_AT, ALIASES);
     private Optional<TranscriptDocument> transcript =
             Optional.of(document(segment(2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다.")));
     private ContentAnalysisOutcome analysis = ContentAnalysisOutcome.success(new ContentAnalysis(
@@ -81,10 +91,15 @@ class AnalyzeSessionContentServiceTest {
     private final AnalyzeSessionContentService service = new AnalyzeSessionContentService(
             transcriptPort, getPostClassContextUseCase, contentAnalysisPort, saveSessionAnalysisUseCase);
 
-    /** 247 계약의 세그먼트. 분석이 쓰는 것은 오프셋과 본문뿐이라 추적 필드는 고정값으로 채운다. */
+    /** 247 계약의 세그먼트. 분석이 쓰는 것은 화자·오프셋·본문뿐이라 나머지 추적 필드는 고정값으로 채운다. */
     private static TranscriptDocumentSegment segment(long startOffsetMs, long endOffsetMs, String text) {
+        return segment(INSTRUCTOR_PARTICIPANT_ID, startOffsetMs, endOffsetMs, text);
+    }
+
+    private static TranscriptDocumentSegment segment(
+            long sessionParticipantId, long startOffsetMs, long endOffsetMs, String text) {
         return new TranscriptDocumentSegment(
-                1_000_000_003_001L,
+                sessionParticipantId,
                 TrackSource.MICROPHONE,
                 "TR_test",
                 startOffsetMs,
@@ -128,12 +143,52 @@ class AnalyzeSessionContentServiceTest {
         assertEquals(CLASS_DURATION_MS, savedCommands.getFirst().classDurationMs());
     }
 
-    /** 수업 제목을 맥락으로 넘긴다. 같은 낱말이 과목에 따라 다른 개념을 가리킨다. */
+    /** 화자를 별칭으로 바꿔 넘긴다(GMS 가이드 §9.2). 참여자 id 를 그대로 보내면 세션 식별자를 보내는 것이고, 아예 빼면 강사 설명과 학생 질문을 가를 수 없다. */
     @Test
-    void passesTheLectureTitleAsContext() {
+    void sendsSpeakersAsRecordingAliases() {
+        transcript = Optional.of(document(
+                segment(INSTRUCTOR_PARTICIPANT_ID, 2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."),
+                segment(STUDENT_PARTICIPANT_ID, 40_000, 48_000, "Context 랑 Redux 는 어떤 기준으로 고르나요?")));
+
         analyze();
 
-        assertEquals("React 상태 관리", analysisRequests.getFirst().lectureTitle());
+        List<ContentAnalysisLine> lines = analysisRequests.getFirst().lines();
+        assertEquals("instructor", lines.getFirst().speaker());
+        assertEquals("student-001", lines.get(1).speaker());
+    }
+
+    /** 참여자 표에 없는 화자도 발화는 살린다. 내용은 수업 내용이고, 참여자 id 를 대신 넣는 선택지는 없다. */
+    @Test
+    void sendsAnUnknownSpeakerForAParticipantThatIsNoLongerListed() {
+        transcript = Optional.of(document(segment(ORPHAN_PARTICIPANT_ID, 2_000, 32_000, "누가 말했는지 모르는 발화입니다.")));
+
+        analyze();
+
+        List<ContentAnalysisLine> lines = analysisRequests.getFirst().lines();
+        assertEquals("unknown", lines.getFirst().speaker());
+        assertEquals("누가 말했는지 모르는 발화입니다.", lines.getFirst().text());
+    }
+
+    /**
+     * 요청에 실명이 실릴 자리가 없다는 것을 화자 값으로 확인한다.
+     *
+     * <p>수업 제목은 강사 자유 입력이라 실명·이메일이 들어올 수 있어 아예 넘기지 않는다 — {@code ContentAnalysisRequest} 에 필드 자체가 없으므로 이 검사는 화자만 본다.
+     */
+    @Test
+    void sendsNoValueThatCanIdentifyAPerson() {
+        transcript = Optional.of(document(
+                segment(INSTRUCTOR_PARTICIPANT_ID, 2_000, 32_000, "자, 오늘은 React 의 상태 관리를 다뤄보겠습니다."),
+                segment(STUDENT_PARTICIPANT_ID, 40_000, 48_000, "Context 랑 Redux 는 어떤 기준으로 고르나요?")));
+
+        analyze();
+
+        for (ContentAnalysisLine line : analysisRequests.getFirst().lines()) {
+            assertTrue(
+                    line.speaker().equals("instructor") || line.speaker().startsWith("student-"),
+                    "화자는 별칭이어야 한다: " + line.speaker());
+            assertFalse(line.speaker().contains(String.valueOf(INSTRUCTOR_PARTICIPANT_ID)));
+            assertFalse(line.speaker().contains(String.valueOf(STUDENT_PARTICIPANT_ID)));
+        }
     }
 
     /**
@@ -263,7 +318,7 @@ class AnalyzeSessionContentServiceTest {
     /** 끝나지 않은 수업은 구간이 어느 범위 안이어야 하는지 정할 수 없다. */
     @Test
     void failsWhenTheSessionHasNotEndedYet() {
-        context = new GetPostClassContextResult("React 상태 관리", STARTED_AT, null);
+        context = new GetPostClassContextResult(STARTED_AT, null, ALIASES);
 
         assertThrows(ContentAnalysisFailedException.class, this::analyze);
         assertTrue(analysisRequests.isEmpty());

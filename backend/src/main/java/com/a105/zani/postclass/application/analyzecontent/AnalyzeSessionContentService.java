@@ -2,6 +2,7 @@ package com.a105.zani.postclass.application.analyzecontent;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,9 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
 
     private static final String SILENT_CLASS_SUMMARY = "이 수업에서는 전사할 발화가 없었습니다.";
 
+    /** 참여자 표에 없는 화자. 별칭 형식({@code student-001})을 흉내 내지 않는다 — 실제 학생과 구분되어야 한다. */
+    private static final String UNKNOWN_SPEAKER = "unknown";
+
     private final TranscriptPort transcriptPort;
     private final GetPostClassContextUseCase getPostClassContextUseCase;
     private final ContentAnalysisPort contentAnalysisPort;
@@ -67,7 +71,7 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
             classSummary = SILENT_CLASS_SUMMARY;
             sections = List.of(new SessionSectionDraft(SILENT_CLASS_TITLE, SILENT_CLASS_SUMMARY, 0, rangeMs));
         } else {
-            ContentAnalysis analysis = requestAnalysis(sessionId, context.title(), rangeMs, transcript);
+            ContentAnalysis analysis = requestAnalysis(sessionId, context.participantAliases(), rangeMs, transcript);
             classSummary = analysis.classSummary();
             sections = analysis.sections().stream()
                     .map(section -> new SessionSectionDraft(
@@ -165,13 +169,18 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
      * 남는다).
      */
     private ContentAnalysis requestAnalysis(
-            Long sessionId, String lectureTitle, long classDurationMs, TranscriptDocument transcript) {
-        // 화자는 넘기지 않는다. GMS 에는 세션 식별자를 보낼 수 없고(가이드 §9) 구간 경계는 내용과 시각에서 나온다.
+            Long sessionId, Map<Long, String> participantAliases, long classDurationMs, TranscriptDocument transcript) {
+        // 화자는 별칭으로 바꿔 넘긴다(가이드 §9.2). 참여자 id 를 그대로 보내면 세션 식별자를 보내는 것이 되고,
+        // 아예 빼면 강사 설명과 학생 질문을 가를 수 없어 질문 한 줄에 구간이 갈린다.
         List<ContentAnalysisLine> lines = transcript.segments().stream()
-                .map(segment -> new ContentAnalysisLine(segment.startOffsetMs(), segment.endOffsetMs(), segment.text()))
+                .map(segment -> new ContentAnalysisLine(
+                        aliasOf(participantAliases, segment.sessionParticipantId()),
+                        segment.startOffsetMs(),
+                        segment.endOffsetMs(),
+                        segment.text()))
                 .toList();
         ContentAnalysisOutcome outcome =
-                contentAnalysisPort.analyze(new ContentAnalysisRequest(lectureTitle, classDurationMs, lines));
+                contentAnalysisPort.analyze(new ContentAnalysisRequest(classDurationMs, lines));
         return outcome.value().orElseThrow(() -> {
             // 사유를 나눠 올린다. 스키마 위반은 같은 요청에 같은 응답이 오므로 재시도가 의미 없고(temperature 0),
             // 기술적 실패는 기다리면 풀릴 수 있다 — 재시도 정책(107)이 이 구분으로 retryable 을 정한다.
@@ -179,5 +188,15 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
             log.warn("공통 분석 결과를 받지 못해 적재하지 않습니다. sessionId={} failure={}", sessionId, outcome.failure());
             return new ContentAnalysisFailedException(errorCode);
         });
+    }
+
+    /**
+     * 표에 없는 참여자는 {@value #UNKNOWN_SPEAKER} 로 보낸다.
+     *
+     * <p>전사에는 있는데 참여자 행이 없는 경우다(참여자가 지워진 옛 세션). 그 줄을 버리지 않는 이유는 발화 내용이 수업 내용이라서다 — 화자를 몰라도 구간을 나누는 데는 쓸 수 있다. 참여자 id 를
+     * 대신 넣는 선택지는 없다. 그것이 §9 가 막는 바로 그 값이다.
+     */
+    private static String aliasOf(Map<Long, String> participantAliases, long sessionParticipantId) {
+        return participantAliases.getOrDefault(sessionParticipantId, UNKNOWN_SPEAKER);
     }
 }
