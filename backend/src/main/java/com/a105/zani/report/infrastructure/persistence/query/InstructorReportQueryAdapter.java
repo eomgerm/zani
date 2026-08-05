@@ -35,6 +35,21 @@ public class InstructorReportQueryAdapter implements InstructorReportQueryPort {
              WHERE session_id = ? AND role = 'STUDENT'
             """;
 
+    /**
+     * 모델이 판단한 질문 수의 합.
+     *
+     * <p>{@code chat_messages} 를 세지 않는다. 공개 채팅에는 "감사합니다" 도 같은 모양으로 들어와 행 수를 세면 그것까지 질문이 되고, 물음표만 찾으면 "이 부분 다시 설명해주실 수
+     * 있나요" 같은 완곡한 요청을 놓친다(V15 주석). 학생 리포트가 그 시점에 굳혀 둔 판정을 더한다.
+     *
+     * <p>{@code SUM} 은 대상 행이 없거나 모두 {@code NULL} 이면 {@code NULL} 을 준다. 0 으로 바꾸지 않는다 — "아무도 질문하지 않았다" 와 "아직 분석이 값을 내지
+     * 못했다" 는 화면에서 다르게 보여야 한다.
+     *
+     * <p>공개 전 학생 리포트도 함께 센다. 강사가 보는 것은 개별 학생의 리포트가 아니라 수업 전체의 질문 수이고, 학생 각자의 공개 시점 때문에 그 합이 흔들릴 이유가 없다.
+     */
+    private static final String SUM_QUESTION_COUNT = """
+            SELECT SUM(question_count) FROM student_reports WHERE session_id = ?
+            """;
+
     private static final String COUNT_ALERTS = """
             SELECT COUNT(*) FROM group_alerts WHERE session_id = ?
             """;
@@ -50,22 +65,14 @@ public class InstructorReportQueryAdapter implements InstructorReportQueryPort {
         return reportRepository.findBySessionId(sessionId).map(this::toRecord);
     }
 
-    /**
-     * 질문 수는 아직 채우지 못한다.
-     *
-     * <p>{@code student_reports.question_count} 는 112(학생 리포트)의 마이그레이션이 만드는 컬럼이고 아직 dev 에 없다. 같은 컬럼을 여기서 또 만들면 마이그레이션
-     * 버전이 겹쳐 Flyway 가 기동을 거부한다 — 그 사고가 오늘 한 번 있었다.
-     *
-     * <p>필드를 응답에서 빼지 않고 {@code null} 로 두는 이유: 값이 없는 것과 필드가 없는 것은 화면이 다르게 다뤄야 하고, 계약이 흔들리면 FE 가 두 번 고쳐야 한다. 112 가 머지되면
-     * {@code SELECT SUM(question_count) FROM student_reports WHERE session_id = ?} 한 줄로 채워진다.
-     */
     @Override
     public InstructorReportStats stats(long sessionId, long durationSeconds) {
         Long students = jdbcTemplate.queryForObject(COUNT_STUDENTS, Long.class, sessionId);
+        Integer questions = jdbcTemplate.queryForObject(SUM_QUESTION_COUNT, Integer.class, sessionId);
         Long alerts = jdbcTemplate.queryForObject(COUNT_ALERTS, Long.class, sessionId);
 
         return new InstructorReportStats(
-                students == null ? 0L : students, durationSeconds, null, alerts == null ? 0L : alerts);
+                students == null ? 0L : students, durationSeconds, questions, alerts == null ? 0L : alerts);
     }
 
     private InstructorReportView toRecord(InstructorReportJpaEntity report) {

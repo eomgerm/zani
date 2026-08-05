@@ -36,12 +36,14 @@ class InstructorReportApiIntegrationTest {
 
     private static final long INSTRUCTOR_ID = 9_100_910L;
     private static final long STUDENT_ID = 9_100_911L;
+    private static final long SECOND_STUDENT_ID = 9_100_912L;
 
     private static final long ENDED_SESSION_ID = 9_100_920L;
     private static final long LIVE_SESSION_ID = 9_100_921L;
 
     private static final long INSTRUCTOR_PARTICIPANT_ID = 9_100_930L;
     private static final long STUDENT_PARTICIPANT_ID = 9_100_931L;
+    private static final long SECOND_STUDENT_PARTICIPANT_ID = 9_100_933L;
     private static final long LIVE_INSTRUCTOR_PARTICIPANT_ID = 9_100_932L;
 
     private static final long REPORT_ID = 9_100_940L;
@@ -72,12 +74,14 @@ class InstructorReportApiIntegrationTest {
 
         insertMember(INSTRUCTOR_ID, "박강사");
         insertMember(STUDENT_ID, "김민수");
+        insertMember(SECOND_STUDENT_ID, "이지은");
 
         insertSession(ENDED_SESSION_ID, "끝난 수업", "REP00109", "ENDED", now.minusSeconds(60));
         insertSession(LIVE_SESSION_ID, "진행 중 수업", "REP00110", "LIVE", null);
 
         insertParticipant(INSTRUCTOR_PARTICIPANT_ID, ENDED_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
         insertParticipant(STUDENT_PARTICIPANT_ID, ENDED_SESSION_ID, STUDENT_ID, "STUDENT");
+        insertParticipant(SECOND_STUDENT_PARTICIPANT_ID, ENDED_SESSION_ID, SECOND_STUDENT_ID, "STUDENT");
         insertParticipant(LIVE_INSTRUCTOR_PARTICIPANT_ID, LIVE_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
     }
 
@@ -87,6 +91,8 @@ class InstructorReportApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_tips WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
+        jdbcTemplate.update(
+                "DELETE FROM student_reports WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
@@ -119,18 +125,29 @@ class InstructorReportApiIntegrationTest {
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
-                // 강사는 세지 않는다. 이 세션의 학생은 한 명뿐이다.
-                .andExpect(jsonPath("$.data.stats.studentCount").value(1))
+                // 강사는 세지 않는다. 이 세션의 참가자 셋 중 학생은 둘이다.
+                .andExpect(jsonPath("$.data.stats.studentCount").value(2))
                 .andExpect(jsonPath("$.data.stats.durationSeconds").value(4_440))
                 .andExpect(jsonPath("$.data.stats.alertCount").value(0));
     }
 
-    /**
-     * 질문 수는 112(학생 리포트)의 컬럼이 dev 에 들어와야 채워진다. 그때까지 비어 있고, 화면은 "아직 모름" 으로 다뤄야 한다 — 0 으로 내리면 아무도 질문하지 않은 수업과 구분되지 않는다.
-     */
+    /** 질문 수는 학생 리포트가 굳혀 둔 판정의 합이다. 채팅 행을 세지 않는다 — 공개 채팅에는 "감사합니다" 도 같은 모양으로 들어온다(V15 주석). */
+    @Test
+    void 학생들의_질문_수를_더해_내린다() throws Exception {
+        insertPublishedReport();
+        insertStudentReport(STUDENT_PARTICIPANT_ID, 3);
+        insertStudentReport(SECOND_STUDENT_PARTICIPANT_ID, 5);
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.questionCount").value(8));
+    }
+
+    /** 아무도 질문하지 않은 것과 분석이 값을 내지 못한 것은 화면에서 다르게 보여야 한다. 0 으로 낮추면 둘이 같아진다. */
     @Test
     void 질문_수를_알_수_없으면_0_이_아니라_비운다() throws Exception {
         insertPublishedReport();
+        insertStudentReport(STUDENT_PARTICIPANT_ID, null);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -255,6 +272,21 @@ class InstructorReportApiIntegrationTest {
                 tipType,
                 title,
                 content,
+                utc(now),
+                utc(now));
+    }
+
+    /** 질문 수는 학생 리포트에 저장된 판정이다. {@code null} 은 "분석이 값을 내지 못함" 이며 0 이 아니다. */
+    private void insertStudentReport(long participantId, Integer questionCount) {
+        jdbcTemplate.update(
+                "INSERT INTO student_reports (id, session_id, session_participant_id, participation_summary,"
+                        + " question_count, published_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, '요약', ?, ?, ?, ?)",
+                participantId,
+                ENDED_SESSION_ID,
+                participantId,
+                questionCount,
+                utc(now),
                 utc(now),
                 utc(now));
     }
