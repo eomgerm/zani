@@ -99,7 +99,6 @@ class InstructorReportSecurityTest {
     void cleanUp() {
         jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
-        jdbcTemplate.update("DELETE FROM instructor_report_tips WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", SESSION_ID, OTHER_SESSION_ID);
@@ -203,18 +202,13 @@ class InstructorReportSecurityTest {
                 REPORT_ID,
                 utc(now),
                 utc(now));
+        // 유형 컬럼이 없고 제안이 같은 행에 있다 — 250 이 팁 테이블을 접었다(V20).
         jdbcTemplate.update(
-                "INSERT INTO instructor_report_insights (id, instructor_report_id, insight_type, content,"
+                "INSERT INTO instructor_report_insights (id, instructor_report_id, title, content, suggestion,"
                         + " started_offset_ms, ended_offset_ms, created_at, updated_at)"
-                        + " VALUES (?, ?, 'LOW_FOCUS_SECTION', '예외 처리 구간에서 집중도가 낮았어요.', 4800000, 6000000, ?, ?)",
+                        + " VALUES (?, ?, '어려운 구간 보강', '예외 처리 구간에서 집중도가 낮았어요.',"
+                        + " '추가 예시 코드와 실습 시간을 늘려보세요.', 4800000, 6000000, ?, ?)",
                 REPORT_ID + 2,
-                REPORT_ID,
-                utc(now),
-                utc(now));
-        jdbcTemplate.update(
-                "INSERT INTO instructor_report_tips (id, instructor_report_id, tip_type, title, content,"
-                        + " created_at, updated_at) VALUES (?, ?, 'INTERACTION', '질문 응답 시간 확보', '질문 시간을 확보해보세요.', ?, ?)",
-                REPORT_ID + 3,
                 REPORT_ID,
                 utc(now),
                 utc(now));

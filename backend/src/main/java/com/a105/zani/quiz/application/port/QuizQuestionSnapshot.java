@@ -5,12 +5,15 @@ import java.util.List;
 /**
  * 퀴즈 문항 하나와 보기 전부. 보기는 표시 순서대로다.
  *
+ * @param sectionStartedOffsetMs 문항이 가리키는 개념 구간의 시작 시각(ms). 학생이 그 구간을 다시 보게 만드는 링크의 재생 위치다. 근거 구간을 특정하지 못한 문항은
+ *     {@code null} 이고, 그때는 링크를 만들지 않는다
  * @param selectedOptionId 학생이 제출한 보기 ID. 미제출이면 {@code null}
  */
 public record QuizQuestionSnapshot(
         Long questionId,
         String text,
         String explanation,
+        Long sectionStartedOffsetMs,
         int order,
         List<QuizOptionSnapshot> options,
         Long selectedOptionId) {

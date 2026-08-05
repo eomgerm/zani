@@ -20,5 +20,4 @@ public record GetInstructorReportResult(
         InstructorReportStats stats,
         List<InstructorReportView.ScoreRecord> scores,
         List<InstructorReportView.InsightRecord> insights,
-        List<InstructorReportView.TipRecord> tips,
         List<SessionSectionView> sections) {}

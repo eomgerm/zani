@@ -41,6 +41,9 @@ public class QuizQuestionJpaEntity extends BaseJpaEntity {
     @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
 
+    @Column(name = "section_started_offset_ms")
+    private Long sectionStartedOffsetMs;
+
     @Column(name = "question_order", nullable = false)
     private Integer questionOrder;
 }

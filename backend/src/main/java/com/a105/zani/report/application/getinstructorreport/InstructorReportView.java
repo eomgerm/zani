@@ -6,14 +6,18 @@ import java.util.List;
 /**
  * 저장된 강사 리포트 한 건. 조회 포트가 돌려주는 값이며 엔티티는 이 경계를 넘지 않는다.
  *
+ * <p><b>개선 팁은 더 이상 따로 오지 않는다.</b> 250 이 {@code instructor_report_tips} 를 지우고 제안을 인사이트 안으로 접었다(V20). 화면이 "수업 개선 TIP" 카드와
+ * "인사이트" 카드를 "수업 인사이트" 하나로 합쳤고, 구간 시각은 인사이트에만 있어 그쪽으로 접는 편이 붙일 컬럼이 적었다.
+ *
+ * @param questionCount 모델이 판단한 질문 수. 분석이 값을 내지 못했으면 {@code null} 이며 0 이 아니다
  * @param publishedAt 공개 완료 시각. {@code null} 이면 AI 가 아직 만드는 중이라 화면에 내보내지 않는다
  */
 public record InstructorReportView(
         String overallFeedback,
+        Integer questionCount,
         Instant publishedAt,
         List<ScoreRecord> scores,
-        List<InsightRecord> insights,
-        List<TipRecord> tips) {
+        List<InsightRecord> insights) {
 
     /**
      * 분야별 평가.
@@ -25,13 +29,15 @@ public record InstructorReportView(
     public record ScoreRecord(String evaluationType, int score) {}
 
     /**
-     * 수업 인사이트.
+     * 수업 인사이트 한 장 — 제목·근거·제안·구간.
      *
+     * <p><b>유형이 없다.</b> 250 이 {@code insight_type} 을 지웠다(V20). AI 가 제목을 직접 짓고 화면 아이콘도 하나라, 유형으로 갈라야 할 표시가 없다.
+     *
+     * @param content 그렇게 판단한 근거. 화면의 "관찰" 자리다
+     * @param suggestion AI 가 제시한 개선 제안. 화면의 "TIP" 자리이며 없을 수 있다
      * @param startedOffsetMs 대상 구간 시작(ms). 수업 전체를 가리키면 {@code null}
      * @param endedOffsetMs 대상 구간 종료(ms). 수업 전체를 가리키면 {@code null}
      */
-    public record InsightRecord(String insightType, String content, Long startedOffsetMs, Long endedOffsetMs) {}
-
-    /** 개선 팁. */
-    public record TipRecord(String tipType, String title, String content) {}
+    public record InsightRecord(
+            String title, String content, String suggestion, Long startedOffsetMs, Long endedOffsetMs) {}
 }

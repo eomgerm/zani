@@ -89,7 +89,6 @@ class InstructorReportApiIntegrationTest {
     void cleanUp() {
         jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
-        jdbcTemplate.update("DELETE FROM instructor_report_tips WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
         jdbcTemplate.update(
                 "DELETE FROM student_reports WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
@@ -104,8 +103,7 @@ class InstructorReportApiIntegrationTest {
     void 강사가_자기_수업의_리포트를_받는다() throws Exception {
         insertPublishedReport();
         insertScore("DELIVERY", 88);
-        insertInsight("LOW_FOCUS_SECTION", "예외 처리 구간에서 집중도가 낮았어요.", 4_800_000L, 6_000_000L);
-        insertTip("INTERACTION", "질문 응답 시간 확보", "중간중간 질문 시간을 명시적으로 확보해보세요.");
+        insertInsight("어려운 구간 보강", "예외 처리 구간에서 집중도가 낮았어요.", "추가 예시 코드와 실습 시간을 늘려보세요.", 4_800_000L, 6_000_000L);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -113,9 +111,11 @@ class InstructorReportApiIntegrationTest {
                 .andExpect(jsonPath("$.data.scores[0].evaluationType").value("DELIVERY"))
                 // 0~100 점수다. 퍼센트로 오해하면 화면이 100 을 곱한다.
                 .andExpect(jsonPath("$.data.scores[0].score").value(88))
-                .andExpect(jsonPath("$.data.insights[0].insightType").value("LOW_FOCUS_SECTION"))
-                .andExpect(jsonPath("$.data.insights[0].startedOffsetMs").value(4_800_000L))
-                .andExpect(jsonPath("$.data.tips[0].title").value("질문 응답 시간 확보"));
+                // 250 이 팁 테이블을 지우고 제안을 인사이트 안으로 접었다(V20). 한 장에 제목·근거·제안이 함께 온다.
+                .andExpect(jsonPath("$.data.insights[0].title").value("어려운 구간 보강"))
+                .andExpect(jsonPath("$.data.insights[0].content").value("예외 처리 구간에서 집중도가 낮았어요."))
+                .andExpect(jsonPath("$.data.insights[0].suggestion").value("추가 예시 코드와 실습 시간을 늘려보세요."))
+                .andExpect(jsonPath("$.data.insights[0].startedOffsetMs").value(4_800_000L));
     }
 
     /** 한눈에 보기 타일이 쓰는 값이다. 집중 구간 비율은 여기 없다 — 집중 흐름 응답에서 화면이 계산한다. */
@@ -131,34 +131,46 @@ class InstructorReportApiIntegrationTest {
                 .andExpect(jsonPath("$.data.stats.alertCount").value(0));
     }
 
-    /** 질문 수는 학생 리포트가 굳혀 둔 판정의 합이다. 채팅 행을 세지 않는다 — 공개 채팅에는 "감사합니다" 도 같은 모양으로 들어온다(V15 주석). */
+    /**
+     * 질문 수는 AI 가 판단해 리포트 행에 굳혀 둔 값이다(V19).
+     *
+     * <p>채팅 행을 세지 않는다 — 공개 채팅에는 "감사합니다" 도 같은 모양으로 들어오고, 물음표만 찾으면 "이 부분 다시 설명해주실 수 있나요" 를 놓친다. 조회할 때마다 다시 세지도 않는다. 같은
+     * 채팅을 다시 세면 모델이 다르게 판단할 수 있고, 그러면 강사가 어제 본 숫자와 오늘 본 숫자가 달라진다.
+     */
     @Test
-    void 학생들의_질문_수를_더해_내린다() throws Exception {
-        insertPublishedReport();
-        insertStudentReport(STUDENT_PARTICIPANT_ID, 3);
-        insertStudentReport(SECOND_STUDENT_PARTICIPANT_ID, 5);
+    void 질문_수를_저장된_판정_그대로_내린다() throws Exception {
+        insertReport(now, 184);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.stats.questionCount").value(8));
+                .andExpect(jsonPath("$.data.stats.questionCount").value(184));
     }
 
     /** 아무도 질문하지 않은 것과 분석이 값을 내지 못한 것은 화면에서 다르게 보여야 한다. 0 으로 낮추면 둘이 같아진다. */
     @Test
     void 질문_수를_알_수_없으면_0_이_아니라_비운다() throws Exception {
-        insertPublishedReport();
-        insertStudentReport(STUDENT_PARTICIPANT_ID, null);
+        insertReport(now, null);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.stats.questionCount").value((Object) null));
     }
 
+    /** 위와 갈려야 하는 값이다. 둘 다 비어 오면 화면이 두 사실을 구분할 수 없다. */
+    @Test
+    void 질문이_정말_0_건이면_0_을_지킨다() throws Exception {
+        insertReport(now, 0);
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.questionCount").value(0));
+    }
+
     /** 수업 전체를 가리키는 인사이트다. 화면이 구간 배지를 붙일지 말지가 이 값으로 갈린다. */
     @Test
     void 구간이_없는_인사이트는_시각이_비어_온다() throws Exception {
         insertPublishedReport();
-        insertInsight("OVERALL", "전반적으로 설명 순서가 자연스러웠어요.", null, null);
+        insertInsight("전체 흐름", "전반적으로 설명 순서가 자연스러웠어요.", null, null, null);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -226,12 +238,19 @@ class InstructorReportApiIntegrationTest {
     }
 
     private void insertReport(Instant publishedAt) {
+        insertReport(publishedAt, null);
+    }
+
+    /** {@code questionCount} 의 {@code null} 은 "분석이 값을 내지 못함" 이며 0 이 아니다. */
+    private void insertReport(Instant publishedAt, Integer questionCount) {
+        jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
         jdbcTemplate.update(
-                "INSERT INTO instructor_reports (id, session_id, overall_feedback, published_at, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO instructor_reports (id, session_id, overall_feedback, question_count, published_at,"
+                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 REPORT_ID,
                 ENDED_SESSION_ID,
                 "전반적으로 흐름이 좋았습니다.",
+                questionCount,
                 publishedAt == null ? null : utc(publishedAt),
                 utc(now),
                 utc(now));
@@ -249,29 +268,20 @@ class InstructorReportApiIntegrationTest {
                 utc(now));
     }
 
-    private void insertInsight(String insightType, String content, Long startedOffsetMs, Long endedOffsetMs) {
+    /** 유형 컬럼이 없다 — 250 이 지웠다(V20). AI 가 제목을 직접 짓고 제안까지 한 행에 담는다. */
+    private void insertInsight(
+            String title, String content, String suggestion, Long startedOffsetMs, Long endedOffsetMs) {
         jdbcTemplate.update(
-                "INSERT INTO instructor_report_insights (id, instructor_report_id, insight_type, content,"
-                        + " started_offset_ms, ended_offset_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO instructor_report_insights (id, instructor_report_id, title, content, suggestion,"
+                        + " started_offset_ms, ended_offset_ms, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 REPORT_ID + 2,
                 REPORT_ID,
-                insightType,
-                content,
-                startedOffsetMs,
-                endedOffsetMs,
-                utc(now),
-                utc(now));
-    }
-
-    private void insertTip(String tipType, String title, String content) {
-        jdbcTemplate.update(
-                "INSERT INTO instructor_report_tips (id, instructor_report_id, tip_type, title, content,"
-                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                REPORT_ID + 3,
-                REPORT_ID,
-                tipType,
                 title,
                 content,
+                suggestion,
+                startedOffsetMs,
+                endedOffsetMs,
                 utc(now),
                 utc(now));
     }

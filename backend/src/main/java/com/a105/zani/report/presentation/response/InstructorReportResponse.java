@@ -30,8 +30,6 @@ public record InstructorReportResponse(
         @Schema(description = "수업 인사이트. 구간이 이른 것부터이고, 수업 전체를 가리키는 항목이 앞에 온다.")
         List<Insight> insights,
 
-        @Schema(description = "개선 팁") List<Tip> tips,
-
         @Schema(description = "수업 내용 구간. 내용 타임라인이 아직 없는 세션은 빈 배열이며 오류가 아니다.")
         List<Section> sections) {
 
@@ -63,28 +61,22 @@ public record InstructorReportResponse(
             @Schema(description = "0~100. 퍼센트가 아니라 점수다.", example = "88")
             int score) {}
 
-    @Schema(description = "수업 인사이트 한 항목")
+    @Schema(description = "수업 인사이트 한 항목. 제목·근거·제안·구간이 한 장을 이룬다.")
     public record Insight(
-            @Schema(description = "AI 가 정한 인사이트 유형", example = "LOW_FOCUS_SECTION")
-            String insightType,
+            @Schema(description = "AI 가 직접 지은 제목. 유형 목록이 없다.", example = "어려운 구간 보강")
+            String title,
 
-            @Schema(description = "인사이트 내용") String content,
+            @Schema(description = "그렇게 판단한 근거(화면의 \"관찰\" 자리)")
+            String content,
+
+            @Schema(description = "AI 가 제시한 개선 제안(화면의 \"TIP\" 자리). 없을 수 있다.", example = "추가 예시 코드와 실습 시간을 늘려보세요.")
+            String suggestion,
 
             @Schema(description = "대상 구간 시작(ms). 수업 전체를 가리키면 null.", example = "4800000")
             Long startedOffsetMs,
 
             @Schema(description = "대상 구간 종료(ms). 수업 전체를 가리키면 null.", example = "6000000")
             Long endedOffsetMs) {}
-
-    @Schema(description = "개선 팁 한 항목")
-    public record Tip(
-            @Schema(description = "AI 가 정한 팁 유형", example = "INTERACTION")
-            String tipType,
-
-            @Schema(description = "팁 제목", example = "질문 응답 시간 확보")
-            String title,
-
-            @Schema(description = "팁 내용") String content) {}
 
     @Schema(description = "수업 내용 구간 하나")
     public record Section(
@@ -109,7 +101,6 @@ public record InstructorReportResponse(
                 result.insights().stream()
                         .map(InstructorReportResponse::toInsight)
                         .toList(),
-                result.tips().stream().map(InstructorReportResponse::toTip).toList(),
                 result.sections().stream()
                         .map(InstructorReportResponse::toSection)
                         .toList());
@@ -121,11 +112,11 @@ public record InstructorReportResponse(
 
     private static Insight toInsight(InstructorReportView.InsightRecord insight) {
         return new Insight(
-                insight.insightType(), insight.content(), insight.startedOffsetMs(), insight.endedOffsetMs());
-    }
-
-    private static Tip toTip(InstructorReportView.TipRecord tip) {
-        return new Tip(tip.tipType(), tip.title(), tip.content());
+                insight.title(),
+                insight.content(),
+                insight.suggestion(),
+                insight.startedOffsetMs(),
+                insight.endedOffsetMs());
     }
 
     private static Section toSection(SessionSectionView section) {

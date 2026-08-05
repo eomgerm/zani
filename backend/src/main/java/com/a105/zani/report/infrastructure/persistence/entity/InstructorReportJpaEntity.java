@@ -40,6 +40,9 @@ public class InstructorReportJpaEntity extends BaseJpaEntity {
     @Column(name = "overall_feedback", nullable = false, columnDefinition = "TEXT")
     private String overallFeedback;
 
+    @Column(name = "question_count")
+    private Integer questionCount;
+
     @Column(name = "published_at", columnDefinition = "DATETIME(6)")
     private Instant publishedAt;
 }
