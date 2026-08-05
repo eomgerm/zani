@@ -23,4 +23,13 @@ if [ -z "$GMS_API_KEY" ]; then
 fi
 export DB_PASSWORD REDIS_PASSWORD JWT_SECRET LIVEKIT_API_KEY LIVEKIT_API_SECRET GMS_API_KEY
 
+if [ "${NOTIFICATION_EMAIL_ENABLED:-false}" = "true" ]; then
+  SPRING_MAIL_PASSWORD="$(read_secret /run/secrets/smtp_password)"
+  if [ -z "$SPRING_MAIL_PASSWORD" ]; then
+    echo "Required secret is empty: /run/secrets/smtp_password" >&2
+    exit 1
+  fi
+  export SPRING_MAIL_PASSWORD
+fi
+
 exec gosu zani:zani java -jar /app/app.jar
