@@ -161,7 +161,13 @@ public record GroupAttentionTimelineResponse(
         }
     }
 
-    /** 수업 내용 구간 하나. 10분 같은 고정 길이가 아니라 248 이 찾아낸 실제 경계다. */
+    /**
+     * 수업 내용 구간 하나. 10분 같은 고정 길이가 아니라 248 이 찾아낸 실제 경계다.
+     *
+     * <p><b>{@code summary} 는 수업 내용이라 익명 응답에 담아도 된다.</b> 학생별 값이 아니라 세션 하나의 산출물이며(248), 강사 자신의 수업을 요약한 문장이다. 학생 응답
+     * ({@code MyAttentionTimelineResponse})이 같은 값을 같은 이름으로 싣고, 수업 요약 카드(314)도 강사에게 같은 요약을 보여준다 — 한쪽에서 보여주고 다른 쪽에서 감추면
+     * 같은 화면에서 두 문장이 다른 말을 하는 것처럼 읽힌다.
+     */
     @Schema(name = "GroupSectionFocus", description = "수업 내용 구간별 집중 흐름 평균")
     public record Section(
             @Schema(description = "구간 시작 초", example = "0") long startSeconds,
@@ -173,13 +179,24 @@ public record GroupAttentionTimelineResponse(
             String title,
 
             @Schema(
+                    description = "구간 요약. 분석 전이거나 요약이 없으면 null 이며 빈 문자열이 아니다.",
+                    example = "정의역과 공역을 설명한 구간",
+                    nullable = true)
+            String summary,
+
+            @Schema(
                     description = "구간 안 30초 칸 값들의 단순 평균(1.00~4.00). 값이 하나도 없으면 null.",
                     example = "3.21",
                     nullable = true)
             Double focusLevel) {
 
         private static Section from(SectionFocusAverage average) {
-            return new Section(average.startSeconds(), average.endSeconds(), average.title(), average.focusLevel());
+            return new Section(
+                    average.startSeconds(),
+                    average.endSeconds(),
+                    average.title(),
+                    average.summary(),
+                    average.focusLevel());
         }
     }
 
