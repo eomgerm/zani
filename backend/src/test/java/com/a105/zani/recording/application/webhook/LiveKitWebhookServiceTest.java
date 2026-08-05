@@ -28,6 +28,9 @@ import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
 import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionCommand;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareCommand;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareResult;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -197,6 +200,7 @@ class LiveKitWebhookServiceTest {
                 },
                 eventStore,
                 egressUseCase,
+                screenShareEnforcement,
                 confirmedConnections::add,
                 recordingRepository,
                 fileRepository,
@@ -205,6 +209,16 @@ class LiveKitWebhookServiceTest {
                 audioStreamRegistry,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
+
+    /** 단일성 판정 결과. 세션당 하나 규칙 자체는 {@code ScreenShareServiceTest} 가 검증하고, 여기서는 판정에 대한 webhook 의 반응만 본다. */
+    private EnforceSingleScreenShareResult nextScreenShareVerdict = EnforceSingleScreenShareResult.ACTIVE;
+
+    private final List<EnforceSingleScreenShareCommand> screenShareChecks = new ArrayList<>();
+
+    private final EnforceSingleScreenShareUseCase screenShareEnforcement = command -> {
+        screenShareChecks.add(command);
+        return nextScreenShareVerdict;
+    };
 
     /** 코칭용 스트림 Egress 표시. 테스트가 직접 등록해 webhook 분기를 검증한다. */
     private final java.util.Set<String> audioStreamEgressIds = new java.util.HashSet<>();
@@ -279,6 +293,46 @@ class LiveKitWebhookServiceTest {
         service.process("{}", "ok");
         service.process("{}", "ok");
 
+        assertEquals(1, egressRequests.size());
+    }
+
+    @Test
+    void 밀려난_화면_공유는_Egress를_요청하지_않는다() {
+        addParticipant(1L, SessionParticipantRole.INSTRUCTOR);
+        addParticipant(2L, SessionParticipantRole.STUDENT);
+        nextScreenShareVerdict = EnforceSingleScreenShareResult.REJECTED;
+        nextEvent = trackPublished("EV_S1", "p-2", "TR_s", TrackSource.SCREEN_SHARE);
+
+        service.process("{}", "ok");
+
+        // 겹친 화면 공유 구간이 manifest 에 들어가면 최종 병합 워커가 그 녹화 전체를 거부한다.
+        assertTrue(egressRequests.isEmpty());
+        assertEquals(1, screenShareChecks.size());
+        assertEquals(2L, screenShareChecks.get(0).participantId());
+        // 판정에 실패한 것이 아니라 처리를 마친 것이므로 재전송을 부르지 않는다.
+        assertTrue(processedEvents.contains("EV_S1"));
+    }
+
+    @Test
+    void 활성_공유자의_화면은_Egress를_요청한다() {
+        addParticipant(1L, SessionParticipantRole.INSTRUCTOR);
+        nextEvent = trackPublished("EV_S2", "p-1", "TR_s", TrackSource.SCREEN_SHARE);
+
+        service.process("{}", "ok");
+
+        assertEquals(1, egressRequests.size());
+        assertEquals(TrackSource.SCREEN_SHARE, egressRequests.get(0).source());
+    }
+
+    @Test
+    void 화면_공유가_아닌_트랙은_단일성_판정을_거치지_않는다() {
+        addParticipant(1L, SessionParticipantRole.INSTRUCTOR);
+        nextEvent = trackPublished("EV_S3", "p-1", "TR_c", TrackSource.CAMERA);
+
+        service.process("{}", "ok");
+
+        // 마이크·카메라까지 슬롯을 건드리면 카메라를 켠 사람이 공유자가 된다.
+        assertTrue(screenShareChecks.isEmpty());
         assertEquals(1, egressRequests.size());
     }
 

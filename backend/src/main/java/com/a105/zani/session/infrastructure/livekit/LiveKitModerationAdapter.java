@@ -14,10 +14,11 @@ import com.a105.zani.session.application.port.MediaMuteChange;
 import com.a105.zani.session.application.port.MediaRoomPort;
 
 /**
- * LiveKit RoomService 로 참가자의 마이크 트랙을 끈다.
+ * LiveKit RoomService 로 참가자의 마이크·화면 공유 트랙을 끈다.
  *
- * <p><b>참가자 단위가 아니라 트랙 단위로 끈다.</b> LiveKit 이 제공하는 것이 {@code mutePublishedTrack} 뿐이라, 먼저 참가자의 트랙 목록에서 마이크를 찾아야 한다. 화면 공유
- * 오디오({@code SCREEN_SHARE_AUDIO})는 건드리지 않는다 — 발표 중인 학생의 화면 소리까지 끄는 것은 "강제 음소거" 가 약속한 범위를 넘는다.
+ * <p><b>참가자 단위가 아니라 트랙 단위로 끈다.</b> LiveKit 이 제공하는 것이 {@code mutePublishedTrack} 뿐이라, 먼저 참가자의 트랙 목록에서 대상 source 를 찾아야
+ * 한다. 찾는 것은 정확히 하나의 source 뿐이라 화면 오디오({@code SCREEN_SHARE_AUDIO})는 어느 호출에서도 대상이 되지 않는다 — 마이크를 끄면서 발표 중인 학생의 화면 소리까지 끄는
+ * 것은 "강제 음소거" 가 약속한 범위를 넘고, 화면 공유 단일성 강제는 영상만 멈추면 성립한다.
  *
  * <p><b>실패는 감추지 않는다.</b> 못 껐는데 성공으로 돌려주면 호출한 쪽이 전 참가자에게 음소거됐다고 알리고, 화면에는 음소거인데 실제로는 소리가 나가는 상태가 된다. 소리는 손들기와 달리 어긋난 것을
  * 눈으로 확인할 수도 없다.
@@ -43,6 +44,15 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
 
     @Override
     public MediaMuteChange muteMicrophone(long sessionId, String identity) {
+        return mute(sessionId, identity, LivekitModels.TrackSource.MICROPHONE);
+    }
+
+    @Override
+    public MediaMuteChange muteScreenShare(long sessionId, String identity) {
+        return mute(sessionId, identity, LivekitModels.TrackSource.SCREEN_SHARE);
+    }
+
+    private MediaMuteChange mute(long sessionId, String identity, LivekitModels.TrackSource source) {
         String roomName = mediaRoomPort.roomName(sessionId);
         try {
             Response<LivekitModels.ParticipantInfo> found =
@@ -67,22 +77,22 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
 
             LivekitModels.ParticipantInfo participant = found.body();
             if (participant == null) {
-                // 2xx 인데 본문이 없다. 마이크가 켜져 있는지조차 확인하지 못했으므로 성공으로 볼 수 없다.
-                log.warn("LiveKit 참가자 조회 응답이 비어 있습니다. sessionId={}", sessionId);
+                // 2xx 인데 본문이 없다. 그 트랙이 켜져 있는지조차 확인하지 못했으므로 성공으로 볼 수 없다.
+                log.warn("LiveKit 참가자 조회 응답이 비어 있습니다. sessionId={} source={}", sessionId, source);
                 return MediaMuteChange.UNAVAILABLE;
             }
 
-            LivekitModels.TrackInfo microphone = microphoneTrackOf(participant);
-            if (microphone == null) {
-                // 이쪽은 위와 달리 분명하다 — 참가자는 있는데 마이크를 켠 적이 없다.
+            LivekitModels.TrackInfo target = trackOf(participant, source);
+            if (target == null) {
+                // 이쪽은 위와 달리 분명하다 — 참가자는 있는데 그 트랙을 켠 적이 없다.
                 return MediaMuteChange.NO_ACTIVE_TRACK;
             }
-            if (microphone.getMuted()) {
+            if (target.getMuted()) {
                 return MediaMuteChange.UNCHANGED;
             }
 
             Response<LivekitModels.TrackInfo> muted = roomServiceClient
-                    .mutePublishedTrack(roomName, identity, microphone.getSid(), true)
+                    .mutePublishedTrack(roomName, identity, target.getSid(), true)
                     .execute();
             if (!muted.isSuccessful()) {
                 log.warn("LiveKit 이 음소거를 거절했습니다. sessionId={} code={}", sessionId, muted.code());
@@ -96,14 +106,16 @@ public class LiveKitModerationAdapter implements MediaModerationPort {
     }
 
     /**
-     * 마이크 트랙 하나. 카메라·화면 공유는 대상이 아니다.
+     * 요청한 source 의 트랙 하나. 다른 source 는 대상이 아니다.
      *
-     * <p>{@code SCREEN_SHARE_AUDIO} 를 제외하는 것이 중요하다 — 그것까지 끄면 화면을 공유 중인 학생의 발표 소리가 함께 사라진다.
+     * <p>정확히 일치하는 것만 찾는 것이 중요하다 — 마이크를 끄면서 {@code SCREEN_SHARE_AUDIO} 까지 끄면 화면을 공유 중인 학생의 발표 소리가 함께 사라지고, 화면 공유를 멈추면서
+     * 마이크까지 끄면 밀려난 사람이 말도 못 하게 된다.
      */
-    private static LivekitModels.TrackInfo microphoneTrackOf(LivekitModels.ParticipantInfo participant) {
+    private static LivekitModels.TrackInfo trackOf(
+            LivekitModels.ParticipantInfo participant, LivekitModels.TrackSource source) {
         List<LivekitModels.TrackInfo> tracks = participant.getTracksList();
         for (LivekitModels.TrackInfo track : tracks) {
-            if (track.getSource() == LivekitModels.TrackSource.MICROPHONE) {
+            if (track.getSource() == source) {
                 return track;
             }
         }
