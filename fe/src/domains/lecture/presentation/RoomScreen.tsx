@@ -51,7 +51,12 @@ import { SessionPresenceNotice } from "./components/room/SessionPresenceNotice";
 import { AttentionCameraSource } from "./components/room/AttentionCameraSource";
 import { AnalysisStatusNotice } from "./components/room/AnalysisStatusNotice";
 import { CoachingStatusNotice } from "./components/room/CoachingStatusNotice";
-import { CoachTipCard } from "./components/room/CoachTipCard";
+import {
+  CoachTipCard,
+  COACH_TIP_PIP_PLACEMENT,
+  COACH_TIP_SHARE_PLACEMENT,
+  COACH_TIP_STAGE_PLACEMENT,
+} from "./components/room/CoachTipCard";
 import { useCoachingStatus } from "./useCoachingStatus";
 import { useCoachTipCard } from "./useCoachTipCard";
 import { useDocumentPictureInPicture } from "./useDocumentPictureInPicture";
@@ -666,6 +671,15 @@ function RoomScreenContent({
                           <CloseIcon />
                         </button>
                       </div>
+                      {/* 수업 팁(강사). 공유 중에는 메인 창이 가려져 여기가 강사가 보는 유일한 표면이다.
+                          토스트와 달리 저절로 사라지지 않는다 — 강사가 읽고 닫아야 하는 카드다(299). */}
+                      {isConfirmedInstructor && coachTip.tip !== null && (
+                        <CoachTipCard
+                          tip={coachTip.tip}
+                          onDismiss={coachTip.dismiss}
+                          className={COACH_TIP_PIP_PLACEMENT}
+                        />
+                      )}
                       {/* 공유 중 놓치기 쉬운 손들기·채팅 알림. 최신 한 건만 컨트롤 위에 겹쳐 그리고
                           (key 로 리마운트해 등장 애니메이션을 다시 튼다), 클릭은 통과시켜 조작을 막지 않는다. */}
                       {pipToast && (
@@ -765,8 +779,17 @@ function RoomScreenContent({
               여기 있던 프로토타입 카드는 "학생 30%에게서 신호가 나타났어요" 라는 고정 문구라
               실제 집계와 무관했다(86).
             */}
-            {isConfirmedInstructor && coachTip.tip !== null && (
-              <CoachTipCard tip={coachTip.tip} onDismiss={coachTip.dismiss} />
+            {/*
+              미니 창이 떠 있으면 그쪽에만 그린다(아래 portal). 그 창이 열렸다는 것은 메인 창이
+              공유 자료 뒤로 가려졌다는 뜻이고, 닫아야 사라지는 카드를 두 곳에 띄우면 강사가
+              어느 쪽을 닫아야 하는지 알 수 없다.
+            */}
+            {isConfirmedInstructor && coachTip.tip !== null && pipWindow === null && (
+              <CoachTipCard
+                tip={coachTip.tip}
+                onDismiss={coachTip.dismiss}
+                className={shareActive ? COACH_TIP_SHARE_PLACEMENT : COACH_TIP_STAGE_PLACEMENT}
+              />
             )}
 
             {/* 플로팅 반응 */}

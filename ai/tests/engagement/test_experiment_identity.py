@@ -40,6 +40,7 @@ from zani_ai.engagement.experiment import (
     E0K_SPEC,
     E0L_SPEC,
     E0M_SPEC,
+    E0N_SPEC,
     E1_SPEC,
     E1A_SPEC,
     E1B_SPEC,
@@ -101,6 +102,11 @@ BASELINE_HASHES: dict[tuple[str, str], str] = {
     # relaxing a budget is a new protocol rather than an edit to this one.
     ("E0-M", "cpu"): "e97224c25b3c8c181f0705551a4aea2b22cf2c0deacd8892798ce765b0041e3e",
     ("E0-M", "cuda"): "03a82ac7eaf05d46a9af018ae9eb468d8edc69e9f3df7c0bb2470553cc3dd03e",
+    # E0-N is new in S15P11A105-298. Its `augmentation` block covers the method
+    # list, both strengths and the application rate, so raising the rate or
+    # widening `scales` is a new protocol rather than an edit to this one.
+    ("E0-N", "cpu"): "edabb3e6f2c916af05ac2eaf3562b4d23666caa89b29cea4ac8e118fc47f2197",
+    ("E0-N", "cuda"): "d62ec420e43bb2a86e59445654862433451fdfc13af6fe2138a16a96ff9fbbbc",
     ("E1", "cpu"): "9c6fb102d0b600d04dbd3c6b569a6f06248e5ae35efe603979401e8a4617e13d",
     ("E1", "cuda"): "69a87549d00a41de01eab8d94e97af40b2c6baed5012ecb9350438cd233c989e",
     ("E1-A", "cpu"): "d0419e9b8063ef40b3fd97c15fdf62865bdf7457cc141eb82bde96c0bd31e59e",
@@ -126,6 +132,7 @@ SPECS_TUPLE: tuple[ExperimentSpec, ...] = (
     E0K_SPEC,
     E0L_SPEC,
     E0M_SPEC,
+    E0N_SPEC,
     E0_10_SPEC,
     E1_SPEC,
     E1A_SPEC,
@@ -196,7 +203,7 @@ def test_completed_protocols_stay_pinned_to_the_five_seed_identity(spec: Experim
     S15P11A105-288, and E0-M from S15P11A105-289, which is compared against
     E0-10 and therefore has to be measured at the same ten seeds.
     """
-    ten_seed_protocols = {"E0-10", "E0-M", "E1-P"}
+    ten_seed_protocols = {"E0-10", "E0-M", "E0-N", "E1-P"}
     expected = CANDIDATE_SEEDS if spec.protocol in ten_seed_protocols else E0_SEEDS
 
     assert spec.seeds == expected
@@ -495,6 +502,50 @@ def test_e0m_identity_covers_the_mixing_grid_and_its_selection_rule() -> None:
     assert {key: value for key, value in model.items() if key != "head"} == {
         key: value for key, value in cast(dict[str, object], base["model"]).items()
     }
+
+
+def test_e0n_identity_is_e0_10_plus_the_augmentation_block() -> None:
+    """Augmentation must be the *only* thing that moved against the baseline.
+
+    E0-C..E0-M each isolated one variable; if the schedule or the head drifted
+    here as well, a gain could not be attributed to the regularization axis this
+    protocol was opened to test.
+    """
+    base = _build_configuration(E0_10_SPEC, "cuda")
+
+    variant = _build_configuration(E0N_SPEC, "cuda")
+
+    differing = {key for key in base | variant if base.get(key) != variant.get(key)}
+    assert differing == {"augmentation"}
+    block = cast(dict[str, object], variant["augmentation"])
+    # The survey's top-ranked pair and nothing else: rotation, permutation and
+    # time warping measured as harmful there and break this domain's channels.
+    assert block["methods"] == ["window_warping", "window_slicing"]
+    # 0.8 reproduces the survey's 1:4 original-to-augmented ratio; the reference
+    # `window_ratio` 0.1 would warp two of our twenty steps, so it is 0.25 here.
+    assert block["probability"] == 0.8
+    assert block["window_ratio"] == 0.25
+    assert block["scales"] == [0.5, 2.0]
+    assert block["reduce_ratio"] == 0.9
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"probability": 0.5},
+        {"window_ratio": 0.1},
+        {"scales": (0.5, 1.5, 2.0)},
+        {"reduce_ratio": 0.8},
+        {"methods": ("window_warping",)},
+    ],
+)
+def test_any_augmentation_change_is_a_different_protocol(change: dict[str, object]) -> None:
+    """Strength and rate decide the distribution, so both are identity."""
+    from zani_ai.engagement.augmentation import AugmentationProtocol
+
+    varied = replace(E0N_SPEC, augmentation=replace(AugmentationProtocol(), **change))
+
+    assert _canonical_hash(_build_configuration(varied, "cpu")) != BASELINE_HASHES[("E0-N", "cpu")]
 
 
 def test_a_widened_mixing_grid_is_a_different_protocol() -> None:

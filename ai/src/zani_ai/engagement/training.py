@@ -22,6 +22,7 @@ from sklearn.metrics import (
 from torch import Tensor, nn
 from torch.utils.data import DataLoader, Dataset, Subset, WeightedRandomSampler
 
+from zani_ai.engagement.augmentation import AugmentationProtocol
 from zani_ai.engagement.contracts import (
     CLASS_WEIGHTING_SCHEMES,
     LABELS,
@@ -66,6 +67,8 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
         token_feature_count: int = TOKEN_FEATURE_COUNT,
         array_key: str = "tokens",
         array_shape: tuple[int, ...] | None = None,
+        augmentation: AugmentationProtocol | None = None,
+        augmentation_seed: int = 0,
     ) -> None:
         if not entries:
             raise ValueError("feature split is empty")
@@ -78,6 +81,15 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
         # reused across epochs, so training is not bottlenecked on per-epoch npz I/O (keeps the
         # GPU fed). Returns the identical tensor data, so results/determinism are unchanged.
         self._feature_cache: list[Tensor | None] = [None] * len(entries)
+        # Set on the training split only -- see `_load_feature_datasets`. Leaving it
+        # `None` on Validation and Test is what keeps the distribution the metrics
+        # are measured on identical to every other protocol's.
+        self.augmentation = augmentation
+        # A dedicated stream, not numpy's global one: with `num_workers=0` and the
+        # loader's own seeded generator deciding the visiting order, the draws below
+        # replay exactly under a rerun of the same seed, and nothing else in the
+        # process can consume from it and shift them.
+        self._rng = np.random.default_rng(augmentation_seed)
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -92,7 +104,13 @@ class CachedFeatureDataset(Dataset[tuple[Tensor, Tensor]]):
                 raise ValueError(f"invalid cached {self.array_key}: {entry.feature_path}")
             cached = torch.from_numpy(array)
             self._feature_cache[index] = cached
-        return cached, torch.tensor(entry.label_index, dtype=torch.long)
+        label = torch.tensor(entry.label_index, dtype=torch.long)
+        if self.augmentation is None:
+            return cached, label
+        # `apply` returns a fresh array whenever it changes anything, so the
+        # cached tensor above is never written through.
+        augmented = self.augmentation.apply(cached.numpy(), self._rng)
+        return torch.from_numpy(np.ascontiguousarray(augmented)), label
 
     def token_arrays(self) -> Iterator[NDArray[np.float32]]:
         for entry in self.entries:
@@ -129,6 +147,10 @@ class TrainingConfig:
     # head has no class-probability target to soften.
     target_encoding: str = "one_hot"
     sord_alpha: float = 2.0
+    # E0-N time-window augmentation. Applied to the training split only, so
+    # Validation and Test keep the distribution every other protocol measured on.
+    # `None` for every earlier protocol, which is what keeps their identity.
+    augmentation: AugmentationProtocol | None = None
     num_workers: int = 0
     deterministic: bool = False
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -285,6 +307,8 @@ def _load_feature_datasets(
     expected_schema: str = SCHEMA_NAME,
     array_key: str = "tokens",
     array_shape: tuple[int, ...] | None = None,
+    train_augmentation: AugmentationProtocol | None = None,
+    augmentation_seed: int = 0,
 ) -> FeatureDatasets:
     manifest_path = root / "manifest.json"
     if not manifest_path.is_file():
@@ -329,6 +353,8 @@ def _load_feature_datasets(
             token_feature_count=token_feature_count,
             array_key=array_key,
             array_shape=array_shape,
+            augmentation=train_augmentation,
+            augmentation_seed=augmentation_seed,
         ),
         CachedFeatureDataset(
             tuple(grouped["valid"]),
@@ -713,13 +739,49 @@ def _train_epoch(
     optimizer: torch.optim.Optimizer,
     objective: Objective,
     device: torch.device,
-) -> None:
+) -> float:
+    """Train one epoch and return its sample-weighted mean loss.
+
+    The average is taken *while* the weights move, which is what a training
+    curve means everywhere; it is not the loss of the end-of-epoch weights on
+    the training split. Read against `_split_loss` on Validation it answers the
+    question this protocol exists for -- whether the gap widens after the peak.
+    """
     model.train()
+    total = 0.0
+    samples = 0
     for tokens, labels in loader:
         optimizer.zero_grad(set_to_none=True)
         loss = objective.loss(model(tokens.to(device)), labels.to(device))
         loss.backward()
         optimizer.step()
+        total += float(loss.item()) * labels.size(0)
+        samples += labels.size(0)
+    return total / samples
+
+
+def _split_loss(
+    model: nn.Module,
+    loader: DataLoader[tuple[Tensor, Tensor]],
+    objective: Objective,
+    device: torch.device,
+) -> float:
+    """Mean loss of the current weights over ``loader``, under ``objective``.
+
+    A second pass over Validation rather than a value folded out of
+    `evaluate_model`: Validation is roughly a seventh of Train, so the cost is
+    noise, and `EvaluationMetrics` stays the shape every completed run's
+    `metrics.json` and checkpoint already has.
+    """
+    model.eval()
+    total = 0.0
+    samples = 0
+    with torch.inference_mode():
+        for tokens, labels in loader:
+            loss = objective.loss(model(tokens.to(device)), labels.to(device))
+            total += float(loss.item()) * labels.size(0)
+            samples += labels.size(0)
+    return total / samples
 
 
 def _train_curriculum_epoch(
@@ -728,13 +790,18 @@ def _train_curriculum_epoch(
     optimizer: torch.optim.Optimizer,
     objective: AdjacentSmoothingObjective,
     device: torch.device,
-) -> None:
+) -> float:
     model.train()
+    total = 0.0
+    samples = 0
     for tokens, labels, ambiguous in loader:
         optimizer.zero_grad(set_to_none=True)
         loss = objective.loss(model(tokens.to(device)), labels.to(device), ambiguous.to(device))
         loss.backward()  # type: ignore[no-untyped-call]
         optimizer.step()
+        total += float(loss.item()) * labels.size(0)
+        samples += labels.size(0)
+    return total / samples
 
 
 def _manifest_sha256(path: Path) -> str:
@@ -1296,6 +1363,8 @@ def train_model(
         expected_schema=manifest_schema_name,
         array_key=config.array_key,
         array_shape=config.array_shape,
+        train_augmentation=config.augmentation,
+        augmentation_seed=config.seed,
     )
     curriculum_ambiguity = _load_curriculum_ambiguity(config, manifest_path, datasets)
     config.output_dir.mkdir(parents=True, exist_ok=True)
@@ -1365,24 +1434,43 @@ def train_model(
     # verified from the artifact rather than assumed from the configuration.
     validation_history: list[dict[str, object]] = []
 
-    def history_entry(epoch: int, validation: EvaluationMetrics) -> dict[str, object]:
+    def history_entry(
+        epoch: int,
+        validation: EvaluationMetrics,
+        *,
+        train_loss: float,
+        validation_loss: float | None,
+    ) -> dict[str, object]:
         return {
             "epoch": epoch,
             "accuracy": validation.accuracy,
             "macro_f1": validation.macro_f1,
             "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
             "learning_rate": optimizer.param_groups[0]["lr"],
+            "train_loss": train_loss,
+            # `None`, never 0.0, when the epoch's training objective is not the
+            # one Validation can be scored under -- see the curriculum branch,
+            # whose two stages fit different targets. The distinction is the
+            # point: a missing measurement and a zero loss read alike otherwise.
+            "validation_loss": validation_loss,
         }
 
     if curriculum_ambiguity is None:
         train_loader = _loader(datasets.train, config, shuffle=True)
         valid_loader = _loader(datasets.valid, config, shuffle=False)
         for epoch in range(config.max_epochs):
-            _train_epoch(model, train_loader, optimizer, objective, device)
+            train_loss = _train_epoch(model, train_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
             # Before `scheduler.step()`: the entry has to name the rate this
             # epoch trained at, not the one the next epoch will use.
-            validation_history.append(history_entry(epoch, validation))
+            validation_history.append(
+                history_entry(
+                    epoch,
+                    validation,
+                    train_loss=train_loss,
+                    validation_loss=_split_loss(model, valid_loader, objective, device),
+                )
+            )
             if progress is not None:
                 progress(epoch, validation, stale_epochs)
             if scheduler is not None:
@@ -1422,10 +1510,18 @@ def train_model(
             num_classes=len(LABELS), neighbor_mass=config.ambiguous_neighbor_mass
         )
         for epoch in range(config.reliable_warmup_epochs):
-            _train_epoch(model, warmup_loader, optimizer, objective, device)
+            train_loss = _train_epoch(model, warmup_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {**history_entry(epoch, validation), "curriculum_stage": "reliable_warmup"}
+                {
+                    **history_entry(
+                        epoch,
+                        validation,
+                        train_loss=train_loss,
+                        validation_loss=_split_loss(model, valid_loader, objective, device),
+                    ),
+                    "curriculum_stage": "reliable_warmup",
+                }
             )
             if progress is not None:
                 # Warm-up cannot stop early -- every one of these epochs runs --
@@ -1434,10 +1530,20 @@ def train_model(
 
         for stage_epoch in range(config.max_epochs):
             epoch = config.reliable_warmup_epochs + stage_epoch
-            _train_curriculum_epoch(model, mixed_loader, optimizer, curriculum_objective, device)
+            train_loss = _train_curriculum_epoch(
+                model, mixed_loader, optimizer, curriculum_objective, device
+            )
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {**history_entry(epoch, validation), "curriculum_stage": "mixed"}
+                {
+                    # `validation_loss` is None here: this stage fits smoothed
+                    # targets that only exist for the training split, so scoring
+                    # Validation under it would compare two different objectives.
+                    **history_entry(
+                        epoch, validation, train_loss=train_loss, validation_loss=None
+                    ),
+                    "curriculum_stage": "mixed",
+                }
             )
             if progress is not None:
                 progress(epoch, validation, stale_epochs)
