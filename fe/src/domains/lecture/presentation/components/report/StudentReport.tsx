@@ -15,8 +15,7 @@ import {
 } from "@/domains/report";
 
 interface Props {
-  lectureId: string;
-  /** 리포트를 조회할 실제 세션 id. */
+  /** 리포트를 조회하고 퀴즈로 이동할 실제 세션 id. 퀴즈 라우트도 이 값을 받는다. */
   sessionId: string;
   /** 구간 상세·복습 추천에서 클립 탭으로 옮긴다. */
   onJumpToClip: (offsetSeconds: number) => void;
@@ -39,7 +38,6 @@ interface Props {
  * 쓴다. 카드마다 스스로 조회하면 같은 URL 을 두 번 읽는다.
  */
 export function StudentReport({
-  lectureId,
   sessionId,
   onJumpToClip,
   reportRequest,
@@ -200,7 +198,7 @@ export function StudentReport({
               ) : (
                 <>
                   <Link
-                    href={`/my-lectures/${lectureId}/quiz`}
+                    href={`/my-lectures/${sessionId}/quiz`}
                     className="z-btn w-full rounded-[13px] bg-surface py-3.5 text-[15px] text-[#0e7f5b]"
                   >
                     퀴즈 풀어보기

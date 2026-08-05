@@ -80,7 +80,6 @@ const renderReport = (
 ) =>
   render(
     <StudentReport
-      lectureId="L1"
       sessionId="s1"
       onJumpToClip={() => {}}
       reportRequest={async () => reportWith()}
@@ -267,9 +266,10 @@ describe("StudentReport", () => {
     renderReport();
 
     expect(await screen.findByText("총 5문제 · 약 3분")).toBeInTheDocument();
+    // 퀴즈 라우트가 받는 것은 세션 id 다. 조회에 쓴 값과 같아야 한다.
     expect(screen.getByRole("link", { name: "퀴즈 풀어보기" })).toHaveAttribute(
       "href",
-      "/my-lectures/L1/quiz",
+      "/my-lectures/s1/quiz",
     );
   });
 

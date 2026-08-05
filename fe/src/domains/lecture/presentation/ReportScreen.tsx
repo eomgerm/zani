@@ -210,11 +210,7 @@ export function ReportScreen({
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           ) : (
-            <StudentReport
-              lectureId={lecture.id}
-              sessionId={lectureId}
-              onJumpToClip={jumpToClip}
-            />
+            <StudentReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           )}
         </>
       )}

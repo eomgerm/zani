@@ -41,8 +41,8 @@ vi.mock("./components/report/InstructorReport", () => ({
   ),
 }));
 vi.mock("./components/report/StudentReport", () => ({
-  StudentReport: ({ sessionId, lectureId }: { sessionId: string; lectureId: string }) => (
-    <div data-testid="student-report">{`${sessionId}|${lectureId}`}</div>
+  StudentReport: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="student-report">{sessionId}</div>
   ),
 }));
 vi.mock("@/domains/report", () => ({
