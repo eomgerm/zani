@@ -7,8 +7,14 @@ import { lectures, quizData } from "./fixtures";
 
 /**
  * AI 이해도 퀴즈. 문항 풀이 → 정답/해설 → 결과 리뷰 흐름을 로컬 상태로 진행한다.
+ *
+ * <p>문항은 아직 fixture 다. 다만 **되돌아갈 주소는 fixture 에서 뽑지 않는다** — 실제 세션 id 는
+ * fixture 목록에 없어 `lectures[0]` 로 떨어지고, 그러면 뒤로가기가 `/my-lectures/s1/report` 처럼
+ * 존재하지 않는 수업을 가리켜 "리포트를 볼 수 없어요" 로 끝난다. 이동에는 URL 로 받은 `lectureId`
+ * 를 쓴다.
  */
 export function QuizScreen({ lectureId }: { lectureId: string }) {
+  // 제목만 fixture 에서 읽는다. 링크에 쓰면 위 주석의 문제가 생긴다.
   const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
   const total = quizData.length;
 
@@ -49,7 +55,7 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
       <div className="mx-auto max-w-[680px]">
         <div className="mb-5 flex items-center gap-3.5">
           <Link
-            href={`/my-lectures/${lecture.id}/report`}
+            href={`/my-lectures/${lectureId}/report`}
             className="z-btn size-[38px] shrink-0 rounded-xl border border-line-muted bg-surface text-base text-ink"
           >
             ←
@@ -229,7 +235,7 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
                 다시 풀기
               </button>
               <Link
-                href={`/my-lectures/${lecture.id}/report`}
+                href={`/my-lectures/${lectureId}/report`}
                 className="z-btn z-btn-primary z-btn-block flex-1"
               >
                 학습 리포트로 돌아가기
