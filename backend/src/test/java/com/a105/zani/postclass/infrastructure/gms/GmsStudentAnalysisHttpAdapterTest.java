@@ -156,6 +156,7 @@ class GmsStudentAnalysisHttpAdapterTest {
                 Duration.ofSeconds(2),
                 "whisper-1",
                 Duration.ofSeconds(20),
+                Duration.ofSeconds(180),
                 "ko",
                 "gpt-5.4-mini",
                 Duration.ofSeconds(6),

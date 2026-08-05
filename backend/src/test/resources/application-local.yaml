@@ -1,0 +1,41 @@
+# 테스트 전용 설정 재정의.
+#
+# 파일명을 application.yaml 로 두면 안 된다. 클래스패스에서 test 쪽이 main 쪽을 가려 main 의 설정 전체가
+# 사라진다. 프로파일 파일은 그렇지 않다 — application.yaml 을 읽은 뒤에 추가로 읽혀 값만 덮어쓴다.
+# spring.profiles.default 가 local 이고 @ActiveProfiles 를 쓰는 테스트가 없으므로 모든 테스트가 이 문서를 읽는다.
+recording:
+  # 배경 outbox 릴레이를 끈다(S15P11A105-276 후속).
+  #
+  # 릴레이 스케줄러는 @ConditionalOnProperty(matchIfMissing = true) 라서 끄지 않으면 켜진다. 그런데
+  # main 의 application.yaml 이 이 값을 true 로 명시하고 있어, @SpringBootTest 는 전부 릴레이를 들고 뜬다.
+  #
+  # 문제는 Spring TestContext 가 컨텍스트를 캐시한다는 점이다. 한 번 로드된 컨텍스트는 JVM 이 끝날 때까지
+  # 살아 있고 그 안의 @Scheduled 릴레이가 5초마다 같은 테스트 DB 를 계속 폴링한다. 그래서
+  # RecordingIntegrationTest 가 자기 컨텍스트에서 릴레이를 껐어도(properties 로 false) 앞서 로드된 다른
+  # 컨텍스트가 outbox 행을 먼저 집어간다. 증상은 두 가지로 나타났다.
+  #   - 같은_트랙의_track_published가_중복돼도_Egress는_한_번만_시작된다  → expected: 1, actual: 0
+  #   - 한_Egress가_파일을_여러_개_남겨도_UNIQUE_제약을_위반하지_않는다   → RecordingNotReadyException
+  # 단독 실행은 통과하고 전체 실행만 간헐 실패하는 것이 이 원인의 서명이다.
+  #
+  # !135 는 RecordingIntegrationTest 한 컨텍스트만 껐다. 여기서 기본값을 뒤집어 전체를 막는다. 릴레이 동작이
+  # 필요한 테스트는 relayPendingOutbox() 를 직접 부르므로(RecordingOrchestratorTest·RecordingIntegrationTest)
+  # 배경 실행에 의존하는 테스트는 없다.
+  #
+  # ApplicationContextRunner 를 쓰는 RecordingOutboxRelaySchedulerConditionTest 는 설정 파일을 읽지 않아
+  # 영향을 받지 않는다. "속성이 없으면 켜진다"는 matchIfMissing 계약을 그대로 검증한다.
+  outbox-relay-enabled: false
+  finalization:
+    dispatch:
+      # 캐시된 Spring context의 scheduler가 다른 테스트가 만든 종료 세션을 가져가지 않게 한다.
+      enabled: false
+
+postclass:
+  transcription:
+    # 배경 전사 디스패치를 끈다(S15P11A105-247). 위 릴레이와 같은 이유다 — 캐시된 컨텍스트의
+    # @Scheduled 가 10초마다 같은 테스트 DB 를 폴링하면서, 다른 테스트가 만든 pipeline_jobs 행을
+    # 집어 전사를 시작한다. 원본 OGG 가 없으니 분할이 실패하고 그 세션에 파이프라인 실패가 기록돼,
+    # 작업 단계를 검증하는 테스트가 이유를 알 수 없이 깨진다.
+    #
+    # 전사 동작이 필요한 테스트는 TranscribeSessionUseCase 를 직접 부르므로 배경 실행에 의존하는
+    # 테스트는 없다. 스케줄러 자체의 계약(디스패치 순서·포화 처리)은 단위 테스트가 본다.
+    enabled: false

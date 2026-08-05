@@ -32,6 +32,7 @@ import com.a105.zani.attention.infrastructure.persistence.entity.GroupAlertRespo
 import com.a105.zani.member.infrastructure.persistence.entity.MemberJpaEntity;
 import com.a105.zani.postclass.infrastructure.persistence.entity.InstructorNoteJpaEntity;
 import com.a105.zani.postclass.infrastructure.persistence.entity.PipelineJobJpaEntity;
+import com.a105.zani.postclass.infrastructure.persistence.entity.TranscriptJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizAnswerJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizJpaEntity;
 import com.a105.zani.quiz.infrastructure.persistence.entity.QuizOptionJpaEntity;
@@ -40,7 +41,6 @@ import com.a105.zani.recording.infrastructure.persistence.entity.RecordingFileJp
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingOutboxJpaEntity;
 import com.a105.zani.recording.infrastructure.persistence.entity.RecordingWebhookEventJpaEntity;
-import com.a105.zani.recording.infrastructure.persistence.entity.TranscriptJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportInsightJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportScoreJpaEntity;

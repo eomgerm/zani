@@ -55,8 +55,8 @@ session.application.port    LiveKitTokenPort               LiveKit 토큰 발급
                             SessionPresencePort            presence (Redis)
                             SessionActivationLockPort      강사 활성 세션 잠금 (Redis)
 recording.application.port  TrackEgressPort                Track Egress 시작
-                            RecordingWebhookVerifierPort   webhook 서명 검증
-                            RecordingWebhookEventPort      webhook 이벤트 저장
+                            LiveKitWebhookVerifierPort     webhook 서명 검증
+                            LiveKitWebhookEventPort        webhook 이벤트 저장
                             RecordingOutboxPort            녹화 outbox
                             AudioStreamEgressRegistryPort  코칭 오디오 Egress 등록 (Redis)
 ```
@@ -374,7 +374,7 @@ FORCE_MUTED                                     티켓 66
 | 학생 SCREEN_SHARE_AUDIO | 저장 |
 | 학생 CAMERA | **Egress 요청 생성 금지** |
 
-> ⚠️ **구현 격차(2026-07-30).** 승인 개념이 폐지되어 활성 공유는 소유자와 무관하게 저장 대상이다. 그런데 `RecordingTrackPolicy.decide`는 아직 `studentScreenShareApproved` 플래그로 판단하고, `RecordingWebhookService`가 그 값을 `false`로 고정해 넘긴다. 결과적으로 **학생 공유는 publish 되지만 저장되지 않고 로그도 남지 않는다.** 이 표를 만족시키려면 플래그를 제거하는 후속 작업이 필요하다.
+> ⚠️ **구현 격차(2026-07-30).** 승인 개념이 폐지되어 활성 공유는 소유자와 무관하게 저장 대상이다. 그런데 `RecordingTrackPolicy.decide`는 아직 `studentScreenShareApproved` 플래그로 판단하고, `LiveKitWebhookService`가 그 값을 `false`로 고정해 넘긴다. 결과적으로 **학생 공유는 publish 되지만 저장되지 않고 로그도 남지 않는다.** 이 표를 만족시키려면 플래그를 제거하는 후속 작업이 필요하다.
 >
 > `.agents/frd.md` §10.2·§15.1 과 `LIVE-002` 는 2026-07-31 에 개정됐다 — 승인 개념이 빠지고 선착순 단일 활성 공유로 바뀌었다. **이제 문서 쪽은 정합하며 남은 것은 코드다.** `studentScreenShareApproved` 파라미터를 제거하고 학생 `SCREEN_SHARE`·`SCREEN_SHARE_AUDIO` 를 `RECORD` 로 바꾼다. `RecordingTrackPolicy` 의 클래스 javadoc("강사 승인 중에만 저장하며")과 `RecordingTrackPolicyTest` 를 함께 고쳐야 한다.
 

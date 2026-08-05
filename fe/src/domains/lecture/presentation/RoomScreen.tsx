@@ -11,6 +11,7 @@ import {
   MicIcon,
   MicOffIcon,
   PeopleIcon,
+  PictoBars,
   ScreenShareIcon,
 } from "@/shared/ui";
 import {
@@ -30,6 +31,7 @@ import {
   useChatUnread,
   useRaisedHands,
   useSessionChat,
+  useSessionEventToast,
   useModeration,
   useSessionReactions,
   type ReactionKind,
@@ -81,15 +83,15 @@ const ENDED_KICK_DELAY_MS = 4_000;
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
   disabled: {
-    title: "카메라를 켜주세요 📷",
+    title: "카메라를 켜주세요",
     body: "수업 참여도를 확인하려면 카메라가 필요해요. 지금 켜실 수 있나요?",
   },
   denied: {
-    title: "카메라 권한이 필요해요 🔒",
+    title: "카메라 권한이 필요해요",
     body: "브라우저에서 카메라 권한을 허용해주세요. 주소창 옆 자물쇠 아이콘에서 바꿀 수 있어요.",
   },
   muted: {
-    title: "카메라를 사용할 수 없어요 ⚠️",
+    title: "카메라를 사용할 수 없어요",
     body: "다른 앱이 카메라를 사용 중인지 확인해주세요.",
   },
 };
@@ -244,6 +246,13 @@ function RoomScreenContent({
   const chatUnread = useChatUnread({
     myIdentity: localParticipantId,
     chatVisible: panelOpen && panel === "chat",
+  });
+  // 공유 중에는 메인 창이 공유 자료 뒤에 가려져 손들기·채팅을 놓친다. PiP 창이 떠 있는 동안만
+  // 실시간 알림을 토스트로 받아 그 창에 그린다(S15P11A105-295).
+  const pipToast = useSessionEventToast({
+    myIdentity: localParticipantId,
+    active: pipWindow !== null,
+    raisedIdentities: hands.raisedIdentities,
   });
   // 팁 카드는 폴러를 따로 두지 않는다. 그 폴링이 곧 트리거 판정이라 두 번 돌면 분모 조회가
   // 두 배가 되고 쿨타임을 두 주체가 소모한다(86 요구사항).
@@ -604,7 +613,7 @@ function RoomScreenContent({
                 {pipWindow &&
                   galleryParticipants.length > 0 &&
                   createPortal(
-                    <div className="flex h-screen flex-col bg-stage">
+                    <div className="relative flex h-screen flex-col bg-stage">
                       <div className="flex-1 overflow-y-auto p-2">
                         <RoomRoster
                           participants={galleryParticipants}
@@ -657,6 +666,18 @@ function RoomScreenContent({
                           <CloseIcon />
                         </button>
                       </div>
+                      {/* 공유 중 놓치기 쉬운 손들기·채팅 알림. 최신 한 건만 컨트롤 위에 겹쳐 그리고
+                          (key 로 리마운트해 등장 애니메이션을 다시 튼다), 클릭은 통과시켜 조작을 막지 않는다. */}
+                      {pipToast && (
+                        <div
+                          key={pipToast.key}
+                          role="status"
+                          data-testid="pip-toast"
+                          className="pointer-events-none absolute inset-x-2 bottom-16 z-10 animate-[zPop_.2s] truncate rounded-[14px] border border-room-edge bg-[#1e2138] px-4 py-2.5 text-center text-[12.5px] text-panel-soft"
+                        >
+                          {pipToast.message}
+                        </div>
+                      )}
                     </div>,
                     pipWindow.document.body,
                   )}
@@ -720,9 +741,12 @@ function RoomScreenContent({
                           ? `강의: ${stageName} 선생님`
                           : `발표: ${stageName}`}
                       </div>
-                      <div className="z-stage-chip absolute bottom-4 left-4 font-bold">
-                        📶 {stageName}
-                        {stageParticipant?.role === "instructor" ? " 선생님" : ""}
+                      <div className="z-stage-chip absolute bottom-4 left-4 flex items-center gap-1.5 font-bold">
+                        <PictoBars size={12} />
+                        <span>
+                          {stageName}
+                          {stageParticipant?.role === "instructor" ? " 선생님" : ""}
+                        </span>
                       </div>
                     </>
                   )}
@@ -803,7 +827,7 @@ function RoomScreenContent({
       {/* 확인 프롬프트 (학생 전용 — 강사는 판정 대상이 아니다) */}
       {!isInstructor && understandingCheck.prompt && (
         <CoachingPromptPanel
-          title="잠깐 확인할게요 ✋"
+          title="잠깐 확인할게요"
           body="방금 설명한 내용, 지금 어떤가요? 응답은 강사에게 개인별로 공개되지 않아요."
           remainingMs={understandingCheck.prompt.remainingMs}
           durationMs={understandingCheck.prompt.durationMs}
@@ -833,7 +857,7 @@ function RoomScreenContent({
       {/* 자세 안내 (학생 전용) — 확인 버튼 하나뿐이고 서버로 보내지 않는다 */}
       {!isInstructor && postureGuide.prompt && (
         <CoachingPromptPanel
-          title="얼굴이 잘 보이지 않아요 🙂"
+          title="얼굴이 잘 보이지 않아요"
           body="카메라에 얼굴이 나오도록 조정해주세요."
           remainingMs={postureGuide.prompt.remainingMs}
           durationMs={postureGuide.prompt.durationMs}

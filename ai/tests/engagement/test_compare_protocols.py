@@ -63,6 +63,17 @@ def _write_validation_run(
     )
 
 
+#: Four grades, as `training.evaluate_model` always writes (it passes
+#: `labels=range(4)`). Four errors per seed out of 20 clips, and the low-vs-high
+#: collapse of it is recall 9/10 with a false-positive rate of 1/10.
+_FIXTURE_CONFUSION = [
+    [4, 1, 0, 0],
+    [0, 4, 1, 0],
+    [0, 0, 4, 1],
+    [0, 1, 0, 4],
+]
+
+
 def _write_test_results(
     root: Path, protocol: str, manifest_sha: str, seed_count: int = 5
 ) -> None:
@@ -76,7 +87,7 @@ def _write_test_results(
                     "macro_f1": 0.65,
                     "within_one_accuracy": 0.9,
                     "quadratic_weighted_kappa": 0.6,
-                    "confusion_matrix": [[8, 2], [1, 9]],
+                    "confusion_matrix": _FIXTURE_CONFUSION,
                 },
             }
         )
@@ -254,9 +265,9 @@ def test_pooled_error_counts_are_reported_per_seed_when_the_counts_differ(
     )
 
     assert result.returncode == 0, result.stderr
-    # Three errors per seed in the fixture matrix [[8, 2], [1, 9]].
-    assert "E0 15 (5 seeds, 3.0/seed)" in result.stdout
-    assert "E0-10 30 (10 seeds, 3.0/seed)" in result.stdout
+    # Four errors per seed in `_FIXTURE_CONFUSION`.
+    assert "E0 20 (5 seeds, 4.0/seed)" in result.stdout
+    assert "E0-10 40 (10 seeds, 4.0/seed)" in result.stdout
     assert "(5 seeds 합산, 행=정답, 열=예측)" in result.stdout
     assert "(10 seeds 합산, 행=정답, 열=예측)" in result.stdout
 
@@ -296,3 +307,135 @@ def test_test_comparison_accepts_different_features_from_the_same_raw_population
     assert result.returncode == 0, result.stderr
     assert "E0-J vs E0 (Test, 5 seeds)" in result.stdout
     assert "비교는 유효하지 않습니다" not in result.stdout
+
+
+def _write_confusion_only_results(
+    root: Path, protocol: str, confusion: list[list[int]], seed_count: int = 5
+) -> None:
+    """A finalized run whose only varying quantity is the confusion matrix."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "test_results.json").write_text(
+        json.dumps(
+            {
+                "protocol": f"{protocol}-fixed-checkpoint-test",
+                "status": "complete",
+                "feature_manifest_sha256": "sha",
+                "seeds": [
+                    {
+                        "seed": seed,
+                        "test": {
+                            "accuracy": sum(confusion[index][index] for index in range(4))
+                            / sum(sum(row) for row in confusion),
+                            "macro_f1": 0.65,
+                            "within_one_accuracy": 0.9,
+                            "quadratic_weighted_kappa": 0.6,
+                            # A seed-dependent nudge, so `_welch` and the
+                            # detectable minimum are defined rather than degenerate.
+                            "confusion_matrix": _nudge(confusion, seed),
+                        },
+                    }
+                    for seed in range(42, 42 + seed_count)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _nudge(confusion: list[list[int]], seed: int) -> list[list[int]]:
+    shifted = [row.copy() for row in confusion]
+    offset = seed % 3
+    shifted[0][0] -= offset
+    shifted[0][2] += offset
+    return shifted
+
+
+#: 60 low-engagement clips of 150. Recall 70.0%, false-positive rate 4.4%
+#: (4 of 90 high clips), accuracy 74.7% -- roughly E0-10's shape, small enough to
+#: hand-check.
+_GATE_BASELINE = [
+    [20, 4, 4, 2],
+    [4, 14, 8, 4],
+    [1, 2, 38, 4],
+    [0, 1, 4, 40],
+]
+#: Recall 80.0% (+10%p) at the same 4 false positives, accuracy 78.7%. Clears all
+#: three criteria.
+_GATE_PASSING = [
+    [24, 3, 2, 1],
+    [5, 16, 6, 3],
+    [1, 2, 38, 4],
+    [0, 1, 4, 40],
+]
+#: The same recall gain and the same false positives, but ten Engaged/Highly
+#: clips swap with each other, dropping accuracy to 72.0% (-2.67%p). Those
+#: confusions never cross the low/high boundary, which is what isolates the
+#: accuracy criterion from the alarm one.
+_GATE_TOO_COSTLY = [
+    [24, 3, 2, 1],
+    [5, 16, 6, 3],
+    [1, 2, 30, 12],
+    [0, 1, 6, 38],
+]
+
+
+def test_the_low_engagement_table_and_gate_are_reported_for_test_comparisons(
+    tmp_path: Path,
+) -> None:
+    """The S15P11A105-289 gate, on a variant built to clear all three criteria.
+
+    The point is that the binary view is printed and judged at all: the 4-class
+    table can call a change immeasurable while this one shows the trade that
+    actually decides deployment.
+    """
+    baseline = tmp_path / "baseline"
+    variant = tmp_path / "variant"
+    _write_confusion_only_results(baseline, "E0-10", _GATE_BASELINE)
+    _write_confusion_only_results(variant, "E0-M", _GATE_PASSING)
+    script = Path(__file__).parents[2] / "scripts" / "compare_protocols.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--baseline", str(baseline), "--variant", str(variant)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "저참여(Not-Engaged + Barely-Engaged) 이진 판정" in result.stdout
+    for label in ("저참여 recall", "저참여 FPR", "3연속 검출률", "90분당 오탐"):
+        assert label in result.stdout
+    # The approximation warning has to travel with the numbers it qualifies.
+    assert "독립이라고 가정한 근사" in result.stdout
+    assert "저참여 판정: 채택 조건 충족" in result.stdout
+    assert "O 저참여 recall" in result.stdout
+
+
+def test_the_gate_fails_a_variant_that_pays_too_much_accuracy(tmp_path: Path) -> None:
+    """E0-L against E0-10 is this case: +4.09%p recall for -1.33%p accuracy.
+
+    Recall and false alarms are held identical to the passing variant, so the only
+    reason this one fails is the criterion the test is named after.
+    """
+    baseline = tmp_path / "baseline"
+    variant = tmp_path / "variant"
+    _write_confusion_only_results(baseline, "E0-10", _GATE_BASELINE)
+    _write_confusion_only_results(variant, "E0-M", _GATE_TOO_COSTLY)
+    script = Path(__file__).parents[2] / "scripts" / "compare_protocols.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--baseline", str(baseline), "--variant", str(variant)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "X accuracy 하락" in result.stdout
+    assert "O 저참여 recall" in result.stdout
+    assert "O 90분당 오탐" in result.stdout
+    assert "저참여 판정: 미충족" in result.stdout

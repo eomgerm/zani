@@ -84,32 +84,30 @@ describe("GroupAttentionTimeline", () => {
     expect(ariaLabel.indexOf("집중 흐름")).toBeLessThan(ariaLabel.indexOf("확인 필요"));
   });
 
-  it("배열이 둘로 갈라져도 계열 셋을 모두 그린다", async () => {
+  /** 강사 그래프도 학생과 같은 구성이다 — 집단 집중 흐름 한 계열만 그린다. */
+  it("집단 집중 흐름 한 계열만 그린다", async () => {
     const { container } = render(
       <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
     );
 
     await screen.findByRole("img");
 
-    // 계열마다 자기 data 를 주는 구성이라 하나라도 빠지면 조용히 선이 사라진다.
-    const curves = container.querySelectorAll("path.recharts-line-curve");
-    expect(curves).toHaveLength(3);
-    // 주 계열(집중 흐름)은 굵은 초록 선이다.
+    expect(container.querySelectorAll("path.recharts-area-curve")).toHaveLength(1);
     expect(container.querySelector('path[stroke="#16c582"]')?.getAttribute("d")).toContain("M");
   });
 
-  it("두 축의 단위가 다르다는 것을 적는다", async () => {
-    const { container } = render(
-      <GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />,
-    );
+  it("척도가 1~4 단계라는 것을 그래프 이름에 적는다", async () => {
+    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
 
-    await screen.findByRole("img");
+    const chart = await screen.findByRole("img");
 
-    expect(container.textContent).toContain("1~4 단계");
-    expect(container.textContent).toContain("분모가 다릅니다");
+    expect(chart.getAttribute("aria-label")).toContain("1~4 단계");
+    // 비율 계열이 빠졌으므로 퍼센트 축도 없다.
+    expect(chart.getAttribute("aria-label")).not.toContain("%");
   });
 
-  it("집계 인원이 5명 미만인 30초 칸을 안내한다", async () => {
+  /** 값을 감춘 사실은 알려야 한다(REPORT-I-005). 문구 대신 범례가 회색이 무엇인지 말한다. */
+  it("인원이 모자라 감춘 구간이 무엇인지 범례로 알린다", async () => {
     render(
       <GroupAttentionTimeline
         sessionId="s1"
@@ -124,7 +122,7 @@ describe("GroupAttentionTimeline", () => {
       />,
     );
 
-    expect(await screen.findByText(/집계 인원이 부족합니다/)).toBeInTheDocument();
+    expect(await screen.findByText("인원 부족")).toBeInTheDocument();
   });
 
   it("학생 이름이나 개별 값이 화면에 없다", async () => {
@@ -172,15 +170,6 @@ describe("GroupAttentionTimeline", () => {
     );
 
     expect(await screen.findByText(/기록이 없어요/)).toBeInTheDocument();
-  });
-
-  it("shows the response mix for the selected interval", async () => {
-    render(<GroupAttentionTimeline sessionId="s1" request={async () => groupTimelineWith()} />);
-
-    expect(await screen.findByText(/헷갈림/)).toBeInTheDocument();
-    expect(screen.getByText(/놓침/)).toBeInTheDocument();
-    expect(screen.getByText(/무응답/)).toBeInTheDocument();
-    expect(screen.getByText(/측정 불가/)).toBeInTheDocument();
   });
 
   it("explains a 403 as a permission problem, not an empty report", async () => {

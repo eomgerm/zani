@@ -17,6 +17,31 @@ import com.a105.zani.recording.infrastructure.persistence.entity.RecordingOutbox
  */
 public interface RecordingOutboxJpaRepository extends JpaRepository<RecordingOutboxJpaEntity, Long> {
 
+    /** 최종 MP4 합성은 모든 파일 Track Egress outbox의 종결을 기다린다. 링버퍼용 outbox는 호출부가 종류로 제외한다. */
+    long countBySessionIdAndOutboxTypeAndStatusIn(
+            Long sessionId, String outboxType, java.util.Collection<String> statuses);
+
+    /**
+     * 세션의 특정 종류·상태 outbox 의 payload 만 읽는다(S15P11A105-247).
+     *
+     * <p><b>세는 것이 아니라 payload 를 가져오는 이유</b>는 트랙 종류가 그 안에 있기 때문이다. {@code payload} 는 JSON 컬럼이 아니라 {@code VARCHAR(2000)}
+     * 이라 SQL 에서 꺼내려면 {@code CAST(... AS JSON)} 을 거쳐야 하는데, 그것을 JPQL 에 넣으면 형태 변화에 취약해진다. 행 수가 트랙 수만큼(세션당 최대 수십 건)이라 읽어서
+     * 자바에서 가르는 편이 낫다.
+     *
+     * <p>사후 전사는 {@code START_TRACK_EGRESS} 만 본다. {@code START_AUDIO_STREAM_EGRESS} 는 실시간 코칭 링버퍼용이라 그것이 실패해도 파일 OGG 는
+     * 정상이다.
+     */
+    @Query("""
+            select outbox.payload from RecordingOutboxJpaEntity outbox
+             where outbox.sessionId = :sessionId
+               and outbox.outboxType = :outboxType
+               and outbox.status in :statuses
+            """)
+    List<String> findPayloadsBySessionIdAndTypeAndStatusIn(
+            @Param("sessionId") Long sessionId,
+            @Param("outboxType") String outboxType,
+            @Param("statuses") java.util.Collection<String> statuses);
+
     /**
      * dedup_key UNIQUE 충돌을 호출자 트랜잭션 오염 없이 처리하기 위해 INSERT IGNORE를 쓴다. (JPA save의 flush 예외는 트랜잭션을 rollback-only로 만들어
      * "중복이면 조용히 무시" 계약을 지킬 수 없다.)

@@ -83,7 +83,8 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
                 || !TRACK_SID_PATTERN.matcher(command.trackSid()).matches()) {
             throw new InvalidRecordingTrackException();
         }
-        TrackEgressPayload payload = new TrackEgressPayload(command.trackSid(), alias.value(), command.source());
+        TrackEgressPayload payload = new TrackEgressPayload(
+                command.trackSid(), alias.value(), command.source(), command.sessionParticipantId());
         boolean enqueued = outboxStore.enqueue(new NewRecordingOutboxMessage(
                 trackDedupKey(command.sessionId(), command.trackSid()),
                 RecordingOutboxType.START_TRACK_EGRESS,
@@ -209,28 +210,71 @@ public class RecordingOrchestrator implements RequestTrackEgressUseCase, RelayRe
 
     private void startTrackEgress(PendingRecordingOutboxMessage message, int attempt) {
         TrackEgressPayload payload = message.payload();
+        // trackSid·source 는 V12 이전 payload 에도 있다. 없으면 요청 자체를 만들 수 없으므로 먼저 끊는다.
+        if (payload.trackSid() == null || payload.source() == null) {
+            log.error(
+                    "Track egress payload is unusable, refusing to start: session={}, trackSid={}",
+                    message.sessionId(),
+                    payload.trackSid());
+            throw new InvalidRecordingTrackException();
+        }
         TrackEgressRequest request = new TrackEgressRequest(
                 message.sessionId(), payload.trackSid(), payload.recordingAlias(), payload.source());
 
         // 재실행(완료 표시 유실·크래시 후 lease 회수·재시도)일 수 있으므로, 첫 시도가 아니면 이 트랙의 기존 Egress를
         // 먼저 찾아 채택한다(이미 종료된 실행도 포함). 이렇게 하면 같은 트랙에 두 번째 Egress가 붙지 않는다.
-        String egressId = attempt > FIRST_ATTEMPT
-                ? trackEgressPort
-                        .findExistingEgressId(request)
-                        .orElseGet(() -> trackEgressPort.start(request).egressId())
-                : trackEgressPort.start(request).egressId();
-
-        // 채택한 Egress의 녹화 행이 이미 있으면(이전 실행이 저장까지 마친 경우) 다시 만들지 않는다.
-        if (recordingRepository.findByLivekitEgressId(egressId).isPresent()) {
+        //
+        // 이 채택은 아래 참가자 id 검증보다 앞이어야 한다. 배포 전에 시작돼 recordings 행까지 남긴 실행이
+        // 재소비되는 경우, payload 가 구버전이라는 이유로 채택하지 못하면 그 실행은 이미 추적되고 있는데도
+        // outbox 만 재시도를 소진하고 FAILED 로 끝난다.
+        String adopted = attempt > FIRST_ATTEMPT
+                ? trackEgressPort.findExistingEgressId(request).orElse(null)
+                : null;
+        if (adopted != null
+                && recordingRepository.findByLivekitEgressId(adopted).isPresent()) {
             log.info(
                     "Track egress {} already recorded, skipping duplicate row: session={}",
-                    egressId,
+                    adopted,
                     message.sessionId());
             return;
         }
+
+        // 여기서부터는 새 Egress 를 띄우거나 recordings 행을 만들어야 하므로 화자가 필요하다. 외부 호출 전에
+        // 끊는다 — Egress 를 먼저 띄우고 나서 Recording.startTrack 의 가드에 걸리면 LiveKit 실행은 시작됐고
+        // recordings 행은 없는 상태가 되어 그 실행과 산출물을 DB 로 추적할 방법이 사라진다.
+        if (payload.sessionParticipantId() == null) {
+            log.error(
+                    "Track egress payload is missing participant id, refusing to start: session={}, trackSid={}",
+                    message.sessionId(),
+                    payload.trackSid());
+            throw new InvalidRecordingTrackException();
+        }
+
+        String egressId;
+        if (adopted != null) {
+            // 위에서 녹화 행이 없음을 확인했다. 같은 조회를 두 번 하지 않는다.
+            egressId = adopted;
+        } else {
+            egressId = trackEgressPort.start(request).egressId();
+            // 새로 시작한 Egress 의 녹화 행이 이미 있으면(이전 실행이 저장까지 마친 경우) 다시 만들지 않는다.
+            if (recordingRepository.findByLivekitEgressId(egressId).isPresent()) {
+                log.info(
+                        "Track egress {} already recorded, skipping duplicate row: session={}",
+                        egressId,
+                        message.sessionId());
+                return;
+            }
+        }
         try {
             recordingRepository.save(Recording.startTrack(
-                    TsidGenerator.generate(), message.sessionId(), egressId, attempt, clock.instant()));
+                    TsidGenerator.generate(),
+                    message.sessionId(),
+                    egressId,
+                    payload.sessionParticipantId(),
+                    payload.source(),
+                    payload.trackSid(),
+                    attempt,
+                    clock.instant()));
         } catch (RuntimeException persistFailure) {
             // Egress는 이미 LiveKit에서 시작됐다. 이 작업을 재시도하면 같은 트랙에 두 번째 Egress가 붙으므로
             // 발급된 egressId를 남기고 재시도 대상에서 제외한다(대조 작업이 회수).

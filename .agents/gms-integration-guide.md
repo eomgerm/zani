@@ -174,6 +174,13 @@ mono — 8,000 bytes per second):
 Leave headroom for ID3 frames and the multipart envelope; 45-minute chunks are
 a safe working figure. A three-hour track needs four uploads.
 
+**This figure applies only to the real-time MP3 path.** Post-class transcription
+(`S15P11A105-247`) uploads the Track Egress OGG/Opus original unchanged — no MP3
+re-encode — so the bitrate above does not apply. It chunks at **10 minutes**, a
+figure chosen for heap and timeout predictability rather than the 25 MiB limit,
+and re-splits any chunk that still exceeds 24 MiB. Measured: a 290.7-second
+128 kbps OGG chunk of 815 KB returned HTTP 200 in one call.
+
 For LLM calls, 100 KiB of Korean transcript is about 34,000 characters, roughly
 102 minutes of speech at the measured density. After the system prompt, events,
 and notes are added, plan for **80–90 minutes of transcript per call**. A
@@ -243,11 +250,33 @@ carry the information the reports need.
 
 ## 12. Open items
 
-**Why open** says what kind of work closes the item, because the three are not
-the same kind. Only the second is an undecided design question.
+**Why open** says what kind of work closes the item, because the two are not the
+same kind. Neither is an undecided design question any more.
 
 | Item | Why open | Owner |
 | --- | --- | --- |
 | Measure `whisper-1` latency for 45-minute chunks against the 8-hour SLA | Unmeasured — measuring closes it | S15P11A105-247 |
-| Split post-class LLM analysis across calls — a three-hour transcript exceeds one request | Constraint proven (§4.1), how to split is undecided | S15P11A105-248 |
 | Revise FRD §17 — §17.1 and §17.3 assume video chunks reach GMS, §17.4 assumes non-verbal signals are available, and requirement `AI-003` mandates using them | Not achievable through this gateway (§10). Nothing left to decide technically; the documents and `AI-003` still have to be corrected | product decision |
+
+### Settled: how post-class content analysis fits one request
+
+A three-hour transcript is about 180 KB and exceeds the 100 KiB body limit
+(§4.1). `S15P11A105-248` settled this as **one call per session**, because
+section boundaries only come out consistent when the model sees the whole
+class — splitting into windows re-cuts the same topic at every window edge and
+then needs a merge rule, which is more machinery than the MVP needs.
+
+The call therefore keeps a byte budget (92,160 B) measured on the **complete
+request body**, not on the transcript alone: the transcript is embedded as a
+JSON string inside the user message, so its quotes are escaped a second time,
+and the system prompt and response schema ride along in the same body. When the
+body exceeds the budget, the transcript is reduced to an **even-stride sample**
+(every *n*-th line, *n* raised until the measured body fits). Trimming the tail
+would drop the end of the class from the timeline entirely; an even stride only
+lowers boundary resolution.
+
+Ceiling to know about: a class long enough to need a large stride gets coarser
+section boundaries, and a single line that alone exceeds the budget is not sent
+at all (reported as a non-retryable failure) rather than letting the gateway
+truncate the body and answer "Model not found". Revisit with per-window calls
+plus a merge rule only if boundary resolution measurably hurts the reports.

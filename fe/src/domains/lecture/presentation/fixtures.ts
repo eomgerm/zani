@@ -1,3 +1,5 @@
+import type { PictogramName } from "@/shared/ui";
+
 /** 강의 처리 상태 */
 export type LectureStatus = "LIVE" | "PROCESSING" | "COMPLETED" | "FAILED";
 
@@ -100,32 +102,6 @@ export const transcript = [
   { t: "51:20", speaker: "박서준", text: "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요." },
 ];
 
-export interface LearnSegment {
-  range: string;
-  title: string;
-  /** 전체(강사 시점) 집중 점수 */
-  fAll: number;
-  /** 나(학생 시점) 집중 점수 */
-  fMine: number;
-  evAll: string;
-  evMine: string;
-  desc: string;
-  seek: string;
-  mine?: boolean;
-}
-
-/** 리포트 타임라인 · 집중 흐름 구간 */
-export const learnSegments: LearnSegment[] = [
-  { range: "00:00–08:39", title: "상태 관리 개요", fAll: 3, fMine: 4, evAll: "대부분의 수강생이 안정적으로 따라온 도입 구간이에요.", evMine: "도입 개념을 놓치지 않고 꾸준히 집중했어요.", desc: "useState의 역할과 props drilling의 한계를 소개한 안정 구간이에요.", seek: "00:02" },
-  { range: "08:40–15:21", title: "Context와 리렌더링", fAll: 2, fMine: 1, evAll: "이해도 알림이 몰린, 전체적으로 집중이 떨어진 구간이에요.", evMine: "리렌더링 원리에서 집중이 크게 흔들렸어요. 다시 볼 것을 추천해요.", desc: "Context 구독과 리렌더링 원리를 다룬, 높은 확인이 필요한 구간이에요.", seek: "08:40" },
-  { range: "15:22–23:59", title: "내 질문 · Context 리렌더", fAll: 2, fMine: 1, evAll: "질문이 이어지며 확인이 필요했던 구간이에요.", evMine: "직접 질문을 남길 만큼 어려웠던 구간이에요. 복습이 필요해요.", desc: "내가 공개 질문을 남겼고 확인 필요 상태가 이어진 구간이에요.", seek: "15:22", mine: true },
-  { range: "24:00–30:59", title: "useMemo 메모이제이션", fAll: 2, fMine: 2, evAll: "반복 확인 신호가 감지된 핵심 구간이에요.", evMine: "개념은 따라갔지만 집중이 보통 수준이었어요.", desc: "반복된 확인 필요 신호가 감지된 핵심 구간이에요.", seek: "24:10" },
-  { range: "31:00–41:59", title: "상태관리 라이브러리 비교", fAll: 3, fMine: 3, evAll: "선택 기준을 다룬, 안정적으로 유지된 구간이에요.", evMine: "비교 설명에 잘 집중했어요.", desc: "라이브러리 선택 기준을 다룬 안정 구간이에요.", seek: "31:05" },
-  { range: "42:00–51:19", title: "Zustand 실습", fAll: 4, fMine: 4, evAll: "실습으로 참여도와 집중이 가장 높았던 구간이에요.", evMine: "실습 구간에서 집중이 최고조였어요.", desc: "실습으로 개념을 굳힌 안정 구간이에요.", seek: "42:00" },
-  { range: "51:20–74:00", title: "정리와 질문", fAll: 3, fMine: 2, evAll: "핵심을 정리하며 마무리한 구간이에요.", evMine: "마무리 구간에서 집중이 조금 떨어졌어요.", desc: "핵심 개념을 정리하고 마무리한 구간이에요.", seek: "51:20" },
-];
-
-/** 리포트(학생) - 복습 추천 */
 export const recommendations = [
   { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
   { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
@@ -136,10 +112,10 @@ export const recommendations = [
 
 /** 리포트(강사) - 분야별 평가 도넛 */
 export const evalDonutData = [
-  { name: "전달력", value: 88, color: "#10b981" },
-  { name: "구성·흐름", value: 84, color: "#15bd7d" },
-  { name: "상호작용", value: 71, color: "#f4c325" },
-  { name: "난이도 조절", value: 76, color: "#e0714f" },
+  { name: "전달력", value: 88, color: "#10b981", desc: "말의 속도·명료함과 핵심 개념을 짚어주는 정도를 평가했어요." },
+  { name: "수업 구성", value: 84, color: "#15bd7d", desc: "수업 순서와 주제 전환이 자연스럽게 이어졌는지 평가했어요." },
+  { name: "상호작용", value: 71, color: "#f4c325", desc: "질문 응답, 채팅·반응 대응 등 학생과의 소통을 평가했어요." },
+  { name: "난이도 조절", value: 76, color: "#e0714f", desc: "학생 이해도에 맞춰 설명 깊이와 속도를 조절했는지 평가했어요." },
 ];
 
 /** AI 이해도 퀴즈 문제 */
@@ -160,35 +136,32 @@ export const quizData: QuizQuestion[] = [
   { concept: "useCallback", t: "27:52", q: "useCallback이 실제로 필요한 경우는?", opts: ["모든 함수에 항상", "메모이즈된 자식에 함수를 props로 넘길 때", "상태를 만들 때", "렌더링을 완전히 막을 때"], answer: 1, explain: "React.memo된 자식에게 함수를 props로 넘길 때 참조 안정화를 위해 필요합니다." },
 ];
 
-/** 강사 리포트 개선 TIP */
-export const improveTips = [
-  { icon: "📘", color: "#10b981", title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "· 추가 예시 코드와 실습 시간을 늘려보세요." },
-  { icon: "🙋", color: "#12a870", title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "· 중간중간 질문 시간을 명시적으로 확보해보세요." },
-  { icon: "📷", color: "#e0455f", title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "· 다이어그램, 플로우차트 활용을 늘려보세요." },
-  { icon: "🎯", color: "#e2b41b", title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "· 개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
+/** 강사 리포트 수업 인사이트. 관찰(obs)과 해 볼 것(tip)을 나눠 둔다. */
+export const improveTips: { title: string; obs: string; tip: string }[] = [
+  { title: "어려운 구간 보강", obs: "1:20:00~1:40:00 예외 처리 및 응답 코드 구간에서 집중도·이해도가 낮았어요.", tip: "추가 예시 코드와 실습 시간을 늘려보세요." },
+  { title: "질문 응답 시간 확보", obs: "질문이 많은 구간에서 응답 시간이 짧아 아쉬움이 있었어요.", tip: "중간중간 질문 시간을 명시적으로 확보해보세요." },
+  { title: "시각 자료 활용 강화", obs: "복잡한 개념 설명 시 시각 자료가 있으면 이해도 향상에 도움이 돼요.", tip: "다이어그램, 플로우차트 활용을 늘려보세요." },
+  { title: "학생 참여 유도", obs: "학생들의 참여가 더 활발해질 수 있어요.", tip: "개념 설명 후 간단한 퀴즈나 실습 중간 점검 추천" },
 ];
 
-/** 강사 리포트 인사이트 */
-export const insights = [
-  { icon: "🔔", bg: "#ffe7ea", text: "어려움 구간(예외 처리·응답 코드)에서 이해도 알림이 집중적으로 발생했어요." },
-  { icon: "🧪", bg: "#ebf8f3", text: "실습 전후 구간의 집중도가 상대적으로 높았습니다." },
-  { icon: "📈", bg: "#f0faf6", text: "전반적으로 후반부로 갈수록 집중도가 회복되는 흐름입니다." },
-  { icon: "💬", bg: "#fdf8e7", text: "질문이 몰린 구간의 응답 시간이 짧아 아쉬움이 있었어요." },
+export const instructorGlance: {
+  icon: PictogramName;
+  label: string;
+  value: string;
+  badge?: string;
+}[] = [
+  { icon: "people", label: "총 수강생", value: "32명" },
+  { icon: "clock", label: "수업 시간", value: "2시간 5분" },
+  { icon: "chat", label: "질문 수", value: "184개" },
+  { icon: "bars", label: "집중 구간 비율", value: "78%", badge: "보통" },
+  { icon: "bell", label: "이해도 알림", value: "7회" },
 ];
 
-export const instructorGlance = [
-  { icon: "👥", iconColor: "#10b981", label: "총 수강생", value: "32명" },
-  { icon: "🕐", iconColor: "#10b981", label: "수업 시간", value: "2시간 5분" },
-  { icon: "💬", iconColor: "#10b981", label: "채팅 수", value: "184개" },
-  { icon: "📈", iconColor: "#12a870", label: "평균 집중도", value: "78%", badge: "보통" },
-  { icon: "🔔", iconColor: "#e0455f", label: "이해도 알림 발생", value: "7회" },
-];
-
-export const studentGlance = [
-  { label: "🎯 평균 집중도", value: "82%" },
-  { label: "💬 질문 수", value: "1개" },
-  { label: "❓ 헷갈림 표시", value: "2회" },
-  { label: "📌 놓침 표시", value: "1회" },
+export const studentGlance: { icon: PictogramName; label: string; value: string }[] = [
+  { icon: "target", label: "평균 집중도", value: "82%" },
+  { icon: "chat", label: "질문 수", value: "1개" },
+  { icon: "question", label: "헷갈림 표시", value: "2회" },
+  { icon: "pin", label: "놓침 표시", value: "1회" },
 ];
 
 export const instructorSummary =
@@ -206,18 +179,3 @@ export const summarySections = [
   { h: "5. 정리와 선택 기준", p: "지역 상태는 useState, 좁은 범위의 공유 상태는 Context, 전역이거나 복잡한 상태 흐름은 라이브러리로 접근합니다. 무엇을 선택하든 리렌더링 비용과 참조 안정성을 이해하는 것이 핵심입니다." },
 ];
 
-/**
- * 집중 점수(0–4)에 대한 색/배경/라벨. 타임라인 카드와 구간 모달이 쓴다.
- *
- * 보통(1.5–2.5) 구간이 짙은 골드(#c9a11a)인 것은 의도한 차이다 — 흐름 차트 내부는
- * 같은 구간을 #f4c325 로 칠하고(FocusFlowChart 의 colOf), 프로토타입도 두 값을 나눠 쓴다.
- */
-export function focusColor(f: number) {
-  return f >= 3.5 ? "#16c582" : f >= 2.5 ? "#5bc79d" : f >= 1.5 ? "#c9a11a" : f >= 0.5 ? "#e0714f" : "#e0455f";
-}
-export function focusBg(f: number) {
-  return f >= 3.5 ? "#eaf7f2" : f >= 2.5 ? "#eef8ef" : f >= 1.5 ? "#fdf8e7" : f >= 0.5 ? "#fdefe8" : "#fdeeee";
-}
-export function focusLabel(f: number) {
-  return ["매우 낮음", "낮음", "보통", "높음", "매우 높음"][Math.round(f)] ?? "보통";
-}

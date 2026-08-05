@@ -29,11 +29,17 @@ from zani_ai.engagement.contracts import (
     SAMPLER_SCHEMES,
     TARGET_ENCODINGS,
     SplitName,
+    low_engagement_metrics,
 )
 from zani_ai.engagement.features import SCHEMA_NAME, TOKEN_FEATURE_COUNT, get_schema
 from zani_ai.engagement.model import (
+    DUAL_HEAD,
     EngagementTransformer,
+    MixingProtocol,
     ModelConfig,
+    ProbabilityMixing,
+    deployment_view,
+    mixed_log_probabilities,
     ordinal_binary_class_probabilities,
 )
 
@@ -132,9 +138,12 @@ class TrainingConfig:
     lr_step: int | None = None
     array_key: str = "tokens"
     array_shape: tuple[int, ...] | None = None
-    # E0-L only: the stage-1 checkpoint whose backbone stage 2 freezes. Required
-    # by, and restricted to, the `ordinal_binary` head.
+    # E0-L / E0-M only: the stage-1 checkpoint whose backbone stage 2 freezes.
+    # Required by, and restricted to, the two-stage ordinal heads.
     stage1_checkpoint: Path | None = None
+    # E0-M only: the grid the deployed mixing point is chosen from on Validation.
+    # Required by, and restricted to, the dual head.
+    mixing: MixingProtocol | None = None
     # E0-I only. Defaults preserve every existing protocol and checkpoint hash.
     curriculum: str = "none"
     reliability_manifest: Path | None = None
@@ -168,9 +177,18 @@ class TrainingResult:
     best_epoch: int
     validation: EvaluationMetrics
     test: EvaluationMetrics | None
+    #: Dual head only: the Validation-selected mixing point and its grid.
+    mixing: MixingSelection | None = None
 
 
-type EpochProgress = Callable[[int, EvaluationMetrics], None]
+#: ``(epoch, validation, stale_epochs)``. ``stale_epochs`` is how many epochs in
+#: a row had already failed to improve *before* this one, so
+#: ``patience - stale_epochs`` is the fewest epochs early stopping can still
+#: require. It is there so a progress line can put a floor under "when does this
+#: finish", which a countdown to ``max_epochs`` cannot: this family's measured
+#: ``best_epoch`` is 2~11 against a 200-epoch budget, so runs end near epoch 30
+#: and a naive ETA overstates by most of an order of magnitude.
+type EpochProgress = Callable[[int, EvaluationMetrics, int], None]
 
 
 def validate_manifest_completion(
@@ -660,7 +678,7 @@ def make_objective(
     # `config` is a ModelConfig (Transformer) or STGCNConfig (ST-GCN, no `head`
     # attribute); any config without a `head` defaults to softmax.
     head = getattr(config, "head", "softmax")
-    if head in ("coral", "ordinal_binary"):
+    if head in ("coral", "ordinal_binary", DUAL_HEAD):
         if target_encoding != "one_hot":
             # Both heads fit cumulative 1[y>j] indicators, so there is no class
             # distribution left for SORD to soften. Ignoring the request would
@@ -668,7 +686,10 @@ def make_objective(
             name = "CORAL" if head == "coral" else "ordinal-binary"
             raise ValueError(f"target_encoding is not applicable to the {name} head")
         # These heads replace the softmax head itself, so `loss` does not apply.
-        if head == "ordinal_binary":
+        # The dual head trains only its ordinal half, so it shares that
+        # objective; `DualHeadMixture` reports `head="softmax"` and lands below,
+        # which is how the deployed mixture gets the plain argmax decoding.
+        if head in ("ordinal_binary", DUAL_HEAD):
             return OrdinalBinaryObjective(config.num_classes)
         return CoralObjective(config.num_classes)
     if loss not in LOSS_SCHEMES:
@@ -819,6 +840,38 @@ def ordinal_quality(expected: list[int], predicted: list[int]) -> tuple[float, f
     return within_one, 0.0 if math.isnan(kappa) else kappa
 
 
+def metrics_from_predictions(
+    expected: list[int],
+    predicted: list[int],
+    *,
+    monotonicity_violation_rate: float | None = None,
+) -> EvaluationMetrics:
+    """Every recorded metric, from decoded labels alone.
+
+    Split out of :func:`evaluate_model` so the dual head's Validation grid search
+    can score dozens of candidate mixing points from one cached forward pass and
+    still report the same numbers a full evaluation would.
+    """
+    report = classification_report(
+        expected,
+        predicted,
+        labels=list(range(len(LABELS))),
+        target_names=list(LABELS),
+        output_dict=True,
+        zero_division=0,
+    )
+    within_one, kappa = ordinal_quality(expected, predicted)
+    return EvaluationMetrics(
+        accuracy=float(accuracy_score(expected, predicted)),
+        macro_f1=float(f1_score(expected, predicted, labels=list(range(4)), average="macro")),
+        within_one_accuracy=within_one,
+        quadratic_weighted_kappa=kappa,
+        confusion_matrix=confusion_matrix(expected, predicted, labels=list(range(4))).tolist(),
+        classification_report=cast(dict[str, object], report),
+        monotonicity_violation_rate=monotonicity_violation_rate,
+    )
+
+
 def evaluate_model(
     model: nn.Module,
     loader: DataLoader[tuple[Tensor, Tensor]],
@@ -839,23 +892,137 @@ def evaluate_model(
                 violated, total = objective.violation_counts(logits)
                 violated_pairs += violated
                 total_pairs += total
-    report = classification_report(
+    return metrics_from_predictions(
         expected,
         predicted,
-        labels=list(range(len(LABELS))),
-        target_names=list(LABELS),
-        output_dict=True,
-        zero_division=0,
-    )
-    within_one, kappa = ordinal_quality(expected, predicted)
-    return EvaluationMetrics(
-        accuracy=float(accuracy_score(expected, predicted)),
-        macro_f1=float(f1_score(expected, predicted, labels=list(range(4)), average="macro")),
-        within_one_accuracy=within_one,
-        quadratic_weighted_kappa=kappa,
-        confusion_matrix=confusion_matrix(expected, predicted, labels=list(range(4))).tolist(),
-        classification_report=cast(dict[str, object], report),
         monotonicity_violation_rate=violated_pairs / total_pairs if total_pairs else None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class MixingSelection:
+    """What the Validation grid search decided, and everything it looked at.
+
+    ``reference`` is the ``alpha = 1`` corner -- the frozen stage-1 softmax head,
+    i.e. the baseline protocol's own decision measured inside this run. Recording
+    it is what makes the accuracy guard and the recall gain readable per seed
+    instead of only across two protocols' aggregates.
+    """
+
+    mixing: ProbabilityMixing
+    validation: EvaluationMetrics
+    reference: EvaluationMetrics
+    #: False when no grid point cleared the budgets and the reference was kept.
+    constraints_satisfied: bool
+    monotonicity_violation_rate: float | None
+    grid: tuple[dict[str, object], ...]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "selected": self.mixing.to_dict(),
+            "constraints_satisfied": self.constraints_satisfied,
+            "monotonicity_violation_rate": self.monotonicity_violation_rate,
+            "validation": self.validation.to_dict(),
+            "validation_low_engagement": low_engagement_metrics(self.validation.confusion_matrix),
+            "reference_validation": self.reference.to_dict(),
+            "reference_low_engagement": low_engagement_metrics(self.reference.confusion_matrix),
+            "grid": list(self.grid),
+        }
+
+
+def _grid_entry(mixing: ProbabilityMixing, metrics: EvaluationMetrics) -> dict[str, object]:
+    low = low_engagement_metrics(metrics.confusion_matrix)
+    return {
+        "alpha": mixing.alpha,
+        "temperature_softmax": mixing.temperature_softmax,
+        "temperature_ordinal": mixing.temperature_ordinal,
+        "accuracy": metrics.accuracy,
+        "macro_f1": metrics.macro_f1,
+        "low_engagement_recall": low["recall"],
+        "low_engagement_false_positive_rate": low["false_positive_rate"],
+        "false_alarms_per_90min": low["false_alarms_per_90min"],
+    }
+
+
+def select_probability_mixing(
+    model: EngagementTransformer,
+    loader: DataLoader[tuple[Tensor, Tensor]],
+    device: torch.device,
+    protocol: MixingProtocol,
+) -> MixingSelection:
+    """Pick the deployed mixing point on Validation, after the head is frozen.
+
+    Both halves' logits are cached from a single pass, so scoring the whole grid
+    costs one forward through the encoder rather than one per candidate. That is
+    the same saving the dual head buys at inference time, for the same reason.
+
+    The rule is the deployment gate restated on Validation: among the points that
+    stay inside the false-alarm budget and do not give up more accuracy than the
+    budget allows, take the highest low-engagement recall. Ties break toward
+    fewer false alarms, then higher accuracy, then the point closest to the
+    baseline corner -- fully ordered, so the choice does not depend on dict order.
+
+    Selecting here and evaluating Test later keeps Test strictly
+    post-selection, exactly as the checkpoint choice does.
+    """
+    if model.config.head != DUAL_HEAD:
+        raise ValueError(f"probability mixing requires the {DUAL_HEAD} head")
+    model.eval()
+    softmax_batches: list[Tensor] = []
+    ordinal_batches: list[Tensor] = []
+    expected: list[int] = []
+    with torch.inference_mode():
+        for tokens, labels in loader:
+            batch_softmax, batch_ordinal = model.dual_head_logits(tokens.to(device))
+            softmax_batches.append(batch_softmax.cpu())
+            ordinal_batches.append(batch_ordinal.cpu())
+            expected.extend(labels.tolist())
+    softmax_logits = torch.cat(softmax_batches)
+    ordinal_logits = torch.cat(ordinal_batches)
+    # Before any repair, as E0-L records it: a mixture whose ordinal half needed
+    # the running minimum on most samples is a different finding from one whose
+    # repair never fired. Temperature cannot change this -- it scales all three
+    # thresholds by the same positive factor -- so one number covers the grid.
+    cumulative = torch.sigmoid(ordinal_logits)
+    violation_rate = float((cumulative[:, :-1] < cumulative[:, 1:]).float().mean())
+
+    def score(mixing: ProbabilityMixing) -> EvaluationMetrics:
+        log_probabilities = mixed_log_probabilities(softmax_logits, ordinal_logits, mixing)
+        return metrics_from_predictions(expected, log_probabilities.argmax(dim=1).tolist())
+
+    reference_mixing = protocol.reference()
+    scored = {mixing: score(mixing) for mixing in protocol.points()}
+    reference = scored[reference_mixing]
+
+    def admissible(mixing: ProbabilityMixing, metrics: EvaluationMetrics) -> bool:
+        low = low_engagement_metrics(metrics.confusion_matrix)
+        return (
+            low["false_alarms_per_90min"] <= protocol.false_alarm_budget_per_90min
+            and reference.accuracy - metrics.accuracy <= protocol.accuracy_drop_budget
+        )
+
+    def rank(item: tuple[ProbabilityMixing, EvaluationMetrics]) -> tuple[float, ...]:
+        mixing, metrics = item
+        low = low_engagement_metrics(metrics.confusion_matrix)
+        return (
+            -low["recall"],
+            low["false_alarms_per_90min"],
+            -metrics.accuracy,
+            -mixing.alpha,
+            mixing.temperature_softmax,
+            mixing.temperature_ordinal,
+        )
+
+    candidates = [item for item in scored.items() if admissible(*item)]
+    selected, metrics = min(candidates, key=rank) if candidates else (reference_mixing, reference)
+    model.set_probability_mixing(selected)
+    return MixingSelection(
+        mixing=selected,
+        validation=metrics,
+        reference=reference,
+        constraints_satisfied=bool(candidates),
+        monotonicity_violation_rate=violation_rate,
+        grid=tuple(_grid_entry(mixing, scored[mixing]) for mixing in protocol.points()),
     )
 
 
@@ -880,10 +1047,21 @@ def _save_checkpoint(
         payload["feature_mean"] = statistics.mean
         payload["feature_std"] = statistics.std
     else:
-        # ST-GCN's adjacency `partitions` buffer is fixed but not learned, so it
-        # is not part of `model_state`'s gradient-bearing parameters logically;
-        # store it explicitly so the checkpoint is self-contained.
-        payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
+        from zani_ai.engagement.stgcn import PaperEngagementSTGCN
+
+        # An ST-GCN's graph buffer is fixed but not learned, so it is not part of
+        # `model_state`'s gradient-bearing parameters logically; store it
+        # explicitly so the checkpoint is self-contained.
+        #
+        # The two ST-GCN families hold different graphs -- E1's three
+        # spatial-configuration partitions `[3,V,V]` and the paper's single
+        # `A+I` `[V,V]` -- so each gets its own key. That key is what
+        # `load_checkpoint` dispatches on: sharing one would let a checkpoint
+        # load and come back as the wrong model.
+        if isinstance(model, PaperEngagementSTGCN):
+            payload["adjacency"] = model.adjacency.detach().cpu().numpy()
+        else:
+            payload["partitions"] = model.partitions.detach().cpu().numpy()  # type: ignore[attr-defined]
     payload.update(
         {
             "epoch": epoch,
@@ -893,6 +1071,15 @@ def _save_checkpoint(
             "model_family": "transformer" if is_transformer else "stgcn",
         }
     )
+    # `isinstance` rather than the `is_transformer` flag above: only the real
+    # check narrows the type, and the alternative is three `type: ignore`s.
+    if isinstance(model, EngagementTransformer) and model.config.head == DUAL_HEAD:
+        # `None` for the per-epoch saves, which happen before the grid is
+        # searched; filled in by the final rewrite. Written either way so that a
+        # dual-head checkpoint always answers the question rather than omitting it.
+        payload["probability_mixing"] = (
+            model.probability_mixing().to_dict() if model.has_probability_mixing() else None
+        )
     torch.save(payload, path)
 
 
@@ -905,12 +1092,28 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
     model_family = checkpoint.get("model_family", "transformer")
     cfg_dict = dict(cast(dict[str, Any], checkpoint["model_config"]))
     if model_family == "stgcn":
-        from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+        from zani_ai.engagement.stgcn import (
+            EngagementSTGCN,
+            PaperEngagementSTGCN,
+            PaperSTGCNConfig,
+            STGCNConfig,
+        )
 
         if "channels" in cfg_dict:
             cfg_dict["channels"] = tuple(cfg_dict["channels"])
-        stgcn_config = STGCNConfig(**cfg_dict)
-        stgcn_model = EngagementSTGCN(torch.as_tensor(checkpoint["partitions"]), stgcn_config)
+        # Which graph the checkpoint carries decides which model it is. See the
+        # note in `_save_checkpoint`: `model_family` is "stgcn" for both
+        # families, because it is part of the reproducibility identity and
+        # splitting it would rewrite E1's configuration hash.
+        stgcn_model: nn.Module
+        if "adjacency" in checkpoint:
+            stgcn_model = PaperEngagementSTGCN(
+                torch.as_tensor(checkpoint["adjacency"]), PaperSTGCNConfig(**cfg_dict)
+            )
+        else:
+            stgcn_model = EngagementSTGCN(
+                torch.as_tensor(checkpoint["partitions"]), STGCNConfig(**cfg_dict)
+            )
         stgcn_model.load_state_dict(checkpoint["model_state"])
         return stgcn_model.to(device)
     if model_family != "transformer":
@@ -930,6 +1133,12 @@ def load_checkpoint(path: Path, device: str = "cpu") -> nn.Module:
         config=config,
     )
     model.load_state_dict(checkpoint["model_state"])
+    recorded_mixing = checkpoint.get("probability_mixing")
+    if isinstance(recorded_mixing, dict):
+        # Absent (or None) on a checkpoint saved before selection, which is the
+        # state `select_probability_mixing` itself loads. `DualHeadMixture` is
+        # what refuses to deploy one that never got a point.
+        model.set_probability_mixing(ProbabilityMixing(**recorded_mixing))
     return model.to(device)
 
 
@@ -942,6 +1151,17 @@ _BACKBONE_PREFIXES = (
     "position_embedding",
     "encoder.",
 )
+
+def _stage1_prefixes(head: str) -> tuple[str, ...]:
+    """What stage 2 inherits, which depends on which head it is building.
+
+    The dual head also inherits the softmax classifier: its ``alpha = 1`` corner
+    has to be the stage-1 model's own decision, which it can only be if the head
+    producing it is stage 1's, byte for byte.
+    """
+    if head == DUAL_HEAD:
+        return (*_BACKBONE_PREFIXES, "classifier.")
+    return _BACKBONE_PREFIXES
 _STAGE1_MODEL_FIELDS = (
     "input_dim",
     "segment_count",
@@ -1000,7 +1220,8 @@ def freeze_stage1_backbone(
             f"its backbone was trained on other data: {checkpoint_path}"
         )
     state = cast(dict[str, Tensor], payload["model_state"])
-    backbone = {key: value for key, value in state.items() if key.startswith(_BACKBONE_PREFIXES)}
+    prefixes = _stage1_prefixes(model.config.head)
+    backbone = {key: value for key, value in state.items() if key.startswith(prefixes)}
     incompatible = model.load_state_dict(backbone, strict=False)
     if incompatible.unexpected_keys:
         raise ValueError(
@@ -1055,12 +1276,19 @@ def train_model(
     # The two are one decision: a head with no pretrained backbone to freeze
     # trains from scratch, and a frozen backbone with a softmax head is E0 with
     # its encoder switched off. Neither is a protocol we have.
-    if (getattr(config.model, "head", "softmax") == "ordinal_binary") != (
+    configured_head = getattr(config.model, "head", "softmax")
+    if (configured_head in ("ordinal_binary", DUAL_HEAD)) != (
         config.stage1_checkpoint is not None
     ):
         raise ValueError(
-            "the ordinal_binary head requires stage1_checkpoint, and stage1_checkpoint "
-            "requires the ordinal_binary head"
+            "the ordinal_binary and dual heads require stage1_checkpoint, and "
+            "stage1_checkpoint requires one of those heads"
+        )
+    # Same argument for the grid: without it the dual head has no deployed output
+    # to select, and with it any other head has a grid nothing would search.
+    if (configured_head == DUAL_HEAD) != (config.mixing is not None):
+        raise ValueError(
+            f"the {DUAL_HEAD} head requires mixing, and mixing requires that head"
         )
     datasets = _load_feature_datasets(
         config.features_root,
@@ -1125,25 +1353,38 @@ def train_model(
     best_epoch = -1
     stale_epochs = 0
     best_validation: EvaluationMetrics | None = None
-    # Selection stays on macro-F1, but QWK is recorded per epoch so "would QWK
-    # have picked another epoch?" can be answered after the fact, without
-    # retraining and without making the selection metric itself ambiguous.
+    # Selection stays on macro-F1, but QWK and accuracy are recorded per epoch
+    # so "would another metric have picked another epoch?" can be answered after
+    # the fact, without retraining and without making the selection metric itself
+    # ambiguous. Accuracy matters for arXiv:2403.17175, which reports accuracy
+    # and does not state how it picked a checkpoint: with the full history, the
+    # final-epoch and best-accuracy readings are both recoverable and stay
+    # separable from the macro-F1 selection.
+    #
+    # The learning rate is recorded alongside so a decay schedule can be
+    # verified from the artifact rather than assumed from the configuration.
     validation_history: list[dict[str, object]] = []
+
+    def history_entry(epoch: int, validation: EvaluationMetrics) -> dict[str, object]:
+        return {
+            "epoch": epoch,
+            "accuracy": validation.accuracy,
+            "macro_f1": validation.macro_f1,
+            "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
+            "learning_rate": optimizer.param_groups[0]["lr"],
+        }
+
     if curriculum_ambiguity is None:
         train_loader = _loader(datasets.train, config, shuffle=True)
         valid_loader = _loader(datasets.valid, config, shuffle=False)
         for epoch in range(config.max_epochs):
             _train_epoch(model, train_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
-            validation_history.append(
-                {
-                    "epoch": epoch,
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
-            )
+            # Before `scheduler.step()`: the entry has to name the rate this
+            # epoch trained at, not the one the next epoch will use.
+            validation_history.append(history_entry(epoch, validation))
             if progress is not None:
-                progress(epoch, validation)
+                progress(epoch, validation, stale_epochs)
             if scheduler is not None:
                 scheduler.step()
             if validation.macro_f1 > best_score:
@@ -1184,30 +1425,22 @@ def train_model(
             _train_epoch(model, warmup_loader, optimizer, objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {
-                    "epoch": epoch,
-                    "curriculum_stage": "reliable_warmup",
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
+                {**history_entry(epoch, validation), "curriculum_stage": "reliable_warmup"}
             )
             if progress is not None:
-                progress(epoch, validation)
+                # Warm-up cannot stop early -- every one of these epochs runs --
+                # so nothing has gone stale yet.
+                progress(epoch, validation, 0)
 
         for stage_epoch in range(config.max_epochs):
             epoch = config.reliable_warmup_epochs + stage_epoch
             _train_curriculum_epoch(model, mixed_loader, optimizer, curriculum_objective, device)
             validation = evaluate_model(model, valid_loader, device)
             validation_history.append(
-                {
-                    "epoch": epoch,
-                    "curriculum_stage": "mixed",
-                    "macro_f1": validation.macro_f1,
-                    "quadratic_weighted_kappa": validation.quadratic_weighted_kappa,
-                }
+                {**history_entry(epoch, validation), "curriculum_stage": "mixed"}
             )
             if progress is not None:
-                progress(epoch, validation)
+                progress(epoch, validation, stale_epochs)
             if validation.macro_f1 > best_score:
                 best_score = validation.macro_f1
                 best_epoch = epoch
@@ -1228,11 +1461,38 @@ def train_model(
                     break
     if best_validation is None:
         raise RuntimeError("training completed without a validation checkpoint")
+    mixing_selection: MixingSelection | None = None
+    if config.mixing is not None:
+        # Against the *selected* checkpoint, not the last one trained: the
+        # mixture that ships has to be chosen for the weights that ship.
+        selected_model = load_checkpoint(checkpoint_path, config.device)
+        assert isinstance(selected_model, EngagementTransformer)
+        mixing_selection = select_probability_mixing(
+            selected_model,
+            _loader(datasets.valid, config, shuffle=False),
+            device,
+            config.mixing,
+        )
+        # Rewritten so the mixing point travels with the weights it was chosen
+        # for. `validation`/`epoch` stay as the epoch loop recorded them -- the
+        # checkpoint was selected on the ordinal head's macro-F1 and saying
+        # otherwise afterwards would misreport why this epoch won.
+        _save_checkpoint(
+            checkpoint_path,
+            selected_model,
+            config,
+            statistics,
+            best_epoch,
+            best_validation,
+            schema=manifest_schema_name,
+        )
     test_metrics: EvaluationMetrics | None = None
     if evaluate_test:
         if datasets.test is None:
             raise RuntimeError("Test dataset was not loaded for Test evaluation")
-        best_model = load_checkpoint(checkpoint_path, config.device)
+        # `deployment_view` is what makes the dual head's Test numbers the mixed
+        # decision rather than its ordinal half; every other head passes through.
+        best_model = deployment_view(load_checkpoint(checkpoint_path, config.device))
         test_metrics = evaluate_model(
             best_model, _loader(datasets.test, config, shuffle=False), device
         )
@@ -1262,6 +1522,8 @@ def train_model(
         "validation_history": validation_history,
         "training": training_payload,
     }
+    if mixing_selection is not None:
+        payload["probability_mixing"] = mixing_selection.to_dict()
     if test_metrics is None:
         payload["test_evaluation"] = {
             "status": "deferred",
@@ -1270,7 +1532,14 @@ def train_model(
     else:
         payload["test"] = test_metrics.to_dict()
     metrics_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return TrainingResult(checkpoint_path, metrics_path, best_epoch, best_validation, test_metrics)
+    return TrainingResult(
+        checkpoint_path,
+        metrics_path,
+        best_epoch,
+        best_validation,
+        test_metrics,
+        mixing=mixing_selection,
+    )
 
 
 __all__ = [
@@ -1283,6 +1552,7 @@ __all__ = [
     "EvaluationMetrics",
     "FeatureStatistics",
     "FocalObjective",
+    "MixingSelection",
     "Objective",
     "OrdinalBinaryObjective",
     "SoftmaxObjective",
@@ -1294,7 +1564,9 @@ __all__ = [
     "freeze_stage1_backbone",
     "load_checkpoint",
     "make_objective",
+    "metrics_from_predictions",
     "ordinal_quality",
+    "select_probability_mixing",
     "train_model",
     "validate_manifest_completion",
 ]

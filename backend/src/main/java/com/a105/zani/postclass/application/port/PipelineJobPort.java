@@ -36,6 +36,18 @@ public interface PipelineJobPort {
     Optional<PipelineJobState> findForUpdate(Long sessionId);
 
     /**
+     * 세션의 작업 상태를 잠그지 않고 읽는다. 작업이 없으면 빈 값.
+     *
+     * <p>사후 전사 오케스트레이션이 {@code queuedAt} 을 얻는 데 쓴다 — 청크마다 재시도 여부를 정할 때 8시간 마감의 기준점이 필요하다. {@link #findForUpdate} 를 쓰면 안
+     * 된다: 그 잠금은 전이 트랜잭션 안에서만 의미가 있고, 수십 분 걸리는 전사가 그것을 붙잡으면 SLA 경보와 다른 단계의 전이가 잠금 대기로 실패한다.
+     *
+     * <p>전이 판단에 쓰지 않는다. 잠금이 없으므로 읽은 값이 곧바로 낡을 수 있다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    Optional<PipelineJobState> find(Long sessionId);
+
+    /**
      * 세션의 작업 단계를 바꾸고 <b>재시도 예산을 초기화한다</b>(시도 횟수 0, 대기 해제).
      *
      * <p>재시도 예산을 단계마다 새로 주기 위해서다. 초기화하지 않으면 앞 단계에서 쓴 시도 횟수가 남아, 다음 단계는 첫 실패에서 곧바로 상한에 걸린다.
@@ -63,6 +75,62 @@ public interface PipelineJobPort {
      * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
      */
     void markFailed(Long sessionId, String error, Instant changedAt);
+
+    /**
+     * 전사를 시작하거나 이어갈 수 있는 세션 ID. 오래 등록된 것부터 최대 limit 건.
+     *
+     * <p>두 경우만 담는다.
+     *
+     * <ul>
+     *   <li>{@code QUEUED} — 아직 전사를 시작하지 않았다
+     *   <li>{@code TRANSCRIBING} 이면서 {@code next_attempt_at} 이 {@code now} 이하 — 실패해 재시도 기한이 지났다
+     * </ul>
+     *
+     * <p>{@code next_attempt_at} 이 {@code null} 인 {@code TRANSCRIBING} 은 <b>실행 중</b>이라 담지 않는다. 이 구분이 없으면 진행 중인 세션이 매
+     * 주기마다 다시 발견되고, 같은 전사가 겹쳐 돌 수 있다.
+     *
+     * <p>이 조회는 선점이 아니다. 실제 시작은 잠금 읽기를 거치는 짧은 트랜잭션에서 따로 판정한다({@code TryStartTranscriptionUseCase}).
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소를 읽을 수 없음
+     */
+    List<Long> findDueTranscriptionSessionIds(Instant now, int limit);
+
+    /**
+     * 프로세스가 죽어 남은 {@code TRANSCRIBING} 작업을 다시 발견되게 만든다. <b>시도 횟수는 올리지 않는다.</b>
+     *
+     * <p>{@link #findDueTranscriptionSessionIds} 는 {@code next_attempt_at} 이 {@code null} 인 {@code TRANSCRIBING} 을 "실행
+     * 중" 으로 보고 제외한다. 그것이 실행 중인 세션을 매 주기마다 다시 집는 것을 막는 장치인데, 워커가 사라지면 같은 조건이 반대로 작동한다.
+     *
+     * <pre>
+     * 서버 종료·크래시 → TRANSCRIBING + next_attempt_at = null 로 남음
+     *   → 실제로 도는 워커는 없음
+     *   → findDue 가 영원히 담지 않음 → 청크 lease 가 만료돼도 회수할 세션이 디스패치되지 않는다
+     * </pre>
+     *
+     * <p>그래서 기동 시 한 번 대기 시각을 채워 재시도 대기 상태로 만든다. 그 뒤는 평소 경로와 같다 — {@code findDue} 가 담고
+     * {@code TryStartTranscriptionUseCase} 가 대기를 풀고 이어간다. 성공한 청크는 체크포인트가 막아 다시 호출되지 않는다.
+     *
+     * <p><b>시도 횟수를 올리지 않는 이유.</b> 크래시는 GMS 실패가 아니다. 올리면 배포 한 번에 재시도 예산이 깎여, 실제로는 한 번도 실패하지 않은 세션이 상한에 걸린다. 무한 재기동이 예산을
+     * 못 쓰는 문제는 8시간 마감이 대신 막는다.
+     *
+     * <p><b>기동 시점에만 부른다.</b> 그때는 이 인스턴스의 워커가 아직 없다. 주기적으로 부르면 살아서 도는 세션까지 재시도 대기로 만들어 같은 세션이 겹쳐 돈다(청크 fencing 이 결과를 지켜
+     * 주긴 하지만 GMS 호출이 낭비된다).
+     *
+     * @return 되살린 작업 수
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    int requeueStalledTranscriptions(Instant now);
+
+    /**
+     * 현재 단계를 유지한 채 재시도 대기만 푼다. <b>시도 횟수는 보존한다.</b>
+     *
+     * <p>재시도 선점 전용이다. {@link #updateStatus} 를 쓸 수 없는 이유는 그쪽이 시도 횟수를 0 으로 되돌리기 때문이다 — 그러면 실패를 반복하는 단계가 상한에 걸리지 않고 영원히
+     * 재시도된다. {@code AdvancePipelineJobUseCase#advance} 도 쓸 수 없다. 이미 같은 단계면 아무것도 쓰지 않고 반환하므로 {@code next_attempt_at} 이
+     * 남아, 실행 중에도 매 주기마다 다시 발견된다.
+     *
+     * @throws PipelineJobUnavailableException 작업 저장소에 쓸 수 없음
+     */
+    void clearRetryWait(Long sessionId, Instant changedAt);
 
     /**
      * 아직 끝나지 않았는데 마감을 넘긴 작업의 세션 ID. 오래 밀린 것부터 최대 limit 건.

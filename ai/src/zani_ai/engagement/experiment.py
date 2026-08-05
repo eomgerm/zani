@@ -5,8 +5,10 @@ import json
 import os
 import platform
 import statistics
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -17,6 +19,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 from torch import nn
 
+from zani_ai.engagement.contracts import low_engagement_metrics
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import (
     SCHEMA_98,
@@ -24,12 +27,24 @@ from zani_ai.engagement.features import (
     SCHEMA_132,
     FeatureSchema,
 )
-from zani_ai.engagement.landmark_graph import GRAPH_VERSION, load_graph
+from zani_ai.engagement.landmark_graph import (
+    GRAPH_VERSION,
+    load_graph,
+    paper_adjacency_from_partitions,
+)
 from zani_ai.engagement.locking import DirectoryLock
-from zani_ai.engagement.model import ModelConfig
-from zani_ai.engagement.representations import landmark_sequence_name
+from zani_ai.engagement.model import DUAL_HEAD, MixingProtocol, ModelConfig
+from zani_ai.engagement.representations import (
+    landmark_sequence_name,
+    landmark_sequence_placeholder_name,
+)
 from zani_ai.engagement.runtime import device_type, parse_device, resolve_landmark_graph
-from zani_ai.engagement.stgcn import EngagementSTGCN, STGCNConfig
+from zani_ai.engagement.stgcn import (
+    EngagementSTGCN,
+    PaperEngagementSTGCN,
+    PaperSTGCNConfig,
+    STGCNConfig,
+)
 from zani_ai.engagement.training import (
     EvaluationMetrics,
     FeatureStatistics,
@@ -106,7 +121,7 @@ class ExperimentSpec:
 
     protocol: str
     schema: FeatureSchema | None
-    model_config: ModelConfig | STGCNConfig
+    model_config: ModelConfig | STGCNConfig | PaperSTGCNConfig
     #: Defaults to the 10-seed candidate list, so a protocol added from now on
     #: is measured at a resolution that can separate it from its baseline. Every
     #: protocol that already has completed seeds pins ``E0_SEEDS`` explicitly --
@@ -154,6 +169,10 @@ class ExperimentSpec:
     # ``_build_configuration`` -- the checkpoint fingerprints go in ``inputs``.
     needs_stage1_checkpoint: bool = False
     stage1_output: Path | None = None
+    # E0-M dual head. The grid and its selection rule are part of the protocol,
+    # so unlike `stage1_output` this *does* enter `_build_configuration`. `None`
+    # for every other protocol, which is what keeps their hashes unchanged.
+    mixing: MixingProtocol | None = None
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -395,6 +414,53 @@ E0L_SPEC = ExperimentSpec(
 E0_10_SPEC = replace(E0_SPEC, protocol="E0-10", seeds=CANDIDATE_SEEDS)
 
 
+# E0-M puts E0-10's softmax head and E0-L's ordinal head on one shared encoder
+# and mixes their class probabilities. It exists because the two disagree in the
+# way the product cares about, and neither is strictly better:
+#
+# * E0-10 Test: accuracy 71.36%, macro-F1 58.66%. Low-engagement recall 66.73%
+#   at a 5.60% false-positive rate.
+# * E0-L Test: accuracy 70.03%, macro-F1 59.16%. Recall 70.82% at 6.65%.
+#
+# The ordinal head finds +4.1%p more of the students who are actually
+# disengaged, which is the number the 10-second decision acts on, and pays 1.3%p
+# of 4-class accuracy and +1.05%p of false positives for it. Every earlier
+# protocol was ranked on macro-F1, so this trade was never the thing being
+# chosen; ticket S15P11A105-289 makes it the thing being chosen.
+#
+# Why a mixture rather than picking one: the two heads are not two models. E0-L
+# already freezes E0's encoder, so both heads read the *same* pooled vector and
+# the combination costs one encoder pass plus two small MLPs -- not two
+# inferences. There is no runtime reason to choose, which leaves `alpha` free to
+# be selected on evidence.
+#
+# Three things stay fixed so that the mixture is the only variable:
+#
+# * Stage 1 is E0-10's completed output, and both the encoder *and* the softmax
+#   head are frozen from it. That makes `alpha = 1` E0-10's own decision, seed by
+#   seed, so the accuracy guard and the recall gain are measurable inside one run
+#   rather than only across two aggregates.
+# * Stage 2 trains the ordinal head exactly as E0-L does -- BCE on the K-1
+#   `1[y>j]` indicators, lr 1e-4, 200 epochs, patience 20, checkpoint chosen on
+#   the ordinal half's Validation macro-F1. E0-10 seed n's weights are identical
+#   to E0 seed n's (README, "seed 목록은 수치에 영향을 주지 않습니다"), so seeds
+#   42~46 reproduce E0-L's heads and 47~51 extend them to ten.
+# * `alpha`, the two temperatures and epsilon are chosen from a pre-registered
+#   grid on Validation only, after the checkpoint is frozen. The grid and the
+#   selection rule are in the identity (`MixingProtocol`); the chosen point is a
+#   per-seed property of the artifact.
+#
+# The exported output is `log(p_safe)`, which the browser's existing softmax
+# inverts exactly, so no frontend code changes. See `model.mixed_log_probabilities`.
+E0M_SPEC = ExperimentSpec(
+    "E0-M",
+    SCHEMA_98,
+    ModelConfig(input_dim=98, head=DUAL_HEAD),
+    needs_stage1_checkpoint=True,
+    mixing=MixingProtocol(),
+)
+
+
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
 
@@ -422,6 +488,31 @@ def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
         return EngagementSTGCN(torch.as_tensor(partitions), STGCNConfig())
 
     return build_stgcn_model
+
+
+def paper_stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
+    """Build the paper-faithful ST-GCN bound to a resolved graph file.
+
+    Same contract as `stgcn_model_builder` -- named inner function so
+    `metrics.json` records a stable name, `graph_path` rebound by
+    `reproduce_experiment` -- but it collapses the saved 3-partition graph back
+    to the paper's single `A+I` (`paper_adjacency_from_partitions`) and builds
+    `PaperEngagementSTGCN`.
+    """
+
+    def build_paper_stgcn_model(statistics: FeatureStatistics | None = None) -> nn.Module:
+        """Ignores ``statistics``: ST-GCN needs no feature normalization stats."""
+        del statistics
+        if graph_path is None:
+            raise RuntimeError(
+                "landmark graph is unresolved; run through reproduce_experiment "
+                "or set ExperimentSpec.graph_path"
+            )
+        _, partitions = load_graph(graph_path)
+        adjacency = paper_adjacency_from_partitions(partitions)
+        return PaperEngagementSTGCN(torch.as_tensor(adjacency), PaperSTGCNConfig())
+
+    return build_paper_stgcn_model
 
 
 E1_SPEC = ExperimentSpec(
@@ -501,6 +592,45 @@ E1B_SPEC = ExperimentSpec(
 )
 
 
+# E1-P is the literature-faithful reproduction of arXiv:2403.17175, added beside
+# E1/E1-A/E1-B rather than replacing them so their artifacts stay reproducible.
+# Four things change together, which is why it is a new protocol and not a tweak:
+#
+# * the model. K=1 `(A+I)⊙M` with a shared spatial projection and learnable edge
+#   importance, canonical block order, 1x1 conv head -- see
+#   `stgcn.PaperEngagementSTGCN`, whose parameter count reconciles with the
+#   paper's reported 861,688.
+# * the input. 300 steps at 30 FPS, with missing-face steps left at zero instead
+#   of forward-filled, because the paper classifies absent-face samples rather
+#   than dropping them (§5).
+# * the seeds. The default 10-seed list, not E1's pinned five, because the paper
+#   reports a single accuracy with no seed count and the comparison needs a
+#   spread rather than a point.
+# * the reported metric. The paper's primary figure is validation accuracy;
+#   selection stays on macro-F1 for consistency with every other protocol here,
+#   and `validation_history` now carries per-epoch accuracy so the final-epoch
+#   and best-accuracy readings stay separable from it.
+#
+# `lr_step=100` with `max_epochs=300` gives the paper's two decays, 1e-3 at epoch
+# 0, 1e-4 at 100, 1e-5 at 200, and `patience == max_epochs` runs all 300.
+E1P_SPEC = ExperimentSpec(
+    "E1-P",
+    None,
+    PaperSTGCNConfig(),
+    representation_name=landmark_sequence_placeholder_name(300),
+    build_model=paper_stgcn_model_builder(None),
+    needs_feature_stats=False,
+    learning_rate=1e-3,
+    batch_size=16,
+    max_epochs=300,
+    patience=300,
+    lr_step=100,
+    array_key="sequence",
+    array_shape=(3, 300, 78),
+    needs_landmark_graph=True,
+)
+
+
 #: Every reproducible protocol, keyed by the name it is known by on the CLI
 #: and in ``summary.json``. Lets callers dispatch on the protocol string
 #: instead of duplicating a handler per experiment.
@@ -521,11 +651,18 @@ SPECS: dict[str, ExperimentSpec] = {
         E0K_SPEC,
         E0L_SPEC,
         E0_10_SPEC,
+        E0M_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
+        E1P_SPEC,
     )
 }
+
+
+def _duration(seconds: float) -> str:
+    """``H:MM:SS``, for a progress line a person reads while a run is going."""
+    return str(timedelta(seconds=round(seconds)))
 
 
 def _sha256(path: Path) -> str:
@@ -647,6 +784,15 @@ def _apply_loss_and_sampling(
         configuration["loss"] = "ordinal_binary_bce"
         configuration["monotonicity"] = "cumulative_min"
         configuration["decoding"] = "argmax_class_probability"
+    elif head == DUAL_HEAD:
+        # Only the ordinal half has gradients, so the objective is the same one;
+        # what differs is that the decoding reads a *mixture*, and the grid the
+        # mixture is chosen from decides the numbers as much as the weights do.
+        # `MixingProtocol.to_dict` carries the monotonicity and decoding rules.
+        configuration["loss"] = "ordinal_binary_bce"
+        if spec.mixing is None:
+            raise ValueError(f"{spec.protocol} uses the dual head but has no mixing protocol")
+        configuration["probability_mixing"] = spec.mixing.to_dict()
     elif spec.loss != "cross_entropy":
         configuration["loss"] = spec.loss
         configuration["focal_gamma"] = spec.focal_gamma
@@ -1265,9 +1411,17 @@ def prepare_run(
     manifest_path, manifest_sha256 = _validate_manifest(features_root, spec)
     if spec.needs_landmark_graph:
         resolved_graph = resolve_landmark_graph(features_root, graph_path or spec.graph_path)
-        spec = replace(
-            spec, graph_path=resolved_graph, build_model=stgcn_model_builder(resolved_graph)
+        # Rebind to the builder for *this* spec's model. Both ST-GCN families
+        # need a resolved graph, so keying the rebind off `needs_landmark_graph`
+        # alone would silently train the paper-faithful protocol with E1's
+        # 3-partition model -- the run would succeed and the numbers would be
+        # wrong. The spec's own `model_config` decides.
+        builder = (
+            paper_stgcn_model_builder
+            if isinstance(spec.model_config, PaperSTGCNConfig)
+            else stgcn_model_builder
         )
+        spec = replace(spec, graph_path=resolved_graph, build_model=builder(resolved_graph))
     if spec.needs_reliability_manifest:
         selected_reliability = reliability_path or spec.reliability_manifest
         if selected_reliability is None:
@@ -1348,14 +1502,45 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
                 boundary,
             )
 
-    def report_progress(epoch: int, metrics: EvaluationMetrics) -> None:
-        total_epochs = spec.max_epochs + (
-            spec.reliable_warmup_epochs if spec.curriculum != "none" else 0
-        )
+    total_epochs = spec.max_epochs + (
+        spec.reliable_warmup_epochs if spec.curriculum != "none" else 0
+    )
+    started = time.monotonic()
+
+    def report_progress(epoch: int, metrics: EvaluationMetrics, stale_epochs: int) -> None:
+        """One line per epoch, with when it happened and when it can end.
+
+        The timing fields are appended after the existing ones so anything that
+        greps ``validation_macro_f1=`` out of an old log keeps working.
+
+        Two ETAs, because with early stopping a single one is a guess dressed as a
+        number. ``eta_stop`` assumes nothing improves from here, which makes it the
+        soonest the run can end; ``eta_max`` is the full budget, i.e. the latest.
+        The truth is between them, and for this family it sits near the first:
+        measured ``best_epoch`` is 2~11 against a 200-epoch budget, so runs end
+        around epoch 30 and ``eta_max`` overstates by roughly six times.
+
+        ``elapsed`` is monotonic, so an NTP correction on a multi-day run cannot
+        make it jump; the wall-clock stamp is separate and local, because "when
+        will this be done" is a question about the operator's clock.
+        """
+        finished_epochs = epoch + 1
+        elapsed = time.monotonic() - started
+        per_epoch = elapsed / finished_epochs
+        # `stale_epochs` counts the epochs before this one. If this one is stale
+        # too the counter reaches `patience` after this many more, and if it is an
+        # improvement the counter resets and the run takes longer -- so this is a
+        # floor on what remains, never an estimate of it.
+        soonest = max(0, spec.patience - stale_epochs - 1)
+        remaining = max(0, total_epochs - finished_epochs)
         print(
-            f"{spec.protocol} seed={seed} epoch={epoch + 1}/{total_epochs} "
+            f"{spec.protocol} seed={seed} epoch={finished_epochs}/{total_epochs} "
             f"validation_accuracy={metrics.accuracy:.6f} "
-            f"validation_macro_f1={metrics.macro_f1:.6f}",
+            f"validation_macro_f1={metrics.macro_f1:.6f} "
+            f"at={datetime.now().astimezone().isoformat(timespec='seconds')} "
+            f"elapsed={_duration(elapsed)} epoch_seconds={per_epoch:.1f} "
+            f"eta_stop={_duration(min(soonest, remaining) * per_epoch)} "
+            f"eta_max={_duration(remaining * per_epoch)}",
             flush=True,
         )
 
@@ -1392,6 +1577,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         reliable_warmup_epochs=spec.reliable_warmup_epochs,
         ambiguous_target_encoding=spec.ambiguous_target_encoding,
         ambiguous_neighbor_mass=spec.ambiguous_neighbor_mass,
+        mixing=spec.mixing,
     )
     _assert_manifest_unchanged(manifest_path, manifest_sha256, f"before seed {seed} training", spec)
     assert_external_inputs_unchanged(f"before seed {seed} training")
@@ -1419,7 +1605,13 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         manifest_path, manifest_sha256, f"before seed {seed} ONNX export", spec
     )
     export_metadata = (
-        DeploymentMetadata.for_stgcn()
+        # The schema name and step count come from the spec: the
+        # landmark-sequence family has both 100-step and 300-step members, and
+        # exporting one under the other's metadata would ship a model the
+        # browser loads and then feeds the wrong tensor.
+        DeploymentMetadata.for_stgcn(
+            spec.schema_name, steps=(spec.array_shape or (3, 100, 78))[1]
+        )
         if spec.schema is None
         else DeploymentMetadata.for_schema(spec.schema)
     )
@@ -1437,7 +1629,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         manifest_path, manifest_sha256, f"before recording seed {seed} completion", spec
     )
     assert_external_inputs_unchanged(f"before recording seed {seed} completion")
-    return {
+    record: dict[str, object] = {
         "seed": seed,
         "status": "complete",
         "feature_manifest_sha256": manifest_sha256,
@@ -1456,6 +1648,24 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         },
         "artifacts": artifacts,
     }
+    if result.mixing is not None:
+        # In the summary, not only in `metrics.json`: the mixing point is what
+        # the exported graph computes, so reading a summary without it would
+        # leave the deployed decision undocumented. The grid stays in
+        # `metrics.json` -- it is per-seed diagnostics, not identity.
+        record["probability_mixing"] = {
+            "selected": result.mixing.mixing.to_dict(),
+            "constraints_satisfied": result.mixing.constraints_satisfied,
+            "validation_low_engagement": low_engagement_metrics(
+                result.mixing.validation.confusion_matrix
+            ),
+            "reference_low_engagement": low_engagement_metrics(
+                result.mixing.reference.confusion_matrix
+            ),
+            "validation_accuracy": result.mixing.validation.accuracy,
+            "reference_validation_accuracy": result.mixing.reference.accuracy,
+        }
+    return record
 
 
 def run_seed(context: RunContext, seed: int) -> bool:
@@ -1493,12 +1703,17 @@ def run_seed(context: RunContext, seed: int) -> bool:
         if existing is not None:
             print(f"{spec.protocol} seed={seed} resume=rerun reason={reason}", flush=True)
             _seed_record_path(context.output_dir, seed).unlink(missing_ok=True)
+        started = time.monotonic()
         record = _train_one_seed(context, seed, seed_dir)
         _write_json_atomic(_seed_record_path(context.output_dir, seed), record)
         validation = cast(dict[str, float], record["validation"])
+        # The measured cost of one seed, which is what sizes the remaining ones --
+        # a per-epoch ETA cannot, since it never sees export or Test evaluation.
         print(
             f"{spec.protocol} seed={seed} complete best_epoch={record['best_epoch']} "
-            f"validation_macro_f1={validation['macro_f1']:.6f}",
+            f"validation_macro_f1={validation['macro_f1']:.6f} "
+            f"seed_duration={_duration(time.monotonic() - started)} "
+            f"at={datetime.now().astimezone().isoformat(timespec='seconds')}",
             flush=True,
         )
         return True
@@ -1658,17 +1873,20 @@ __all__ = [
     "E0J_SPEC",
     "E0K_SPEC",
     "E0L_SPEC",
+    "E0M_SPEC",
     "E0_10_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
     "E1A_SPEC",
     "E1B_SPEC",
+    "E1P_SPEC",
     "E1_SPEC",
     "SPECS",
     "E0ExperimentResult",
     "ExperimentSpec",
     "collect_only",
     "collect_summary",
+    "paper_stgcn_model_builder",
     "prepare_run",
     "reproduce_e0",
     "reproduce_experiment",

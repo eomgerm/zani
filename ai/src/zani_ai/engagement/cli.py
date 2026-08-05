@@ -182,6 +182,7 @@ def _extract_raw(args: argparse.Namespace) -> int:
         progress_every=args.progress_every,
         max_excluded_fraction=args.max_excluded_fraction,
         sample_fps=args.sample_fps,
+        require_coverage=not args.keep_low_coverage,
     )
     print(
         f"Raw features extracted | included={len(manifest.included)} "
@@ -196,13 +197,19 @@ def _build_features(args: argparse.Namespace) -> int:
     from zani_ai.engagement.representations import (
         LandmarkSequenceRepresentation,
         TokenRepresentation,
+        ZeroPlaceholderLandmarkSequenceRepresentation,
         ZeroPlaceholderTokenRepresentation,
     )
 
     contract = _load_contract(args, require_videos=False)
     representation: representations.Representation
     if args.schema.startswith("landmark_78"):
-        representation = LandmarkSequenceRepresentation.for_sample_fps(args.sample_fps)
+        sequence_type: type[LandmarkSequenceRepresentation] = (
+            ZeroPlaceholderLandmarkSequenceRepresentation
+            if "placeholder" in args.schema
+            else LandmarkSequenceRepresentation
+        )
+        representation = sequence_type.for_sample_fps(args.sample_fps)
         if representation.name != args.schema:
             raise ValueError(
                 f"--schema {args.schema} does not match --sample-fps {args.sample_fps}, "
@@ -452,6 +459,14 @@ def build_parser() -> argparse.ArgumentParser:
     extract_raw.add_argument("--sample-fps", type=_sample_fps, default=10.0)
     extract_raw.add_argument("--progress-every", type=int, default=25)
     extract_raw.add_argument("--max-excluded-fraction", type=float, default=0.05)
+    extract_raw.add_argument(
+        "--keep-low-coverage",
+        action="store_true",
+        help=(
+            "cache every decodable clip instead of dropping the ones that fail the "
+            "segment-coverage rule; the choice is stamped into the extraction fingerprint"
+        ),
+    )
     extract_raw.set_defaults(handler=_extract_raw)
 
     build_features = commands.add_parser(
@@ -467,6 +482,8 @@ def build_parser() -> argparse.ArgumentParser:
             "mediapipe_132_v1",
             "landmark_78_v1",
             "landmark_78_300_v1",
+            "landmark_78_placeholder_v1",
+            "landmark_78_300_placeholder_v1",
         ),
         required=True,
     )
@@ -530,9 +547,11 @@ def build_parser() -> argparse.ArgumentParser:
         ("e0k", "E0-K", "E0-K (lr 1e-3, step decay, 300 epochs)"),
         ("e0l", "E0-L", "E0-L (K-1 순서형 이진 헤드, 동결 백본 2단계)"),
         ("e0-10", "E0-10", "E0-10 (E0와 동일, 10-seed 비교 기준선)"),
+        ("e0m", "E0-M", "E0-M (공유 백본 softmax·ordinal dual head, 확률 혼합)"),
         ("e1", "E1", "E1 (ST-GCN)"),
         ("e1a", "E1-A", "E1-A (ST-GCN, 원논문 학습 조건)"),
         ("e1b", "E1-B", "E1-B (ST-GCN, 30fps 300프레임)"),
+        ("e1p", "E1-P", "E1-P (문헌 정합 non-ordinal ST-GCN, K=1 그래프)"),
     ):
         reproduce = commands.add_parser(
             f"reproduce-{command}",
@@ -560,14 +579,15 @@ def build_parser() -> argparse.ArgumentParser:
                 required=True,
                 help="go reliability_manifest.json produced by analyze-label-reliability",
             )
-        if protocol == "E0-L":
+        if protocol in ("E0-L", "E0-M"):
             reproduce.add_argument(
                 "--stage1",
                 type=Path,
                 required=True,
                 help=(
-                    "completed E0 output directory; seed n freezes the backbone of "
-                    "<dir>/seed-<n>/best.pt"
+                    "completed E0 (E0-10 for E0-M) output directory; seed n freezes "
+                    "the backbone of <dir>/seed-<n>/best.pt, and for E0-M its "
+                    "softmax head as well"
                 ),
             )
         reproduce.set_defaults(handler=_reproduce(protocol))

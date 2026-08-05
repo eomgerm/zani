@@ -25,9 +25,11 @@ import org.springframework.web.client.RestClient;
  *
  * <ul>
  *   <li>{@code gmsRestClient} — 기본값({@code read-timeout})
- *   <li>{@code gmsTranscriptionRestClient} — 전사 전용({@code transcribe-timeout}, Content-Length 확정)
+ *   <li>{@code gmsTranscriptionRestClient} — 실시간 전사 전용({@code transcribe-timeout}, Content-Length 확정)
+ *   <li>{@code gmsPostclassTranscriptionRestClient} — 사후 배치 전사 전용({@code postclass-transcribe-timeout}, Content-Length
+ *       확정). 실시간과 나누는 이유는 timeout 판단이 반대라서다 — 그쪽은 느린 응답을 끊는 것이 이득이고 배치는 기다려야 한다
  *   <li>{@code gmsTipRestClient} — 팁 문구 전용({@code tip-timeout})
- *   <li>{@code gmsAnalysisRestClient} — 사후 학생별 분석 전용({@code analysis-timeout})
+ *   <li>{@code gmsAnalysisRestClient} — 사후 분석 전용({@code analysis-timeout})
  * </ul>
  */
 @Configuration
@@ -44,6 +46,20 @@ public class GmsClientConfig {
         // GMS의 OpenAI 전달 구간은 chunked multipart를 400으로 거부한다. 전사 입력은 이미 byte[]이고
         // 최대 5분 MP3도 약 2.4MB이므로 이 클라이언트만 한 번 더 버퍼링해 Content-Length를 확정한다.
         return buildClient(properties, properties.transcribeTimeout(), true);
+    }
+
+    /**
+     * 사후 배치 전사 전용 클라이언트(S15P11A105-247).
+     *
+     * <p>{@link #gmsTranscriptionRestClient} 를 재사용하지 않는다. 그쪽 timeout(20초)에는 "느린 응답을 끊는 쪽이 낫다" 는 실시간 판단이 들어 있다 — 팁을 늦게
+     * 보내는 것보다 안 보내는 것이 나은 상황을 전제로 정한 값이다. 배치는 반대로 기다려야 한다. 실측 최악 비율(처리시간/오디오길이 0.198)을 10분 청크에 적용하면 약 119초다.
+     *
+     * <p>버퍼링은 같은 이유로 켠다. GMS 의 OpenAI 전달 구간이 chunked multipart 를 400 으로 거부하므로 Content-Length 를 확정해야 한다. 청크 크기가 그대로 힙에
+     * 올라가므로 {@code postclass.transcription.chunk-duration} 과 동시성이 힙을 정한다.
+     */
+    @Bean
+    public RestClient gmsPostclassTranscriptionRestClient(GmsProperties properties) {
+        return buildClient(properties, properties.postclassTranscribeTimeout(), true);
     }
 
     @Bean
