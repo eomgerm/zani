@@ -175,6 +175,25 @@ class GmsContentAnalysisHttpAdapterTest {
     }
 
     /**
+     * 요약 말투를 평서형으로 지시하고, 존댓말을 요구하지 않는지(S15P11A105-313).
+     *
+     * <p>요약은 강사에게 말을 거는 글이 아니라 수업 기록이다. 지시가 "존댓말" 로 돌아가면 주어가 강사일 때 "설명하셨습니다" 로 높여 버리는데, 다른 테스트는 문장 내용을 보지 않으므로 그 회귀를 잡지
+     * 못한다. 형제 어댑터(학생·강사 분석)의 존댓말은 그대로 두는 것이 의도이므로 여기서만 본다.
+     */
+    @Test
+    void asksForPlainStyleSentencesInsteadOfHonorifics() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andExpect(content().string(containsString("한국어 평서형으로 끝낸다")))
+                .andExpect(content().string(not(containsString("한국어 존댓말로 쓴다"))))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
+
+        assertThat(fixture.adapter().analyze(request()).value()).isPresent();
+    }
+
+    /**
      * 순서만 어긋난 응답은 정렬해 되살린다.
      *
      * <p>{@code temperature: 0} 이라 재시도해도 같은 순서가 온다. 여기서 정렬하지 않으면 적재 애그리거트가 거절해 그 세션은 리포트를 영영 받지 못한다. 진짜 겹침은 그대로 거절된다.
