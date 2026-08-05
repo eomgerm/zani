@@ -122,6 +122,42 @@ class StudentReportApiTest {
     }
 
     @Test
+    @DisplayName("복습 클립이 쓰는 재생 정보를 함께 내린다 — 녹화 파일이 없으면 recordingUrl만 null이다")
+    void returns_the_clip_playback_contract() throws Exception {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+        seedRecommendations();
+        insertTranscript();
+
+        fetchReport(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                // 최종 MP4 가 아직 없는 환경이다. 리포트 전체가 404 로 죽지 않고 이 필드만 비어야 한다.
+                .andExpect(jsonPath("$.data.recordingUrl").value(nullValue()))
+                // 세션 시작 1시간 전 ~ 종료 = 3,600 초
+                .andExpect(jsonPath("$.data.durationSeconds").value(3600))
+                .andExpect(jsonPath("$.data.seekTimestamp").value(0))
+                .andExpect(jsonPath("$.data.transcript.length()").value(2))
+                // 화자는 실명이다. 익명 별칭이 보이면 계약 위반이다(REPORT-S-001).
+                .andExpect(jsonPath("$.data.transcript[0].speakerName").value("강사"))
+                .andExpect(jsonPath("$.data.transcript[0].startSeconds").value(1))
+                .andExpect(jsonPath("$.data.transcript[0].text").value("강사 발화"))
+                .andExpect(jsonPath("$.data.transcript[1].speakerName").value("학생"))
+                .andExpect(jsonPath("$.data.transcript[1].startSeconds").value(20))
+                // 추천 식별자는 TSID 라 문자열로 내려야 JS 안전 정수 범위를 넘겨도 값이 뭉개지지 않는다.
+                .andExpect(jsonPath("$.data.recommendations[0].id").value("9112601"))
+                .andExpect(jsonPath("$.data.recommendations[0].reason").value("CUSTOM 설명"));
+    }
+
+    @Test
+    @DisplayName("전사가 아직 없으면 빈 배열이며 오류가 아니다")
+    void returns_an_empty_transcript_when_none_exists() throws Exception {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+
+        fetchReport(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.transcript.length()").value(0));
+    }
+
+    @Test
     @DisplayName("인증이 없으면 401이다")
     void rejects_anonymous_access() throws Exception {
         mockMvc.perform(get("/api/v1/sessions/{sessionId}/reports/student", SESSION_ID))
@@ -193,6 +229,26 @@ class StudentReportApiTest {
         insertRecommendation(9_112_604L, STUDENT_REPORT_ID, "REPEAT", "REPEAT 제목", 10_000L, 19_999L, 3);
         insertRecommendation(9_112_605L, STUDENT_REPORT_ID, "QUESTION", "제외 1", 1_000L, 9_999L, 4);
         insertRecommendation(9_112_606L, STUDENT_REPORT_ID, "QUESTION", "제외 2", 0L, 999L, 5);
+    }
+
+    /** 화자 키는 참가자 ID 다. 실명으로 푸는 일은 서버가 조립 시점에 끝낸다 — 이름을 JSON 에 굳히지 않는다. */
+    private void insertTranscript() {
+        jdbcTemplate.update(
+                "INSERT INTO transcripts (id, session_id, transcript_document, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?)",
+                9_112_800L,
+                SESSION_ID,
+                """
+                {
+                  "schemaVersion": 1,
+                  "segments": [
+                    {"sessionParticipantId": %d, "startOffsetMs": 20000, "endOffsetMs": 25400, "text": "학생 발화"},
+                    {"sessionParticipantId": %d, "startOffsetMs": 1500, "endOffsetMs": 9900, "text": "강사 발화"}
+                  ]
+                }
+                """.formatted(STUDENT_PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID),
+                NOW,
+                NOW);
     }
 
     private void insertMember(long id, String name) {

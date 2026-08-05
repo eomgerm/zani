@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SessionSummary } from "../infrastructure/sessionListApi";
-import { foldStatus, toMyLecture } from "./myLectures";
+import { foldStatus, formatSessionStartedAt, toMyLecture } from "./myLectures";
 
 const summary = (over: Partial<SessionSummary> = {}): SessionSummary => ({
   sessionId: "9876543210123456",
@@ -73,5 +73,11 @@ describe("toMyLecture", () => {
   /** TSID 는 JS 안전 정수를 넘는다. 숫자로 다루면 값이 반올림된다. */
   it("세션 ID 를 문자열 그대로 쓴다", () => {
     expect(toMyLecture(summary()).id).toBe("9876543210123456");
+  });
+});
+
+describe("formatSessionStartedAt", () => {
+  it("실제 시작 시각의 로컬 날짜·요일·분을 표시한다", () => {
+    expect(formatSessionStartedAt("2026-08-03T14:05:00")).toBe("2026.08.03 (월) 14:05");
   });
 });

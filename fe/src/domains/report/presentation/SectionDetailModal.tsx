@@ -10,8 +10,9 @@ import { sectionColorOf, sectionLevelLabel, sectionLevelNote, sectionSoftColorOf
 /**
  * 구간 상세. 타임라인 카드를 누르면 열린다.
  *
- * <p>평가 문구는 단계 평균에서 끌어낸다. 서버가 구간별 문구를 주기 전까지 없는 내용을 지어내지
- * 않는다(110·112 가 실제 문구를 채운다).
+ * <p>두 문장이 서로 다른 것을 말한다. **다룬 내용**은 서버가 준 `summary` 다(112) — 무엇을 배운
+ * 구간인지이며 화면이 지어낼 수 없다. **평가 문구**는 단계 평균에서 끌어낸다 — 그 구간에서 내
+ * 집중이 어땠는지이며 관측이 말해 주는 것만 옮긴다. 요약이 없으면 그 블록을 아예 그리지 않는다.
  *
  * <p>바 길이는 1~4 를 0~100% 로 늘린 것이 아니라 4 를 만점으로 둔 비율이다 — `n / 4` 표기와 같은
  * 척도를 쓴다. 퍼센트로 바꿔 적지 않는다.
@@ -81,6 +82,14 @@ export function SectionDetailModal({
         </div>
 
         <div className="px-[26px] pb-[26px] pt-[18px]">
+          {/* 무엇을 다뤘는지가 먼저다. 내 집중이 어땠는지는 그 다음에 읽어야 뜻이 있다. */}
+          {section.summary !== null && (
+            <div className="z-report-box mb-4 px-[18px] py-4">
+              <div className="mb-2 text-[13px] font-extrabold text-ink-faint">다룬 내용</div>
+              <p className="text-[13px] leading-[1.7] text-ink-sub">{section.summary}</p>
+            </div>
+          )}
+
           <div className="z-report-box mb-4 px-[18px] py-4">
             <div className="mb-3 flex items-center justify-between gap-2.5">
               <span className="text-[13px] font-extrabold text-ink-faint">{scopeLabel} 평가</span>

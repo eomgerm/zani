@@ -109,6 +109,24 @@ public class PipelineJobPersistenceAdapter implements PipelineJobPort {
     }
 
     @Override
+    public List<Long> findDueAnalysisSessionIds(Instant now, int limit) {
+        try {
+            return pipelineJobJpaRepository.findDueAnalysisSessionIds(now, limit);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
+    public void claimAnalysis(Long sessionId, Instant leaseUntil, Instant changedAt) {
+        try {
+            pipelineJobJpaRepository.claimAnalysis(sessionId, leaseUntil, changedAt);
+        } catch (DataAccessException exception) {
+            throw new PipelineJobUnavailableException(exception);
+        }
+    }
+
+    @Override
     public void clearRetryWait(Long sessionId, Instant changedAt) {
         try {
             pipelineJobJpaRepository.clearRetryWait(sessionId, changedAt);

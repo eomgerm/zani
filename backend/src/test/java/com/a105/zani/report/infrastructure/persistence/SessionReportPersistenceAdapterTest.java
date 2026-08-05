@@ -135,4 +135,56 @@ class SessionReportPersistenceAdapterTest {
 
         assertTrue(adapter.existsBySessionId(SESSION_ID));
     }
+
+    @Test
+    @Transactional
+    void stampsThePublishedTimeOnce() {
+        insertSession();
+        adapter.save(report());
+        Instant publishedAt = Instant.parse("2026-08-05T03:00:00Z");
+
+        assertTrue(adapter.markPublished(SESSION_ID, publishedAt));
+
+        assertEquals(publishedAt, publishedAtOf(SESSION_ID));
+    }
+
+    /**
+     * 두 번째 공개는 시각을 덮지 않는다.
+     *
+     * <p>공개 시각은 알림이 발송 대상을 찾는 조건이다(S15P11A105-116). 재시도가 그 값을 다시 쓰면 발견 순서가 흔들리고, 무엇보다 두 번째 호출이 첫 번째와 구분되지 않아 호출자가 "방금
+     * 공개했다"고 잘못 판단한다.
+     */
+    @Test
+    @Transactional
+    void refusesToRestampAnAlreadyPublishedReport() {
+        insertSession();
+        adapter.save(report());
+        Instant first = Instant.parse("2026-08-05T03:00:00Z");
+        adapter.markPublished(SESSION_ID, first);
+
+        assertFalse(adapter.markPublished(SESSION_ID, first.plusSeconds(600)));
+
+        assertEquals(first, publishedAtOf(SESSION_ID));
+    }
+
+    @Test
+    @Transactional
+    void refusesToPublishAMissingReport() {
+        insertSession();
+
+        assertFalse(adapter.markPublished(SESSION_ID, Instant.parse("2026-08-05T03:00:00Z")));
+    }
+
+    /**
+     * 저장된 공개 시각을 UTC 로 읽는다.
+     *
+     * <p>{@code published_at} 은 시간대 없는 {@code DATETIME(6)} 이고 값은 UTC 로 쓰인다. {@code Timestamp} 로 읽으면 JDBC 가 JVM 기본 시간대로
+     * 해석해 KST 만큼 어긋난다.
+     */
+    private Instant publishedAtOf(long sessionId) {
+        return jdbcTemplate
+                .queryForObject(
+                        "SELECT published_at FROM session_reports WHERE session_id = ?", LocalDateTime.class, sessionId)
+                .toInstant(ZoneOffset.UTC);
+    }
 }

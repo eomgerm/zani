@@ -22,6 +22,7 @@ The Compose file reads these files from `/etc/zani/application/secrets`:
 - `livekit_api_key`
 - `livekit_api_secret`
 - `gms_api_key`
+- `smtp_password` (required before deploying this Compose revision)
 
 Do not commit secret values to Git. Creating the server-side directory and applying restrictive file permissions requires explicit operator approval.
 
@@ -33,6 +34,13 @@ the root-only secret file:
 bash infrastructure/application/install-gms-api-key.sh
 ```
 
+Install or rotate the SMTP app password the same way. The password is mounted as
+a Docker secret and exported to Spring only when `NOTIFICATION_EMAIL_ENABLED=true`:
+
+```bash
+bash infrastructure/application/install-smtp-password.sh
+```
+
 The root-owned `/etc/zani/application/runtime.env` file supplies non-secret runtime configuration. Use `runtime.env.example` as the field-name reference, but enter the actual Google Web Client ID only on the server:
 
 ```dotenv
@@ -41,6 +49,15 @@ GOOGLE_OAUTH_CLIENT_ID=example.apps.googleusercontent.com
 GMS_MOCK_ENABLED=false
 COACHING_TRIGGER_COOLDOWN=PT10M
 COACHING_TRIGGER_THRESHOLD=0.30
+RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media
+NOTIFICATION_EMAIL_ENABLED=false
+NOTIFICATION_EMAIL_FROM=example@gmail.com
+NOTIFICATION_APP_BASE_URL=https://i15a105.p.ssafy.io
+SPRING_MAIL_HOST=smtp.gmail.com
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=example@gmail.com
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
 ```
 
 `GOOGLE_OAUTH_CLIENT_ID` is the Google Web Client ID used to validate the ID-token audience. It is an identifier, not a client secret. The same value is injected into the frontend build as `NEXT_PUBLIC_GOOGLE_CLIENT_ID` by the frontend Compose configuration.

@@ -12,6 +12,8 @@ export interface MyLecture {
   title: string;
   /** `YYYY-MM-DD`. 달력이 이 문자열의 앞자리로 월을 가른다. */
   date: string;
+  /** 시작 시각 ISO 8601 원본. 리포트 헤더가 요일과 시:분까지 적어야 해서 날짜만으로는 모자란다. */
+  startedAt: string;
   role: "instructor" | "student";
   status: LectureStatus;
   /** 사람이 읽는 진행 시간. 진행 중이면 "진행 중". */
@@ -62,11 +64,23 @@ function duration(startedAt: string, endedAt: string | null): string {
   return `${hours}시간 ${minutes}분`;
 }
 
+export function formatSessionStartedAt(startedAt: string): string {
+  const at = new Date(startedAt);
+  if (Number.isNaN(at.getTime())) return "-";
+  const month = `${at.getMonth() + 1}`.padStart(2, "0");
+  const day = `${at.getDate()}`.padStart(2, "0");
+  const hour = `${at.getHours()}`.padStart(2, "0");
+  const minute = `${at.getMinutes()}`.padStart(2, "0");
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][at.getDay()];
+  return `${at.getFullYear()}.${month}.${day} (${weekday}) ${hour}:${minute}`;
+}
+
 export function toMyLecture(summary: SessionSummary): MyLecture {
   return {
     id: summary.sessionId,
     title: summary.title,
     date: localDate(summary.startedAt),
+    startedAt: summary.startedAt,
     role: summary.role === "INSTRUCTOR" ? "instructor" : "student",
     status: foldStatus(summary.status, summary.reportStatus),
     dur: duration(summary.startedAt, summary.endedAt),

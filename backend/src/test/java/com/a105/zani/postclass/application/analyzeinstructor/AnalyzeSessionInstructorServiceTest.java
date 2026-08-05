@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.a105.zani.postclass.application.exception.InstructorAnalysisContextMissingException;
+import com.a105.zani.postclass.application.port.GmsContentSizeGuard;
 import com.a105.zani.postclass.application.port.InstructorAnalysis;
 import com.a105.zani.postclass.application.port.InstructorAnalysisPort;
 import com.a105.zani.postclass.application.port.InstructorAnalysisRequest;
@@ -34,6 +35,8 @@ class AnalyzeSessionInstructorServiceTest {
     private static final ConceptSection FIRST = new ConceptSection(1, "상태 관리 개요", "요약 1", 0L, 519_000L);
     private static final ConceptSection SECOND = new ConceptSection(2, "Context 리렌더링", "요약 2", 520_000L, 921_000L);
 
+    private final JsonMapper mapper = JsonMapper.builder().build();
+
     private InstructorAnalysisContextQueryPort queryPort;
     private InstructorAnalysisPort analysisPort;
     private SaveInstructorAnalysisUseCase saveUseCase;
@@ -44,8 +47,7 @@ class AnalyzeSessionInstructorServiceTest {
         queryPort = mock(InstructorAnalysisContextQueryPort.class);
         analysisPort = mock(InstructorAnalysisPort.class);
         saveUseCase = mock(SaveInstructorAnalysisUseCase.class);
-        service = new AnalyzeSessionInstructorService(
-                queryPort, analysisPort, saveUseCase, JsonMapper.builder().build());
+        service = new AnalyzeSessionInstructorService(queryPort, analysisPort, saveUseCase, mapper);
         given(saveUseCase.save(any())).willReturn(Optional.of(REPORT_ID));
     }
 
@@ -288,11 +290,44 @@ class AnalyzeSessionInstructorServiceTest {
     @DisplayName("채팅이 상한을 넘으면 구간별 발췌로 접어 보낸다 — 본문을 자르지 않는다")
     void folds_chats_when_the_request_is_too_large() {
         List<PublicChat> chats = new ArrayList<>();
-        // 구간 하나에 몰린 긴 채팅으로 92,160B 를 넘긴다. 한 줄이 약 1,000B 다.
+        // 구간 하나에 몰린 긴 채팅으로 상한을 넘긴다. 한 줄이 약 1,200B 다.
         for (int index = 0; index < 200; index++) {
             chats.add(new PublicChat(index, "가".repeat(400)));
         }
         givenContext(context(List.of(FIRST), chats));
+        givenAnalysis(List.of());
+
+        assertThat(service.analyze(new AnalyzeSessionInstructorCommand(SESSION_ID))
+                        .outcome())
+                .isEqualTo(InstructorAnalysisOutcome.ANALYZED);
+        assertThat(captureRequest().chats()).hasSize(10);
+    }
+
+    /**
+     * 이 세션이 접히지 않으면 게이트웨이가 본문을 잘라 "model not found" 로 되돌아온다 — 크기가 원인이라는 사실이 오류에 드러나지 않는다.
+     *
+     * <p>S15P11A105-250 은 이스케이프 전 크기로 재서 이런 입력을 통과시켰다. 측정이 그 방식으로 되돌아가면 이 테스트만 깨진다.
+     */
+    @Test
+    @DisplayName("이스케이프 전 기준이면 통과했을 채팅도 전송 형태로 넘치면 접는다")
+    void folds_chats_that_only_overflow_after_escaping() {
+        List<PublicChat> chats = new ArrayList<>();
+        InstructorAnalysisContext context = context(List.of(FIRST), chats);
+        // 짧은 줄을 늘린다. 이스케이프 증가분은 바이트당 따옴표 수에 비례하므로 짧은 레코드가 많을수록 커진다.
+        while (GmsContentSizeGuard.fits(
+                mapper, InstructorAnalysisRequest.of(context).dataPayload())) {
+            for (int index = 0; index < 100; index++) {
+                // 전부 FIRST 구간 안에 둔다. 구간 밖으로 나가면 그쪽 버킷에서도 열 개가 남아 접기 결과가 스무 개가 된다.
+                chats.add(new PublicChat(chats.size() % 520 * 1_000L, "네 알겠습니다"));
+            }
+            context = context(List.of(FIRST), List.copyOf(chats));
+        }
+        // 이 테스트가 노리는 상황인지 못 박는다. 이스케이프 전 기준이었다면 접히지 않았을 크기여야 한다.
+        assertThat(mapper.writeValueAsBytes(
+                                InstructorAnalysisRequest.of(context).dataPayload())
+                        .length)
+                .isLessThanOrEqualTo(GmsContentSizeGuard.MAX_ESCAPED_CONTENT_BYTES);
+        givenContext(context);
         givenAnalysis(List.of());
 
         assertThat(service.analyze(new AnalyzeSessionInstructorCommand(SESSION_ID))

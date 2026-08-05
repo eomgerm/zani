@@ -88,8 +88,17 @@ class AnalyzeSessionContentServiceTest {
                 command.sessionId(), true, command.sections().size());
     };
 
+    /** 멱등 바깥 겹이 보는 값. 기본은 "아직 없음" 이라 기존 케이스는 그대로 GMS 를 탄다. */
+    private boolean sessionReportStored;
+
+    private final SessionReportStatusQueryPort sessionReportStatusQueryPort = sessionId -> sessionReportStored;
+
     private final AnalyzeSessionContentService service = new AnalyzeSessionContentService(
-            transcriptPort, getPostClassContextUseCase, contentAnalysisPort, saveSessionAnalysisUseCase);
+            transcriptPort,
+            getPostClassContextUseCase,
+            contentAnalysisPort,
+            saveSessionAnalysisUseCase,
+            sessionReportStatusQueryPort);
 
     /** 247 계약의 세그먼트. 분석이 쓰는 것은 화자·오프셋·본문뿐이라 나머지 추적 필드는 고정값으로 채운다. */
     private static TranscriptDocumentSegment segment(long startOffsetMs, long endOffsetMs, String text) {
@@ -271,11 +280,15 @@ class AnalyzeSessionContentServiceTest {
                         new AnalyzedSection("앞 구간", "겹치는 구간이다.", 0, 600_000),
                         new AnalyzedSection("뒤 구간", "앞 구간과 겹친다.", 300_000, 900_000))));
         AnalyzeSessionContentService rejecting = new AnalyzeSessionContentService(
-                transcriptPort, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                transcriptPort,
+                getPostClassContextUseCase,
+                contentAnalysisPort,
+                command -> {
                     // 실제 적재 유스케이스와 같은 계약: 애그리거트의 거절을 애플리케이션 경계 예외로 바꿔 올린다.
                     throw new InvalidSessionAnalysisException(
                             new InvalidSessionReportException(SessionReportErrorCode.INVALID_SESSION_REPORT));
-                });
+                },
+                sessionReportStatusQueryPort);
 
         ContentAnalysisFailedException thrown = assertThrows(
                 ContentAnalysisFailedException.class,
@@ -333,14 +346,36 @@ class AnalyzeSessionContentServiceTest {
     @Test
     void treatsALostRaceAsAlreadyAnalysed() {
         AnalyzeSessionContentService raced = new AnalyzeSessionContentService(
-                transcriptPort, getPostClassContextUseCase, contentAnalysisPort, command -> {
+                transcriptPort,
+                getPostClassContextUseCase,
+                contentAnalysisPort,
+                command -> {
                     throw new SessionAnalysisAlreadyStoredException(new IllegalStateException("unique violation"));
-                });
+                },
+                sessionReportStatusQueryPort);
 
         AnalyzeSessionContentResult result = raced.analyze(new AnalyzeSessionContentCommand(SESSION_ID));
 
         assertFalse(result.analyzed());
         assertEquals(0, result.sectionCount());
+    }
+
+    /**
+     * 이미 리포트가 있으면 GMS 를 부르지 않는다 — 멱등의 바깥 겹.
+     *
+     * <p>재시도는 분석 단계를 처음부터 다시 도므로, 강사 분석만 실패해 다섯 번 재시도되면 이미 끝난 공통 분석도 다섯 번 다시 불린다. 적재는 어차피 건너뛰므로 결과가 덮이지는 않지만 호출 하나가 통째로
+     * 버려지고 8시간 예산이 그만큼 깎인다(S15P11A105-304).
+     */
+    @Test
+    void skipsTheGmsCallWhenTheReportAlreadyExists() {
+        sessionReportStored = true;
+
+        AnalyzeSessionContentResult result = analyze();
+
+        assertFalse(result.analyzed());
+        assertEquals(0, result.sectionCount());
+        assertTrue(analysisRequests.isEmpty());
+        assertTrue(savedCommands.isEmpty());
     }
 
     /** 이미 적재된 세션은 적재하는 쪽이 건너뛴다. 그 사실이 결과에 그대로 드러나야 한다(세션당 1회). */
@@ -350,7 +385,8 @@ class AnalyzeSessionContentServiceTest {
                 transcriptPort,
                 getPostClassContextUseCase,
                 contentAnalysisPort,
-                command -> new SaveSessionAnalysisResult(command.sessionId(), false, 0));
+                command -> new SaveSessionAnalysisResult(command.sessionId(), false, 0),
+                sessionReportStatusQueryPort);
 
         AnalyzeSessionContentResult result = alreadySaved.analyze(new AnalyzeSessionContentCommand(SESSION_ID));
 

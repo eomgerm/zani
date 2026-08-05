@@ -54,7 +54,19 @@ public class InstructorReportPersistenceAdapter implements InstructorReportRepos
             VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
             """;
 
+    private static final String COUNT_REPORT = """
+            SELECT COUNT(*)
+              FROM instructor_reports
+             WHERE session_id = ?
+            """;
+
     private final JdbcTemplate jdbcTemplate;
+
+    @Override
+    public boolean existsBySessionId(Long sessionId) {
+        Integer count = jdbcTemplate.queryForObject(COUNT_REPORT, Integer.class, sessionId);
+        return count != null && count > 0;
+    }
 
     @Override
     public Optional<Long> saveIfAbsent(InstructorReport report) {

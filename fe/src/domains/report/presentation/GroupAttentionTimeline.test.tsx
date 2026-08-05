@@ -146,7 +146,7 @@ describe("GroupAttentionTimeline", () => {
         sessionId="s1"
         request={async () =>
           groupTimelineWith({
-            sections: [{ startSeconds: 0, endSeconds: 60, title: "함수의 정의", focusLevel: 2.8 }],
+            sections: [{ startSeconds: 0, endSeconds: 60, title: "함수의 정의", summary: null, focusLevel: 2.8 }],
           })
         }
       />,

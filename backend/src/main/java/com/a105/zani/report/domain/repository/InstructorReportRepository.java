@@ -12,4 +12,7 @@ public interface InstructorReportRepository {
      * <p>다른 실행이 먼저 넣었으면 빈 값을 주고 <b>점수와 인사이트도 넣지 않는다</b> — 남의 리포트에 내 분석이 섞이면 도넛이 여덟 개가 된다.
      */
     Optional<Long> saveIfAbsent(InstructorReport report);
+
+    /** 이 세션의 강사 리포트가 있는지. 공개 전 리포트가 갖춰졌는지 보는 데 쓴다(S15P11A105-304). */
+    boolean existsBySessionId(Long sessionId);
 }

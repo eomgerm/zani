@@ -21,6 +21,7 @@ import {
 } from "@/shared/ui";
 import {
   requestGroupAttentionTimeline,
+  type GroupAttentionTimeline as GroupAttentionTimelineData,
   type GroupFocusPoint,
   type GroupTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
@@ -34,7 +35,7 @@ import {
   toSectionRows,
 } from "./sectionFlow";
 import { formatOffset } from "./offsetTime";
-import { useAttentionTimeline } from "./useAttentionTimeline";
+import { useAttentionTimeline, type UseAttentionTimelineResult } from "./useAttentionTimeline";
 
 /**
  * 강사 익명 집단 타임라인 카드.
@@ -93,14 +94,25 @@ export interface GroupAttentionTimelineProps {
   readonly request?: GroupTimelineRequester;
   /** 구간 상세에서 클립 탭으로 옮길 때 쓴다. 배선이 없으면 상세에 버튼이 나오지 않는다. */
   readonly onJumpToClip?: (offsetSeconds: number) => void;
+  /**
+   * 이미 받아 둔 조회 결과. 주면 스스로 부르지 않고 이것을 그린다.
+   *
+   * <p>강사 리포트 화면의 "집중 구간 비율" 이 같은 응답의 점들을 세야 해서 생긴 인자다. 카드가
+   * 자기 몫을 또 부르면 2시간 수업 기준 30초 격자 240 점 + 5초 격자 1440 점을 한 화면에서 두 번
+   * 받는다. 주지 않으면 예전처럼 스스로 조회하므로 다른 화면은 그대로다.
+   */
+  readonly source?: UseAttentionTimelineResult<GroupAttentionTimelineData>;
 }
 
 export function GroupAttentionTimeline({
   sessionId,
   request = requestGroupAttentionTimeline,
   onJumpToClip,
+  source,
 }: GroupAttentionTimelineProps) {
-  const { status, timeline, retry } = useAttentionTimeline({ sessionId, enabled: true, request });
+  // 훅은 조건부로 부를 수 없다. 밖에서 받았으면 꺼 두고 결과만 갈아 끼운다.
+  const own = useAttentionTimeline({ sessionId, enabled: source === undefined, request });
+  const { status, timeline, retry } = source ?? own;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
 

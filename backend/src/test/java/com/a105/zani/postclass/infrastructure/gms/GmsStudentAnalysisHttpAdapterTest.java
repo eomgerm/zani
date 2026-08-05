@@ -17,10 +17,10 @@ import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
-import com.a105.zani.postclass.application.analyzestudents.AnalyzeSessionStudentsService;
 import com.a105.zani.postclass.application.analyzestudents.ConceptSection;
 import com.a105.zani.postclass.application.analyzestudents.SessionAnalysisContext;
 import com.a105.zani.postclass.application.analyzestudents.StudentObservations;
+import com.a105.zani.postclass.application.port.GmsContentSizeGuard;
 import com.a105.zani.postclass.application.port.StudentAnalysis;
 import com.a105.zani.postclass.application.port.StudentAnalysisRequest;
 import com.a105.zani.postclass.infrastructure.config.StudentAnalysisProperties;
@@ -200,8 +200,7 @@ class GmsStudentAnalysisHttpAdapterTest {
                     "student-001",
                     context,
                     new StudentObservations(List.copyOf(attentions), List.of(), List.of(), List.of()));
-            int escaped = mapper.writeValueAsBytes(mapper.writeValueAsString(candidate.promptPayload())).length;
-            if (escaped > AnalyzeSessionStudentsService.MAX_ESCAPED_CONTENT_BYTES) {
+            if (!GmsContentSizeGuard.fits(mapper, candidate.promptPayload())) {
                 return request;
             }
             request = candidate;

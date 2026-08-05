@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
-import type { StudentReportRequester } from "../infrastructure/studentReportApi";
+import type { StudentClipRequester } from "../infrastructure/studentClipApi";
 import { ReportPlayer, type SeekRequest } from "./ReportPlayer";
 import { TranscriptTimeline } from "./TranscriptTimeline";
-import { useStudentReport } from "./useStudentReport";
+import { useStudentClip } from "./useStudentClip";
 
 const Notice = ({
   icon,
@@ -41,13 +41,16 @@ export interface StudentReportClipProps {
   readonly sessionId: string;
   readonly title: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
-  readonly request?: StudentReportRequester;
+  readonly request?: StudentClipRequester;
   /** 리포트 탭에서 넘어온 이동 요청. 전사 행 클릭과 같은 `seekTo` 로 합류한다. */
   readonly seekRequest?: ClipSeekRequest | null;
 }
 
 /**
  * 학생 복습 클립 패널 — 공통 녹화 플레이어 + 실명 화자 전사(REPORT-S-001).
+ *
+ * <p>강사 수업 클립({@code InstructorReportClip})도 requester 만 강사 엔드포인트로 바꿔 이 패널을
+ * 그대로 쓴다 — 상태 안내·플레이어·전사 배선이 역할과 무관해서다.
  *
  * <p>이동 명령의 합류 지점이다. 지금은 전사 행 클릭 하나뿐이지만, 모든 명령은 `seekTo` 로
  * 모여 하나의 `SeekRequest` 흐름으로 플레이어에 내려간다 — nonce 를 한 곳에서 찍어야
@@ -63,7 +66,7 @@ export function StudentReportClip({
   request,
   seekRequest = null,
 }: StudentReportClipProps) {
-  const { status, report, retry, reissueRecordingUrl } = useStudentReport({ sessionId, request });
+  const { status, clip, retry, reissueRecordingUrl } = useStudentClip({ sessionId, request });
 
   const [seek, setSeek] = useState<SeekRequest | null>(null);
   const nonceRef = useRef(0);
@@ -110,7 +113,7 @@ export function StudentReportClip({
     );
   }
 
-  if (status === "failed" || report === null) {
+  if (status === "failed" || clip === null) {
     return (
       <Notice
         icon={<PictoWarn size={44} />}
@@ -128,10 +131,10 @@ export function StudentReportClip({
     <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] items-stretch gap-5">
       <ReportPlayer
         /* 재조회로 URL 이 바뀌면 리마운트해 실패·재발급 이력을 처음부터 다시 시작한다. */
-        key={report.recordingUrl ?? "no-recording"}
-        recordingUrl={report.recordingUrl}
+        key={clip.recordingUrl ?? "no-recording"}
+        recordingUrl={clip.recordingUrl}
         title={title}
-        initialSeconds={report.seekTimestamp}
+        initialSeconds={clip.seekTimestamp}
         seekRequest={seek}
         onTimeChange={handleTimeChange}
         reissueUrl={reissueRecordingUrl}
@@ -140,7 +143,7 @@ export function StudentReportClip({
       <div className="relative min-h-[220px]">
         <div className="absolute inset-0">
           <TranscriptTimeline
-            segments={report.transcript}
+            segments={clip.transcript}
             currentSeconds={cursorSeconds}
             onSeek={seekTo}
           />

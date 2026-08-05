@@ -1,122 +1,100 @@
-import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/domains/auth", () => ({ useAuth: () => ({ accessToken: "token" }) }));
+const auth = vi.hoisted(() => ({ accessToken: "token" as string | null }));
+vi.mock("@/domains/auth", () => ({ useAuth: () => auth }));
 
 import { StudentReportError, type StudentReport } from "../infrastructure/studentReportApi";
 import { useStudentReport } from "./useStudentReport";
 
-const reportWith = (overrides: Partial<StudentReport> = {}): StudentReport => ({
-  recordingUrl: "https://media.example/lecture.mp4?token=abc",
-  durationSeconds: 90,
-  transcript: [],
+const report: StudentReport = {
+  activity: { publicChatCount: 3, confusedCount: 1, missedCount: 0, questionCount: 2 },
+  participationSummary: "요약",
   recommendations: [],
-  seekTimestamp: 0,
-  ...overrides,
+};
+
+beforeEach(() => {
+  auth.accessToken = "token";
 });
 
 describe("useStudentReport", () => {
-  it("조회가 성공하면 ready 와 리포트를 준다", async () => {
-    const { result } = renderHook(() =>
-      useStudentReport({ sessionId: "s1", request: async () => reportWith() }),
-    );
+  it("토큰을 기다린 뒤 한 번만 조회한다", async () => {
+    auth.accessToken = null;
+    const request = vi.fn().mockResolvedValue(report);
+    const { result, rerender } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
+
+    expect(result.current.status).toBe("loading");
+    expect(request).not.toHaveBeenCalled();
+
+    auth.accessToken = "token";
+    rerender();
 
     await waitFor(() => expect(result.current.status).toBe("ready"));
-    expect(result.current.report?.recordingUrl).toContain("lecture.mp4");
+    expect(result.current.report).toEqual(report);
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("403 은 forbidden, 404 와 409 는 notReady 다", async () => {
-    const forbidden = renderHook(() =>
+  it.each([
+    [403, "forbidden"],
+    [404, "notReady"],
+    [409, "live"],
+    [500, "failed"],
+  ] as const)("HTTP %s 를 %s 로 구분한다", async (status, expected) => {
+    const { result } = renderHook(() =>
       useStudentReport({
         sessionId: "s1",
-        request: async () => {
-          throw new StudentReportError("forbidden", 403);
-        },
+        request: vi.fn().mockRejectedValue(new StudentReportError("no", status)),
       }),
     );
-    await waitFor(() => expect(forbidden.result.current.status).toBe("forbidden"));
 
-    const notReady = renderHook(() =>
-      useStudentReport({
-        sessionId: "s1",
-        request: async () => {
-          throw new StudentReportError("not ready", 404);
-        },
-      }),
-    );
-    await waitFor(() => expect(notReady.result.current.status).toBe("notReady"));
-
-    const live = renderHook(() =>
-      useStudentReport({
-        sessionId: "s1",
-        request: async () => {
-          throw new StudentReportError("still live", 409);
-        },
-      }),
-    );
-    await waitFor(() => expect(live.result.current.status).toBe("notReady"));
+    await waitFor(() => expect(result.current.status).toBe(expected));
+    expect(result.current.report).toBeNull();
   });
 
-  it("그 밖의 실패는 failed 이고 retry 로 다시 조회한다", async () => {
-    let calls = 0;
-    const request = vi.fn(async () => {
-      calls += 1;
-      if (calls === 1) throw new StudentReportError("boom", 500);
-      return reportWith();
-    });
-
-    const { result } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
+  it("StudentReportError 가 아닌 오류도 failed 다", async () => {
+    const { result } = renderHook(() =>
+      useStudentReport({
+        sessionId: "s1",
+        request: vi.fn().mockRejectedValue(new Error("boom")),
+      }),
+    );
 
     await waitFor(() => expect(result.current.status).toBe("failed"));
-    result.current.retry();
+  });
+
+  it("재시도 동안 이전 결과를 노출하지 않는다", async () => {
+    let resolveRetry: (value: StudentReport) => void = () => undefined;
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(report)
+      .mockImplementationOnce(
+        () =>
+          new Promise<StudentReport>((resolve) => {
+            resolveRetry = resolve;
+          }),
+      );
+    const { result } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    act(() => result.current.retry());
+
+    expect(result.current).toMatchObject({ status: "loading", report: null });
+
+    act(() => resolveRetry(report));
     await waitFor(() => expect(result.current.status).toBe("ready"));
   });
 
   it("언마운트하면 진행 중 요청을 취소한다", async () => {
-    const request = vi.fn(
-      (_sessionId: string, _token: string, signal?: AbortSignal) =>
-        new Promise<StudentReport>(() => {
-          void signal;
+    const request = vi.fn().mockImplementation(
+      (_id: string, _token: string, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("aborted")));
         }),
     );
-
     const { unmount } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
+
     unmount();
 
     await waitFor(() => expect(request.mock.calls[0][2]?.aborted).toBe(true));
-  });
-
-  it("reissueRecordingUrl 은 새 URL 만 돌려주고 화면 상태를 건드리지 않는다", async () => {
-    let calls = 0;
-    const request = vi.fn(async () => {
-      calls += 1;
-      return reportWith({
-        recordingUrl: `https://media.example/lecture.mp4?token=t${calls}`,
-      });
-    });
-
-    const { result } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
-    await waitFor(() => expect(result.current.status).toBe("ready"));
-
-    const fresh = await result.current.reissueRecordingUrl();
-
-    expect(fresh).toBe("https://media.example/lecture.mp4?token=t2");
-    // 재발급은 별도 조회다 — 이미 그려진 리포트는 그대로다.
-    expect(result.current.report?.recordingUrl).toBe("https://media.example/lecture.mp4?token=t1");
-  });
-
-  it("재발급이 실패하면 null 이다 — 전사·추천까지 오류로 뒤집지 않는다", async () => {
-    let calls = 0;
-    const request = vi.fn(async () => {
-      calls += 1;
-      if (calls > 1) throw new StudentReportError("expired", 401);
-      return reportWith();
-    });
-
-    const { result } = renderHook(() => useStudentReport({ sessionId: "s1", request }));
-    await waitFor(() => expect(result.current.status).toBe("ready"));
-
-    await expect(result.current.reissueRecordingUrl()).resolves.toBeNull();
-    expect(result.current.status).toBe("ready");
   });
 });

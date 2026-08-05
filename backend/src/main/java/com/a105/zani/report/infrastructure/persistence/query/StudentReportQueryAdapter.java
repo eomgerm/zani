@@ -38,6 +38,8 @@ public class StudentReportQueryAdapter implements StudentReportQueryPort {
     private final StudentReportJpaRepository studentReportRepository;
     private final ReviewRecommendationJpaRepository recommendationRepository;
     private final JdbcTemplate jdbcTemplate;
+    // 전사 펼치기는 강사 수업 클립(308)과 공유한다. 규칙은 SessionTranscriptQuery 가 소유한다.
+    private final SessionTranscriptQuery transcriptQuery;
 
     @Override
     public Optional<StudentReportView> findBySessionIdAndParticipantId(long sessionId, long participantId) {
@@ -68,11 +70,20 @@ public class StudentReportQueryAdapter implements StudentReportQueryPort {
                 // 세지 않고 저장된 판정을 그대로 읽는다. 없으면 null 이며 0 으로 낮추지 않는다.
                 report.getQuestionCount(),
                 report.getParticipationSummary(),
-                recommendations);
+                recommendations,
+                transcript(sessionId));
+    }
+
+    private List<StudentReportView.TranscriptSegment> transcript(long sessionId) {
+        return transcriptQuery.segments(sessionId).stream()
+                .map(segment -> new StudentReportView.TranscriptSegment(
+                        segment.startSeconds(), segment.endSeconds(), segment.speakerName(), segment.text()))
+                .toList();
     }
 
     private static StudentReportView.Recommendation toRecommendation(ReviewRecommendationJpaEntity entity) {
         return new StudentReportView.Recommendation(
+                entity.getId(),
                 entity.getRecommendationType(),
                 entity.getTitle(),
                 entity.getDescription(),

@@ -3,29 +3,28 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/domains/auth", () => ({ useAuth: () => ({ accessToken: "token" }) }));
 
-import { StudentReportError, type StudentReport } from "../infrastructure/studentReportApi";
+import { StudentClipError, type StudentClip } from "../infrastructure/studentClipApi";
 import { StudentReportClip } from "./StudentReportClip";
 
-const reportWith = (overrides: Partial<StudentReport> = {}): StudentReport => ({
+const clipWith = (overrides: Partial<StudentClip> = {}): StudentClip => ({
   recordingUrl: "https://media.example/lecture.mp4?token=a",
   durationSeconds: 5430,
   transcript: [
     { startSeconds: 2, endSeconds: 30, speakerName: "박서준", text: "오늘은 상태 관리를 다룹니다." },
     { startSeconds: 125, endSeconds: 150, speakerName: "정하윤", text: "Context 는 언제 쓰나요?" },
   ],
-  recommendations: [],
   seekTimestamp: 0,
   ...overrides,
 });
 
 const failWith = (status: number) => async () => {
-  throw new StudentReportError("boom", status);
+  throw new StudentClipError("boom", status);
 };
 
 describe("StudentReportClip", () => {
   it("녹화 플레이어와 실명 화자 전사를 함께 그린다", async () => {
     render(
-      <StudentReportClip sessionId="s1" title="React" request={async () => reportWith()} />,
+      <StudentReportClip sessionId="s1" title="React" request={async () => clipWith()} />,
     );
 
     expect(await screen.findByTestId("report-video")).toBeInTheDocument();
@@ -35,7 +34,7 @@ describe("StudentReportClip", () => {
 
   it("전사 행을 누르면 플레이어가 그 발화 시각으로 이동한다", async () => {
     render(
-      <StudentReportClip sessionId="s1" title="React" request={async () => reportWith()} />,
+      <StudentReportClip sessionId="s1" title="React" request={async () => clipWith()} />,
     );
 
     const video = (await screen.findByTestId("report-video")) as HTMLVideoElement;
@@ -51,7 +50,7 @@ describe("StudentReportClip", () => {
       <StudentReportClip
         sessionId="s1"
         title="React"
-        request={async () => reportWith({ seekTimestamp: 1440 })}
+        request={async () => clipWith({ seekTimestamp: 1440 })}
       />,
     );
 

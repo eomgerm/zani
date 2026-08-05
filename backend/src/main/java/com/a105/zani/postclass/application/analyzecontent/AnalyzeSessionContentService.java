@@ -35,8 +35,11 @@ import com.a105.zani.session.application.getpostclasscontext.GetPostClassContext
  * <p>트랜잭션을 걸지 않는다 — 이 흐름의 대부분은 GMS 호출(최대 60초)이고, 유일한 쓰기는 {@link SaveSessionAnalysisUseCase} 가 자기 트랜잭션 안에서 한다. 여기서 감싸면
  * 외부 호출이 도는 동안 DB 커넥션을 붙들게 된다.
  *
- * <p>멱등은 적재하는 쪽이 소유한다. 이미 리포트가 있으면 {@code SaveSessionAnalysisUseCase} 가 건너뛴다. 여기서 먼저 확인하지 않는 이유는 존재 확인 계약을 두 곳에 두면 규칙이
- * 갈라지기 때문이다 — 대신 성공 뒤 재시도가 GMS 호출 한 번을 낭비할 수 있다. 재시도는 실패 뒤에만 오므로 이 경우는 "적재는 됐는데 호출자가 성공을 기록하기 전에 죽은" 드문 경로뿐이다.
+ * <p><b>적재 멱등은 여전히 적재하는 쪽이 소유한다.</b> 이미 리포트가 있으면 {@link SaveSessionAnalysisUseCase} 가 건너뛴다. 맨 앞의 존재 확인은 그 판정을 대신하는 것이
+ * 아니라 GMS 호출을 아끼는 바깥 겹이고, 학생별 분석(S15P11A105-249)·강사 분석(S15P11A105-250)이 이미 같은 모양을 갖고 있다.
+ *
+ * <p>이 겹을 처음에는 두지 않았다. 존재 확인 계약이 두 곳으로 갈라지는 것을 피하고 성공 뒤 재시도가 GMS 호출 한 번을 낭비하는 쪽을 택했는데, 그때는 재시도를 실제로 돌리는 호출자가 없어 드문
+ * 경로였다. 사후 파이프라인 배선(S15P11A105-304)이 그 호출자를 만들면서, 강사 분석이 다섯 번 재시도되면 이미 끝난 공통 분석도 다섯 번 다시 불리는 경로로 바뀌어 판단을 뒤집었다.
  */
 @Slf4j
 @Service
@@ -55,10 +58,16 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
     private final GetPostClassContextUseCase getPostClassContextUseCase;
     private final ContentAnalysisPort contentAnalysisPort;
     private final SaveSessionAnalysisUseCase saveSessionAnalysisUseCase;
+    private final SessionReportStatusQueryPort sessionReportStatusQueryPort;
 
     @Override
     public AnalyzeSessionContentResult analyze(AnalyzeSessionContentCommand command) {
         Long sessionId = command.sessionId();
+        if (sessionReportStatusQueryPort.hasSessionReport(sessionId)) {
+            // 멱등의 바깥 겹이다. 여기서 걸리면 전사를 읽지도, GMS 를 부르지도 않는다.
+            log.info("공통 분석 결과가 이미 있어 이번 호출은 건너뜁니다. sessionId={}", sessionId);
+            return new AnalyzeSessionContentResult(sessionId, false, 0);
+        }
         GetPostClassContextResult context = getPostClassContextUseCase.get(new GetPostClassContextQuery(sessionId));
         long classDurationMs = classDurationMs(context, sessionId);
         TranscriptDocument transcript = readTranscript(sessionId);
