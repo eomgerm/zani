@@ -94,11 +94,54 @@ class StudentReportQueryAdapterTest {
                         2,
                         "참여 요약",
                         List.of(
-                                recommendation("CUSTOM", 10L, 20L, 1),
-                                recommendation("QUESTION", 30L, 39L, 1),
-                                recommendation("CONFUSED", 20L, 29L, 2),
-                                recommendation("MISSED", 40L, 49L, 2),
-                                recommendation("REPEAT", 10L, 19L, 3))));
+                                recommendation(9_112_301L, "CUSTOM", 10L, 20L, 1),
+                                recommendation(9_112_300L, "QUESTION", 30L, 39L, 1),
+                                recommendation(9_112_302L, "CONFUSED", 20L, 29L, 2),
+                                recommendation(9_112_303L, "MISSED", 40L, 49L, 2),
+                                recommendation(9_112_304L, "REPEAT", 10L, 19L, 3)),
+                        List.of()));
+    }
+
+    @Test
+    @DisplayName("전사를 시작 시각순으로 펼치고 화자를 실명으로 바꾼다")
+    void expands_the_transcript_with_real_speaker_names() {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", NOW);
+        // 일부러 시작 시각 역순으로 넣는다 — 정렬을 어댑터가 보장하는지 확인해야 한다.
+        // 세 번째 세그먼트의 화자는 참가자 표에 없는 값이고, 네 번째는 끝 시각이 없다.
+        insertTranscript("""
+                {
+                  "schemaVersion": 1,
+                  "segments": [
+                    {"sessionParticipantId": %d, "startOffsetMs": 20000, "endOffsetMs": 25400, "text": "학생 발화"},
+                    {"sessionParticipantId": %d, "startOffsetMs": 1500, "endOffsetMs": 9900, "text": "강사 발화"},
+                    {"sessionParticipantId": 9999999, "startOffsetMs": 30000, "endOffsetMs": 31000, "text": "사라진 참가자"},
+                    {"sessionParticipantId": %d, "startOffsetMs": 40000, "text": "끝 시각 없는 발화"}
+                  ]
+                }
+                """.formatted(STUDENT_PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID, STUDENT_PARTICIPANT_ID));
+
+        assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
+                .get()
+                .extracting(StudentReportView::transcript)
+                .isEqualTo(List.of(
+                        // ms 를 초로 낮춘다. 25,400ms 는 25 초다 — 올리지 않는다.
+                        new StudentReportView.TranscriptSegment(1L, 9L, "강사", "강사 발화"),
+                        new StudentReportView.TranscriptSegment(20L, 25L, "학생", "학생 발화"),
+                        // 참가자 행이 없어도 발화를 잃지 않는다. 이름만 빈다.
+                        new StudentReportView.TranscriptSegment(30L, 31L, null, "사라진 참가자"),
+                        // 끝 시각이 없으면 시작 시각으로 둔다.
+                        new StudentReportView.TranscriptSegment(40L, 40L, "학생", "끝 시각 없는 발화")));
+    }
+
+    @Test
+    @DisplayName("전사가 아직 없으면 빈 목록이며 오류가 아니다")
+    void returns_an_empty_transcript_when_none_exists() {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", NOW);
+
+        assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
+                .get()
+                .extracting(StudentReportView::transcript)
+                .isEqualTo(List.of());
     }
 
     @Test
@@ -109,7 +152,7 @@ class StudentReportQueryAdapterTest {
         // 앞의 셋은 행을 센 값이라 0 이 맞다. 질문 수는 저장된 판정이라 없으면 null 이다 —
         // 0 으로 낮추면 "질문을 안 했다"는 뜻이 되어 판정이 없는 것과 구분되지 않는다.
         assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
-                .contains(new StudentReportView(0L, 0L, 0L, null, "참여 요약", List.of()));
+                .contains(new StudentReportView(0L, 0L, 0L, null, "참여 요약", List.of(), List.of()));
     }
 
     @Test
@@ -123,9 +166,20 @@ class StudentReportQueryAdapterTest {
     }
 
     private static StudentReportView.Recommendation recommendation(
-            String type, long startSeconds, long endSeconds, int priority) {
+            long id, String type, long startSeconds, long endSeconds, int priority) {
         return new StudentReportView.Recommendation(
-                type, type + " 제목", type + " 설명", startSeconds, endSeconds, priority);
+                id, type, type + " 제목", type + " 설명", startSeconds, endSeconds, priority);
+    }
+
+    private void insertTranscript(String transcriptDocument) {
+        jdbcTemplate.update(
+                "INSERT INTO transcripts (id, session_id, transcript_document, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?)",
+                9_112_400L,
+                SESSION_ID,
+                transcriptDocument,
+                NOW,
+                NOW);
     }
 
     private void insertMember(long id, String name) {
