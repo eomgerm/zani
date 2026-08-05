@@ -754,8 +754,10 @@ VALUES
     (1000000023004, 1000000020001, 'PARTICIPATION', '학생 참여 유도', '개념 설명 뒤 짧은 확인 질문을 넣어 참여를 끌어올려 보세요.', '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000');
 
 -- 리포트 요약은 학생 전원에게 채운다. 참가자 ID 에서 리포트 ID 를 계산한다(1000000003002 → 1000000024002).
--- question_count 는 세 번째 학생만 NULL 로 둔다. 분석이 질문 수를 내지 못한 리포트에서 화면이
--- "0개" 가 아니라 빈 자리를 그리는지 시연으로 확인할 수 있어야 한다.
+-- question_count 는 학생 셋이 세 가지 상태를 하나씩 갖게 한다. "한눈에 보기" 가 셋을 다르게 그려야 한다.
+--   3    질문을 남긴 학생
+--   0    분석은 됐지만 질문이 없던 학생 — "0개" 로 보여야 한다
+--   NULL 분석이 질문 수를 내지 못한 리포트 — "0개" 가 아니라 빈 자리로 보여야 한다
 INSERT INTO `student_reports` (`id`, `session_id`, `session_participant_id`, `participation_summary`,
                                `question_count`, `published_at`, `created_at`, `updated_at`)
 SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
@@ -765,8 +767,8 @@ SELECT 1000000024000 + (p.`id` - 1000000003000), @s1, p.`id`,
            ELSE '질문과 반응으로 수업에 활발히 참여했습니다. 메모이제이션 구간에서 확인이 필요한 신호가 반복됐습니다.'
        END,
        CASE (p.`id` - 1000000003001) % 3
-           WHEN 0 THEN 1
-           WHEN 1 THEN 3
+           WHEN 0 THEN 3
+           WHEN 1 THEN 0
            ELSE NULL
        END,
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
@@ -797,8 +799,8 @@ CROSS JOIN (
            1440000 AS `started_offset_ms`, 1859000 AS `ended_offset_ms`
     UNION ALL SELECT 2, 'MISSED', 'Context API 리렌더링', '놓침 응답과 프롬프트 미응답이 같은 구간에 함께 있었습니다.', 520000, 921000
     UNION ALL SELECT 3, 'QUESTION', '상태관리 라이브러리 비교', '직접 남긴 비공개 질문이 이 개념 설명 구간을 가리킵니다.', 1860000, 2519000
-    UNION ALL SELECT 4, 'REPEAT', 'props drilling 과 상태 위치', '같은 개념에서 확인 필요 신호가 반복됐습니다.', 0, 519000
-    UNION ALL SELECT 5, 'REPEAT', 'Zustand 스토어 구조', '실습 구간에서 같은 지점을 여러 번 되짚었습니다.', 2520000, 3079000
+    UNION ALL SELECT 4, 'LOW_ENGAGEMENT', 'props drilling 과 상태 위치', '이 구간에서 참여도 판정이 낮게 이어졌습니다.', 0, 519000
+    UNION ALL SELECT 5, 'NO_RESPONSE', 'Zustand 스토어 구조', '확인 프롬프트에 응답이 없었습니다.', 2520000, 3079000
 ) t;
 
 INSERT INTO `quizzes` (`id`, `student_report_id`, `title`, `description`, `estimated_duration_minutes`,
@@ -808,23 +810,28 @@ SELECT 1000000026000 + s.`slot`, 1000000024001 + s.`slot`, 'React 상태관리 �
        '2026-07-14 03:05:00.000000', '2026-07-14 03:00:00.000000', '2026-07-14 03:05:00.000000'
 FROM (SELECT 1 AS `slot` UNION ALL SELECT 2 UNION ALL SELECT 3) s;
 
-INSERT INTO `quiz_questions` (`id`, `quiz_id`, `question_text`, `explanation`, `question_order`, `created_at`, `updated_at`)
+-- section_started_offset_ms 는 위 session_sections 의 시작 시각을 가리킨다. 문항 하나가 마지막
+-- 문항만 NULL 이다 — 근거 구간을 특정하지 못한 문항이 다시 보기 링크 없이 표시되는 상태를 화면이
+-- 다룰 수 있어야 하고, 시연 데이터가 그 경우를 한 건 포함해야 확인할 수 있다.
+INSERT INTO `quiz_questions` (`id`, `quiz_id`, `question_text`, `explanation`, `section_started_offset_ms`,
+                              `question_order`, `created_at`, `updated_at`)
 SELECT 1000000027000 + s.`slot` * 10 + t.`qorder`, 1000000026000 + s.`slot`,
-       t.`question_text`, t.`explanation`, t.`qorder`,
+       t.`question_text`, t.`explanation`, t.`section_started_offset_ms`, t.`qorder`,
        '2026-07-14 03:00:00.000000', '2026-07-14 03:00:00.000000'
 FROM (SELECT 1 AS `slot` UNION ALL SELECT 2 UNION ALL SELECT 3) s
 CROSS JOIN (
     SELECT 1 AS `qorder`,
            'Context Provider 의 value 가 바뀔 때 하위 컴포넌트가 리렌더되는 주된 이유는?' AS `question_text`,
-           '객체 리터럴을 value 로 넘기면 매 렌더마다 새 참조가 만들어져, 이를 구독하는 하위 컴포넌트가 모두 리렌더됩니다.' AS `explanation`
+           '객체 리터럴을 value 로 넘기면 매 렌더마다 새 참조가 만들어져, 이를 구독하는 하위 컴포넌트가 모두 리렌더됩니다.' AS `explanation`,
+           520000 AS `section_started_offset_ms`
     UNION ALL SELECT 2, 'Provider value 의 불필요한 리렌더를 줄이는 가장 적절한 방법은?',
-           'value 를 useMemo 로 감싸 참조를 안정화하면 의존성이 실제로 바뀔 때만 새 참조가 생깁니다.'
+           'value 를 useMemo 로 감싸 참조를 안정화하면 의존성이 실제로 바뀔 때만 새 참조가 생깁니다.', 1440000
     UNION ALL SELECT 3, 'props drilling 에 대한 설명으로 옳은 것은?',
-           '실제로 사용하지 않는 중간 계층이 단지 아래로 props 를 전달만 하는 구조를 말합니다.'
+           '실제로 사용하지 않는 중간 계층이 단지 아래로 props 를 전달만 하는 구조를 말합니다.', 0
     UNION ALL SELECT 4, '외부 상태관리 라이브러리 도입을 고려할 만한 상황은?',
-           '전역 상태가 넓고 미들웨어나 복잡한 비동기 흐름이 필요할 때 라이브러리가 유리합니다.'
+           '전역 상태가 넓고 미들웨어나 복잡한 비동기 흐름이 필요할 때 라이브러리가 유리합니다.', 1860000
     UNION ALL SELECT 5, 'useCallback 이 실제로 필요한 경우는?',
-           'React.memo 된 자식에게 함수를 props 로 넘길 때 참조 안정화를 위해 필요합니다.'
+           'React.memo 된 자식에게 함수를 props 로 넘길 때 참조 안정화를 위해 필요합니다.', NULL
 ) t;
 
 -- 다섯 문제 모두 정답이 2번이다. 아래 응답 블록이 그 사실을 쓴다.
