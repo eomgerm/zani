@@ -63,7 +63,7 @@ public class InstructorAnalysisContextQueryAdapter implements InstructorAnalysis
                        AS confused_count,
                    COALESCE(SUM(CASE WHEN c.response_type = 'MISSED' THEN c.response_count END), 0)
                        AS missed_count,
-                   COALESCE(SUM(CASE WHEN c.response_type = 'NO_RESPONSE' THEN c.response_count END), 0)
+                   COALESCE(SUM(CASE WHEN c.response_type = 'NON_RESPONSE' THEN c.response_count END), 0)
                        AS no_response_count
               FROM group_alerts ga
               LEFT JOIN group_alert_response_counts c ON c.group_alert_id = ga.id

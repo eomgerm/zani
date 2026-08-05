@@ -82,6 +82,7 @@ class InstructorAnalysisContextQueryAdapterTest {
         long alertId = insertGroupAlert("CONFUSED", 600_000L, 9, 30);
         insertAlertResponseCount(alertId, "CONFUSED", 7);
         insertAlertResponseCount(alertId, "OK", 21);
+        insertAlertResponseCount(alertId, "NON_RESPONSE", 2);
 
         List<GroupAlert> alerts = queryPort.findContext(sessionId).orElseThrow().alerts();
 
@@ -95,7 +96,7 @@ class InstructorAnalysisContextQueryAdapterTest {
                         GroupAlert::confusedCount,
                         GroupAlert::missedCount,
                         GroupAlert::noResponseCount)
-                .containsExactly(Tuple.tuple(600_000L, "CONFUSED", 9, 30, 21, 7, 0, 0));
+                .containsExactly(Tuple.tuple(600_000L, "CONFUSED", 9, 30, 21, 7, 0, 2));
     }
 
     @Test
