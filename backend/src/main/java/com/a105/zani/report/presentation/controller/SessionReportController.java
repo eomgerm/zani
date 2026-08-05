@@ -31,9 +31,11 @@ public class SessionReportController {
     private final GetSessionSummaryUseCase getSessionSummaryUseCase;
 
     @Operation(summary = "수업 요약 조회", description = """
-                    종료된 수업의 공통 요약을 조회한다. 이 수업에 실제로 참여한 사람이면 강사·학생 모두 **같은 문장**을 받는다.
+                    종료된 수업의 공통 요약과 내용 구간을 조회한다. 이 수업에 실제로 참여한 사람이면 강사·학생 모두 **같은 값**을 받는다.
 
-                    사후 분석이 아직 요약을 만들지 않았거나 게시 전이면 404 로 "아직 준비되지 않음" 을 알린다 — 빈 문자열을 내리지 않는다.""")
+                    사후 분석이 아직 요약을 만들지 않았거나 게시 전이면 404 로 "아직 준비되지 않음" 을 알린다 — 빈 문자열을 내리지 않는다.
+
+                    구간은 요약과 달리 빈 배열이 정상이다. 옛 세션은 내용 타임라인 없이 요약만 있을 수 있다.""")
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "게시된 수업 요약"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "인증되지 않음"),
