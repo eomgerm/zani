@@ -23,6 +23,10 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
  *
  * <p><b>권한 판정은 집중 흐름과 같은 경로를 쓴다.</b> {@code ResolveEndedSessionParticipantUseCase} 가 세션 존재·종료 여부·멤버십을 한 번에 보고, 역할만 여기서
  * 본다. 사후 화면마다 판정을 새로 짜면 한 곳이 느슨해졌을 때 드러나지 않는다.
+ *
+ * <p><b>공개 게이트는 공통 리포트의 게시다.</b> 강사 리포트 행의 {@code published_at} 이 아니라 {@code session_reports} 의 게시를 본다 — 사후 파이프라인은 공개
+ * 단계에서 공통 리포트에만 시각을 찍으므로(S15P11A105-304), 강사 리포트의 컬럼을 게이트로 쓰면 분석이 정상 완주해도 화면이 영구히 비어 있다. 같은 화면의 수업 클립
+ * ({@code GetInstructorClipService})·수업 요약이 같은 값을 보며, 게이트가 갈리면 클립 탭은 열리는데 리포트 탭은 404 인 상태가 생긴다.
  */
 @Service
 @RequiredArgsConstructor
@@ -41,10 +45,15 @@ public class GetInstructorReportService implements GetInstructorReportUseCase {
             throw new NotSessionInstructorException();
         }
 
-        InstructorReportView report = queryPort
-                .findBySessionId(query.sessionId())
-                .filter(found -> found.publishedAt() != null)
-                .orElseThrow(ReportNotReadyException::new);
+        // 게시 확인을 먼저 한다. 아직 공개되지 않은 세션의 점수·인사이트를 읽어 올 이유가 없다.
+        if (!queryPort.sessionReportPublished(query.sessionId())) {
+            throw new ReportNotReadyException();
+        }
+
+        // 공개된 세션에는 강사 리포트가 반드시 있다 — SessionReportPublishService 가 그 존재를 확인하고서야
+        // 시각을 찍는다. 그래도 방어적으로 같은 예외를 낸다.
+        InstructorReportView report =
+                queryPort.findBySessionId(query.sessionId()).orElseThrow(ReportNotReadyException::new);
 
         InstructorReportCounts counts = queryPort.counts(query.sessionId());
 

@@ -16,6 +16,7 @@ import com.a105.zani.report.infrastructure.persistence.entity.InstructorReportSc
 import com.a105.zani.report.infrastructure.persistence.repository.InstructorReportInsightJpaRepository;
 import com.a105.zani.report.infrastructure.persistence.repository.InstructorReportJpaRepository;
 import com.a105.zani.report.infrastructure.persistence.repository.InstructorReportScoreJpaRepository;
+import com.a105.zani.report.infrastructure.persistence.repository.SessionReportJpaRepository;
 
 /**
  * 저장된 강사 리포트를 읽어 값 객체로 옮긴다.
@@ -47,7 +48,14 @@ public class InstructorReportQueryAdapter implements InstructorReportQueryPort {
     private final InstructorReportJpaRepository reportRepository;
     private final InstructorReportScoreJpaRepository scoreRepository;
     private final InstructorReportInsightJpaRepository insightRepository;
+    private final SessionReportJpaRepository sessionReportRepository;
     private final JdbcTemplate jdbcTemplate;
+
+    /** 수업 클립({@code InstructorClipQueryAdapter})과 같은 조회를 쓴다. 한 화면의 탭들이 같은 순간에 열려야 한다. */
+    @Override
+    public boolean sessionReportPublished(long sessionId) {
+        return sessionReportRepository.existsBySessionIdAndPublishedAtIsNotNull(sessionId);
+    }
 
     @Override
     public Optional<InstructorReportView> findBySessionId(long sessionId) {
@@ -67,7 +75,6 @@ public class InstructorReportQueryAdapter implements InstructorReportQueryPort {
                 report.getOverallFeedback(),
                 // 채팅 행 수를 세지 않는다. 무엇이 질문인지는 문장을 읽어야 알 수 있어 AI 가 판단해 굳혀 둔 값이다(V19).
                 report.getQuestionCount(),
-                report.getPublishedAt(),
                 scores(report.getId()),
                 insights(report.getId()));
     }
