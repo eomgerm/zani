@@ -4,15 +4,26 @@
  * <p>`GET /api/v1/sessions/{sessionId}/reports/summary`. 강사·학생이 **같은 값**을 받는 공통 산출물이라
  * 역할별 분기가 없다 — 화면도 두 탭에서 같은 컴포넌트를 쓴다.
  *
- * <p>응답은 한 문단(`summary`)이다. 프로토타입은 제목+본문 5절 구조였지만 서버가 만드는 것은 문단
- * 하나이므로, 없는 절을 화면이 지어내지 않는다.
+ * <p>응답은 수업 전체를 훑는 한 문단(`summary`)과, 같은 분석이 나눈 내용 구간(`sections`)이다. 절 구분은
+ * 화면이 지어내는 것이 아니라 사후 분석이 만든 구간을 그대로 쓴다(S15P11A105-314).
  *
  * <p>요약이 아직 없으면 서버가 빈 문자열이 아니라 404 를 준다. "분석이 안 끝났다" 와 "요약이 비었다" 는
  * 화면에서 할 말이 다르기 때문이다(전자는 기다리라고, 후자는 빈 카드).
+ *
+ * <p>구간은 요약과 달리 **빈 배열이 정상**이다. 내용 타임라인 없이 요약만 있는 세션이 있고, 그 세션도
+ * 요약은 보여야 한다.
  */
+
+export type SessionSummarySection = {
+  readonly title: string;
+  readonly summary: string;
+  readonly startSeconds: number;
+  readonly endSeconds: number;
+};
 
 export type SessionSummary = {
   readonly summary: string;
+  readonly sections: readonly SessionSummarySection[];
 };
 
 export class SessionSummaryError extends Error {
@@ -47,6 +58,38 @@ const dataOf = (envelope: unknown, status: number): Record<string, unknown> => {
   }
 
   return (envelope as { data: Record<string, unknown> }).data;
+};
+
+const objectOf = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+
+const stringOf = (value: unknown): string => (typeof value === "string" ? value : "");
+
+/** ms 를 초로. 구간 오프셋은 서버에서 NOT NULL 이라 값이 깨졌을 때만 0 이 된다. */
+const secondsOf = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value / 1000) : 0;
+
+/**
+ * 깨진 구간 하나만 버리고 나머지는 그린다. 목록 전체를 버리면 구간 하나가 이상하다는 이유로 수업 전체의
+ * 절 구분이 사라진다.
+ *
+ * <p>제목과 요약이 둘 다 비면 그릴 것이 없어 버린다. 요약만 없는 구간은 제목으로도 자리를 말하므로 남긴다 —
+ * 248 이 제목만 채운 세션이 있다(서버 쪽 `summary` 는 nullable).
+ */
+const parseSection = (value: unknown): SessionSummarySection | null => {
+  const section = objectOf(value);
+  if (section === null) return null;
+
+  const title = stringOf(section.title);
+  const summary = stringOf(section.summary);
+  if (title.length === 0 && summary.length === 0) return null;
+
+  return {
+    title,
+    summary,
+    startSeconds: secondsOf(section.startedOffsetMs),
+    endSeconds: secondsOf(section.endedOffsetMs),
+  };
 };
 
 export const requestSessionSummary: SessionSummaryRequester = async (
@@ -86,11 +129,17 @@ export const requestSessionSummary: SessionSummaryRequester = async (
     throw new SessionSummaryError("Session summary response was not valid JSON.", response.status);
   }
 
-  const summary = dataOf(envelope, response.status).summary;
+  const data = dataOf(envelope, response.status);
+  const summary = data.summary;
   // 문자열이 아니거나 빈 값이면 그릴 것이 없다. 빈 카드를 그리지 않고 계약 위반으로 다룬다.
   if (typeof summary !== "string" || summary.length === 0) {
     throw new SessionSummaryError("Session summary response had no summary.", response.status);
   }
 
-  return { summary };
+  // 구간이 없어도 요약은 그린다. 배열이 아예 없는 응답(구간을 싣기 전 서버)도 같은 자리로 떨어진다.
+  const sections = Array.isArray(data.sections)
+    ? data.sections.map(parseSection).filter((section) => section !== null)
+    : [];
+
+  return { summary, sections };
 };

@@ -8,6 +8,7 @@ import {
   SessionSummaryError,
   type SessionSummary,
   type SessionSummaryRequester,
+  type SessionSummarySection,
 } from "../infrastructure/sessionSummaryApi";
 
 /**
@@ -21,8 +22,12 @@ export type SessionSummaryStatus = "loading" | "ready" | "forbidden" | "notReady
 export type UseSessionSummaryResult = {
   readonly status: SessionSummaryStatus;
   readonly summary: string | null;
+  /** 내용 구간. 아직 오지 않았거나 서버가 나누지 못한 세션은 빈 배열이다 — `summary` 의 `null` 과 뜻이 다르다. */
+  readonly sections: readonly SessionSummarySection[];
   readonly retry: () => void;
 };
+
+const NO_SECTIONS: readonly SessionSummarySection[] = [];
 
 export type UseSessionSummaryOptions = {
   readonly sessionId: string;
@@ -89,6 +94,11 @@ export function useSessionSummary(options: UseSessionSummaryOptions): UseSession
 
   // 아직 이번 시도의 답이 오지 않았으면 로딩이다. 이전 시도의 결과를 물려주지 않는다.
   return answer.key === key
-    ? { status: answer.status, summary: answer.summary?.summary ?? null, retry }
-    : { status: "loading", summary: null, retry };
+    ? {
+        status: answer.status,
+        summary: answer.summary?.summary ?? null,
+        sections: answer.summary?.sections ?? NO_SECTIONS,
+        retry,
+      }
+    : { status: "loading", summary: null, sections: NO_SECTIONS, retry };
 }
