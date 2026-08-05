@@ -7,3 +7,4 @@ export { StudentAttentionTimeline } from "./presentation/StudentAttentionTimelin
 export { InstructorNoteEditor } from "./presentation/InstructorNoteEditor";
 export { StudentReportClip } from "./presentation/StudentReportClip";
 export type { ClipSeekRequest } from "./presentation/StudentReportClip";
+export { SessionSummaryCard } from "./presentation/SessionSummaryCard";
