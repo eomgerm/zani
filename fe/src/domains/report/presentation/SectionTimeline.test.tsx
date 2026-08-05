@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { SectionTimeline } from "./SectionTimeline";
 
 const sections = [
-  { startSeconds: 0, endSeconds: 372, title: "함수의 정의", focusLevel: 3.21 },
-  { startSeconds: 372, endSeconds: 900, title: "합성 함수", focusLevel: 1.8 },
+  { startSeconds: 0, endSeconds: 372, title: "함수의 정의", summary: null, focusLevel: 3.21 },
+  { startSeconds: 372, endSeconds: 900, title: "합성 함수", summary: null, focusLevel: 1.8 },
 ];
 
 describe("SectionTimeline", () => {
@@ -31,7 +31,7 @@ describe("SectionTimeline", () => {
   it("값이 없는 구간은 1단계가 아니라 값 없음으로 보인다", () => {
     render(
       <SectionTimeline
-        sections={[{ startSeconds: 0, endSeconds: 90, title: "쉬는 시간", focusLevel: null }]}
+        sections={[{ startSeconds: 0, endSeconds: 90, title: "쉬는 시간", summary: null, focusLevel: null }]}
         selectedIndex={0}
         onSelect={() => {}}
         scopeLabel="내 집중도"
@@ -115,6 +115,48 @@ describe("SectionTimeline", () => {
     expect(dialog.textContent).toContain("구간 1 · 00:00~06:12");
     expect(dialog.textContent).toContain("/ 4");
     expect(dialog.textContent).toContain("높음");
+  });
+
+  /** 112 가 주는 구간 요약. 없으면 지어내지 않고 블록 자체를 내지 않는다. */
+  it("상세는 서버가 준 구간 요약을 보여주고, 없으면 그 블록을 내지 않는다", () => {
+    const withSummary = render(
+      <SectionTimeline
+        sections={[
+          {
+            startSeconds: 0,
+            endSeconds: 372,
+            title: "함수의 정의",
+            summary: "정의역과 공역을 설명한 구간이에요.",
+            focusLevel: 3.21,
+          },
+        ]}
+        selectedIndex={0}
+        onSelect={() => {}}
+        scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /구간 1/ }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("다룬 내용");
+    expect(dialog.textContent).toContain("정의역과 공역을 설명한 구간이에요.");
+    withSummary.unmount();
+
+    render(
+      <SectionTimeline
+        sections={sections}
+        selectedIndex={0}
+        onSelect={() => {}}
+        scopeLabel="내 집중도"
+        clipTabLabel="복습 클립"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /구간 1/ }));
+
+    expect(screen.getByRole("dialog").textContent).not.toContain("다룬 내용");
   });
 
   it("상세의 클립 바로가기는 구간 시작 시각을 넘긴다", () => {

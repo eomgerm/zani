@@ -64,6 +64,17 @@ function duration(startedAt: string, endedAt: string | null): string {
   return `${hours}시간 ${minutes}분`;
 }
 
+export function formatSessionStartedAt(startedAt: string): string {
+  const at = new Date(startedAt);
+  if (Number.isNaN(at.getTime())) return "-";
+  const month = `${at.getMonth() + 1}`.padStart(2, "0");
+  const day = `${at.getDate()}`.padStart(2, "0");
+  const hour = `${at.getHours()}`.padStart(2, "0");
+  const minute = `${at.getMinutes()}`.padStart(2, "0");
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][at.getDay()];
+  return `${at.getFullYear()}.${month}.${day} (${weekday}) ${hour}:${minute}`;
+}
+
 export function toMyLecture(summary: SessionSummary): MyLecture {
   return {
     id: summary.sessionId,

@@ -1,52 +1,53 @@
 /**
- * 학생 리포트(공통 녹화·실명 화자 전사·복습 추천) 조회 어댑터.
+ * 학생 학습 리포트(활동 집계 · 참여 요약 · 복습 추천) 조회 어댑터.
  *
- * <p>`GET /api/v1/sessions/{sessionId}/reports/student`. 서버 스펙이 확정되면
+ * <p>`GET /api/v1/sessions/{sessionId}/reports/student`(112). 서버 스펙이 확정되면
  * `npm run generate:types` 로 타입을 재생성해 이 수기 타입을 대체한다(231 어댑터와 같은 방식).
- * 그전까지의 계약: 시간은 전부 **초 단위**다(참여도 타임라인과 같은 척도). 서버 저장소가
- * ms(`started_offset_ms`)여도 응답에서 초로 변환해 내려주는 계약이다.
  *
- * <p>`recordingUrl` 은 권한 검증을 거친 **단기 접근 URL**이다(EC2 로컬 서빙, FRD §15.2).
- * `<video>` 는 Authorization 헤더를 싣지 못하므로 토큰이 URL 에 담겨 온다. 만료되면 미디어
- * 요청이 401 로 죽는데 상태코드는 JS 에 보이지 않는다 — 화면은 video `error` 를 신호로 이
- * 어댑터를 다시 불러 새 URL 을 받는다(재발급). 값이 없으면 `null` — 녹화가 아직 없다는 뜻이다.
+ * <p>같은 경로를 읽는 `studentClipApi.ts`(복습 클립의 녹화·전사)와는 **다른 계약**이다. 서버가
+ * 이 경로에 주는 것은 여기 적힌 계약뿐이고, 녹화·전사 엔드포인트는 아직 없다. 한 파일에 두
+ * 계약을 담으면 어느 필드가 어느 화면의 것인지 알 수 없게 되므로 갈라 둔다.
  *
- * <p>`transcript` 의 화자는 **실명 표시 이름**이다(REPORT-S-001). 저장소의 화자 키
- * (`sessionParticipantId`)를 실명으로 푸는 일은 서버가 조립 시점에 끝낸다 — 화면은 매핑하지
- * 않는다. 익명 별칭(`student-001`)이 화면에 보이면 계약 위반이다.
+ * <p>시간은 전부 **초 단위**다(참여도 타임라인과 같은 척도). 서버 저장소가 ms(`started_offset_ms`)
+ * 여도 응답에서 초로 변환해 내려주는 계약이다.
  *
  * <p>`recommendations` 는 근거가 있을 때만 0~5개다(REPORT-S-002). 없음은 빈 배열이지 오류가
- * 아니다(REPORT-S-005). 5개 초과분은 계약 위반이므로 방어적으로 잘라낸다.
+ * 아니다(REPORT-S-005). 서버가 `priority` 순으로 정렬해 다섯 개까지 잘라 주므로 화면은 받은
+ * 순서를 그대로 쓴다 — `priority` 값 자체는 쓰지 않아 읽지 않는다.
  *
- * <p>`seekTimestamp` 는 초기 재생 위치(초)다. 추천 각각의 이동 목표는 자기 `startSeconds` 가
- * 맡으므로(REPORT-S-004), 이 값은 딥링크 진입 위치로만 쓴다. 없거나 음수면 0.
+ * <p>`activity` 는 본인 집계다. 다른 학생과 견주는 값이 아니며 하나의 점수로 합치지 않는다
+ * (REPORT-S-010).
  */
 
-export type TranscriptSegment = {
-  readonly startSeconds: number;
-  readonly endSeconds: number;
-  readonly speakerName: string;
-  readonly text: string;
-};
-
-/** `reason` 은 서버 `review_recommendations.description` 을 내려받는 필드다(근거 문장). */
-export type ReviewRecommendation = {
-  /** TSID 라 JS 안전 정수 범위를 넘을 수 있다. 문자열로만 다룬다. 없으면 null. */
-  readonly id: string | null;
-  readonly title: string;
-  readonly reason: string;
-  readonly startSeconds: number;
-  readonly endSeconds: number;
-  /** 근거 유형(서버 enum 문자열). 모르는 값이어도 버리지 않는다 — 라벨링은 화면이 정한다. */
+/** `description` 은 서버 `review_recommendations.description` 이다(근거 문장). */
+export type StudentRecommendation = {
+  /**
+   * 근거 유형. 249 가 다섯 가지로 확정했다 — `CONFUSED`·`MISSED`·`NO_RESPONSE`·
+   * `LOW_ENGAGEMENT`·`QUESTION`. 모르는 값이어도 버리지 않는다 — 라벨링은 화면이 정한다.
+   */
   readonly recommendationType: string;
+  readonly title: string;
+  readonly description: string;
+  readonly startSeconds: number;
+  readonly endSeconds: number;
 };
 
 export type StudentReport = {
-  readonly recordingUrl: string | null;
-  readonly durationSeconds: number;
-  readonly transcript: readonly TranscriptSegment[];
-  readonly recommendations: readonly ReviewRecommendation[];
-  readonly seekTimestamp: number;
+  readonly activity: {
+    readonly publicChatCount: number;
+    readonly confusedCount: number;
+    readonly missedCount: number;
+    /**
+     * AI 가 공개 채팅에서 질문인 발화만 세어 판단한 질문 수. 판정이 없으면 `null` 이며 0 이
+     * 아니다 — 0 은 질문을 안 했다는 뜻이라 "판정이 없다"와 다르다.
+     *
+     * <p>앞의 셋과 달리 서버가 행을 센 값이 아니다. 공개 채팅에는 질문만 있지 않아서
+     * ("감사합니다", "네") 행을 세면 그것까지 질문이 된다.
+     */
+    readonly questionCount: number | null;
+  };
+  readonly participationSummary: string;
+  readonly recommendations: readonly StudentRecommendation[];
 };
 
 export class StudentReportError extends Error {
@@ -74,83 +75,50 @@ const objectOf = (value: unknown): Record<string, unknown> | null =>
 
 const arrayOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-const idOf = (value: unknown): string | null => {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return null;
-};
+/** 횟수는 0 이상 정수다. 음수·소수·NaN 이 오면 "3.9회"·"-2회" 가 화면에 나가므로 낮춘다. */
+const countOf = (value: unknown): number =>
+  isFiniteNumber(value) && value > 0 ? Math.trunc(value) : 0;
 
 /**
- * 깨진 세그먼트만 버린다. 전사 전체를 버리지 않는다 — 행 하나가 깨졌다고 수업 전체 전사를
- * 못 보여줄 이유가 없다. `text` 없는 행은 눌러도 보여줄 것이 없으므로 버린다.
+ * 판정이 있을 수도 없을 수도 있는 횟수. 없음(`null`)과 0 을 가른다 — 여기서 0 은 모델이 "질문이
+ * 없었다"고 판단한 값이라 버리면 안 된다. 숫자가 아니거나 음수면 판정으로 볼 수 없어 `null` 이다.
  */
-const parseTranscriptSegment = (value: unknown): TranscriptSegment | null => {
-  const segment = objectOf(value);
-  if (
-    segment === null ||
-    !isFiniteNumber(segment.startSeconds) ||
-    typeof segment.text !== "string" ||
-    segment.text.length === 0
-  ) {
-    return null;
-  }
+const countOrNull = (value: unknown): number | null =>
+  isFiniteNumber(value) && value >= 0 ? Math.trunc(value) : null;
 
-  return {
-    startSeconds: segment.startSeconds,
-    // 끝 시각이 없으면 시작 시각으로 둔다. 커서 계산은 시작 시각만 쓰므로 화면이 깨지지 않는다.
-    endSeconds: isFiniteNumber(segment.endSeconds) ? segment.endSeconds : segment.startSeconds,
-    speakerName: typeof segment.speakerName === "string" ? segment.speakerName : "",
-    text: segment.text,
-  };
-};
-
-const parseRecommendation = (value: unknown): ReviewRecommendation | null => {
+/**
+ * 깨진 추천만 버린다. 목록 전체를 버리지 않는다 — 하나가 깨졌다고 나머지 근거 있는 추천을
+ * 못 보여줄 이유가 없다. 제목과 시작 시각이 없으면 눌러도 갈 곳이 없으므로 버린다.
+ */
+const parseRecommendation = (value: unknown): StudentRecommendation | null => {
   const recommendation = objectOf(value);
   if (
     recommendation === null ||
-    !isFiniteNumber(recommendation.startSeconds) ||
     typeof recommendation.title !== "string" ||
-    recommendation.title.length === 0
+    recommendation.title.length === 0 ||
+    !isFiniteNumber(recommendation.startSeconds)
   ) {
     return null;
   }
 
   return {
-    id: idOf(recommendation.id),
-    title: recommendation.title,
-    reason: typeof recommendation.reason === "string" ? recommendation.reason : "",
-    startSeconds: recommendation.startSeconds,
-    endSeconds: isFiniteNumber(recommendation.endSeconds)
-      ? recommendation.endSeconds
-      : recommendation.startSeconds,
     recommendationType:
       typeof recommendation.recommendationType === "string"
         ? recommendation.recommendationType
         : "",
+    title: recommendation.title,
+    description: typeof recommendation.description === "string" ? recommendation.description : "",
+    startSeconds: recommendation.startSeconds,
+    // 끝 시각이 없으면 시작 시각으로 둔다. 이동 목표는 시작 시각이라 화면이 깨지지 않는다.
+    endSeconds: isFiniteNumber(recommendation.endSeconds)
+      ? recommendation.endSeconds
+      : recommendation.startSeconds,
   };
 };
 
 /**
- * 봉투를 열어 `data` 객체를 꺼낸다. `isSuccess` 가 참이 아니거나 `data` 가 객체가 아니면
- * 계약 위반이므로 던진다.
- */
-const dataOf = (envelope: unknown, status: number): Record<string, unknown> => {
-  if (
-    typeof envelope !== "object" ||
-    envelope === null ||
-    (envelope as { isSuccess?: unknown }).isSuccess !== true ||
-    typeof (envelope as { data?: unknown }).data !== "object" ||
-    (envelope as { data?: unknown }).data === null
-  ) {
-    throw new StudentReportError("Student report response had an invalid envelope.", status);
-  }
-
-  return (envelope as { data: Record<string, unknown> }).data;
-};
-
-/**
- * 서버는 Access Token 으로 요청자가 이 세션의 학생인지 판단한다. 비참여자·타 학생 추천 접근은
- * 403, 리포트가 아직 없으면(진행 중 포함) 404 가 온다. 상태 분기는 훅이 맡는다.
+ * 서버는 Access Token 으로 요청자가 이 세션의 학생인지 판단한다. 비참여자·학생이 아닌 호출은
+ * 403, 게시된 리포트가 없으면 404, 아직 진행 중인 세션이면 409 가 온다. 상태 분기는 훅이 맡는다.
  */
 export const requestStudentReport: StudentReportRequester = async (
   sessionId,
@@ -171,7 +139,7 @@ export const requestStudentReport: StudentReportRequester = async (
       },
     );
   } catch (error) {
-    // 응답을 받지 못했다. 상태 0 으로 올려 403·404 와 구분할 수 있게 한다.
+    // 응답을 받지 못했다. 상태 0 으로 올려 403·404·409 와 구분할 수 있게 한다.
     throw new StudentReportError(`Student report request failed: ${String(error)}`, 0);
   }
 
@@ -189,34 +157,31 @@ export const requestStudentReport: StudentReportRequester = async (
     throw new StudentReportError("Student report response was not valid JSON.", response.status);
   }
 
-  const data = dataOf(envelope, response.status);
+  const wrapper = objectOf(envelope);
+  const data = objectOf(wrapper?.data);
+  if (wrapper?.isSuccess !== true || data === null) {
+    throw new StudentReportError(
+      "Student report response had an invalid envelope.",
+      response.status,
+    );
+  }
 
-  const recordingUrl =
-    typeof data.recordingUrl === "string" && data.recordingUrl.length > 0
-      ? data.recordingUrl
-      : null;
-
-  // 커서(현재 구간) 계산이 정렬을 전제하므로 여기서 한 번 보장한다. 서버가 정렬해 보내는 것이
-  // 계약이지만, 순서가 어긋난 응답이 재생 중 하이라이트를 엉뚱한 행으로 보내면 안 된다.
-  const transcript = arrayOf(data.transcript)
-    .map(parseTranscriptSegment)
-    .filter((segment): segment is TranscriptSegment => segment !== null)
-    .sort((a, b) => a.startSeconds - b.startSeconds);
-
-  const recommendations = arrayOf(data.recommendations)
-    .map(parseRecommendation)
-    .filter((recommendation): recommendation is ReviewRecommendation => recommendation !== null)
-    // 0~5 계약(REPORT-S-002). 초과분을 그리면 "근거 있는 것만 고른다"는 약속이 깨져 보인다.
-    .slice(0, 5);
+  const activity = objectOf(data.activity);
 
   return {
-    recordingUrl,
-    durationSeconds: isFiniteNumber(data.durationSeconds) && data.durationSeconds >= 0
-      ? data.durationSeconds
-      : 0,
-    transcript,
-    recommendations,
-    seekTimestamp:
-      isFiniteNumber(data.seekTimestamp) && data.seekTimestamp >= 0 ? data.seekTimestamp : 0,
+    activity: {
+      publicChatCount: countOf(activity?.publicChatCount),
+      confusedCount: countOf(activity?.confusedCount),
+      missedCount: countOf(activity?.missedCount),
+      questionCount: countOrNull(activity?.questionCount),
+    },
+    // 요약이 비어도 집계와 추천은 살린다. 한 필드 때문에 카드 셋을 함께 잃지 않는다.
+    participationSummary:
+      typeof data.participationSummary === "string" ? data.participationSummary : "",
+    recommendations: arrayOf(data.recommendations)
+      .map(parseRecommendation)
+      .filter((recommendation): recommendation is StudentRecommendation => recommendation !== null)
+      // 0~5 계약(REPORT-S-002). 초과분을 그리면 "근거 있는 것만 고른다"는 약속이 깨져 보인다.
+      .slice(0, 5),
   };
 };

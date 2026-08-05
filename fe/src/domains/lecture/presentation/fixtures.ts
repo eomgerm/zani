@@ -1,5 +1,3 @@
-import type { PictogramName } from "@/shared/ui";
-
 /** 강의 처리 상태 */
 export type LectureStatus = "LIVE" | "PROCESSING" | "COMPLETED" | "FAILED";
 
@@ -102,44 +100,12 @@ export const transcript = [
   { t: "51:20", speaker: "박서준", text: "정리하고 질문 받겠습니다. 오늘 자료는 리포트에 함께 올려둘게요." },
 ];
 
-export const recommendations = [
-  { t: "24:10", title: "useMemo 메모이제이션 패턴", reason: "‘헷갈림’ 응답과 같은 개념에서 반복된 확인 필요가 함께 근거가 됐어요.", tag: "헷갈림 · 반복", color: "#f4c325" },
-  { t: "08:30", title: "Context API 리렌더링", reason: "‘잠깐 놓침’ 응답과 프롬프트 미응답이 함께 있었어요.", tag: "놓침 · 미응답", color: "#10b981" },
-  { t: "31:00", title: "상태관리 라이브러리 비교", reason: "직접 남긴 1:1 질문이 이 개념 설명 구간을 가리켜요.", tag: "내 질문", color: "#15bd7d" },
-  { t: "1:12:05", title: "예외 처리 및 응답 코드", reason: "‘헷갈림’ 응답이 몰린 구간이라 다시 확인하면 좋아요.", tag: "헷갈림", color: "#e0455f" },
-  { t: "1:35:20", title: "테스트 코드 작성 (given·when·then)", reason: "반복된 확인 필요 신호가 감지된 구간이에요.", tag: "반복 확인", color: "#10b981" },
-];
+/* 강사 리포트(분야별 평가·수업 인사이트·한눈에 보기·종합 피드백) fixture 는 110 이,
+   학생 리포트(한눈에 보기·참여 요약·복습 추천) fixture 는 297 이 걷어냈다. 값은 각각
+   GET /reports/instructor 와 /reports/student 가 준다 — 라벨·색·설명만 화면이 갖고 있다. */
 
-/* 강사 리포트(분야별 평가·수업 인사이트·한눈에 보기·종합 피드백) fixture 는 110 이 걷어냈다.
-   값은 GET /reports/instructor 가 준다 — 라벨·색·설명만 InstructorReport 가 갖고 있다. */
-
-/** AI 이해도 퀴즈 문제 */
-export interface QuizQuestion {
-  concept: string;
-  t: string;
-  q: string;
-  opts: string[];
-  answer: number;
-  explain: string;
-}
-
-export const quizData: QuizQuestion[] = [
-  { concept: "Context 리렌더링", t: "08:30", q: "Context Provider의 value가 바뀔 때 하위 컴포넌트가 리렌더되는 주된 이유는?", opts: ["상태가 전역이라서", "value 객체의 참조가 매 렌더마다 새로 생겨서", "useEffect가 실행되어서", "key가 바뀌어서"], answer: 1, explain: "객체 리터럴을 value로 넘기면 매 렌더마다 새 참조가 만들어져, 이를 구독하는 하위 컴포넌트가 모두 리렌더됩니다." },
-  { concept: "useMemo 최적화", t: "24:10", q: "Provider value의 불필요한 리렌더를 줄이는 가장 적절한 방법은?", opts: ["useState로 감싼다", "value를 useMemo로 메모이즈한다", "컴포넌트를 하나로 합친다", "key를 고정한다"], answer: 1, explain: "value를 useMemo로 감싸 참조를 안정화하면 의존성이 실제로 바뀔 때만 새 참조가 생깁니다." },
-  { concept: "Props Drilling", t: "06:40", q: "props drilling에 대한 설명으로 옳은 것은?", opts: ["상태를 전역 저장소에 두는 것", "중간 컴포넌트들이 쓰지 않는 props를 전달만 하는 상황", "props를 삭제하는 최적화", "상태를 지역화하는 패턴"], answer: 1, explain: "실제로 사용하지 않는 중간 계층이 단지 아래로 props를 전달만 하는 구조를 말합니다." },
-  { concept: "상태관리 라이브러리", t: "31:00", q: "외부 상태관리 라이브러리 도입을 고려할 만한 상황은?", opts: ["상태가 지역적일 때", "전역성이 크고 미들웨어·비동기 흐름이 필요할 때", "컴포넌트가 하나뿐일 때", "스타일링이 복잡할 때"], answer: 1, explain: "전역 상태가 넓고 미들웨어나 복잡한 비동기 흐름이 필요할 때 라이브러리가 유리합니다." },
-  { concept: "useCallback", t: "27:52", q: "useCallback이 실제로 필요한 경우는?", opts: ["모든 함수에 항상", "메모이즈된 자식에 함수를 props로 넘길 때", "상태를 만들 때", "렌더링을 완전히 막을 때"], answer: 1, explain: "React.memo된 자식에게 함수를 props로 넘길 때 참조 안정화를 위해 필요합니다." },
-];
-
-export const studentGlance: { icon: PictogramName; label: string; value: string }[] = [
-  { icon: "target", label: "평균 집중도", value: "82%" },
-  { icon: "chat", label: "질문 수", value: "1개" },
-  { icon: "question", label: "헷갈림 표시", value: "2회" },
-  { icon: "pin", label: "놓침 표시", value: "1회" },
-];
-
-export const studentSummary =
-  "전반적으로 높은 집중도와 활발한 참여가 돋보인 수업이었어요. 특히 상태관리 라이브러리 비교 구간에서 깊이 있는 질문을 남겨 이해를 확장했어요. 몇몇 구간에서는 잠깐 놓치거나 헷갈린 순간이 있었지만, 반복 확인과 질문을 통해 스스로 학습을 이어간 점이 인상적이에요.";
+// AI 이해도 퀴즈 fixture(`quizData`)도 걷어냈다. 문항·보기·해설은 249 가 만들고
+// QuizScreen 이 useStudentQuiz 로 받는다.
 
 // 수업 클립 탭의 AI 요약 문서 fixture(`summarySections`)는 걷어냈다. 그 자리는 이제
 // SessionSummaryCard 가 `GET /api/v1/sessions/{sessionId}/reports/summary` 로 채운다.

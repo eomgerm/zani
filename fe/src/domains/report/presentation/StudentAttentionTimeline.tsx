@@ -22,6 +22,8 @@ import {
 import {
   requestStudentAttentionTimeline,
   type FocusPoint,
+  // 컴포넌트와 이름이 같아 갈라 둔다. 같은 이름이면 한 파일에서 둘 다 쓸 수 없다.
+  type StudentAttentionTimeline as StudentTimelineData,
   type StudentTimelineRequester,
 } from "../infrastructure/attentionTimelineApi";
 import { SectionTimeline } from "./SectionTimeline";
@@ -34,7 +36,11 @@ import {
   toSectionRows,
 } from "./sectionFlow";
 import { formatOffset } from "./offsetTime";
-import { useAttentionTimeline } from "./useAttentionTimeline";
+import {
+  useAttentionTimeline,
+  type TimelineStatus,
+  type UseAttentionTimelineResult,
+} from "./useAttentionTimeline";
 
 /**
  * 학생 개인 집중 흐름 카드.
@@ -86,12 +92,46 @@ export interface StudentAttentionTimelineProps {
   readonly onJumpToClip?: (offsetSeconds: number) => void;
 }
 
+/**
+ * 학생 집중 흐름 조회. 학생용 어댑터를 기본값으로 물려 둔다 — 밖에서 이 훅을 쓰는 화면이
+ * infrastructure 를 직접 가져가지 않아도 되게 하려는 것이다.
+ */
+export function useStudentAttentionTimeline(
+  sessionId: string,
+  request: StudentTimelineRequester = requestStudentAttentionTimeline,
+): UseAttentionTimelineResult<StudentTimelineData> {
+  return useAttentionTimeline({ sessionId, enabled: true, request });
+}
+
+/**
+ * 스스로 조회하는 카드. 이 응답을 다른 곳과 나눠 쓸 일이 없을 때 쓴다.
+ *
+ * <p>학생 리포트 탭은 같은 응답에서 "집중 구간 비율" 타일도 만들기 때문에 조회를 위로 올려
+ * `StudentAttentionTimelineView` 를 직접 쓴다. 여기서 한 번 더 부르면 같은 URL 을 두 번 읽는다.
+ */
 export function StudentAttentionTimeline({
   sessionId,
-  request = requestStudentAttentionTimeline,
+  request,
   onJumpToClip,
 }: StudentAttentionTimelineProps) {
-  const { status, timeline, retry } = useAttentionTimeline({ sessionId, enabled: true, request });
+  const state = useStudentAttentionTimeline(sessionId, request);
+  return <StudentAttentionTimelineView {...state} onJumpToClip={onJumpToClip} />;
+}
+
+export interface StudentAttentionTimelineViewProps {
+  readonly status: TimelineStatus;
+  readonly timeline: StudentTimelineData | null;
+  readonly retry: () => void;
+  /** 구간 상세에서 클립 탭으로 옮길 때 쓴다. 배선이 없으면 상세에 버튼이 나오지 않는다. */
+  readonly onJumpToClip?: (offsetSeconds: number) => void;
+}
+
+export function StudentAttentionTimelineView({
+  status,
+  timeline,
+  retry,
+  onJumpToClip,
+}: StudentAttentionTimelineViewProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [detailIndex, setDetailIndex] = useState<number | null>(null);
 

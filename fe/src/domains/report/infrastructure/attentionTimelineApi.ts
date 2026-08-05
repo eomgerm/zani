@@ -76,6 +76,8 @@ export type SectionAverage = {
   readonly startSeconds: number;
   readonly endSeconds: number;
   readonly title: string;
+  /** 구간 요약(112). 분석 전이거나 요약이 없으면 `null` — 화면이 지어내지 않는다. */
+  readonly summary: string | null;
   readonly focusLevel: number | null;
 };
 
@@ -224,7 +226,12 @@ const parseStateInterval = (value: unknown): StateInterval | null => {
   };
 };
 
-/** `title` 은 248 이 채운 값이다. 없으면 빈 문자열로 두고 화면이 정한다. */
+/**
+ * `title` 은 248 이 채운 값이다. 없으면 빈 문자열로 두고 화면이 정한다.
+ *
+ * <p>`summary` 는 없으면 `null` 이다. 빈 문자열로 낮추면 구간 상세가 "요약이 있는데 비었다"로
+ * 읽어 빈 문단을 그린다 — 요약이 아직 없는 것과 구분되어야 한다.
+ */
 const parseSection = (value: unknown): SectionAverage | null => {
   const section = objectOf(value);
   if (
@@ -239,6 +246,7 @@ const parseSection = (value: unknown): SectionAverage | null => {
     startSeconds: section.startSeconds,
     endSeconds: section.endSeconds,
     title: typeof section.title === "string" ? section.title : "",
+    summary: typeof section.summary === "string" ? section.summary : null,
     focusLevel: isFiniteNumber(section.focusLevel) ? section.focusLevel : null,
   };
 };

@@ -13,22 +13,26 @@ import {
 /**
  * 카드가 분기하는 상태.
  *
- * <p>`forbidden`(403)과 `notReady` 를 나누는 이유는 할 말이 다르기 때문이다 — 앞은 권한 문제,
- * 뒤는 시간 문제다. `notReady` 는 404(리포트 미생성)를 기본으로 하되 409(진행 중)도 흡수한다.
- * 서버가 퀴즈 경로처럼 진행 중을 404 로 번역해 주는 계약이지만, 참여도 타임라인처럼 409 를
- * 그대로 내보내는 선례도 있어 어느 쪽이 와도 "아직 준비 전"으로 읽는다.
+ * <p>넷을 나누는 이유는 할 말이 다르기 때문이다 — `forbidden`(403)은 권한, `notReady`(404)는
+ * 아직 안 만들어진 것, `live`(409)는 수업이 안 끝난 것, `failed` 는 다시 시도할 만한 것이다.
+ * 하나로 묶으면 수업이 진행 중인 학생에게 "볼 권한이 없어요" 라고 말하게 된다.
+ *
+ * <p>`live` 를 `notReady` 에 흡수하지 않는 까닭: 112 컨트롤러가 진행 중 세션에 409 를 명시적으로
+ * 내보내고(`ReportNotReadyException`), 화면에는 "수업이 끝나면 볼 수 있어요" 라는 다음 행동이
+ * 있는 안내를 띄울 수 있다.
  */
-export type StudentReportStatus = "loading" | "ready" | "forbidden" | "notReady" | "failed";
+export type StudentReportStatus =
+  | "loading"
+  | "ready"
+  | "notReady"
+  | "forbidden"
+  | "live"
+  | "failed";
 
 export type UseStudentReportResult = {
   readonly status: StudentReportStatus;
   readonly report: StudentReport | null;
   readonly retry: () => void;
-  /**
-   * 리포트를 다시 조회해 새 녹화 URL 만 돌려준다. 재생 중 URL 만료(재발급) 전용이라
-   * 화면 상태를 건드리지 않는다 — 성공하면 새 URL, 실패하면 null 이다.
-   */
-  readonly reissueRecordingUrl: () => Promise<string | null>;
 };
 
 export type UseStudentReportOptions = {
@@ -39,16 +43,17 @@ export type UseStudentReportOptions = {
 const statusOf = (error: unknown): StudentReportStatus => {
   if (error instanceof StudentReportError) {
     if (error.status === 403) return "forbidden";
-    if (error.status === 404 || error.status === 409) return "notReady";
+    if (error.status === 404) return "notReady";
+    if (error.status === 409) return "live";
   }
   return "failed";
 };
 
 /**
- * 학생 리포트를 한 번 조회한다.
+ * 학생 학습 리포트를 한 번 조회한다.
  *
- * <p>폴링하지 않는다. 종료된 세션의 사후 산출물이라 다시 물어도 값이 바뀌지 않는다.
- * 유일한 예외가 `reissueRecordingUrl` — 단기 URL 은 시간이 지나면 죽는 값이라 그것만 다시 받는다.
+ * <p>폴링하지 않는다. 종료된 수업의 사후 산출물이라 다시 물어도 값이 바뀌지 않는다. 값을 바꾸는
+ * 유일한 길은 사람이 누르는 `retry` 다.
  *
  * <p>언마운트하면 진행 중인 요청을 취소하고 상태를 바꾸지 않는다(useAttentionTimeline 과 동일).
  */
@@ -68,18 +73,6 @@ export function useStudentReport(options: UseStudentReportOptions): UseStudentRe
   }>({ key: "", status: "loading", report: null });
 
   const retry = useCallback(() => setAttempt((count) => count + 1), []);
-
-  const reissueRecordingUrl = useCallback(async (): Promise<string | null> => {
-    // 토큰이 사라졌다면(로그아웃) 재발급할 방법이 없다.
-    if (accessToken === null) return null;
-    try {
-      const fresh = await request(sessionId, accessToken);
-      return fresh.recordingUrl;
-    } catch {
-      // 재발급 실패는 재생만 멈춘다. 이미 그려진 전사·추천까지 오류로 뒤집지 않는다.
-      return null;
-    }
-  }, [sessionId, accessToken, request]);
 
   useEffect(() => {
     // 토큰이 없으면 인증할 수 없다. 세션 복원 중이거나 로그아웃 상태다.
@@ -109,6 +102,6 @@ export function useStudentReport(options: UseStudentReportOptions): UseStudentRe
 
   // 아직 이번 시도의 답이 오지 않았으면 로딩이다. 이전 시도의 결과를 물려주지 않는다.
   return answer.key === key
-    ? { status: answer.status, report: answer.report, retry, reissueRecordingUrl }
-    : { status: "loading", report: null, retry, reissueRecordingUrl };
+    ? { status: answer.status, report: answer.report, retry }
+    : { status: "loading", report: null, retry };
 }

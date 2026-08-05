@@ -9,24 +9,12 @@ import {
   PictoLock,
   PictoWarn,
 } from "@/shared/ui";
-import { lectures } from "./fixtures";
+import { formatSessionStartedAt } from "./myLectures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
 import { StudentReport } from "./components/report/StudentReport";
 import { useSessionRole } from "./useSessionRole";
 import type { ClipSeekRequest } from "@/domains/report";
-
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
-
-/** `2026-07-14T01:00:00Z` → `2026.07.14 (화) 10:00`. 강사가 기억하는 것은 UTC 가 아니라 자기 시계다. */
-function startedLabel(iso: string): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "";
-
-  const pad = (value: number) => `${value}`.padStart(2, "0");
-  const date = `${at.getFullYear()}.${pad(at.getMonth() + 1)}.${pad(at.getDate())}`;
-  return `${date} (${WEEKDAYS[at.getDay()]}) ${pad(at.getHours())}:${pad(at.getMinutes())}`;
-}
 
 const tabCls = (active: boolean) =>
   `-mb-px cursor-pointer border-0 border-b-[2.5px] bg-transparent px-0.5 py-[13px] font-sans text-[15px] font-extrabold ${
@@ -61,26 +49,32 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
 
 /**
  * SC-06 강의 리포트. 역할(강사/학생)에 따라 클립 탭과 리포트 탭을 보여준다.
- * 탭 전환·구간 선택·상세 모달은 시연용 로컬 상태로 동작한다.
+ *
+ * <p>제목·날짜·역할은 모두 세션 목록 응답에서 온다. fixture 를 폴백으로 두지 않는다 — 실제 세션
+ * id 는 fixture 에 없어 늘 첫 강의로 떨어지고, 그러면 남의 강의 제목을 내 리포트로 읽는다. 게다가
+ * 그 fixture 는 강사라서 학생이 강사용 경로를 불러 403 을 받는다(설계 문서 §2.7).
  */
-export function ReportScreen({ lectureId }: { lectureId: string }) {
-  // 클립 탭 목업만 아직 fixture 다. 실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다.
-  const lecture = lectures.find((l) => l.id === lectureId) ?? lectures[0];
-  const { status: roleStatus, role, lecture: served } = useSessionRole(lectureId);
-  const isInstructor = roleStatus === "ready" ? role === "INSTRUCTOR" : lecture.role === "instructor";
-
+export function ReportScreen({
+  lectureId,
+  initialTab = "clip",
+  initialSeekSeconds = null,
+}: {
+  lectureId: string;
   /**
-   * 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
-   * 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+   * 처음 펼칠 탭. 기본은 클립이다 — 내 강의실에서 카드를 누르면 먼저 보고 싶은 것이 다시 보기다.
    *
-   * <p><b>서버가 답하기 전에는 감추지 않는다.</b> 아직 모르는 것을 "분석이 끝나지 않았어요" 로
-   * 말하면 기다림을 실패로 알리는 셈이다. 그 사이의 안내는 RoleNotice 가 맡는다.
+   * <p>리포트 탭에서 떠났던 화면(퀴즈)이 돌아올 때는 `report` 로 들어온다. 그러지 않으면 리포트를
+   * 보다 나갔는데 클립 탭으로 되돌아와, 방금까지 보던 자리를 다시 찾아 들어가야 한다.
    */
-  const status = served?.status ?? null;
-  const failed = status === "FAILED";
-  const ready = status === null || (!failed && status !== "PROCESSING" && status !== "LIVE");
-
-  const [tab, setTab] = useState<"clip" | "report">("clip");
+  initialTab?: "clip" | "report";
+  /**
+   * 클립 탭을 열 때 곧바로 이동할 시각(초). 퀴즈 해설의 "관련 강의 구간 다시 보기" 가 주소로
+   * 넘긴다. 값이 없으면 녹화 자체의 초기 위치에서 시작한다.
+   */
+  initialSeekSeconds?: number | null;
+}) {
+  const { status: roleStatus, role, lecture } = useSessionRole(lectureId);
+  const [tab, setTab] = useState<"clip" | "report">(initialTab);
 
   /**
    * 구간 상세의 "클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린 뒤 그 시각을 넘긴다.
@@ -88,7 +82,9 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
    * <p>nonce 를 함께 올리는 이유: 같은 구간을 연달아 누르면 시각이 같아 상태가 바뀌지 않고,
    * 그러면 두 번째 이동이 묻힌다. 실제 재생 위치 이동은 학생 플레이어(113)가 맡는다.
    */
-  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(null);
+  const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(
+    initialSeekSeconds === null ? null : { seconds: initialSeekSeconds, nonce: 1 },
+  );
   const jumpToClip = (offsetSeconds: number) => {
     setSeekRequest((previous) => ({
       seconds: offsetSeconds,
@@ -98,15 +94,32 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
     window.scrollTo({ top: 0 });
   };
 
-  /**
-   * 서버가 준 제목만 적는다. fixture 로 물러나지 않는다.
-   *
-   * <p>실제 세션 id 는 fixture 에 없어 늘 첫 강의로 떨어진다. 그 값을 쓰면 로딩 중에는 남의 수업
-   * 제목이 잠깐 뜨고, 볼 권한이 없는 수업에서는 "React 상태관리 심화 / 이 수업의 리포트를 볼 수
-   * 없어요" 처럼 **없는 사실을 지어낸 화면**이 된다. 모르면 비워 두는 편이 낫다.
-   */
-  const title = served?.title ?? "";
-  const meta = served ? `${served.dur} | ${startedLabel(served.startedAt)}` : "";
+  // 역할과 세션을 모르는 채로는 제목도 탭도 그릴 수 없다. 어느 엔드포인트를 부를지 모르고, 클립
+  // 탭은 강사용 목업을 학생에게 먼저 보여 준 뒤 실제 화면으로 바꾼다. 그럴듯한 가짜를 잠깐이라도
+  // 보여주느니 아무것도 그리지 않는다.
+  if (roleStatus !== "ready" || lecture === null || role === null) {
+    return (
+      <>
+        <div className="mb-5 flex items-center gap-4">
+          <Link
+            href="/my-lectures"
+            aria-label="내 강의실 목록으로 돌아가기"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full border border-shell-toggle bg-surface text-ink-sub no-underline hover:bg-[#f3f5f3]"
+          >
+            <ChevronLeftIcon size={17} />
+          </Link>
+        </div>
+        <RoleNotice status={roleStatus === "loading" ? "loading" : "unknown"} />
+      </>
+    );
+  }
+
+  const isInstructor = role === "INSTRUCTOR";
+  const failed = lecture.status === "FAILED";
+  // 분석이 끝나지 않은 강의는 보여줄 결과가 없어 탭과 본문을 모두 감춘다(프로토타입 reportOk).
+  // 내 강의실에서 카드가 링크되지 않으므로 URL 직접 진입에만 해당한다.
+  const ready = lecture.status === "COMPLETED";
+  const meta = `${lecture.dur} | ${formatSessionStartedAt(lecture.startedAt)}`;
 
   return (
     <>
@@ -120,13 +133,15 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           <ChevronLeftIcon size={17} />
         </Link>
         <div className="min-w-0 flex-1">
-          <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{title}</h1>
+          <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
         {/* 다운로드는 리포트 탭에서만 노출한다(클립 탭에는 내려받을 문서가 없다). */}
         {ready && tab === "report" && (
           <button
             type="button"
+            /* 아직 만들 문서가 없다. 눌러도 아무 일이 없으면 고장으로 읽히므로 상태를 말해 준다. */
+            onClick={() => window.alert("준비 중입니다.")}
             className="z-btn z-btn-primary shrink-0 gap-2 rounded-xl px-[22px] py-[13px] text-sm"
           >
             <DownloadIcon />
@@ -184,11 +199,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
             </button>
           </div>
 
-          {roleStatus !== "ready" ? (
-            /* 두 탭 모두 역할을 기다린다. 클립 탭도 예외가 아니다 — 목업을 먼저 보여 주면
-               학생이 남의 강의 전사를 자기 수업으로 읽는다. */
-            <RoleNotice status={roleStatus} />
-          ) : tab === "clip" ? (
+          {tab === "clip" ? (
             <ReportClipTab
               title={lecture.title}
               sessionId={lectureId}
@@ -198,11 +209,7 @@ export function ReportScreen({ lectureId }: { lectureId: string }) {
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           ) : (
-            <StudentReport
-              lectureId={lecture.id}
-              sessionId={lectureId}
-              onJumpToClip={jumpToClip}
-            />
+            <StudentReport sessionId={lectureId} onJumpToClip={jumpToClip} />
           )}
         </>
       )}
