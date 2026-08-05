@@ -77,6 +77,10 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
      * <p>화자 별칭의 뜻을 알려 준다. 별칭을 실어 보내면서 규칙을 주지 않으면 모델이 학생 질문 한 줄마다 구간을 나눠, 타임라인이 주제가 아니라 발언권으로 쪼개진다.
      *
      * <p>평가 금지를 명시한다(FRD §17.4). 스키마에 감정·성격·역량 필드가 없어도 요약 문장에는 들어갈 수 있고, 그 문장은 학생이 그대로 읽는다.
+     *
+     * <p>말투는 평서형이다. 형제 어댑터({@code GmsStudentAnalysisHttpAdapter}·{@code GmsInstructorAnalysisHttpAdapter})가 존댓말인 것과
+     * 다른데, 그쪽은 학생과 강사에게 <b>말을 거는</b> 글이고 이쪽은 수업에 무슨 일이 있었는지 적는 <b>기록</b>이라서다. "존댓말로 쓴다"만 지시하면 주어가 강사일 때 "설명하셨습니다" 로 높여
+     * 버려, 요약이 기록이 아니라 강사에게 보내는 편지가 된다. 금지형만 주면 모델이 다른 종결형으로 흩어지므로 예시 문장을 함께 준다.
      */
     private static final String SYSTEM_PROMPT =
             """
@@ -109,7 +113,8 @@ public class GmsContentAnalysisHttpAdapter implements ContentAnalysisPort {
               2~3문장으로 %d자 이내로 쓴다.
             - classSummary 는 수업 전체에서 다룬 내용을 이어지는 문장으로 %d자 이내로 쓴다.
             - 사람의 성격, 태도, 성실성, 감정, 역량을 평가하지 않는다. 강사도 학생도 평가 대상이 아니다.
-            - 모든 문장은 한국어 존댓말로 쓴다.""".formatted(MAX_SECTIONS, TITLE_MAX_LENGTH, SECTION_SUMMARY_MAX_LENGTH, CLASS_SUMMARY_MAX_LENGTH);
+            - 모든 문장은 한국어 평서형으로 끝낸다. 존댓말을 쓰지 않고 강사를 높이지 않는다.
+              예: "이차방정식의 근의 공식을 유도했다." — "유도하셨습니다", "유도했어요" 처럼 쓰지 않는다.""".formatted(MAX_SECTIONS, TITLE_MAX_LENGTH, SECTION_SUMMARY_MAX_LENGTH, CLASS_SUMMARY_MAX_LENGTH);
 
     private static final Map<String, Object> RESPONSE_FORMAT = responseFormat();
 

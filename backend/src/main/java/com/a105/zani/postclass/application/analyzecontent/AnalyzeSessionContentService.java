@@ -49,7 +49,8 @@ public class AnalyzeSessionContentService implements AnalyzeSessionContentUseCas
     /** 발화가 없는 수업의 폴백 구간. 구간이 하나도 없으면 리포트 화면이 타임라인을 그릴 수 없다. */
     private static final String SILENT_CLASS_TITLE = "발화 없음";
 
-    private static final String SILENT_CLASS_SUMMARY = "이 수업에서는 전사할 발화가 없었습니다.";
+    /** LLM 을 거치지 않는 문장이므로 프롬프트의 말투 규칙이 닿지 않는다. 같은 카드에 섞여 나가니 여기서 평서형을 맞춘다. */
+    private static final String SILENT_CLASS_SUMMARY = "이 수업에서는 전사할 발화가 없었다.";
 
     /** 참여자 표에 없는 화자. 별칭 형식({@code student-001})을 흉내 내지 않는다 — 실제 학생과 구분되어야 한다. */
     private static final String UNKNOWN_SPEAKER = "unknown";
