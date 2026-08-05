@@ -57,6 +57,10 @@ vi.mock("@/domains/report", () => ({
   StudentReportClip: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="student-clip">{sessionId}</div>
   ),
+  // 강사는 같은 패널을 강사 엔드포인트로 조회한다(308). 여기서는 어느 쪽이 걸리는지만 본다.
+  InstructorReportClip: ({ sessionId }: { sessionId: string }) => (
+    <div data-testid="instructor-clip">{sessionId}</div>
+  ),
   // 강사·학생 두 경로 모두에서 그려지는 공통 카드다. 역할 인자를 받지 않는다.
   SessionSummaryCard: ({ sessionId }: { sessionId: string }) => (
     <div data-testid="session-summary">{sessionId}</div>
@@ -74,9 +78,6 @@ import { ReportScreen } from "./ReportScreen";
 const openReportTab = () => {
   fireEvent.click(screen.getByRole("button", { name: /리포트/ }));
 };
-
-/** 강사용 목업 패널에만 있는 박제된 재생 시간. 목업이 그려졌는지 가리는 표식으로 쓴다. */
-const MOCK_CLIP_MARKER = "42:30 / 2:05:30";
 
 beforeEach(() => {
   role.status = "ready";
@@ -107,7 +108,7 @@ describe("ReportScreen", () => {
     const clipFirst = render(<ReportScreen lectureId="s1" />);
 
     // 내 강의실에서 들어오면 먼저 보고 싶은 것은 다시 보기다.
-    expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
+    expect(screen.getByTestId("instructor-clip")).toBeInTheDocument();
     expect(screen.queryByTestId("instructor-report")).not.toBeInTheDocument();
     clipFirst.unmount();
 
@@ -115,7 +116,7 @@ describe("ReportScreen", () => {
     render(<ReportScreen lectureId="s1" initialTab="report" />);
 
     expect(screen.getByTestId("instructor-report")).toBeInTheDocument();
-    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("instructor-clip")).not.toBeInTheDocument();
   });
 
   it("제목과 시각을 세션 응답에서 읽는다 — fixture 로 흘러내리지 않는다", () => {
@@ -173,20 +174,22 @@ describe("ReportScreen", () => {
     expect(screen.getByText(/리포트를 볼 수 없어요/)).toBeInTheDocument();
   });
 
-  it("학생으로 확정된 경우에만 실제 클립 패널을 그린다", () => {
+  it("학생으로 확정된 경우에만 학생 클립 패널을 그린다", () => {
     role.role = "STUDENT";
     role.lecture = lectureOf("s4", { role: "STUDENT" });
 
     render(<ReportScreen lectureId="s4" />);
 
     expect(screen.getByTestId("student-clip")).toHaveTextContent("s4");
+    // 강사 패널을 그리면 학생이 강사 경로를 불러 403 만 받는다.
+    expect(screen.queryByTestId("instructor-clip")).not.toBeInTheDocument();
   });
 
-  it("강사 클립 탭은 아직 목업이다", () => {
+  it("강사로 확정된 경우에만 강사 클립 패널을 그린다", () => {
     render(<ReportScreen lectureId="s1" />);
 
-    // 강사 클립 탭은 강사 리포트 API 가 생길 때까지 목업이다.
-    expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
+    // 목업(258)은 308 이 걷어냈다. 강사도 실제 녹화·전사를 강사 엔드포인트로 받는다.
+    expect(screen.getByTestId("instructor-clip")).toHaveTextContent("s1");
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
   });
 
@@ -197,35 +200,36 @@ describe("ReportScreen", () => {
     expect(asStudent.getByTestId("session-summary")).toHaveTextContent("s4");
     asStudent.unmount();
 
-    // 강사 클립 탭은 아직 목업이지만 요약 카드는 학생과 같은 것을 쓴다 — 요약은 공통 산출물이다.
+    // 클립 패널은 역할대로 갈리지만 요약 카드는 학생과 같은 것을 쓴다 — 요약은 공통 산출물이다.
     role.role = "INSTRUCTOR";
     role.lecture = lectureOf("s4");
     const asInstructor = render(<ReportScreen lectureId="s4" />);
     expect(asInstructor.getByTestId("session-summary")).toHaveTextContent("s4");
   });
 
-  it("역할을 확인하는 동안 목업 클립을 먼저 보여주지 않는다", () => {
+  it("역할을 확인하는 동안 어느 클립 패널도 먼저 보여주지 않는다", () => {
     role.status = "loading";
     role.role = null;
     role.lecture = null;
 
     render(<ReportScreen lectureId="s4" />);
 
-    // 목업을 먼저 보여 주면 학생이 남의 강의 전사를 자기 수업으로 읽는다.
-    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
+    // 잘못 고르면 학생이 강사 경로를(또는 그 반대를) 불러 403 을 받는다.
+    expect(screen.queryByTestId("instructor-clip")).not.toBeInTheDocument();
     expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
     expect(screen.getByText(/불러오는 중이에요/)).toBeInTheDocument();
   });
 
-  it("역할을 알 수 없으면 목업 클립을 남기지 않는다", () => {
+  it("역할을 알 수 없으면 클립 패널을 남기지 않는다", () => {
     role.status = "unknown";
     role.role = null;
     role.lecture = null;
 
     render(<ReportScreen lectureId="s4" />);
 
-    // 로딩과 달리 이 상태는 지나가지 않는다. 가짜가 영구히 남으면 안 된다.
-    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
+    // 로딩과 달리 이 상태는 지나가지 않는다. 짐작으로 고른 패널이 영구히 남으면 안 된다.
+    expect(screen.queryByTestId("instructor-clip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("student-clip")).not.toBeInTheDocument();
     expect(screen.getByText(/리포트를 볼 수 없어요/)).toBeInTheDocument();
   });
 
