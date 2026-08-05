@@ -19,18 +19,15 @@ vi.mock("recharts", async () => {
 });
 
 import { StudentReport } from "./StudentReport";
-import {
-  StudentReportError,
-  type StudentReport as StudentReportData,
-} from "@/domains/report/infrastructure/studentReportApi";
+// report 도메인은 공개 API 로만 가져온다. infrastructure 를 직접 열면 경계가 무의미해진다.
 import {
   AttentionTimelineError,
-  type StudentAttentionTimeline as TimelineData,
-} from "@/domains/report/infrastructure/attentionTimelineApi";
-import {
   StudentQuizError,
+  StudentReportError,
+  type StudentAttentionTimelineData as TimelineData,
   type StudentQuiz,
-} from "@/domains/report/infrastructure/studentQuizApi";
+  type StudentReportData,
+} from "@/domains/report";
 
 /** 카드는 문항 수와 예상 시간만 읽는다. 문항 본문은 퀴즈 화면의 관심사다. */
 const quizWith = (questionCount: number, estimatedDurationMinutes: number | null): StudentQuiz => ({

@@ -21,14 +21,32 @@ export { useStudentReport } from "./presentation/useStudentReport";
 export { useStudentQuiz } from "./presentation/useStudentQuiz";
 export { focusedIntervalRatio } from "./presentation/focusedIntervalRatio";
 export { formatOffset } from "./presentation/offsetTime";
-// 테스트가 조회를 갈아끼우기 위한 함수 서명과, 퀴즈 화면이 다루는 값의 모양. 어댑터 자체는
-// 공개하지 않는다 — 퀴즈 화면은 훅으로만 서버와 이야기한다.
-export type { StudentReportRequester } from "./infrastructure/studentReportApi";
-export type { StudentTimelineRequester } from "./infrastructure/attentionTimelineApi";
+// 조회 계약: 함수 서명 · 응답의 모양 · 실패 어휘. 어댑터 함수 자체는 공개하지 않는다 — 밖에서
+// 서버와 이야기하는 길은 훅뿐이고, 이것들은 그 훅에 다른 조회를 끼워 넣거나(테스트) 훅이 내려준
+// 값을 다루기 위한 타입이다. 여기 없으면 밖에서 infrastructure 를 직접 열게 되어 경계가 무의미해진다.
+//
+// 에러 클래스를 함께 내보내는 까닭: 상태 분기는 훅이 하지만, 그 분기를 확인하려면 밖에서 특정
+// 상태의 실패를 만들어 넣을 수 있어야 한다.
+export type {
+  StudentReportRequester,
+  StudentRecommendation,
+  // 컴포넌트 이름과 겹치지 않게 이름을 갈라 둔다(lecture 의 StudentReport 화면).
+  StudentReport as StudentReportData,
+} from "./infrastructure/studentReportApi";
+export { StudentReportError } from "./infrastructure/studentReportApi";
+export type {
+  StudentTimelineRequester,
+  SectionAverage,
+  // 이 도메인의 StudentAttentionTimeline 컴포넌트와 이름이 같아 갈라 둔다.
+  StudentAttentionTimeline as StudentAttentionTimelineData,
+} from "./infrastructure/attentionTimelineApi";
+export { AttentionTimelineError } from "./infrastructure/attentionTimelineApi";
 export type {
   QuizAnswer,
   QuizAnswersSubmitter,
   QuizGrading,
   QuizQuestion,
+  StudentQuiz,
   StudentQuizRequester,
 } from "./infrastructure/studentQuizApi";
+export { StudentQuizError } from "./infrastructure/studentQuizApi";

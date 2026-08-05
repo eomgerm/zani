@@ -12,7 +12,8 @@ const role = vi.hoisted(() => ({
 vi.mock("./useSessionRole", () => ({ useSessionRole: () => role }));
 
 import { QuizScreen } from "./QuizScreen";
-import { StudentQuizError, type StudentQuiz } from "@/domains/report/infrastructure/studentQuizApi";
+// report 도메인은 공개 API 로만 가져온다. infrastructure 를 직접 열면 경계가 무의미해진다.
+import { StudentQuizError, type StudentQuiz } from "@/domains/report";
 
 /** 실제 세션 id. fixture 목록에는 없는 값이라 fixture 폴백이 있으면 링크가 엉뚱해진다. */
 const SESSION_ID = "1000000002001";
