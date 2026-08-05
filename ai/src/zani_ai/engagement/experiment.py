@@ -19,6 +19,7 @@ os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 import torch
 from torch import nn
 
+from zani_ai.engagement.augmentation import AugmentationProtocol
 from zani_ai.engagement.contracts import low_engagement_metrics
 from zani_ai.engagement.export import DeploymentMetadata, export_onnx
 from zani_ai.engagement.features import (
@@ -173,6 +174,10 @@ class ExperimentSpec:
     # so unlike `stage1_output` this *does* enter `_build_configuration`. `None`
     # for every other protocol, which is what keeps their hashes unchanged.
     mixing: MixingProtocol | None = None
+    # E0-N time-window augmentation of the training split. Like `mixing` this is
+    # the protocol itself, so it enters `_build_configuration`; `None` everywhere
+    # else, which is what leaves the earlier hashes alone.
+    augmentation: AugmentationProtocol | None = None
     # ST-GCN specs read a landmark graph file whose location varies per machine.
     # ``reproduce_experiment`` resolves it and rebinds ``build_model``.
     needs_landmark_graph: bool = False
@@ -461,6 +466,29 @@ E0M_SPEC = ExperimentSpec(
 )
 
 
+# E0-N is the first test of the regularization axis, which is the only axis in
+# this family that has never been tried. Loss weighting failed four times
+# (E0-C..E0-F), the schedule twice (E0-G, E0-K) and label noise twice (E0-H,
+# E0-I); meanwhile `Adam` has never been given a `weight_decay`, dropout 0.3 is
+# the entire regularizer, and augmentation did not exist as code.
+#
+# What points at regularization is the shape of the failure, not its size. All
+# ten E0-10 seeds peak at `best_epoch` 2~11 and then fall 4~7%p (seed 42: 0.5782
+# at the peak against 0.5038 over its last five epochs). A plateau after the peak
+# would be a label-noise ceiling and a still-rising curve would be underfitting;
+# a *decline* is overfitting. `weight_decay` is the wrong first move against it
+# because overfitting starts by epoch 3 and a decay term has no epochs to work
+# in. Input-side augmentation acts on the first batch.
+#
+# The two methods are Iwana & Uchida's top-ranked pair and nothing else, for the
+# reasons `augmentation.py` records. Everything else -- model, schedule, loss,
+# seeds, feature manifest -- is E0-10's, so the difference is the augmentation
+# alone and the comparison is `compare_protocols.py --baseline <e0-10>`.
+E0N_SPEC = replace(
+    E0_10_SPEC, protocol="E0-N", augmentation=AugmentationProtocol()
+)
+
+
 def stgcn_model_builder(graph_path: Path | None) -> Callable[..., nn.Module]:
     """Build an E1 ``TrainingConfig.build_model`` bound to a resolved graph file.
 
@@ -652,6 +680,7 @@ SPECS: dict[str, ExperimentSpec] = {
         E0L_SPEC,
         E0_10_SPEC,
         E0M_SPEC,
+        E0N_SPEC,
         E1_SPEC,
         E1A_SPEC,
         E1B_SPEC,
@@ -806,6 +835,11 @@ def _apply_loss_and_sampling(
         configuration["reliable_warmup_epochs"] = spec.reliable_warmup_epochs
         configuration["ambiguous_target_encoding"] = spec.ambiguous_target_encoding
         configuration["ambiguous_neighbor_mass"] = spec.ambiguous_neighbor_mass
+    if spec.augmentation is not None:
+        # Method, strength and rate all decide the distribution the weights are
+        # fitted to, so all of them are the protocol -- widening `scales` or
+        # raising `probability` is a new experiment, not an edit to this one.
+        configuration["augmentation"] = spec.augmentation.to_dict()
     return configuration
 
 
@@ -1559,6 +1593,7 @@ def _train_one_seed(context: RunContext, seed: int, seed_dir: Path) -> dict[str,
         sampler=spec.sampler,
         target_encoding=spec.target_encoding,
         sord_alpha=spec.sord_alpha,
+        augmentation=spec.augmentation,
         num_workers=0,
         deterministic=True,
         model=spec.model_config,
@@ -1874,6 +1909,7 @@ __all__ = [
     "E0K_SPEC",
     "E0L_SPEC",
     "E0M_SPEC",
+    "E0N_SPEC",
     "E0_10_SPEC",
     "E0_SEEDS",
     "E0_SPEC",
