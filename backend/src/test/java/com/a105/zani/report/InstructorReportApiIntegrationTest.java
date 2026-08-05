@@ -1,0 +1,274 @@
+package com.a105.zani.report;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import com.a105.zani.auth.application.port.TokenProvider;
+
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 강사 리포트 조회의 전 구간 검증. 로컬 MySQL 이 떠 있어야 통과한다.
+ *
+ * <p><b>단위 테스트로는 이 파일이 보는 것을 볼 수 없다.</b> 서비스를 직접 부르면 경로·인증·직렬화·예외에서 상태코드로 가는 매핑을 지나지 않는다. 특히 "아직 만들어지지 않음" 을 404 가 아니라
+ * 409 로 내리는 판단은 그 매핑에서만 드러난다.
+ *
+ * <p>권한 차단은 {@code InstructorReportSecurityTest} 가 따로 본다. 여기서는 정상 경로와 미완성 분기를 다룬다.
+ */
+@SpringBootTest
+class InstructorReportApiIntegrationTest {
+
+    private static final long INSTRUCTOR_ID = 9_100_910L;
+    private static final long STUDENT_ID = 9_100_911L;
+
+    private static final long ENDED_SESSION_ID = 9_100_920L;
+    private static final long LIVE_SESSION_ID = 9_100_921L;
+
+    private static final long INSTRUCTOR_PARTICIPANT_ID = 9_100_930L;
+    private static final long STUDENT_PARTICIPANT_ID = 9_100_931L;
+    private static final long LIVE_INSTRUCTOR_PARTICIPANT_ID = 9_100_932L;
+
+    private static final long REPORT_ID = 9_100_940L;
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private TokenProvider tokenProvider;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    private MockMvc mockMvc;
+    private Instant now;
+
+    private static LocalDateTime utc(Instant instant) {
+        return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    @BeforeEach
+    void setUp() {
+        now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
+                .apply(springSecurity())
+                .build();
+        cleanUp();
+
+        insertMember(INSTRUCTOR_ID, "박강사");
+        insertMember(STUDENT_ID, "김민수");
+
+        insertSession(ENDED_SESSION_ID, "끝난 수업", "REP00109", "ENDED", now.minusSeconds(60));
+        insertSession(LIVE_SESSION_ID, "진행 중 수업", "REP00110", "LIVE", null);
+
+        insertParticipant(INSTRUCTOR_PARTICIPANT_ID, ENDED_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
+        insertParticipant(STUDENT_PARTICIPANT_ID, ENDED_SESSION_ID, STUDENT_ID, "STUDENT");
+        insertParticipant(LIVE_INSTRUCTOR_PARTICIPANT_ID, LIVE_SESSION_ID, INSTRUCTOR_ID, "INSTRUCTOR");
+    }
+
+    @AfterEach
+    void cleanUp() {
+        jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
+        jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
+        jdbcTemplate.update("DELETE FROM instructor_report_tips WHERE instructor_report_id = ?", REPORT_ID);
+        jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_participants WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+    }
+
+    @Test
+    void 강사가_자기_수업의_리포트를_받는다() throws Exception {
+        insertPublishedReport();
+        insertScore("DELIVERY", 88);
+        insertInsight("LOW_FOCUS_SECTION", "예외 처리 구간에서 집중도가 낮았어요.", 4_800_000L, 6_000_000L);
+        insertTip("INTERACTION", "질문 응답 시간 확보", "중간중간 질문 시간을 명시적으로 확보해보세요.");
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.overallFeedback").value("전반적으로 흐름이 좋았습니다."))
+                .andExpect(jsonPath("$.data.scores[0].evaluationType").value("DELIVERY"))
+                // 0~100 점수다. 퍼센트로 오해하면 화면이 100 을 곱한다.
+                .andExpect(jsonPath("$.data.scores[0].score").value(88))
+                .andExpect(jsonPath("$.data.insights[0].insightType").value("LOW_FOCUS_SECTION"))
+                .andExpect(jsonPath("$.data.insights[0].startedOffsetMs").value(4_800_000L))
+                .andExpect(jsonPath("$.data.tips[0].title").value("질문 응답 시간 확보"));
+    }
+
+    /** 수업 전체를 가리키는 인사이트다. 화면이 구간 배지를 붙일지 말지가 이 값으로 갈린다. */
+    @Test
+    void 구간이_없는_인사이트는_시각이_비어_온다() throws Exception {
+        insertPublishedReport();
+        insertInsight("OVERALL", "전반적으로 설명 순서가 자연스러웠어요.", null, null);
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.insights[0].startedOffsetMs").value((Object) null))
+                .andExpect(jsonPath("$.data.insights[0].endedOffsetMs").value((Object) null));
+    }
+
+    /** 내용 타임라인(248)이 아직 안 돌아간 세션이다. 리포트 자체는 정상이므로 오류로 다루지 않는다. */
+    @Test
+    void 내용_구간이_없으면_빈_배열이다() throws Exception {
+        insertPublishedReport();
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections.length()").value(0));
+    }
+
+    /** 없는 것이 아니라 아직인 것이다. 404 로 내리면 화면이 "리포트가 없는 수업" 으로 다루고 다시 열어 볼 이유를 잃는다. */
+    @Test
+    void 리포트가_아직_없으면_409() throws Exception {
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REPORT_001"));
+    }
+
+    /** 행은 만들어졌지만 아직 공개 전이다. 중간 상태를 화면에 내보내면 반쯤 만들어진 리포트를 읽게 된다. */
+    @Test
+    void 공개_전이면_409() throws Exception {
+        insertReport(null);
+        insertScore("DELIVERY", 88);
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("REPORT_001"));
+    }
+
+    /** 리포트는 수업이 끝난 뒤에만 만든다. 진행 중에 열면 아직 없는 것이 당연하다. */
+    @Test
+    void 진행_중인_수업이면_409() throws Exception {
+        report(INSTRUCTOR_ID, LIVE_SESSION_ID).andExpect(status().isConflict());
+    }
+
+    @Test
+    void 인증하지_않으면_401() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{sessionId}/reports/instructor", ENDED_SESSION_ID))
+                .andExpect(status().isUnauthorized());
+    }
+
+    private ResultActions report(long memberId, long sessionId) throws Exception {
+        return mockMvc.perform(get("/api/v1/sessions/{sessionId}/reports/instructor", sessionId)
+                .header("Authorization", "Bearer " + token(memberId)));
+    }
+
+    private String token(long memberId) {
+        return tokenProvider.issueAccessToken(String.valueOf(memberId)).value();
+    }
+
+    private void insertPublishedReport() {
+        insertReport(now);
+    }
+
+    private void insertReport(Instant publishedAt) {
+        jdbcTemplate.update(
+                "INSERT INTO instructor_reports (id, session_id, overall_feedback, published_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                REPORT_ID,
+                ENDED_SESSION_ID,
+                "전반적으로 흐름이 좋았습니다.",
+                publishedAt == null ? null : utc(publishedAt),
+                utc(now),
+                utc(now));
+    }
+
+    private void insertScore(String evaluationType, int score) {
+        jdbcTemplate.update(
+                "INSERT INTO instructor_report_scores (id, instructor_report_id, evaluation_type, score,"
+                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                REPORT_ID + 1,
+                REPORT_ID,
+                evaluationType,
+                score,
+                utc(now),
+                utc(now));
+    }
+
+    private void insertInsight(String insightType, String content, Long startedOffsetMs, Long endedOffsetMs) {
+        jdbcTemplate.update(
+                "INSERT INTO instructor_report_insights (id, instructor_report_id, insight_type, content,"
+                        + " started_offset_ms, ended_offset_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                REPORT_ID + 2,
+                REPORT_ID,
+                insightType,
+                content,
+                startedOffsetMs,
+                endedOffsetMs,
+                utc(now),
+                utc(now));
+    }
+
+    private void insertTip(String tipType, String title, String content) {
+        jdbcTemplate.update(
+                "INSERT INTO instructor_report_tips (id, instructor_report_id, tip_type, title, content,"
+                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                REPORT_ID + 3,
+                REPORT_ID,
+                tipType,
+                title,
+                content,
+                utc(now),
+                utc(now));
+    }
+
+    private void insertMember(long id, String displayName) {
+        jdbcTemplate.update(
+                "INSERT INTO members (id, google_subject, email, display_name, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)"
+                        + " ON DUPLICATE KEY UPDATE display_name = VALUES(display_name)",
+                id,
+                "google-" + id,
+                id + "@example.com",
+                displayName,
+                utc(now),
+                utc(now));
+    }
+
+    private void insertSession(long id, String title, String inviteCode, String status, Instant endedAt) {
+        jdbcTemplate.update(
+                "INSERT INTO sessions (id, host_member_id, title, invite_code, status, analysis_status,"
+                        + " started_at, ended_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, 'NOT_STARTED', ?, ?, ?, ?)",
+                id,
+                INSTRUCTOR_ID,
+                title,
+                inviteCode,
+                status,
+                utc(now.minusSeconds(4_500)),
+                endedAt == null ? null : utc(endedAt),
+                utc(now),
+                utc(now));
+    }
+
+    private void insertParticipant(long id, long sessionId, long memberId, String role) {
+        jdbcTemplate.update(
+                "INSERT INTO session_participants (id, session_id, member_id, role, first_joined_at,"
+                        + " last_accessed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                id,
+                sessionId,
+                memberId,
+                role,
+                utc(now.minusSeconds(4_500)),
+                utc(now),
+                utc(now),
+                utc(now));
+    }
+}
