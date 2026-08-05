@@ -68,6 +68,7 @@ class SessionSummaryApiTest {
     @DisplayName("강사와 학생이 완전히 같은 요약 응답을 받는다")
     void serves_an_identical_summary_to_both_roles() throws Exception {
         insertSessionReport(NOW);
+        insertSection(9_113_040L, "상태 관리 개요", "지역 상태와 전역 상태를 가르는 기준을 설명했다.", 0, 600_000);
 
         String asStudent = fetchSummary(STUDENT_ID, SESSION_ID)
                 .andExpect(status().isOk())
@@ -85,6 +86,36 @@ class SessionSummaryApiTest {
 
         // 바이트까지 같아야 한다. 역할별로 문장이 갈리면 강사가 학생에게 요약을 가리켜 말할 수 없다.
         assertThat(asStudent).isEqualTo(asInstructor);
+    }
+
+    @Test
+    @DisplayName("구간을 시작 오프셋 오름차순으로 요약과 함께 내려준다")
+    void serves_the_sections_with_the_summary() throws Exception {
+        insertSessionReport(NOW);
+        // 저장 순서를 뒤집어 넣어, 정렬이 조회에서 나오는지 본다.
+        insertSection(9_113_041L, "Context 리렌더링", "Context 값이 바뀔 때 어디까지 다시 그리는지 짚었다.", 600_000, 1_200_000);
+        insertSection(9_113_040L, "상태 관리 개요", "지역 상태와 전역 상태를 가르는 기준을 설명했다.", 0, 600_000);
+
+        fetchSummary(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sections.length()").value(2))
+                .andExpect(jsonPath("$.data.sections[0].title").value("상태 관리 개요"))
+                .andExpect(jsonPath("$.data.sections[0].startedOffsetMs").value(0))
+                .andExpect(jsonPath("$.data.sections[0].endedOffsetMs").value(600_000))
+                .andExpect(jsonPath("$.data.sections[0].summary").value("지역 상태와 전역 상태를 가르는 기준을 설명했다."))
+                .andExpect(jsonPath("$.data.sections[1].title").value("Context 리렌더링"));
+    }
+
+    @Test
+    @DisplayName("구간이 없는 세션은 빈 배열이고 200이다")
+    void serves_an_empty_section_list_when_the_timeline_is_missing() throws Exception {
+        insertSessionReport(NOW);
+
+        // 내용 타임라인 없이 요약만 있는 옛 세션이 있다. 오류로 다루면 그 세션은 요약도 못 본다.
+        fetchSummary(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.summary").value(SUMMARY))
+                .andExpect(jsonPath("$.data.sections.length()").value(0));
     }
 
     @Test
@@ -179,6 +210,20 @@ class SessionSummaryApiTest {
                 role,
                 NOW,
                 NOW,
+                NOW,
+                NOW);
+    }
+
+    private void insertSection(long id, String title, String summary, long startedOffsetMs, long endedOffsetMs) {
+        jdbcTemplate.update(
+                "INSERT INTO session_sections (id, session_id, title, summary, started_offset_ms,"
+                        + " ended_offset_ms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                id,
+                SESSION_ID,
+                title,
+                summary,
+                startedOffsetMs,
+                endedOffsetMs,
                 NOW,
                 NOW);
     }
