@@ -51,7 +51,8 @@ public class SessionParticipantJpaEntity extends BaseJpaEntity {
     @Column(name = "role", nullable = false, length = 20)
     private SessionParticipantRole role;
 
-    @Column(name = "first_joined_at", nullable = false, columnDefinition = "DATETIME(6)")
+    /** 실제 미디어 연결이 확인된 최초 시각. NULL 이면 사후 자료 접근 자격이 없다(V13). */
+    @Column(name = "first_joined_at", columnDefinition = "DATETIME(6)")
     private Instant firstJoinedAt;
 
     @Column(name = "last_accessed_at", columnDefinition = "DATETIME(6)")

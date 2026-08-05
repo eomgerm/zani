@@ -29,6 +29,7 @@ import org.springframework.web.client.RestClient;
  *   <li>{@code gmsPostclassTranscriptionRestClient} — 사후 배치 전사 전용({@code postclass-transcribe-timeout}, Content-Length
  *       확정). 실시간과 나누는 이유는 timeout 판단이 반대라서다 — 그쪽은 느린 응답을 끊는 것이 이득이고 배치는 기다려야 한다
  *   <li>{@code gmsTipRestClient} — 팁 문구 전용({@code tip-timeout})
+ *   <li>{@code gmsAnalysisRestClient} — 사후 분석 전용({@code analysis-timeout})
  * </ul>
  */
 @Configuration
@@ -64,6 +65,11 @@ public class GmsClientConfig {
     @Bean
     public RestClient gmsTipRestClient(GmsProperties properties) {
         return buildClient(properties, properties.tipTimeout(), false);
+    }
+
+    @Bean
+    public RestClient gmsAnalysisRestClient(GmsProperties properties) {
+        return buildClient(properties, properties.analysisTimeout(), false);
     }
 
     private RestClient buildClient(GmsProperties properties, Duration readTimeout, boolean bufferRequest) {

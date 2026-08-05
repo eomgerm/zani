@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * webhook 컨트롤러의 웹 레이어 검증: 경로는 사용자 JWT 없이 접근 가능하되(permitAll), LiveKit 서명이 없거나 틀리면 401이어야 한다. 로컬 MySQL/Redis가 떠 있어야 통과한다.
  */
 @SpringBootTest
-class RecordingWebhookControllerTest {
+class LiveKitWebhookControllerTest {
 
     @Autowired
     private WebApplicationContext webApplicationContext;

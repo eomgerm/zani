@@ -42,8 +42,8 @@ public final class SectionFocusCalculator {
                             .mapToDouble(Double::doubleValue)
                             .average()
                             .orElseThrow());
-            averages.add(
-                    new SectionFocusAverage(section.startSeconds(), section.endSeconds(), section.title(), average));
+            averages.add(new SectionFocusAverage(
+                    section.startSeconds(), section.endSeconds(), section.title(), section.summary(), average));
         }
         return List.copyOf(averages);
     }

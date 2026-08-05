@@ -9,9 +9,9 @@ import com.a105.zani.recording.domain.model.TrackSource;
  * 무의미한 필드는 null이다: track_published는 participantIdentity·trackSid·trackSource를, egress_* 는 egressId·egressComplete(종결
  * 이벤트에서만 non-null)· egressTrackSid·egressAudioStream·files를 사용한다.
  */
-public record RecordingWebhookEvent(
+public record LiveKitWebhookEvent(
         String eventId,
-        RecordingWebhookEventType type,
+        LiveKitWebhookEventType type,
         Long sessionId,
         String participantIdentity,
         String trackSid,

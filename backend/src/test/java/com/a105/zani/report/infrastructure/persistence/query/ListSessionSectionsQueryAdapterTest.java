@@ -27,10 +27,12 @@ class ListSessionSectionsQueryAdapterTest {
     @InjectMocks
     private ListSessionSectionsQueryAdapter adapter;
 
-    private static SessionSectionJpaEntity section(long startedOffsetMs, long endedOffsetMs, String title) {
+    private static SessionSectionJpaEntity section(
+            long startedOffsetMs, long endedOffsetMs, String title, String summary) {
         return SessionSectionJpaEntity.builder()
                 .sessionId(SESSION_ID)
                 .title(title)
+                .summary(summary)
                 .startedOffsetMs(startedOffsetMs)
                 .endedOffsetMs(endedOffsetMs)
                 .build();
@@ -40,12 +42,14 @@ class ListSessionSectionsQueryAdapterTest {
     @DisplayName("시작 오프셋 오름차순으로 돌려준다")
     void returns_sections_in_offset_order() {
         given(repository.findBySessionIdOrderByStartedOffsetMsAsc(SESSION_ID))
-                .willReturn(List.of(section(0L, 372_000L, "함수의 정의"), section(372_000L, 900_000L, "합성 함수")));
+                .willReturn(List.of(
+                        section(0L, 372_000L, "함수의 정의", "정의역과 공역을 설명한 구간"),
+                        section(372_000L, 900_000L, "합성 함수", null)));
 
         assertThat(adapter.findBySessionId(SESSION_ID))
                 .containsExactly(
-                        new SessionSectionView(0L, 372_000L, "함수의 정의"),
-                        new SessionSectionView(372_000L, 900_000L, "합성 함수"));
+                        new SessionSectionView(0L, 372_000L, "함수의 정의", "정의역과 공역을 설명한 구간"),
+                        new SessionSectionView(372_000L, 900_000L, "합성 함수", null));
     }
 
     @Test
@@ -57,8 +61,8 @@ class ListSessionSectionsQueryAdapterTest {
     }
 
     @Test
-    @DisplayName("요약은 밖으로 내보내지 않는다 — 경계와 제목만 준다")
-    void the_summary_stays_inside_the_report_domain() {
+    @DisplayName("nullable 요약을 그대로 내보낸다")
+    void returns_the_nullable_summary() {
         given(repository.findBySessionIdOrderByStartedOffsetMsAsc(SESSION_ID))
                 .willReturn(List.of(SessionSectionJpaEntity.builder()
                         .sessionId(SESSION_ID)
@@ -68,6 +72,7 @@ class ListSessionSectionsQueryAdapterTest {
                         .endedOffsetMs(372_000L)
                         .build()));
 
-        assertThat(adapter.findBySessionId(SESSION_ID)).containsExactly(new SessionSectionView(0L, 372_000L, "함수의 정의"));
+        assertThat(adapter.findBySessionId(SESSION_ID))
+                .containsExactly(new SessionSectionView(0L, 372_000L, "함수의 정의", "이 구간에서는 정의역과 공역을 다뤘다"));
     }
 }

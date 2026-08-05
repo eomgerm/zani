@@ -76,6 +76,8 @@ class GmsTranscriptionRequestFramingTest {
                 Duration.ofSeconds(180),
                 "ko",
                 "gpt-5.4-mini",
-                Duration.ofSeconds(6));
+                Duration.ofSeconds(6),
+                "gpt-5.4-mini",
+                Duration.ofSeconds(60));
     }
 }

@@ -56,7 +56,9 @@ class GmsAudioTranscriptionAdapterTest {
                 Duration.ofSeconds(180),
                 language,
                 "gpt-5.4-mini",
-                Duration.ofSeconds(6));
+                Duration.ofSeconds(6),
+                "gpt-5.4-mini",
+                Duration.ofSeconds(60));
     }
 
     private InputStream audio() {

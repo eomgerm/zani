@@ -17,8 +17,8 @@ final class SectionBoundaries {
 
     static List<SectionBoundary> from(List<SessionSectionView> views) {
         return views.stream()
-                .map(view ->
-                        new SectionBoundary(view.startedOffsetMs() / 1000L, view.endedOffsetMs() / 1000L, view.title()))
+                .map(view -> new SectionBoundary(
+                        view.startedOffsetMs() / 1000L, view.endedOffsetMs() / 1000L, view.title(), view.summary()))
                 .toList();
     }
 }

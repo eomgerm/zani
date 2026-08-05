@@ -46,13 +46,28 @@ output="$("${CLASSIFIER}" "${frontend_sha}" "${backend_sha}")"
 assert_line "${output}" "backend=true"
 assert_line "${output}" "frontend=false"
 
+media_sha="$(commit_file infrastructure/media/finalize_recording.py media)"
+output="$("${CLASSIFIER}" "${backend_sha}" "${media_sha}")"
+assert_line "${output}" "backend=true"
+assert_line "${output}" "frontend=false"
+
+dockerignore_sha="$(commit_file .dockerignore dockerignore)"
+output="$("${CLASSIFIER}" "${media_sha}" "${dockerignore_sha}")"
+assert_line "${output}" "backend=true"
+assert_line "${output}" "frontend=false"
+
+media_docs_sha="$(commit_file infrastructure/media/finalize-recording-design.md media-docs)"
+output="$("${CLASSIFIER}" "${dockerignore_sha}" "${media_docs_sha}")"
+assert_line "${output}" "backend=false"
+assert_line "${output}" "frontend=false"
+
 mkdir -p fe infrastructure/application
 printf 'both\n' >fe/both.txt
 printf 'both\n' >infrastructure/application/both.yaml
 git add fe/both.txt infrastructure/application/both.yaml
 git commit -q -m "both components"
 both_sha="$(git rev-parse HEAD)"
-output="$("${CLASSIFIER}" "${backend_sha}" "${both_sha}")"
+output="$("${CLASSIFIER}" "${media_docs_sha}" "${both_sha}")"
 assert_line "${output}" "backend=true"
 assert_line "${output}" "frontend=true"
 
