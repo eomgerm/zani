@@ -32,7 +32,7 @@ frontend=false
 
 classify_path() {
   case "$1" in
-    backend/*|infrastructure/application/*)
+    .dockerignore|backend/*|infrastructure/application/*|infrastructure/media/finalize-recording.sh|infrastructure/media/finalize_recording.py)
       backend=true
       ;;
     fe/*|infrastructure/frontend/*)

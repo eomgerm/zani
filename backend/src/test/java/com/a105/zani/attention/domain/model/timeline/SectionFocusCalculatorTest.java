@@ -16,9 +16,9 @@ class SectionFocusCalculatorTest {
     @DisplayName("section 안 칸 값들의 단순 평균이다")
     void averages_the_buckets_inside_a_section() {
         List<SectionFocusAverage> averages = SectionFocusCalculator.calculate(
-                List.of(new SectionBoundary(0L, 90L, "함수의 정의")), List.of(2.0d, 3.0d, 4.0d), POLICY);
+                List.of(new SectionBoundary(0L, 90L, "함수의 정의", "정의역과 공역을 설명한 구간")), List.of(2.0d, 3.0d, 4.0d), POLICY);
 
-        assertThat(averages).containsExactly(new SectionFocusAverage(0L, 90L, "함수의 정의", 3.0d));
+        assertThat(averages).containsExactly(new SectionFocusAverage(0L, 90L, "함수의 정의", "정의역과 공역을 설명한 구간", 3.0d));
     }
 
     @Test
@@ -27,7 +27,7 @@ class SectionFocusCalculatorTest {
         // 경계 72초. 칸은 0·30·60·90 에서 시작한다.
         // 60초 칸은 [60,90) 이라 경계를 넘지만 시작이 72 미만이므로 첫 section 이다.
         List<SectionFocusAverage> averages = SectionFocusCalculator.calculate(
-                List.of(new SectionBoundary(0L, 72L, "앞"), new SectionBoundary(72L, 120L, "뒤")),
+                List.of(new SectionBoundary(0L, 72L, "앞", null), new SectionBoundary(72L, 120L, "뒤", null)),
                 List.of(1.0d, 1.0d, 1.0d, 4.0d),
                 POLICY);
 
@@ -39,7 +39,7 @@ class SectionFocusCalculatorTest {
     @DisplayName("빈 값 칸은 평균에서 뺀다")
     void null_buckets_are_dropped() {
         List<SectionFocusAverage> averages = SectionFocusCalculator.calculate(
-                List.of(new SectionBoundary(0L, 90L, "함수의 정의")), Arrays.asList(4.0d, null, 2.0d), POLICY);
+                List.of(new SectionBoundary(0L, 90L, "함수의 정의", null)), Arrays.asList(4.0d, null, 2.0d), POLICY);
 
         // null 을 1단계로 채웠다면 2.33 이 됐을 것이다.
         assertThat(averages.get(0).focusLevel()).isEqualTo(3.0d);
@@ -49,7 +49,7 @@ class SectionFocusCalculatorTest {
     @DisplayName("section 안 값이 하나도 없으면 그 section 평균도 빈 값이다")
     void a_section_without_values_is_null() {
         List<SectionFocusAverage> averages = SectionFocusCalculator.calculate(
-                List.of(new SectionBoundary(0L, 90L, "함수의 정의")), Arrays.asList(null, null, null), POLICY);
+                List.of(new SectionBoundary(0L, 90L, "함수의 정의", null)), Arrays.asList(null, null, null), POLICY);
 
         assertThat(averages.get(0).focusLevel()).isNull();
     }
@@ -66,7 +66,7 @@ class SectionFocusCalculatorTest {
     void buckets_outside_every_section_are_ignored() {
         // section 이 0~30 뿐인데 칸은 0·30·60 세 개다.
         List<SectionFocusAverage> averages = SectionFocusCalculator.calculate(
-                List.of(new SectionBoundary(0L, 30L, "앞")), List.of(4.0d, 1.0d, 1.0d), POLICY);
+                List.of(new SectionBoundary(0L, 30L, "앞", null)), List.of(4.0d, 1.0d, 1.0d), POLICY);
 
         assertThat(averages.get(0).focusLevel()).isEqualTo(4.0d);
     }

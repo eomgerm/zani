@@ -13,6 +13,9 @@ public interface RecordingJpaRepository extends JpaRepository<RecordingJpaEntity
 
     Optional<RecordingJpaEntity> findByLivekitEgressId(String livekitEgressId);
 
+    /** 최종 MP4 합성은 source와 무관하게 모든 Track Egress의 종결을 기다린다(S15P11A105-269). */
+    long countBySessionIdAndStatusIn(Long sessionId, Collection<String> statuses);
+
     /**
      * 발화를 담는 트랙의 녹화 중 해당 상태인 것의 수(S15P11A105-247).
      *
