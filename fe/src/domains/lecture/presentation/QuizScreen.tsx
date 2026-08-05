@@ -55,7 +55,7 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
       <div className="mx-auto max-w-[680px]">
         <div className="mb-5 flex items-center gap-3.5">
           <Link
-            href={`/my-lectures/${lectureId}/report`}
+            href={`/my-lectures/${lectureId}/report?tab=report`}
             className="z-btn size-[38px] shrink-0 rounded-xl border border-line-muted bg-surface text-base text-ink"
           >
             ←
@@ -235,7 +235,7 @@ export function QuizScreen({ lectureId }: { lectureId: string }) {
                 다시 풀기
               </button>
               <Link
-                href={`/my-lectures/${lectureId}/report`}
+                href={`/my-lectures/${lectureId}/report?tab=report`}
                 className="z-btn z-btn-primary z-btn-block flex-1"
               >
                 학습 리포트로 돌아가기

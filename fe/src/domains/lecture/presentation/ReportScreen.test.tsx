@@ -86,6 +86,21 @@ describe("ReportScreen", () => {
     expect(screen.queryByTestId("instructor-report")).not.toBeInTheDocument();
   });
 
+  it("기본은 클립 탭이고, initialTab=report 면 리포트 탭으로 펼친다", () => {
+    const clipFirst = render(<ReportScreen lectureId="s1" />);
+
+    // 내 강의실에서 들어오면 먼저 보고 싶은 것은 다시 보기다.
+    expect(screen.getByText(MOCK_CLIP_MARKER)).toBeInTheDocument();
+    expect(screen.queryByTestId("instructor-report")).not.toBeInTheDocument();
+    clipFirst.unmount();
+
+    // 퀴즈에서 돌아올 때 쓰는 경로다. 클립 탭으로 떨어지면 보던 자리를 다시 찾아 들어가야 한다.
+    render(<ReportScreen lectureId="s1" initialTab="report" />);
+
+    expect(screen.getByTestId("instructor-report")).toBeInTheDocument();
+    expect(screen.queryByText(MOCK_CLIP_MARKER)).not.toBeInTheDocument();
+  });
+
   it("제목과 시각을 세션 응답에서 읽는다 — fixture 로 흘러내리지 않는다", () => {
     role.session = sessionOf("0123456789", { title: "예외 처리와 응답 코드" });
 

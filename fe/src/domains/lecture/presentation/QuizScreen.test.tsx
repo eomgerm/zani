@@ -27,7 +27,7 @@ describe("QuizScreen", () => {
     // fixture 폴백을 쓰면 /my-lectures/s1/report 로 새어 "리포트를 볼 수 없어요" 로 끝난다.
     expect(screen.getAllByRole("link")[0]).toHaveAttribute(
       "href",
-      `/my-lectures/${SESSION_ID}/report`,
+      `/my-lectures/${SESSION_ID}/report?tab=report`,
     );
   });
 
@@ -38,13 +38,16 @@ describe("QuizScreen", () => {
 
     expect(screen.getByRole("link", { name: "학습 리포트로 돌아가기" })).toHaveAttribute(
       "href",
-      `/my-lectures/${SESSION_ID}/report`,
+      `/my-lectures/${SESSION_ID}/report?tab=report`,
     );
   });
 
   it("fixture 에 있는 id 로 들어와도 URL 의 id 를 그대로 쓴다", () => {
     render(<QuizScreen lectureId="s1" />);
 
-    expect(screen.getAllByRole("link")[0]).toHaveAttribute("href", "/my-lectures/s1/report");
+    expect(screen.getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      "/my-lectures/s1/report?tab=report",
+    );
   });
 });

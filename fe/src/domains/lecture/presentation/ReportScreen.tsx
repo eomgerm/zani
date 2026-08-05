@@ -54,9 +54,21 @@ function RoleNotice({ status }: { status: "loading" | "unknown" }) {
  * id 는 fixture 에 없어 늘 첫 강의로 떨어지고, 그러면 남의 강의 제목을 내 리포트로 읽는다. 게다가
  * 그 fixture 는 강사라서 학생이 강사용 경로를 불러 403 을 받는다(설계 문서 §2.7).
  */
-export function ReportScreen({ lectureId }: { lectureId: string }) {
+export function ReportScreen({
+  lectureId,
+  initialTab = "clip",
+}: {
+  lectureId: string;
+  /**
+   * 처음 펼칠 탭. 기본은 클립이다 — 내 강의실에서 카드를 누르면 먼저 보고 싶은 것이 다시 보기다.
+   *
+   * <p>리포트 탭에서 떠났던 화면(퀴즈)이 돌아올 때는 `report` 로 들어온다. 그러지 않으면 리포트를
+   * 보다 나갔는데 클립 탭으로 되돌아와, 방금까지 보던 자리를 다시 찾아 들어가야 한다.
+   */
+  initialTab?: "clip" | "report";
+}) {
   const { status: roleStatus, role, session } = useSessionRole(lectureId);
-  const [tab, setTab] = useState<"clip" | "report">("clip");
+  const [tab, setTab] = useState<"clip" | "report">(initialTab);
 
   /**
    * 구간 상세의 "클립 바로가기". 클립 탭으로 옮기고 화면을 맨 위로 올린 뒤 그 시각을 넘긴다.
