@@ -34,14 +34,18 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
     private static final Logger log = LoggerFactory.getLogger(AnalyzeSessionStudentsService.class);
 
     /**
-     * GMS 로 보낼 데이터 부분의 바이트 상한.
+     * 우리가 재는 사용자 본문의 바이트 상한.
      *
      * <p>게이트웨이 실측 상한이 102,400 B 다(GMS 가이드 §4.1 — 바이트 단위 이분 탐색). 초과하면 게이트웨이가 본문을 잘라 전달하고 업스트림이 "model not found" 를 돌려주므로
-     * <b>크기 문제라는 사실이 오류 메시지에 드러나지 않는다.</b> 남는 10 KiB 가 chat completions 봉투와 시스템 프롬프트의 몫이다.
+     * <b>크기 문제라는 사실이 오류 메시지에 드러나지 않는다.</b>
+     *
+     * <p>남는 14 KiB 는 우리가 여기서 잴 수 없는 것의 몫이다 — chat completions 봉투(model·temperature·max_completion_tokens 와 strict 응답
+     * 스키마)와 시스템 프롬프트다. 실측(2026-08-04)에서 이 둘이 약 12,200 B 였다. 처음에는 10 KiB 로 잡았는데 프롬프트가 길어지며 그 예산을 넘겼고, 그 상태에서 임계에 딱 걸린
+     * 요청은 총 104,737 B 로 상한을 넘겨 조용히 잘렸을 것이다. 여유를 2 KiB 더 두어 프롬프트가 조금 더 자라도 버티게 한다.
      *
      * <p>설정으로 열지 않는다. 환경별로 달라질 이유가 없고, 잘못 올리면 조용한 절단을 부른다.
      */
-    private static final int MAX_REQUEST_DATA_BYTES = 92_160;
+    private static final int MAX_REQUEST_DATA_BYTES = 88_064;
 
     private static final int MAX_RECOMMENDATIONS = 5;
 
@@ -86,6 +90,18 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
         return new AnalyzeSessionStudentsResult(analyzed, skipped, List.copyOf(failed));
     }
 
+    /**
+     * 학생 한 명을 분석한다.
+     *
+     * <p>{@link RecordingAlias} 를 {@code recording} 도메인에서 그대로 가져다 쓴다. 애플리케이션 유스케이스로 감싸지 않는 이유는 셋이다 — 순수 Java 값 객체라 스프링
+     * 빈이 필요 없고, GMS 가이드 §9 가 "별칭 체계를 새로 만들지 말고 재사용하라" 고 못박으며, {@code session} 의 {@code GetPostClassContextService}
+     * (S15P11A105-267)가 이미 같은 방식으로 import 한다. 순번 기준도 그쪽의 {@code findBySessionIdOrderByIdAsc} 와 이 도메인의 조회 SQL 이 같아 두 경로가
+     * 같은 학생에게 같은 별칭을 준다.
+     *
+     * <p>다만 "참여자 id 오름차순으로 student-001" 이라는 <b>규칙</b>은 이제 세 곳에 있다 — {@code RecordingWebhookService.resolveAlias},
+     * {@code GetPostClassContextService.aliasesOf}, 그리고 이 도메인의 조회 SQL. 267 이 남긴 ponytail 주석이 "세 번째 소비자가 생기면 공용 리졸버로 뽑는
+     * 편이 낫다" 고 했고 그 조건이 채워졌다. 웹훅 경로를 함께 건드려야 해서 별도 일감으로 낸다.
+     */
     private Outcome analyzeOne(Long sessionId, SessionAnalysisContext context, AnalysisTarget target) {
         String alias = RecordingAlias.student(target.studentOrder()).value();
         StudentObservations observations = queryPort.findObservations(sessionId, target.sessionParticipantId());
@@ -194,13 +210,7 @@ public class AnalyzeSessionStudentsService implements AnalyzeSessionStudentsUseC
      * 바꾼다" 뿐이라 입력도 출력도 이 서비스가 이미 들고 있다.
      */
     private boolean fits(StudentAnalysisRequest request) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("sections", request.sections());
-        data.put("sectionSignals", request.signals());
-        if (request.observations() != null) {
-            data.put("observations", request.observations());
-        }
-        return objectMapper.writeValueAsBytes(data).length <= MAX_REQUEST_DATA_BYTES;
+        return objectMapper.writeValueAsBytes(request.promptPayload()).length <= MAX_REQUEST_DATA_BYTES;
     }
 
     private enum Outcome {

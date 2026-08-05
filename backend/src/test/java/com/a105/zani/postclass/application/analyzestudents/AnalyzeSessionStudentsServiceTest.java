@@ -278,6 +278,21 @@ class AnalyzeSessionStudentsServiceTest {
     }
 
     @Test
+    void measuresEverythingItSends() {
+        // 길이 가드가 재는 값과 어댑터가 보내는 값은 같은 맵이어야 한다. 예전에는 각자 만들어
+        // lectureTitle·classSummary·student 가 계산에서 빠졌고, 그만큼 실제 전송량을 작게 봤다.
+        queryPort.targets = List.of(target(11L, 1));
+        queryPort.context = Optional.of(new SessionAnalysisContext("수업 제목", "공통 요약", sections(2)));
+
+        service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        String sent = JsonMapper.builder()
+                .build()
+                .writeValueAsString(analysisPort.requests.getFirst().promptPayload());
+        assertThat(sent).contains("수업 제목").contains("공통 요약").contains("student-001");
+    }
+
+    @Test
     void failsTheStudentWhenEvenTheDigestExceedsTheThreshold() {
         // 집계는 구간 수에만 비례한다. 구간이 아주 많으면 접어도 줄지 않는다.
         queryPort.context = Optional.of(new SessionAnalysisContext("수업", "요약", sections(4_000)));

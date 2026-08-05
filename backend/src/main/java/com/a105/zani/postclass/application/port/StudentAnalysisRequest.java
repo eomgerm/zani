@@ -1,6 +1,8 @@
 package com.a105.zani.postclass.application.port;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import com.a105.zani.postclass.application.analyzestudents.ConceptSection;
 import com.a105.zani.postclass.application.analyzestudents.SessionAnalysisContext;
@@ -39,5 +41,26 @@ public record StudentAnalysisRequest(
             String studentAlias, SessionAnalysisContext context, List<StudentSectionSignal> signals) {
         return new StudentAnalysisRequest(
                 studentAlias, context.lectureTitle(), context.classSummary(), context.sections(), null, signals);
+    }
+
+    /**
+     * GMS 사용자 메시지에 실릴 본문 그대로.
+     *
+     * <p><b>재는 쪽과 보내는 쪽이 같은 값을 써야 한다.</b> 길이 가드는 이 맵을 직렬화해 크기를 재고 어댑터는 이 맵을 그대로 보낸다. 예전에는 둘이 각자 맵을 만들었고, 그때 가드가
+     * {@code lectureTitle}·{@code classSummary}·{@code student} 를 빼먹어 실제 전송량보다 작게 쟀다. 한쪽에만 필드를 더하면 다시 벌어지므로 여기 하나만 둔다.
+     *
+     * <p>{@code observations} 는 길이 가드가 발동하면 빠진다. {@code sectionSignals} 는 항상 실린다.
+     */
+    public Map<String, Object> promptPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("student", studentAlias);
+        payload.put("lectureTitle", lectureTitle == null ? "" : lectureTitle);
+        payload.put("classSummary", classSummary == null ? "" : classSummary);
+        payload.put("sections", sections);
+        payload.put("sectionSignals", signals);
+        if (observations != null) {
+            payload.put("observations", observations);
+        }
+        return payload;
     }
 }

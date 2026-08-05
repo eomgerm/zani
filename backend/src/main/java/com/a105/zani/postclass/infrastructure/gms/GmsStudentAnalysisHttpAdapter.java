@@ -1,6 +1,5 @@
 package com.a105.zani.postclass.infrastructure.gms;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -158,16 +157,7 @@ public class GmsStudentAnalysisHttpAdapter implements StudentAnalysisPort {
      * <p>{@code sectionSignals} 는 서버가 관측을 구간별로 집계한 값이고 항상 실린다. {@code observations} 는 길이 가드가 발동하면 빠진다.
      */
     private String userPrompt(StudentAnalysisRequest request) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("student", request.studentAlias());
-        payload.put("lectureTitle", request.lectureTitle() == null ? "" : request.lectureTitle());
-        payload.put("classSummary", request.classSummary() == null ? "" : request.classSummary());
-        payload.put("sections", request.sections());
-        payload.put("sectionSignals", request.signals());
-        if (request.observations() != null) {
-            payload.put("observations", request.observations());
-        }
-        return objectMapper.writeValueAsString(payload);
+        return objectMapper.writeValueAsString(request.promptPayload());
     }
 
     private static Map<String, Object> responseFormat() {
