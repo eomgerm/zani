@@ -47,6 +47,13 @@ public class StudentReportJpaEntity extends BaseJpaEntity {
     @Column(name = "participation_summary", nullable = false, columnDefinition = "TEXT")
     private String participationSummary;
 
+    /**
+     * 모델이 판단한 질문 수. 분석이 이 값을 내지 못했으면 {@code null} 이며 0 이 아니다 — 0 은 질문을 안 했다는 뜻이라 "판정이 없다"와 다르다. 채우는 쪽은 249(LLM 학생별
+     * 분석)다.
+     */
+    @Column(name = "question_count")
+    private Integer questionCount;
+
     @Column(name = "published_at", columnDefinition = "DATETIME(6)")
     private Instant publishedAt;
 }

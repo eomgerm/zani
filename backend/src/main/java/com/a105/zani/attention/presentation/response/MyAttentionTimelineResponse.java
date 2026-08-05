@@ -98,6 +98,9 @@ public record MyAttentionTimelineResponse(
             @Schema(description = "구간 제목", example = "함수의 정의")
             String title,
 
+            @Schema(description = "구간 요약", example = "정의역과 공역을 설명한 구간", nullable = true)
+            String summary,
+
             @Schema(
                     description = "구간 안 30초 칸 값들의 단순 평균(1.00~4.00). 값이 하나도 없으면 null.",
                     example = "3.44",
@@ -105,7 +108,12 @@ public record MyAttentionTimelineResponse(
             Double focusLevel) {
 
         private static Section from(SectionFocusAverage average) {
-            return new Section(average.startSeconds(), average.endSeconds(), average.title(), average.focusLevel());
+            return new Section(
+                    average.startSeconds(),
+                    average.endSeconds(),
+                    average.title(),
+                    average.summary(),
+                    average.focusLevel());
         }
     }
 

@@ -18,15 +18,15 @@ class ListSessionSectionsServiceTest {
     @Test
     @DisplayName("포트가 준 순서를 그대로 돌려준다")
     void returns_sections_in_the_order_the_port_gives() {
-        queryPort.sections.add(new SessionSectionView(0L, 372_000L, "함수의 정의"));
-        queryPort.sections.add(new SessionSectionView(372_000L, 900_000L, "합성 함수"));
+        queryPort.sections.add(new SessionSectionView(0L, 372_000L, "함수의 정의", null));
+        queryPort.sections.add(new SessionSectionView(372_000L, 900_000L, "합성 함수", null));
 
         List<SessionSectionView> views = service.list(new ListSessionSectionsQuery(SESSION_ID));
 
         assertThat(views)
                 .containsExactly(
-                        new SessionSectionView(0L, 372_000L, "함수의 정의"),
-                        new SessionSectionView(372_000L, 900_000L, "합성 함수"));
+                        new SessionSectionView(0L, 372_000L, "함수의 정의", null),
+                        new SessionSectionView(372_000L, 900_000L, "합성 함수", null));
     }
 
     @Test

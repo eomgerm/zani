@@ -6,5 +6,6 @@ package com.a105.zani.attention.domain.model.timeline;
  * @param startSeconds 구간 시작 <b>초</b>. 조회 유스케이스가 주는 값은 밀리초이므로 변환해 넣는다
  * @param endSeconds 구간 종료 초
  * @param title 구간 제목
+ * @param summary 구간 요약. 분석 전이거나 요약이 없으면 {@code null}
  */
-public record SectionBoundary(long startSeconds, long endSeconds, String title) {}
+public record SectionBoundary(long startSeconds, long endSeconds, String title, String summary) {}
