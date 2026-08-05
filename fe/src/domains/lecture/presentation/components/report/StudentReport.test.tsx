@@ -132,6 +132,42 @@ describe("StudentReport", () => {
     expect(onJumpToClip).toHaveBeenCalledWith(1450);
   });
 
+  it("다섯 가지 근거를 각자의 문구와 색으로 그린다", async () => {
+    const types = ["CONFUSED", "MISSED", "NO_RESPONSE", "LOW_ENGAGEMENT", "QUESTION"];
+    renderReport({
+      reportRequest: async () =>
+        reportWith({
+          recommendations: types.map((type, index) => ({
+            recommendationType: type,
+            title: `추천 ${index}`,
+            description: "근거",
+            startSeconds: index * 60,
+            endSeconds: index * 60 + 30,
+          })),
+        }),
+    });
+
+    // 문구와 색이 짝을 이룬다. 색만으로 구분하지 않으므로 문구가 먼저다(FRD §19.2).
+    const expected: [string, string][] = [
+      ["헷갈림", "rgb(138, 106, 16)"],
+      ["놓침", "rgb(161, 84, 28)"],
+      ["무응답", "rgb(95, 101, 138)"],
+      ["집중 저하", "rgb(179, 36, 58)"],
+      ["내 질문", "rgb(22, 134, 94)"],
+    ];
+    for (const [label, color] of expected) {
+      const badge = await screen.findByText(label);
+      expect(badge).toBeInTheDocument();
+      expect(badge.style.color).toBe(color);
+    }
+
+    // 다섯 색이 서로 겹치지 않아야 눈으로 갈라 볼 수 있다.
+    const backgrounds = await Promise.all(
+      expected.map(async ([label]) => (await screen.findByText(label)).style.background),
+    );
+    expect(new Set(backgrounds).size).toBe(5);
+  });
+
   it("모르는 근거 유형도 버리지 않고 중립 문구로 그린다", async () => {
     renderReport({
       reportRequest: async () =>

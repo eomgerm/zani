@@ -120,7 +120,9 @@ export function StudentReport({
               </p>
             ) : (
               <ul className="flex min-h-0 flex-1 list-none flex-col gap-3 overflow-y-auto p-0">
-                {recommendations.map((r) => (
+                {recommendations.map((r) => {
+                  const badge = RECOMMENDATION_BADGE[r.recommendationType] ?? UNKNOWN_RECOMMENDATION_BADGE;
+                  return (
                   <li key={`${r.startSeconds}-${r.title}`}>
                     <button
                       type="button"
@@ -137,8 +139,8 @@ export function StudentReport({
                           <span className="font-mono text-[11.5px] font-extrabold text-primary">
                             {formatOffset(r.startSeconds)}
                           </span>
-                          <Badge bg="#eaf7f2" fg="#16865e">
-                            {RECOMMENDATION_LABEL[r.recommendationType] ?? "복습 추천"}
+                          <Badge bg={badge.bg} fg={badge.fg}>
+                            {badge.label}
                           </Badge>
                           <span className="text-[13.5px] font-extrabold">{r.title}</span>
                         </span>
@@ -148,7 +150,8 @@ export function StudentReport({
                       </span>
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -213,14 +216,27 @@ export function StudentReport({
   );
 }
 
-/** 249 가 확정한 다섯 가지. 모르는 값도 버리지 않고 중립 문구로 그린다. */
-const RECOMMENDATION_LABEL: Readonly<Record<string, string>> = {
-  CONFUSED: "헷갈림",
-  MISSED: "놓침",
-  NO_RESPONSE: "무응답",
-  LOW_ENGAGEMENT: "집중 낮음",
-  QUESTION: "내 질문",
+/**
+ * 249 가 확정한 다섯 가지 근거와 그 배지 색.
+ *
+ * <p>색은 집중 흐름 구간과 같은 값을 쓴다(`sectionFlow` 의 단계 색과 연한 배경) — 한 화면에서
+ * 노랑이 한쪽은 "보통 단계", 다른 쪽은 아무 뜻도 아니면 색을 읽을 수 없게 된다.
+ *
+ * <p>그래서 색은 심각도 순위가 아니라 **그 근거가 집중 흐름에서 어떤 자리였는지**를 따른다. 질문은
+ * 스스로 참여한 신호라 초록이고, 무응답은 값이 없던 시간이라 회색이다. 색만으로 구분하지 않도록
+ * 문구를 항상 함께 둔다(FRD §19.2).
+ *
+ * <p>모르는 값도 버리지 않는다. 서버가 유형을 늘렸을 뿐일 수 있어 중립 문구와 회색으로 그린다.
+ */
+const RECOMMENDATION_BADGE: Readonly<Record<string, { label: string; bg: string; fg: string }>> = {
+  CONFUSED: { label: "헷갈림", bg: "#fdf6df", fg: "#8a6a10" },
+  MISSED: { label: "놓침", bg: "#fdefe8", fg: "#a1541c" },
+  NO_RESPONSE: { label: "무응답", bg: "#f4f5fa", fg: "#5f658a" },
+  LOW_ENGAGEMENT: { label: "집중 저하", bg: "#fdeeee", fg: "#b3243a" },
+  QUESTION: { label: "내 질문", bg: "#eaf7f2", fg: "#16865e" },
 };
+
+const UNKNOWN_RECOMMENDATION_BADGE = { label: "복습 추천", bg: "#f4f5fa", fg: "#5f658a" };
 
 /**
  * 상태마다 할 말이 다르다. 넷을 "불러오지 못했어요" 하나로 뭉치면 수업이 진행 중인 학생에게
