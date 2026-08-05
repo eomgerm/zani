@@ -1013,6 +1013,113 @@ E0-L 절은 "순서 구조 축은 닫힌 것으로 봅니다"로 끝납니다. *
 분해는 지고, 저참여 검출을 목표로 두면 이깁니다. E0-L 절의 문장은 그 시점의 5-seed 근거로
 읽고, 이 절을 최신 판단으로 봅니다.
 
+### E0-N 시간 창 증강 — 실행 대기
+
+정규화 축의 첫 검정입니다. `S15P11A105-298`.
+
+#### 왜 이 축인가
+
+E0-10 10개 seed가 전부 같은 모양으로 실패합니다. Validation macro-F1이 `best_epoch`
+2\~11에서 정점을 찍고 그 뒤 4\~7%p 떨어집니다(seed 42: 정점 0.5782 → 마지막 5 epoch 평균
+0.5038). 정점 뒤 평탄이면 라벨 노이즈 천장이고 계속 오르는 중이면 과소적합인데, **떨어지므로
+과적합**입니다.
+
+그런데 이 계열은 정규화를 한 번도 시도한 적이 없습니다. `Adam`에 `weight_decay`가 설정된
+적이 없어 0이고, 정규화는 `dropout=0.3` 하나이며, 증강은 구현 자체가 없었습니다. 반면 손실
+가중치(E0-C\~E0-F), 학습 일정(E0-G·E0-K), 라벨 노이즈(E0-H·E0-I)는 모두 실패했습니다.
+
+`weight_decay`를 먼저 쓰지 않는 이유는 과적합이 3 epoch에 시작하기 때문입니다. 감쇠항이
+작동할 epoch이 없습니다. 입력 측 증강은 첫 배치부터 작동합니다.
+
+#### 문헌이 정한 것
+
+Iwana & Uchida, *An empirical survey of data augmentation for time series classification
+with neural networks* (PLOS ONE 2021, arXiv:2007.15951). 128개 데이터셋 · 12개 방법 ·
+6개 신경망.
+
+| 결정 | 값 | 근거 |
+| --- | --- | --- |
+| 방법 | window warping · window slicing **둘만** | 서베이에서 warping이 VGG·ResNet·LSTM 평균 순위 1위, slicing이 그다음 |
+| 쓰지 않는 것 | rotation · permutation · time warping | 같은 서베이에서 정확도를 **떨어뜨리는** 것으로 측정됨. 도메인에도 어긋납니다 — 98채널에 시선 각도 · 머리 오일러각 · \[0,1\] 블렌드셰이프가 섞여 있어 축 섞기가 의미를 깨고, 20개 세그먼트의 시간 순서는 Transformer가 존재하는 이유입니다 |
+| 합성 | **금지** — 샘플당 최대 하나 | 서베이는 모델당 방법 하나만 쓰고 결합을 "미탐구"로 남깁니다. 결합을 실제로 다룬 유일한 후속(Oba·Matsuo·Iwana, ICPR 2022, arXiv:2111.03253)에서 **균등 혼합은 12개 데이터셋 중 1개에서만 최고**였고, 학습된 게이팅 네트워크가 있어야 이득이 났습니다 |
+| 적용 확률 | **0.8** | 서베이 프로토콜은 원본을 유지한 채 증강본 4벌을 덧붙입니다(학습셋 5배, 원본 20%). 0.8은 그 1:4 비율을 그대로 옮긴 값입니다 |
+| `window_ratio` | **0.25** (참조 기본값 0.1이 아님) | UCR 시계열은 보통 수백 스텝이지만 우리는 20입니다. 0.1은 2스텝이라 사실상 무동작입니다 |
+| `scales` | \[0.5, 2.0\] | 참조 구현 그대로 |
+| `reduce_ratio` | 0.9 | 참조 구현 그대로 |
+
+#### 왜 정적 확장이 아니라 on-the-fly인가
+
+서베이의 참조 구현(`uchidalab/time_series_augmentation`)은 학습 **전에** 데이터셋을 5배로
+불려 디스크에 고정합니다. 우리는 에폭마다 샘플별로 새로 뽑습니다. 세 가지 이유입니다.
+
+- **비용**: 정적 5배는 에폭 시간도 5배입니다. 10-seed 런에서 감당할 값이 아닙니다.
+- **다양성**: 이 계열은 조기 종료로 30 epoch 근처에서 끝납니다. 정적 확장은 고정된 28,000벌을
+  보여주지만, on-the-fly는 매 에폭 새로 뽑으므로 그 몇 배의 서로 다른 변형을 보여줍니다.
+- 작은 학습셋에서 on-the-fly가 정적 확장보다 낫다는 것이 일관된 보고입니다. 우리 Train은
+  약 7,000 클립입니다.
+
+#### 재보간을 클램프하지 않습니다
+
+두 방법 모두 변환 뒤 토큰 수를 20으로 되돌립니다(`position_embedding`이 20에 고정). 보간은
+전 구간 **선형**이고, 선형 보간값은 두 표본의 볼록결합이므로 **입력 범위를 벗어날 수
+없습니다.** 따라서 \[0,1\] 블렌드셰이프 채널에 클램프가 필요 없고, 유한성도 자동으로
+보존되어 `CachedFeatureDataset`의 계약을 깨지 않습니다. `test_augmentation.py`가 이 성질을
+직접 검사하므로, 누군가 나중에 비선형 보간으로 바꾸면 그 테스트가 먼저 깨집니다.
+
+참조 구현과 한 군데 다릅니다. window slicing이 잘라낸 18스텝을 `[0, 18]`이 아니라
+`[0, 17]`에 걸쳐 늘립니다. 참조는 마지막 표본 너머를 요청해 `np.interp`가 값을 고정하는데,
+300스텝에서는 꼬리 한 스텝이지만 20스텝에서는 모든 증강 클립에 눈에 보이는 평탄부가 생깁니다.
+
+#### 증강은 학습 분할에만 적용됩니다
+
+`_load_feature_datasets`가 `train_augmentation`을 Train 데이터셋에만 넘깁니다. Validation과
+Test는 손대지 않습니다 — 평가 분포가 바뀌면 다른 프로토콜과의 비교가 전부 무효가 됩니다.
+정규화 통계(`compute_feature_statistics`)도 `token_arrays()`로 디스크에서 직접 읽으므로
+원본 기준입니다.
+
+재현성은 데이터셋이 소유한 전용 `np.random.default_rng(seed)`가 보장합니다. `num_workers=0`
+이고 방문 순서는 loader의 seed 고정 generator가 정하므로, 같은 seed의 재실행은 같은 draw를
+같은 순서로 재생합니다. 전역 numpy 스트림을 쓰지 않으므로 다른 코드가 이 순서를 밀 수
+없습니다.
+
+#### 손실을 기록합니다
+
+`validation_history`의 각 epoch이 `train_loss`와 `validation_loss`를 함께 담습니다. 이
+필드는 `configuration`에 들어가지 않으므로 **완료된 실행의 정체성을 무효화하지 않습니다.**
+학습 손실은 가중치가 움직이는 **중의** 표본 가중 평균입니다(모든 학습 곡선이 그렇습니다).
+E0-I 커리큘럼의 mixed 단계만 `validation_loss`가 `null`인데, 그 단계는 학습 분할에만
+존재하는 평활 타깃을 맞추므로 같은 objective로 Validation을 채점하면 다른 것을 재게 됩니다.
+"해당 없음"과 "0"을 구분하려고 `null`로 둡니다.
+
+#### 실행
+
+```bash
+uv run --extra train --extra vision python -m zani_ai engagement reproduce-e0n \
+  --features data/processed/engagenet \
+  --output artifacts/engagement/e0n
+
+uv run --extra train --extra vision python -m zani_ai engagement finalize-e0n \
+  --features data/processed/engagenet \
+  --output artifacts/engagement/e0n
+
+uv run --extra train python ai/scripts/compare_protocols.py \
+  --baseline artifacts/engagement/e0-10 \
+  --variant  artifacts/engagement/e0n
+```
+
+E0-10과 **같은 특징 manifest**를 씁니다. 특징 재추출도 스키마 변경도 없습니다.
+
+#### 결과를 읽을 때 주의할 것
+
+`mean`/`std` 요약 위에서 시간을 휘므로, 보고되는 `std`는 새 시간 축의 실제 변동성과
+어긋납니다. 세그먼트 요약 통계를 다시 계산하지 않고 그 통계열 자체를 재보간하기 때문입니다.
+이 근사는 채택·기각 판단에 쓰는 seed 간 산포와는 다른 것이며, 두 숫자를 섞어 읽으면 안 됩니다.
+
+#### 결과
+
+아직 실행하지 않았습니다. 채택·기각 판단과 근거를 여기에 기록합니다. **기각도 근거를 남기면
+완료입니다.**
+
 ### E1-P 문헌 정합 재구현 — 기각
 
 `reproduce-e1p`는 arXiv:2403.17175의 non-ordinal ST-GCN을 문헌 기준으로 다시 만든
