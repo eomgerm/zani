@@ -3,7 +3,11 @@
 import type { ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
-import type { SessionSummaryRequester } from "../infrastructure/sessionSummaryApi";
+import type {
+  SessionSummaryRequester,
+  SessionSummarySection,
+} from "../infrastructure/sessionSummaryApi";
+import { formatOffset } from "./offsetTime";
 import { useSessionSummary } from "./useSessionSummary";
 
 export interface SessionSummaryCardProps {
@@ -21,6 +25,28 @@ const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detai
 );
 
 /**
+ * 구간 한 칸. 시각 → 제목 → 요약 순으로 읽는다.
+ *
+ * <p>요약이 없는 구간도 제목과 시각은 남긴다. 248 이 제목만 채운 세션이 있고, 그때도 "이 시각에 무엇을
+ * 다뤘다" 는 읽을 값이다.
+ */
+const SectionRow = ({ section }: { section: SessionSummarySection }) => (
+  <li className="border-l-2 border-line pl-4">
+    <div className="mb-1 flex items-baseline gap-2">
+      <span className="font-mono text-[12px] text-ink-fainter tabular-nums">
+        {formatOffset(section.startSeconds)}–{formatOffset(section.endSeconds)}
+      </span>
+      {section.title.length > 0 && (
+        <span className="font-bold text-[13.5px] text-ink-muted">{section.title}</span>
+      )}
+    </div>
+    {section.summary.length > 0 && (
+      <p className="text-[13.5px] leading-[1.75] text-ink-sub">{section.summary}</p>
+    )}
+  </li>
+);
+
+/**
  * 수업 요약 카드 — 강사·학생 공통.
  *
  * <p>역할 인자를 받지 않는 것이 이 컴포넌트의 요점이다. 요약은 두 사람이 같은 문장을 보는 공통
@@ -30,11 +56,11 @@ const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detai
  * <p>카드 껍데기와 제목은 어떤 상태에서도 남긴다. 상태에 따라 카드가 사라지면 아래 내용이 위로
  * 밀려 올라가 화면이 흔들린다.
  *
- * <p>서버가 주는 것은 문단 하나다. 프로토타입의 5절 구조는 fixture 였고, 없는 절 구분을 화면이
- * 지어내지 않는다 — 절이 필요해지면 그것을 만드는 쪽은 사후 분석이다.
+ * <p>전체 문단을 먼저 두고 구간을 그 아래에 편다(S15P11A105-314). 절 구분은 화면이 지어내는 것이
+ * 아니라 사후 분석이 나눈 구간이며, 구간이 없는 세션은 문단만 남는다 — 빈 목록은 오류가 아니다.
  */
 export function SessionSummaryCard({ sessionId, request }: SessionSummaryCardProps) {
-  const { status, summary, retry } = useSessionSummary({ sessionId, request });
+  const { status, summary, sections, retry } = useSessionSummary({ sessionId, request });
 
   return (
     <div className="z-card px-7 py-6">
@@ -68,7 +94,16 @@ export function SessionSummaryCard({ sessionId, request }: SessionSummaryCardPro
         </div>
       )}
       {status === "ready" && summary !== null && (
-        <p className="whitespace-pre-line text-[13.5px] leading-[1.75] text-ink-sub">{summary}</p>
+        <>
+          <p className="whitespace-pre-line text-[13.5px] leading-[1.75] text-ink-sub">{summary}</p>
+          {sections.length > 0 && (
+            <ul className="mt-6 flex flex-col gap-5">
+              {sections.map((section) => (
+                <SectionRow key={`${section.startSeconds}-${section.title}`} section={section} />
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
