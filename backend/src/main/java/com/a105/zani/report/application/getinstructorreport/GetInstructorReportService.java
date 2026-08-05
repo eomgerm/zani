@@ -1,10 +1,12 @@
 package com.a105.zani.report.application.getinstructorreport;
 
+import java.time.Duration;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.a105.zani.report.application.exception.InstructorReportNotReadyException;
+import com.a105.zani.report.application.exception.ReportNotReadyException;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsQuery;
 import com.a105.zani.report.application.listsessionsections.ListSessionSectionsUseCase;
 import com.a105.zani.session.application.exception.NotSessionInstructorException;
@@ -39,17 +41,31 @@ public class GetInstructorReportService implements GetInstructorReportUseCase {
             throw new NotSessionInstructorException();
         }
 
-        InstructorReportRecord report = queryPort
+        InstructorReportView report = queryPort
                 .findBySessionId(query.sessionId())
                 .filter(found -> found.publishedAt() != null)
-                .orElseThrow(InstructorReportNotReadyException::new);
+                .orElseThrow(ReportNotReadyException::new);
 
         return new GetInstructorReportResult(
                 report.overallFeedback(),
+                queryPort.stats(query.sessionId(), durationSeconds(access)),
                 report.scores(),
                 report.insights(),
                 report.tips(),
                 // 248 이 내용 타임라인을 채우기 전에는 빈 목록이다. 리포트 자체는 정상이므로 오류로 다루지 않는다.
                 listSessionSections.list(new ListSessionSectionsQuery(query.sessionId())));
+    }
+
+    /**
+     * 수업 길이. 세션 조회를 다시 하지 않고 권한 판정이 이미 읽어 온 시각을 쓴다.
+     *
+     * <p>종료 시각을 저장하기 전에 끝난 과거 세션은 0 이다. 관측에서 파생하는 방법도 있지만, 그 규칙은 집중 흐름이 소유한다 — 같은 값을 두 곳에서 다르게 만들 이유가 없다.
+     */
+    private static long durationSeconds(ResolveEndedSessionParticipantResult access) {
+        if (access.startedAt() == null || access.endedAt() == null) {
+            return 0L;
+        }
+        return Math.max(
+                0L, Duration.between(access.startedAt(), access.endedAt()).toSeconds());
     }
 }

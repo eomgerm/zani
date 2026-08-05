@@ -26,8 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 강사 리포트 조회의 전 구간 검증. 로컬 MySQL 이 떠 있어야 통과한다.
  *
- * <p><b>단위 테스트로는 이 파일이 보는 것을 볼 수 없다.</b> 서비스를 직접 부르면 경로·인증·직렬화·예외에서 상태코드로 가는 매핑을 지나지 않는다. 특히 "아직 만들어지지 않음" 을 404 가 아니라
- * 409 로 내리는 판단은 그 매핑에서만 드러난다.
+ * <p><b>단위 테스트로는 이 파일이 보는 것을 볼 수 없다.</b> 서비스를 직접 부르면 경로·인증·직렬화·예외에서 상태코드로 가는 매핑을 지나지 않는다. 특히 "아직 만들어지지 않음" 이 어떤 상태 코드로
+ * 나가는지는 그 매핑에서만 드러난다.
  *
  * <p>권한 차단은 {@code InstructorReportSecurityTest} 가 따로 본다. 여기서는 정상 경로와 미완성 분기를 다룬다.
  */
@@ -112,6 +112,31 @@ class InstructorReportApiIntegrationTest {
                 .andExpect(jsonPath("$.data.tips[0].title").value("질문 응답 시간 확보"));
     }
 
+    /** 한눈에 보기 타일이 쓰는 값이다. 집중 구간 비율은 여기 없다 — 집중 흐름 응답에서 화면이 계산한다. */
+    @Test
+    void 한눈에_보기_집계를_함께_내린다() throws Exception {
+        insertPublishedReport();
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                // 강사는 세지 않는다. 이 세션의 학생은 한 명뿐이다.
+                .andExpect(jsonPath("$.data.stats.studentCount").value(1))
+                .andExpect(jsonPath("$.data.stats.durationSeconds").value(4_440))
+                .andExpect(jsonPath("$.data.stats.alertCount").value(0));
+    }
+
+    /**
+     * 질문 수는 112(학생 리포트)의 컬럼이 dev 에 들어와야 채워진다. 그때까지 비어 있고, 화면은 "아직 모름" 으로 다뤄야 한다 — 0 으로 내리면 아무도 질문하지 않은 수업과 구분되지 않는다.
+     */
+    @Test
+    void 질문_수를_알_수_없으면_0_이_아니라_비운다() throws Exception {
+        insertPublishedReport();
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.stats.questionCount").value((Object) null));
+    }
+
     /** 수업 전체를 가리키는 인사이트다. 화면이 구간 배지를 붙일지 말지가 이 값으로 갈린다. */
     @Test
     void 구간이_없는_인사이트는_시각이_비어_온다() throws Exception {
@@ -134,23 +159,28 @@ class InstructorReportApiIntegrationTest {
                 .andExpect(jsonPath("$.data.sections.length()").value(0));
     }
 
-    /** 없는 것이 아니라 아직인 것이다. 404 로 내리면 화면이 "리포트가 없는 수업" 으로 다루고 다시 열어 볼 이유를 잃는다. */
+    /**
+     * 아직 만들어지지 않은 리포트다.
+     *
+     * <p>404 인 것은 학생 리포트(112)와 맞춘 결과다. "없는 것이 아니라 아직인 것" 이라는 이유로 409 가 낫다고 보지만, 같은 리포트 기능에서 학생 화면과 강사 화면이 다른 코드를 받으면
+     * 화면이 두 규칙을 알아야 한다. 바꾸려면 양쪽을 함께 바꿔야 한다.
+     */
     @Test
-    void 리포트가_아직_없으면_409() throws Exception {
+    void 리포트가_아직_없으면_404() throws Exception {
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("REPORT_001"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("REPORT_002"));
     }
 
     /** 행은 만들어졌지만 아직 공개 전이다. 중간 상태를 화면에 내보내면 반쯤 만들어진 리포트를 읽게 된다. */
     @Test
-    void 공개_전이면_409() throws Exception {
+    void 공개_전이면_404() throws Exception {
         insertReport(null);
         insertScore("DELIVERY", 88);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("REPORT_001"));
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("REPORT_002"));
     }
 
     /** 리포트는 수업이 끝난 뒤에만 만든다. 진행 중에 열면 아직 없는 것이 당연하다. */

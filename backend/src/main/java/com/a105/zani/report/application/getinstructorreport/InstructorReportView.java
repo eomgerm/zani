@@ -8,7 +8,7 @@ import java.util.List;
  *
  * @param publishedAt 공개 완료 시각. {@code null} 이면 AI 가 아직 만드는 중이라 화면에 내보내지 않는다
  */
-public record InstructorReportRecord(
+public record InstructorReportView(
         String overallFeedback,
         Instant publishedAt,
         List<ScoreRecord> scores,

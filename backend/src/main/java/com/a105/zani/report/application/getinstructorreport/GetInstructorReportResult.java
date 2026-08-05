@@ -17,7 +17,8 @@ import com.a105.zani.report.application.listsessionsections.SessionSectionView;
  */
 public record GetInstructorReportResult(
         String overallFeedback,
-        List<InstructorReportRecord.ScoreRecord> scores,
-        List<InstructorReportRecord.InsightRecord> insights,
-        List<InstructorReportRecord.TipRecord> tips,
+        InstructorReportStats stats,
+        List<InstructorReportView.ScoreRecord> scores,
+        List<InstructorReportView.InsightRecord> insights,
+        List<InstructorReportView.TipRecord> tips,
         List<SessionSectionView> sections) {}

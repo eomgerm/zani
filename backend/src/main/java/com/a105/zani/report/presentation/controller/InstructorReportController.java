@@ -42,9 +42,11 @@ public class InstructorReportController {
                 description =
                         "이 수업의 강사가 아닙니다(`MEDIA_TOKEN_002`). 학생·다른 강사·비참가자, 그리고 **아예 없는 세션 ID** 도 모두 여기로 옵니다 — 참가자 조회가 세션 조회보다 먼저라서입니다. 있는 수업과 없는 수업이 같은 응답을 받으므로 세션 ID 를 훑어 존재 여부를 캐낼 수 없습니다."),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "리포트가 아직 만들어지지 않았습니다(`REPORT_002`). 학생 리포트와 같은 코드를 씁니다 — 잠시 뒤 다시 열면 됩니다."),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
                 responseCode = "409",
-                description =
-                        "아직 진행 중인 세션이거나, 리포트가 아직 만들어지지 않았습니다(`REPORT_001`). 없는 것이 아니라 아직인 것이라 404 가 아닙니다 — 잠시 뒤 다시 열면 됩니다.")
+                description = "아직 진행 중인 세션입니다. 리포트는 수업이 끝난 뒤에만 만듭니다.")
     })
     @GetMapping("/{sessionId}/reports/instructor")
     public ApiResponse<InstructorReportResponse> instructorReport(

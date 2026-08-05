@@ -5,7 +5,7 @@ import java.util.List;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import com.a105.zani.report.application.getinstructorreport.GetInstructorReportResult;
-import com.a105.zani.report.application.getinstructorreport.InstructorReportRecord;
+import com.a105.zani.report.application.getinstructorreport.InstructorReportView;
 import com.a105.zani.report.application.listsessionsections.SessionSectionView;
 
 /**
@@ -21,6 +21,9 @@ public record InstructorReportResponse(
         @Schema(description = "AI 가 생성한 수업 종합 피드백", example = "이번 수업은 전반적으로 논리적인 흐름과 단계적인 설명이…")
         String overallFeedback,
 
+        @Schema(description = "한눈에 보기 집계. 집중 구간 비율은 여기 없다 — 집중 흐름 응답에서 화면이 계산한다.")
+        Stats stats,
+
         @Schema(description = "분야별 평가. 순서는 저장 순서이며 화면이 배치를 정한다.")
         List<Score> scores,
 
@@ -31,6 +34,23 @@ public record InstructorReportResponse(
 
         @Schema(description = "수업 내용 구간. 내용 타임라인이 아직 없는 세션은 빈 배열이며 오류가 아니다.")
         List<Section> sections) {
+
+    @Schema(description = "한눈에 보기 집계")
+    public record Stats(
+            @Schema(description = "이 수업에 들어온 적 있는 학생 수. 강사는 세지 않는다.", example = "32")
+            long studentCount,
+
+            @Schema(description = "수업 길이(초). 종료 시각을 저장하기 전에 끝난 과거 세션은 0.", example = "7500")
+            long durationSeconds,
+
+            @Schema(
+                    description =
+                            "모델이 판단한 질문 수의 합. 채팅 행 수가 아니다 — \"감사합니다\" 같은 발화까지 세지 않으려면 문장을 읽어야 한다. 분석이 값을 내지 못했으면 null 이며 0 이 아니다.",
+                    example = "184")
+            Integer questionCount,
+
+            @Schema(description = "수업 중 발생한 이해도 알림 횟수", example = "7")
+            long alertCount) {}
 
     @Schema(description = "분야별 평가 한 항목")
     public record Score(
@@ -80,6 +100,11 @@ public record InstructorReportResponse(
     public static InstructorReportResponse from(GetInstructorReportResult result) {
         return new InstructorReportResponse(
                 result.overallFeedback(),
+                new Stats(
+                        result.stats().studentCount(),
+                        result.stats().durationSeconds(),
+                        result.stats().questionCount(),
+                        result.stats().alertCount()),
                 result.scores().stream().map(InstructorReportResponse::toScore).toList(),
                 result.insights().stream()
                         .map(InstructorReportResponse::toInsight)
@@ -90,16 +115,16 @@ public record InstructorReportResponse(
                         .toList());
     }
 
-    private static Score toScore(InstructorReportRecord.ScoreRecord score) {
+    private static Score toScore(InstructorReportView.ScoreRecord score) {
         return new Score(score.evaluationType(), score.score());
     }
 
-    private static Insight toInsight(InstructorReportRecord.InsightRecord insight) {
+    private static Insight toInsight(InstructorReportView.InsightRecord insight) {
         return new Insight(
                 insight.insightType(), insight.content(), insight.startedOffsetMs(), insight.endedOffsetMs());
     }
 
-    private static Tip toTip(InstructorReportRecord.TipRecord tip) {
+    private static Tip toTip(InstructorReportView.TipRecord tip) {
         return new Tip(tip.tipType(), tip.title(), tip.content());
     }
 
