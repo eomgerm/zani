@@ -21,7 +21,7 @@ public class ReportReadyEmailComposer {
     }
 
     public EmailMessage compose(PendingNotification notification) {
-        String loginLink = appBaseUrl + "/sessions/" + notification.sessionId() + "/report";
+        String loginLink = appBaseUrl + "/my-lectures/" + notification.sessionId() + "/report";
         String subject = "[ZANI] 수업 리포트가 준비됐어요";
         String greeting = (notification.displayName() == null
                         || notification.displayName().isBlank())
