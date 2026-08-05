@@ -20,10 +20,14 @@ import com.a105.zani.recording.domain.exception.ForbiddenStudentCameraTrackExcep
 import com.a105.zani.recording.domain.model.Recording;
 import com.a105.zani.recording.domain.model.RecordingAlias;
 import com.a105.zani.recording.domain.model.RecordingFile;
+import com.a105.zani.recording.domain.model.TrackSource;
 import com.a105.zani.recording.domain.repository.RecordingFileRepository;
 import com.a105.zani.recording.domain.repository.RecordingRepository;
 import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionCommand;
 import com.a105.zani.session.application.confirmconnection.ConfirmParticipantConnectionUseCase;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareCommand;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareResult;
+import com.a105.zani.session.application.screenshare.EnforceSingleScreenShareUseCase;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionParticipant;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
@@ -48,6 +52,7 @@ public class LiveKitWebhookService implements ProcessLiveKitWebhookUseCase {
     private final LiveKitWebhookVerifierPort verifierPort;
     private final LiveKitWebhookEventPort eventStore;
     private final RequestTrackEgressUseCase requestTrackEgressUseCase;
+    private final EnforceSingleScreenShareUseCase enforceSingleScreenShareUseCase;
     private final ConfirmParticipantConnectionUseCase confirmParticipantConnectionUseCase;
     private final RecordingRepository recordingRepository;
     private final RecordingFileRepository recordingFileRepository;
@@ -133,6 +138,18 @@ public class LiveKitWebhookService implements ProcessLiveKitWebhookUseCase {
                     "track_published from unknown identity {} in session {}",
                     event.participantIdentity(),
                     event.sessionId());
+            return;
+        }
+        if (event.trackSource() == TrackSource.SCREEN_SHARE
+                && enforceSingleScreenShareUseCase.enforce(new EnforceSingleScreenShareCommand(
+                                event.sessionId(), participant.get().id()))
+                        == EnforceSingleScreenShareResult.REJECTED) {
+            // 밀려난 화면은 꺼졌다. Egress 도 등록하지 않는다 — 겹친 화면 공유 구간이 manifest 에 들어가면
+            // 최종 병합 워커가 그 녹화 전체를 거부한다(RecordingManifest, exit 2).
+            log.info(
+                    "이미 다른 참가자가 공유 중이어서 화면 공유 트랙을 정리했습니다. session={}, trackSid={}",
+                    event.sessionId(),
+                    event.trackSid());
             return;
         }
         RecordingAlias alias = resolveAlias(participant.get());

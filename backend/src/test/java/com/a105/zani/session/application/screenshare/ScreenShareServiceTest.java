@@ -2,6 +2,7 @@ package com.a105.zani.session.application.screenshare;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,8 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import com.a105.zani.session.application.exception.NotSessionMemberException;
 import com.a105.zani.session.application.exception.ScreenShareInUseException;
+import com.a105.zani.session.application.exception.ScreenShareStateUnavailableException;
 import com.a105.zani.session.application.exception.SessionAlreadyEndedException;
 import com.a105.zani.session.application.port.ActiveScreenSharePort;
+import com.a105.zani.session.application.port.MediaModerationPort;
+import com.a105.zani.session.application.port.MediaMuteChange;
 import com.a105.zani.session.domain.model.Session;
 import com.a105.zani.session.domain.model.SessionAnalysisStatus;
 import com.a105.zani.session.domain.model.SessionParticipant;
@@ -83,9 +87,15 @@ class ScreenShareServiceTest {
     /** 실제 Redis Lua와 같은 의미의 인메모리 슬롯: 비어 있거나 소유자가 같으면 획득/갱신, 아니면 거부. */
     private final Map<Long, Long> activeSlots = new HashMap<>();
 
+    /** Redis 장애를 재현한다. 실제 어댑터도 이 예외로 변환한다. */
+    private boolean slotStoreDown;
+
     private final ActiveScreenSharePort activeScreenSharePort = new ActiveScreenSharePort() {
         @Override
         public boolean claim(long sessionId, long participantId, Duration ttl) {
+            if (slotStoreDown) {
+                throw new ScreenShareStateUnavailableException(new IllegalStateException("redis down"));
+            }
             Long current = activeSlots.get(sessionId);
             if (current == null || current == participantId) {
                 activeSlots.put(sessionId, participantId);
@@ -105,8 +115,26 @@ class ScreenShareServiceTest {
         }
     };
 
-    private final ScreenShareService service =
-            new ScreenShareService(sessionRepository, participantRepository, activeScreenSharePort);
+    /** 화면 공유 mute 를 요청받은 identity 목록. 마이크는 이 테스트의 대상이 아니다. */
+    private final List<String> mutedScreenShares = new ArrayList<>();
+
+    private MediaMuteChange screenShareMuteResult = MediaMuteChange.CHANGED;
+
+    private final MediaModerationPort mediaModerationPort = new MediaModerationPort() {
+        @Override
+        public MediaMuteChange muteMicrophone(long sessionId, String identity) {
+            throw new UnsupportedOperationException("화면 공유 단일성 강제는 마이크를 건드리지 않는다");
+        }
+
+        @Override
+        public MediaMuteChange muteScreenShare(long sessionId, String identity) {
+            mutedScreenShares.add(identity);
+            return screenShareMuteResult;
+        }
+    };
+
+    private final ScreenShareService service = new ScreenShareService(
+            sessionRepository, participantRepository, activeScreenSharePort, mediaModerationPort);
 
     private void liveMember() {
         session = Session.reconstitute(
@@ -204,5 +232,65 @@ class ScreenShareServiceTest {
         service.stop(new StopScreenShareCommand(SESSION_ID, MY_USER_ID));
 
         assertEquals(Optional.of(OTHER_PARTICIPANT_ID), activeScreenSharePort.currentSharer(SESSION_ID));
+    }
+
+    @Test
+    void enforceMakesTheFirstPublisherTheActiveSharer() {
+        EnforceSingleScreenShareResult result =
+                service.enforce(new EnforceSingleScreenShareCommand(SESSION_ID, MY_PARTICIPANT_ID));
+
+        // API 를 거치지 않고 바로 publish 한 첫 참가자도 공유자로 인정한다 — 판정 권위가 서버에 있다는 뜻이다.
+        assertEquals(EnforceSingleScreenShareResult.ACTIVE, result);
+        assertEquals(Optional.of(MY_PARTICIPANT_ID), activeScreenSharePort.currentSharer(SESSION_ID));
+        assertTrue(mutedScreenShares.isEmpty());
+    }
+
+    @Test
+    void enforceMutesALaterPublisherWhileAnotherParticipantIsSharing() {
+        activeSlots.put(SESSION_ID, OTHER_PARTICIPANT_ID);
+
+        EnforceSingleScreenShareResult result =
+                service.enforce(new EnforceSingleScreenShareCommand(SESSION_ID, MY_PARTICIPANT_ID));
+
+        assertEquals(EnforceSingleScreenShareResult.REJECTED, result);
+        // 밀려난 쪽의 트랙만 끈다. 먼저 붙은 쪽은 그대로 유지된다(선점 아님).
+        assertEquals(List.of("p-" + MY_PARTICIPANT_ID), mutedScreenShares);
+        assertEquals(Optional.of(OTHER_PARTICIPANT_ID), activeScreenSharePort.currentSharer(SESSION_ID));
+    }
+
+    @Test
+    void enforceAllowsTheSameParticipantToPublishAgain() {
+        activeSlots.put(SESSION_ID, MY_PARTICIPANT_ID);
+
+        // 재연결·트랙 교체로 같은 참가자가 다시 발행한다. 자기 자신을 밀어내면 공유가 끊긴다.
+        EnforceSingleScreenShareResult result =
+                service.enforce(new EnforceSingleScreenShareCommand(SESSION_ID, MY_PARTICIPANT_ID));
+
+        assertEquals(EnforceSingleScreenShareResult.ACTIVE, result);
+        assertTrue(mutedScreenShares.isEmpty());
+    }
+
+    @Test
+    void enforceLeavesThePublishAloneWhenTheSlotStoreIsUnavailable() {
+        slotStoreDown = true;
+
+        EnforceSingleScreenShareResult result =
+                service.enforce(new EnforceSingleScreenShareCommand(SESSION_ID, MY_PARTICIPANT_ID));
+
+        // 근거 없이 남의 화면을 끄지 않는다. 겹친 공유를 잠시 허용하는 편이 낫다.
+        assertEquals(EnforceSingleScreenShareResult.ACTIVE, result);
+        assertTrue(mutedScreenShares.isEmpty());
+    }
+
+    @Test
+    void enforceStillRejectsWhenTheMediaServerCannotMuteTheLaterTrack() {
+        activeSlots.put(SESSION_ID, OTHER_PARTICIPANT_ID);
+        screenShareMuteResult = MediaMuteChange.UNAVAILABLE;
+
+        EnforceSingleScreenShareResult result =
+                service.enforce(new EnforceSingleScreenShareCommand(SESSION_ID, MY_PARTICIPANT_ID));
+
+        // 못 껐어도 이 참가자가 공유자가 아닌 것은 그대로다. 호출부는 이 트랙을 녹화에 넣지 않아야 한다.
+        assertEquals(EnforceSingleScreenShareResult.REJECTED, result);
     }
 }
