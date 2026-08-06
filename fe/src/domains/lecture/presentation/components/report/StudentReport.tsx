@@ -49,6 +49,22 @@ export function StudentReport({
   const quiz = useStudentQuiz({ sessionId, request: quizRequest });
   // 카드는 "몇 문제, 몇 분"만 쓴다. 문항이 하나도 없으면 풀 것이 없으므로 준비 전과 같이 다룬다.
   const quizQuestionCount = quiz.quiz?.questions.length ?? 0;
+  /**
+   * 기다려도 오지 않는 퀴즈인지.
+   *
+   * <p>학습 리포트가 이미 내려왔다는 것은 공통 리포트가 게시됐다는 뜻이고(S15P11A105-327의 게이트),
+   * 곧 분석이 끝났다는 뜻이다. 그런데 퀴즈가 없으면 서버가 문항 계약 위반으로 퀴즈를 포기하고 리포트만
+   * 살린 경우다(S15P11A105-333). 재분석도 리포트 유무로 대상을 고르므로 다시 채워지지 않는다.
+   *
+   * <p>둘 다 404 로 오기 때문에 퀴즈 응답만으로는 "아직" 과 "영구히 없음" 을 가를 수 없다. 리포트 쪽
+   * 상태를 함께 봐야 갈린다.
+   *
+   * <p>퀴즈 조회가 끝난 경우로 좁힌다 — `loading` 중에는 문항 수가 0 이지만 아직 없다고 말할 수 없고,
+   * `forbidden`·`failed` 는 "없다" 가 아니라 "못 읽었다" 라서 각자의 문구가 맞다.
+   */
+  const quizSettledEmpty =
+    quiz.status === "notReady" || (quiz.status === "ready" && quizQuestionCount === 0);
+  const quizIsNeverComing = report.status === "ready" && quizSettledEmpty;
 
   const activity = report.report?.activity;
   const ratio = focusedIntervalRatio(attention.timeline?.focusFlow.points ?? []);
@@ -183,7 +199,12 @@ export function StudentReport({
               {quizQuestionCount === 0 ? (
                 /* 풀 퀴즈가 없는데 버튼을 두면 눌러서 빈 화면을 만난다. 안내만 남긴다. */
                 <div className="rounded-[11px] bg-white/20 px-3 py-3.5 text-center text-[13px] font-extrabold text-white">
-                  {QUIZ_NOTICE[quiz.status]}
+                  {quizIsNeverComing ? QUIZ_NEVER_NOTICE : QUIZ_NOTICE[quiz.status]}
+                  {quizIsNeverComing && (
+                    <span className="mt-1 block text-[12px] font-semibold text-white/85">
+                      복습 추천으로 다시 볼 구간을 확인해 보세요
+                    </span>
+                  )}
                   {quiz.status === "failed" && (
                     <button
                       type="button"
@@ -257,6 +278,16 @@ const QUIZ_NOTICE = {
   // ready 인데 문항이 없으면 풀 것이 없다. 빈 카드보다 "준비 전"이 사실에 가깝다.
   ready: "아직 퀴즈가 준비되지 않았어요",
 } as const;
+
+/**
+ * 분석이 끝났는데도 퀴즈가 없는 경우의 안내.
+ *
+ * <p>이 수업에는 퀴즈가 <b>영구히</b> 없다. 문항이 계약을 어겨 서버가 퀴즈를 포기했고, 리포트는
+ * 그대로 살렸다(S15P11A105-333). 재분석도 리포트 유무로 대상을 고르므로 다시 채워지지 않는다.
+ *
+ * <p>그래서 "아직" 이라고 쓰면 안 된다 — 오지 않는 것을 기다리게 된다.
+ */
+const QUIZ_NEVER_NOTICE = "이번 수업에서는 풀어볼 문제가 없어요";
 
 function ReportNotice({
   status,

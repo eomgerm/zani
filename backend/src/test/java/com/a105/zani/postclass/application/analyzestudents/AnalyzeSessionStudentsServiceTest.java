@@ -253,8 +253,32 @@ class AnalyzeSessionStudentsServiceTest {
         assertThat(quizUseCase.commands).isEmpty();
     }
 
+    /**
+     * 퀴즈를 만들지 못한 학생도 분석 성공으로 센다(S15P11A105-333).
+     *
+     * <p>퀴즈 생성이 도메인 예외를 자기 경계에서 흡수해 {@code false} 로 답하므로 리포트는 살아남는다. 예전에는 예외가 올라와 리포트까지 롤백되고 그 학생이 {@code FAILED} 로
+     * 집계됐는데, {@code failedParticipantIds} 가 비지 않으면 <b>세션 공개 자체가 막힌다</b> — 문항 하나 때문에 수업 전체의 리포트가 안 나온다.
+     */
     @Test
-    void marksTheStudentFailedWhenTheQuizViolatesItsStructure() {
+    void countsTheStudentAsAnalyzedWhenTheQuizCannotBeBuilt() {
+        queryPort.targets = List.of(target(11L, 1));
+        quizUseCase.refuseCreate = true;
+
+        AnalyzeSessionStudentsResult result = service.analyze(new AnalyzeSessionStudentsCommand(SESSION_ID));
+
+        assertThat(result.failedParticipantIds()).isEmpty();
+        assertThat(result.analyzed()).isEqualTo(1);
+        // 리포트는 저장됐다. 퀴즈만 없다.
+        assertThat(saveUseCase.commands).hasSize(1);
+    }
+
+    /**
+     * 퀴즈 쪽에서 예상 못한 예외가 올라오면 그 학생은 실패로 둔다.
+     *
+     * <p>계약 위반은 위 테스트처럼 {@code false} 로 오므로 이 경로는 이제 버그 신호다. 모르는 실패를 성공으로 세면 리포트 없는 학생이 공개에 섞인다.
+     */
+    @Test
+    void marksTheStudentFailedWhenTheQuizThrowsUnexpectedly() {
         queryPort.targets = List.of(target(11L, 1));
         quizUseCase.throwOnCreate = true;
 
@@ -409,12 +433,20 @@ class AnalyzeSessionStudentsServiceTest {
     private static final class FakeQuizUseCase implements CreateGeneratedQuizUseCase {
 
         private final List<CreateGeneratedQuizCommand> commands = new ArrayList<>();
+
+        /** 초안이 계약을 어겨 만들지 못한 경우. 실제 구현이 도메인 예외를 흡수해 이렇게 답한다(333). */
+        private boolean refuseCreate;
+
+        /** 예상 못한 실패. 계약 위반은 위 플래그로 오므로 이 경로는 버그 신호다. */
         private boolean throwOnCreate;
 
         @Override
         public boolean create(CreateGeneratedQuizCommand command) {
             if (throwOnCreate) {
                 throw new InvalidQuizException(QuizErrorCode.INVALID_QUIZ);
+            }
+            if (refuseCreate) {
+                return false;
             }
             commands.add(command);
             return true;

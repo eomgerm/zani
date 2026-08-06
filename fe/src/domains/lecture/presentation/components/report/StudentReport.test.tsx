@@ -288,8 +288,41 @@ describe("StudentReport", () => {
       },
     });
 
-    expect(await screen.findByText("아직 퀴즈가 준비되지 않았어요")).toBeInTheDocument();
+    await screen.findByText("이번 수업에서는 풀어볼 문제가 없어요");
     expect(screen.queryByRole("link", { name: "퀴즈 풀어보기" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * 리포트가 내려왔다는 것은 분석이 끝났다는 뜻이다(공통 리포트 게시 게이트). 그때 퀴즈가 없으면 서버가
+   * 문항 계약 위반으로 퀴즈를 포기하고 리포트만 살린 경우이고, 재분석으로도 채워지지 않는다.
+   * "아직" 이라고 쓰면 학생이 오지 않는 것을 기다린다(S15P11A105-333).
+   */
+  it("분석이 끝났는데 퀴즈가 없으면 기다리라고 하지 않는다", async () => {
+    renderReport({
+      quizRequest: async () => {
+        throw new StudentQuizError("missing", 404);
+      },
+    });
+
+    await screen.findByText("이번 수업에서는 풀어볼 문제가 없어요");
+    expect(screen.queryByText("아직 퀴즈가 준비되지 않았어요")).not.toBeInTheDocument();
+    // 갈 곳을 준다. 옆 칸이 복습 추천이라 시선이 그쪽으로 넘어간다.
+    expect(screen.getByText("복습 추천으로 다시 볼 구간을 확인해 보세요")).toBeInTheDocument();
+  });
+
+  /** 리포트도 아직 없으면 분석이 끝나지 않은 것이다. 그때는 "아직" 이 사실이다. */
+  it("리포트도 아직이면 퀴즈는 준비 전으로 안내한다", async () => {
+    renderReport({
+      reportRequest: async () => {
+        throw new StudentReportError("missing", 404);
+      },
+      quizRequest: async () => {
+        throw new StudentQuizError("missing", 404);
+      },
+    });
+
+    expect(await screen.findByText("아직 퀴즈가 준비되지 않았어요")).toBeInTheDocument();
+    expect(screen.queryByText("이번 수업에서는 풀어볼 문제가 없어요")).not.toBeInTheDocument();
   });
 
   it("집중 흐름 응답을 한 번만 조회해 비율 타일과 차트가 함께 쓴다", async () => {
