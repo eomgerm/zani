@@ -135,7 +135,6 @@ public class GmsInstructorAnalysisHttpAdapter implements InstructorAnalysisPort 
                             "lectureTitle, classSummary, sections, groupAlerts, deliveredTips, publicChats,"
                                     + " instructorNote"),
                     AnalysisPrompts.tone("강사"));
-    ;
 
     private static final Map<String, Object> RESPONSE_FORMAT = responseFormat();
 
