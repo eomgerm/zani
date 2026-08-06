@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import type { ReportQuestionAsker } from "../infrastructure/reportAssistantApi";
@@ -10,6 +10,7 @@ import type {
 } from "../infrastructure/sessionSummaryApi";
 import { formatOffset } from "./offsetTime";
 import { ReportAssistantPanel } from "./ReportAssistantPanel";
+import { SelectionAskButton } from "./SelectionAskButton";
 import { useReportAssistant } from "./useReportAssistant";
 import { useReportSelection } from "./useReportSelection";
 import { useSessionSummary } from "./useSessionSummary";
@@ -102,20 +103,6 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
   const cardRef = useRef<HTMLDivElement | null>(null);
   const { selection, clear } = useReportSelection(cardRef);
   const assistant = useReportAssistant({ sessionId, ask });
-  const { askAbout } = assistant;
-
-  /**
-   * 드래그가 곧 질문이다. 무엇을 물을지 먼저 입력하게 하면, 읽다가 막힌 순간에 바로 묻는 흐름이 끊긴다.
-   *
-   * <p>보낸 뒤 선택을 비우는 것이 이 효과가 한 번만 도는 이유다 — `clear()` 로 selection 이 null 이 되고,
-   * 다시 들어오면 위에서 끊긴다.
-   */
-  useEffect(() => {
-    if (selection === null) return;
-    askAbout({ anchorStartMs: selection.anchorStartMs, selectedText: selection.text });
-    clear();
-  }, [selection, askAbout, clear]);
-
   return (
     <div ref={cardRef} className="z-card px-7 py-6">
       <div className="z-section-title mb-4">수업 요약 레포트</div>
@@ -164,7 +151,16 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
         </>
       )}
 
-      {/* position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
+      {/* 둘 다 position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
+      <SelectionAskButton
+        selection={selection}
+        onAsk={(picked) => {
+          // 누르는 즉시 드래그한 내용이 질문이 된다. 무엇을 물을지 따로 입력하지 않는다.
+          // 카드가 이미 열려 있으면 새 드래그가 새 대화를 시작한다.
+          assistant.askAbout({ anchorStartMs: picked.anchorStartMs, selectedText: picked.text });
+          clear();
+        }}
+      />
       {assistant.anchor !== null && (
         <ReportAssistantPanel
           messages={assistant.messages}

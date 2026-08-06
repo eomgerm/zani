@@ -20,7 +20,8 @@ import {
  * <p>서버가 대화를 저장하지 않으므로 이력은 여기에만 있다. 새로고침하면 사라지는 것이 의도다 — 학생 질문을
  * 적재하지 않기로 한 선택의 대가이자, 보존 기간과 강사 노출 여부를 정할 일이 없어지는 이유다.
  *
- * <p>드래그가 곧 질문이다. 무엇을 물을지 먼저 입력하게 하면, 읽다가 막힌 순간에 바로 묻는 흐름이 끊긴다.
+ * <p>드래그한 내용이 곧 첫 질문이다. 버튼을 누르는 순간 그 텍스트가 질문으로 나가며, 무엇을 물을지 따로
+ * 입력하지 않는다 — 읽다가 막힌 곳을 짚는 동작에 "그래서 뭘 물을 건가" 를 한 번 더 묻는 셈이라서다.
  * 입력칸은 후속 질문에만 쓴다.
  */
 
@@ -65,10 +66,10 @@ const autoQuestionOf = (selectedText: string): string =>
 const failureTextOf = (error: unknown): string => {
   if (error instanceof ReportAssistantError) {
     if (error.code === ASSISTANT_RATE_LIMITED) {
-      return "질문이 너무 빨라요. 잠시 후 다시 드래그해 주세요.";
+      return "질문이 너무 빨라요. 잠시 후 다시 물어봐 주세요.";
     }
     if (error.code === ASSISTANT_QUESTION_TOO_LARGE) {
-      return "선택한 부분이 너무 길어요. 조금 줄여서 다시 드래그해 주세요.";
+      return "선택한 부분이 너무 길어요. 조금 줄여서 다시 선택해 주세요.";
     }
     if (error.code === ASSISTANT_REPORT_NOT_READY) {
       return "아직 분석이 끝나지 않아 답할 수 없어요.";
