@@ -32,6 +32,7 @@ import com.a105.zani.postclass.application.port.PipelineJobPort;
 import com.a105.zani.postclass.application.port.PipelineJobState;
 import com.a105.zani.postclass.application.port.PostClassTranscriptionPort;
 import com.a105.zani.postclass.application.port.PostClassTranscriptionSettings;
+import com.a105.zani.postclass.application.port.TranscriptFilterSettings;
 import com.a105.zani.postclass.application.port.TranscriptPort;
 import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
@@ -289,7 +290,10 @@ class TranscribeSessionServiceTest {
                         : Optional.of(savedDocuments.get(savedDocuments.size() - 1));
             }
         };
-        AssembleTranscriptUseCase assemble = new AssembleTranscriptService(transcriptPort, clock);
+        // 오케스트레이션 테스트라 필터는 끈다. 켜 두면 fixture 의 noSpeechProb 를 바꾸는 순간 여기 기대값이
+        // 함께 흔들리고, 무엇이 깨졌는지가 흐려진다. 필터 자체는 AssembleTranscriptServiceTest 가 본다.
+        AssembleTranscriptUseCase assemble =
+                new AssembleTranscriptService(transcriptPort, clock, TranscriptFilterSettings.disabled());
         GetSessionRecordingSnapshotUseCase trackFiles = sessionId -> new SessionRecordingSnapshot(tracks, readiness);
         AdvancePipelineJobUseCase advance = command -> {
             calls.add("advance:" + command.targetStatus());
@@ -498,7 +502,8 @@ class TranscribeSessionServiceTest {
                                 return Optional.empty();
                             }
                         },
-                        Clock.fixed(NOW, ZoneOffset.UTC)),
+                        Clock.fixed(NOW, ZoneOffset.UTC),
+                        TranscriptFilterSettings.disabled()),
                 command -> {
                     advanced.add(command.targetStatus());
                     return new AdvancePipelineJobResult(command.targetStatus(), true);
@@ -707,7 +712,7 @@ class TranscribeSessionServiceTest {
                 transcriptionPort,
                 command -> {
                     commands.add(command);
-                    return new AssembleTranscriptResult(0, 0, 0);
+                    return new AssembleTranscriptResult(0, 0, 0, 0);
                 },
                 command -> {
                     advanced.add(command.targetStatus());

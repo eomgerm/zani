@@ -53,7 +53,9 @@ class FfmpegAudioChunkAdapterTest {
                 Duration.ofMinutes(5),
                 25_165_824L,
                 2,
-                false));
+                false,
+                true,
+                0.8));
     }
 
     private void writeCsv(String csv) throws IOException {

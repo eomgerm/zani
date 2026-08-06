@@ -14,6 +14,7 @@ import com.a105.zani.postclass.application.assembletranscript.AssembleTranscript
 import com.a105.zani.postclass.application.exception.TranscriptAssemblyInvalidException;
 import com.a105.zani.postclass.application.exception.TranscriptIncompleteException;
 import com.a105.zani.postclass.application.exception.TranscriptNotReadyException;
+import com.a105.zani.postclass.application.port.TranscriptFilterSettings;
 import com.a105.zani.postclass.application.port.TranscriptPort;
 import com.a105.zani.postclass.application.port.TranscriptSegment;
 import com.a105.zani.postclass.application.port.TranscriptionChunk;
@@ -45,9 +46,16 @@ class AssembleTranscriptServiceTest {
     private static final long CHUNK_MS = 600_000L;
     private static final Instant NOW = Instant.parse("2026-08-04T02:00:00Z");
 
+    /** 운영 기본값. 근거는 application.yaml 주석과 {@link TranscriptFilterSettings} 에 있다. */
+    private static final double DEFAULT_THRESHOLD = 0.8;
+
     private final RecordingTranscriptPort transcriptPort = new RecordingTranscriptPort();
-    private final AssembleTranscriptService service =
-            new AssembleTranscriptService(transcriptPort, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final AssembleTranscriptService service = service(transcriptPort, DEFAULT_THRESHOLD);
+
+    private static AssembleTranscriptService service(TranscriptPort port, double threshold) {
+        return new AssembleTranscriptService(
+                port, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(true, threshold));
+    }
 
     /** 저장된 문서를 들여다보기 위한 가짜 포트. 조립 결과가 정본과 같은 형태인지 보려면 실제로 저장되는 값이 필요하다. */
     private static final class RecordingTranscriptPort implements TranscriptPort {
@@ -92,6 +100,15 @@ class AssembleTranscriptServiceTest {
 
     private static TranscriptSegment segment(long startMs, long endMs, String text) {
         return new TranscriptSegment(startMs, endMs, text, -0.21, 0.02);
+    }
+
+    /** 무음 확률을 지정한 세그먼트. 실측값을 그대로 넣기 위한 것이다. */
+    private static TranscriptSegment segment(long startMs, long endMs, String text, double noSpeechProb) {
+        return new TranscriptSegment(startMs, endMs, text, -0.21, noSpeechProb);
+    }
+
+    private static List<String> textsOf(TranscriptDocument document) {
+        return document.segments().stream().map(TranscriptDocumentSegment::text).toList();
     }
 
     private AssembleTranscriptResult assemble(List<TranscriptionTrack> tracks, List<TranscriptionChunk> chunks) {
@@ -189,7 +206,7 @@ class AssembleTranscriptServiceTest {
 
         // 입력 순서를 뒤집어도 같은 결과여야 한다.
         RecordingTranscriptPort second = new RecordingTranscriptPort();
-        new AssembleTranscriptService(second, Clock.fixed(NOW, ZoneOffset.UTC))
+        service(second, DEFAULT_THRESHOLD)
                 .assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", tracks.reversed(), chunks.reversed()));
 
         assertEquals(
@@ -438,5 +455,449 @@ class AssembleTranscriptServiceTest {
         assertEquals(0.02, stored.noSpeechProb(), 1e-9);
         assertEquals(1, result.speakerCount());
         assertEquals(5_000, result.lastEndOffsetMs());
+    }
+
+    // ---------------------------------------------------------------------
+    // 무음 환각 필터(S15P11A105-306)
+    //
+    // 실측 확률값과 시각을 fixture 로 고정한다. 2026-08-05 실제 세션의 학생 마이크 전사에서 환각
+    // "고맙습니다." 는 no_speech_prob 0.906~0.985 로 나왔고 실제 질문 세그먼트는 0.176 이었다.
+    // 관측값이 0.18~0.90 사이에 하나도 없다는 것이 기본 임곗값 0.8 의 근거이므로 두 극단을 그대로 넣는다.
+    //
+    // 학생 발화 원문은 넣지 않는다. 지워지면 안 되는 쪽의 텍스트는 형태만 같은 문장으로 대체했다 —
+    // 상수 주석에 근거를 적었다.
+    // ---------------------------------------------------------------------
+
+    /**
+     * 지워지면 안 되는 학생 질문 자리.
+     *
+     * <p><b>실제 세션의 발화 원문을 쓰지 않는다.</b> 실제 학생이 말한 문장을 저장소에 박으면 그 발화가 코드로 남는다. 이 fixture 의 검증력은 확률값·시각·순서와 <b>문장 끝의
+     * 물음표</b>에서 나오고, 질문의 내용은 판정에 쓰이지 않는다. 그래서 형태만 같은 문장으로 대체했다 — 긴 문장이고 종결 부호가 물음표다.
+     *
+     * <p>실측 확률값({@code 0.176})과 시각은 응답 그대로다. 그쪽이 이 테스트가 재현하는 대상이다.
+     */
+    private static final String STUDENT_QUESTION = "적재율이 높아지면 조회 성능이 어떻게 달라지는지 다시 설명해 주실 수 있나요?";
+
+    /**
+     * 환각 문구.
+     *
+     * <p>이쪽은 사람의 발화가 아니라 <b>모델이 무음 구간에서 만들어 낸 출력</b>이라 실측 문구를 그대로 둔다. 이 티켓이 존재하는 이유이고, 이 문구가 30초 간격으로 반복됐다는 사실 자체가 재현
+     * 조건이다.
+     */
+    private static final String HALLUCINATION = "고맙습니다.";
+
+    @Test
+    void 무음_확률이_임곗값보다_높은_세그먼트를_뺀다() {
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(45_000, 48_000, HALLUCINATION, 0.984),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of(STUDENT_QUESTION), textsOf(transcriptPort.only()));
+        assertEquals(1, result.segmentCount());
+        assertEquals(2, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 임곗값과_같은_값도_뺀다() {
+        // 경계는 포함이다. 0.8 로 두었는데 0.8 이 남으면 설정의 뜻이 흐려진다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(segment(1_000, 3_000, HALLUCINATION, DEFAULT_THRESHOLD))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertTrue(transcriptPort.only().segments().isEmpty());
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 임곗값보다_낮으면_남긴다() {
+        // 실측 최악의 경계 근처. 0.79 는 남고 0.80 은 빠진다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(segment(1_000, 3_000, "조금 애매한 발화", 0.79))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of("조금 애매한 발화"), textsOf(transcriptPort.only()));
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 신뢰도가_낮아도_무음_확률이_낮으면_빼지_않는다() {
+        // avgLogprob 이 낮다는 것은 모델이 그 문장에 확신이 없었다는 뜻일 뿐 무음이라는 뜻이 아니다.
+        // 두 값을 섞으면 낮은 신뢰도의 정상 발화를 잃는다 — 이번 규칙은 noSpeechProb 하나만 본다.
+        TranscriptSegment lowConfidence = new TranscriptSegment(1_000, 4_000, "웅얼거린 발화", -3.5, 0.12);
+        List<TranscriptionChunk> chunks =
+                List.of(chunk(STUDENT_FILE, 0, TranscriptionChunkStatus.SUCCEEDED, List.of(lowConfidence)));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of("웅얼거린 발화"), textsOf(transcriptPort.only()));
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 필터를_끄면_모든_세그먼트를_남긴다() {
+        RecordingTranscriptPort port = new RecordingTranscriptPort();
+        AssembleTranscriptService disabled = new AssembleTranscriptService(
+                port, Clock.fixed(NOW, ZoneOffset.UTC), TranscriptFilterSettings.disabled());
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        AssembleTranscriptResult result = disabled.assemble(
+                new AssembleTranscriptCommand(SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks));
+
+        assertEquals(List.of(HALLUCINATION, STUDENT_QUESTION), textsOf(port.only()));
+        assertEquals(0, result.filteredSegmentCount(), "끈 상태에서는 센 것도 없어야 한다");
+    }
+
+    @Test
+    void 모든_세그먼트가_빠져도_빈_전사로_정상_저장한다() {
+        // 실패가 아니다. partial 로 바꾸지도 않는다 — partial=true 는 "구간이 빠진 전사" 를 뜻하고
+        // 그것을 소비하는 계약이 하류에 없다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(45_000, 48_000, HALLUCINATION, 0.984),
+                        segment(75_000, 78_000, HALLUCINATION, 0.906))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        TranscriptDocument document = transcriptPort.only();
+        assertTrue(document.segments().isEmpty());
+        assertTrue(!document.partial(), "필터는 누락이 아니므로 partial 이 아니다");
+        assertEquals(TranscriptDocument.SCHEMA_VERSION, document.schemaVersion());
+        assertEquals("ko", document.language());
+        assertEquals(0, result.segmentCount());
+        assertEquals(0, result.speakerCount());
+        assertEquals(3, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 필터링_후에도_화자_무관_시간순_정렬을_유지한다() {
+        // 두 화자의 트랙에서 각각 환각이 빠진 뒤에도 전체가 절대 시간순이어야 한다. 남은 세그먼트의
+        // 시각은 손대지 않는다 — 빠진 자리를 메우려고 당기면 타임라인이 녹화와 어긋난다.
+        List<TranscriptionChunk> chunks = List.of(
+                chunk(
+                        INSTRUCTOR_FILE,
+                        0,
+                        TranscriptionChunkStatus.SUCCEEDED,
+                        List.of(
+                                segment(2_000, 32_000, "오늘은 해시 테이블을 다룹니다", 0.04),
+                                segment(100_000, 103_000, HALLUCINATION, 0.973),
+                                segment(400_000, 431_000, "체이닝과 개방 주소법", 0.06))),
+                chunk(
+                        STUDENT_FILE,
+                        0,
+                        TranscriptionChunkStatus.SUCCEEDED,
+                        List.of(
+                                segment(15_000, 18_000, HALLUCINATION, 0.940),
+                                segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        AssembleTranscriptResult result = assemble(
+                List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L), track(STUDENT_FILE, STUDENT, 600_000L)), chunks);
+
+        List<TranscriptDocumentSegment> segments = transcriptPort.only().segments();
+        assertEquals(List.of("오늘은 해시 테이블을 다룹니다", "체이닝과 개방 주소법", STUDENT_QUESTION), textsOf(transcriptPort.only()));
+        // 학생 트랙은 수업 10분 뒤에 발행됐으므로 600_000 + 165_000 = 765_000 이고, 강사의 400_000 뒤다.
+        assertEquals(
+                List.of(2_000L, 400_000L, 765_000L),
+                segments.stream().map(TranscriptDocumentSegment::startOffsetMs).toList());
+        assertEquals(2, result.filteredSegmentCount());
+        assertEquals(2, result.speakerCount());
+    }
+
+    @Test
+    void 남은_세그먼트의_시각과_식별자와_확률값은_그대로다() {
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                2,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(5_000, 8_000, HALLUCINATION, 0.983),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        TranscriptDocumentSegment stored = transcriptPort.only().segments().get(0);
+        // 2번 청크의 165초 지점 = 1_200_000 + 165_000. 앞 세그먼트가 빠졌어도 당겨지지 않는다.
+        assertEquals(1_365_000, stored.startOffsetMs());
+        assertEquals(1_374_000, stored.endOffsetMs());
+        assertEquals(0.176, stored.noSpeechProb(), 1e-9);
+        assertEquals(-0.21, stored.avgLogprob(), 1e-9);
+        assertEquals(Math.exp(-0.21), stored.confidence(), 1e-9);
+        assertEquals(ConfidenceMethod.EXP_AVG_LOGPROB, stored.confidenceMethod());
+        assertEquals(STUDENT_FILE, stored.recordingFileId());
+        assertEquals(2, stored.chunkIndex());
+        assertEquals(STUDENT, stored.sessionParticipantId());
+    }
+
+    @Test
+    void 같은_입력을_다시_조립하면_같은_문서가_나온다() {
+        // 멱등. 체크포인트가 그대로면 재조립 결과도 그대로여야 하고, 그것이 "GMS 없이 재조립할 수 있다" 의
+        // 전제다. 임곗값을 바꾸면 결과가 달라지는 것은 의도된 동작이므로 같은 임곗값으로 두 번 돈다.
+        List<TranscriptionTrack> tracks = List.of(track(STUDENT_FILE, STUDENT, 0L));
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        AssembleTranscriptResult first = assemble(tracks, chunks);
+        RecordingTranscriptPort second = new RecordingTranscriptPort();
+        AssembleTranscriptResult again = service(second, DEFAULT_THRESHOLD)
+                .assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", tracks, chunks));
+
+        assertEquals(first, again);
+        assertEquals(textsOf(transcriptPort.only()), textsOf(second.only()));
+        assertEquals(
+                transcriptPort.only().segments().stream()
+                        .map(TranscriptDocumentSegment::startOffsetMs)
+                        .toList(),
+                second.only().segments().stream()
+                        .map(TranscriptDocumentSegment::startOffsetMs)
+                        .toList());
+    }
+
+    @Test
+    void 재현_응답_전체를_그대로_조립하면_환각_8건이_빠지고_질문이_남는다() {
+        // 2026-08-05 실제 세션의 학생 마이크 응답(240.21초) 14 세그먼트를 순서까지 그대로 옮긴 것이다.
+        // 이 티켓이 존재하는 이유이므로 fixture 로 고정한다.
+        //
+        // 30초 간격으로 반복된 8건은 창 확률이 0.906~0.985 이고, seek=15000 창에 든 6건(환각 5 + 실제
+        // 질문 1)은 전부 0.176 이다. 무음 확률로 8건을 지우고 질문을 지키는 것이 이번 범위이며,
+        // 같은 창의 5건은 반복 문구 규칙(S15P11A105-316)의 몫이다.
+        //
+        // id=11 이 이 fixture 의 핵심이다. 질문이 끝난 174.0 초에서 0ms 로 이어지므로 시각만 보는
+        // 인접성 가드는 이것을 "실제 발화의 연속" 으로 착각한다. 앞 세그먼트가 물음표로 문장을 끝냈다는
+        // 사실이 그 착각을 막는다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(0, 5_500, HALLUCINATION, 0.9534643292427063), // seek=0
+                        segment(30_000, 35_500, HALLUCINATION, 0.9847848415374756), // seek=3000
+                        segment(60_000, 65_500, HALLUCINATION, 0.9836857914924622), // seek=6000
+                        segment(90_000, 95_500, HALLUCINATION, 0.9767805337905884), // seek=9000
+                        segment(120_000, 125_500, HALLUCINATION, 0.9736445546150208), // seek=12000
+                        segment(150_000, 153_000, HALLUCINATION, 0.1763685643672943), // seek=15000
+                        segment(153_000, 156_000, HALLUCINATION, 0.1763685643672943),
+                        segment(156_000, 159_000, HALLUCINATION, 0.1763685643672943),
+                        segment(159_000, 162_000, HALLUCINATION, 0.1763685643672943),
+                        segment(162_000, 165_000, HALLUCINATION, 0.1763685643672943),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.1763685643672943),
+                        segment(174_000, 179_500, HALLUCINATION, 0.906367301940918), // seek=17400
+                        segment(204_000, 209_500, HALLUCINATION, 0.9249671101570129), // seek=20400
+                        segment(234_000, 239_500, HALLUCINATION, 0.9403244256973267)))); // seek=23400
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(8, result.filteredSegmentCount(), "무음 확률이 높은 8건이 빠진다");
+        assertEquals(6, result.segmentCount(), "같은 창의 5건 + 실제 질문");
+        List<TranscriptDocumentSegment> stored = transcriptPort.only().segments();
+        // 실제 질문은 시각까지 그대로 남는다.
+        assertEquals(STUDENT_QUESTION, stored.get(5).text());
+        assertEquals(165_000, stored.get(5).startOffsetMs());
+        assertEquals(174_000, stored.get(5).endOffsetMs());
+        // 질문 바로 뒤에 0ms 로 붙은 환각은 살아남지 않는다.
+        assertEquals(
+                List.of(150_000L, 153_000L, 156_000L, 159_000L, 162_000L, 165_000L),
+                stored.stream().map(TranscriptDocumentSegment::startOffsetMs).toList());
+    }
+
+    // ---------------------------------------------------------------------
+    // 인접성 가드
+    //
+    // no_speech_prob 는 세그먼트 값이 아니라 30초 디코딩 창의 값이다 — 실측에서 같은 seek 을 공유하는
+    // 세그먼트 6개가 모두 0.008 로 동일했다. 그래서 창 경계를 넘어간 문장의 뒷부분이 무음 창의 값을
+    // 물려받는다. 아래 세 세그먼트가 실제 강사 녹음(4.6분)에서 그대로 나온 값이다.
+    // ---------------------------------------------------------------------
+
+    @Test
+    void 창_경계를_넘어간_문장의_뒷부분은_남긴다() {
+        // seek=19600 nsp=0.067 / seek=21728 nsp=0.964 — 두 번째는 첫 번째와 0ms 로 맞물린 한 문장의
+        // 뒷부분이다. 무음 확률만 보고 지우면 타임라인에서 문장이 중간에 끊긴다. 임곗값을 올려서는
+        // 못 막는다(0.964).
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                INSTRUCTOR_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(212_600, 217_280, "다엑스트라 알고리즘은 가장 가까운 정점을 선택하고 간선완화연산", 0.067),
+                        segment(217_280, 218_940, "을 반복하여 최단거리를 구합니다.", 0.964),
+                        segment(247_280, 275_800, "학생이 자네에 피로가 났대요.", 0.907))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(
+                List.of("다엑스트라 알고리즘은 가장 가까운 정점을 선택하고 간선완화연산", "을 반복하여 최단거리를 구합니다."), textsOf(transcriptPort.only()));
+        // 28.3초 공백 뒤의 환각은 앵커가 없어 그대로 빠진다.
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 앞이_아니라_뒤에_실제_발화가_붙어_있어도_남긴다() {
+        // 문장의 앞부분이 무음 창에 걸린 경우. 양쪽을 다 보지 않으면 이쪽을 놓친다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                INSTRUCTOR_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(100_000, 101_500, "그러면 이제", 0.95),
+                        segment(101_500, 108_000, "간선 완화 연산을 반복합니다", 0.04))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(List.of("그러면 이제", "간선 완화 연산을 반복합니다"), textsOf(transcriptPort.only()));
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 환각끼리_붙어_있는_것은_서로를_살리지_못한다() {
+        // 앵커를 "임곗값 미만" 으로 못 박은 이유. "이웃이 남았으면 살린다" 로 두면 환각 사슬이 전부
+        // 살아남아 필터가 사실상 무력해진다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(18_000, 21_000, HALLUCINATION, 0.984),
+                        segment(21_000, 24_000, HALLUCINATION, 0.973))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertTrue(transcriptPort.only().segments().isEmpty());
+        assertEquals(3, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 앞_문장이_끝났으면_붙어_있어도_살리지_않는다() {
+        // 재현 응답의 id=10/id=11 을 떼어 낸 것이다. 시각으로는 강사의 진짜 연속과 구별되지 않으므로
+        // 앞 세그먼트가 문장을 끝냈는지가 유일한 신호다. 이 검사가 없으면 환각 하나가 남는다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176),
+                        segment(174_000, 179_500, HALLUCINATION, 0.906))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of(STUDENT_QUESTION), textsOf(transcriptPort.only()));
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 쉼표로_끝난_문장은_이어지는_것으로_본다() {
+        // 쉼표를 종결로 취급하면 진짜 연속을 잃는다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                INSTRUCTOR_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(10_000, 14_000, "간선 완화 연산을 반복하면,", 0.05),
+                        segment(14_000, 16_000, "최단거리가 구해집니다.", 0.95))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(List.of("간선 완화 연산을 반복하면,", "최단거리가 구해집니다."), textsOf(transcriptPort.only()));
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 공백이_허용폭보다_크면_인접으로_보지_않는다() {
+        // 허용폭은 200ms 다. 실측에서 창 경계로 쪼개진 문장의 두 조각은 정확히 0ms 로 맞물렸고,
+        // 넓게 두면 진짜 발화가 끝난 한참 뒤에 시작한 환각까지 살려 준다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(segment(10_000, 12_000, "실제 발화입니다", 0.05), segment(12_500, 15_000, HALLUCINATION, 0.953))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of("실제 발화입니다"), textsOf(transcriptPort.only()));
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 허용폭_안의_공백은_인접으로_본다() {
+        // GMS 타임스탬프 해상도가 파일마다 다르다 — 정수 초 격자인 응답도 있었다. 0 으로 못 박으면
+        // 격자가 거친 파일에서 맞물린 문장을 놓친다.
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(segment(10_000, 12_000, "실제 발화입니다", 0.05), segment(12_200, 15_000, "그 뒤에 이어지는 말", 0.953))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of("실제 발화입니다", "그 뒤에 이어지는 말"), textsOf(transcriptPort.only()));
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 청크가_다르면_앵커로_쓰지_않는다() {
+        // 알려진 한계를 고정한다. 10분 청크 경계에서 문장이 쪼개지면 앵커가 다른 청크에 있어 찾지 못하고,
+        // 그때는 원래 규칙대로 빠진다. 동작이 바뀌면 이 테스트가 알려 준다.
+        List<TranscriptionChunk> chunks = List.of(
+                chunk(
+                        STUDENT_FILE,
+                        0,
+                        TranscriptionChunkStatus.SUCCEEDED,
+                        List.of(segment(CHUNK_MS - 3_000, CHUNK_MS, "청크 끝에서 시작된 문장이", 0.05))),
+                chunk(
+                        STUDENT_FILE,
+                        1,
+                        TranscriptionChunkStatus.SUCCEEDED,
+                        List.of(segment(0, 2_000, "다음 청크로 이어진다", 0.95))));
+
+        AssembleTranscriptResult result = assemble(List.of(track(STUDENT_FILE, STUDENT, 0L)), chunks);
+
+        assertEquals(List.of("청크 끝에서 시작된 문장이"), textsOf(transcriptPort.only()));
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 임곗값을_올리면_같은_체크포인트에서_더_많이_남는다() {
+        // 재조립만으로 판정을 바꿀 수 있다는 것을 고정한다. GMS 를 다시 부르지 않는다.
+        List<TranscriptionTrack> tracks = List.of(track(STUDENT_FILE, STUDENT, 0L));
+        List<TranscriptionChunk> chunks = List.of(chunk(
+                STUDENT_FILE,
+                0,
+                TranscriptionChunkStatus.SUCCEEDED,
+                List.of(
+                        segment(15_000, 18_000, HALLUCINATION, 0.953),
+                        segment(165_000, 174_000, STUDENT_QUESTION, 0.176))));
+
+        RecordingTranscriptPort lenient = new RecordingTranscriptPort();
+        service(lenient, 0.99).assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", tracks, chunks));
+
+        assertEquals(List.of(HALLUCINATION, STUDENT_QUESTION), textsOf(lenient.only()));
     }
 }
