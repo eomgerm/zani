@@ -81,6 +81,10 @@ export function ReportScreen({
    *
    * <p>nonce 를 함께 올리는 이유: 같은 구간을 연달아 누르면 시각이 같아 상태가 바뀌지 않고,
    * 그러면 두 번째 이동이 묻힌다. 실제 재생 위치 이동은 학생 플레이어(113)가 맡는다.
+   *
+   * <p>클립 탭 안의 수업 요약 카드도 구간 시각으로 같은 문에 들어온다. 이미 클립 탭이라 탭 전환은
+   * 아무 일도 하지 않지만, 플레이어가 그 카드보다 위에 있어 맨 위로 올리는 동작은 그대로 필요하다 —
+   * 그러지 않으면 재생 위치만 조용히 바뀌고 화면에는 아무 변화가 보이지 않는다.
    */
   const [seekRequest, setSeekRequest] = useState<ClipSeekRequest | null>(
     initialSeekSeconds === null ? null : { seconds: initialSeekSeconds, nonce: 1 },
@@ -204,6 +208,7 @@ export function ReportScreen({
               sessionId={lectureId}
               isStudent={role === "STUDENT"}
               seekRequest={seekRequest}
+              onSeek={jumpToClip}
             />
           ) : isInstructor ? (
             <InstructorReport sessionId={lectureId} onJumpToClip={jumpToClip} />

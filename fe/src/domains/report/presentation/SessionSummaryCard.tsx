@@ -14,6 +14,8 @@ export interface SessionSummaryCardProps {
   readonly sessionId: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: SessionSummaryRequester;
+  /** 구간 시각을 눌렀을 때 녹화를 그 자리로 옮긴다. 배선이 없으면 시각을 버튼으로 내지 않는다. */
+  readonly onSeek?: (offsetSeconds: number) => void;
 }
 
 const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detail?: string }) => (
@@ -24,27 +26,53 @@ const Notice = ({ icon, title, detail }: { icon: ReactNode; title: string; detai
   </div>
 );
 
+const RANGE_CLS = "pl-3 font-mono text-[12px] tabular-nums text-primary/70 hover:text-primary transition-colors duration-150";
+
 /**
  * 구간 한 칸. 시각 → 제목 → 요약 순으로 읽는다.
  *
  * <p>요약이 없는 구간도 제목과 시각은 남긴다. 248 이 제목만 채운 세션이 있고, 그때도 "이 시각에 무엇을
  * 다뤘다" 는 읽을 값이다.
+ *
+ * <p>시각은 배선이 있을 때만 버튼이 된다 — 전사 행({@code TranscriptTimeline})과 같은 약속이다.
+ * 이동을 받을 플레이어가 없는 자리에서는 누를 곳 없는 버튼을 내지 않는다.
  */
-const SectionRow = ({ section }: { section: SessionSummarySection }) => (
-  <li className="border-l-2 border-line pl-4">
-    <div className="mb-1 flex items-baseline gap-2">
-      <span className="font-mono text-[12px] text-ink-fainter tabular-nums">
-        {formatOffset(section.startSeconds)}–{formatOffset(section.endSeconds)}
-      </span>
-      {section.title.length > 0 && (
-        <span className="font-bold text-[13.5px] text-ink-muted">{section.title}</span>
+const SectionRow = ({
+  section,
+  onSeek,
+}: {
+  section: SessionSummarySection;
+  onSeek?: (offsetSeconds: number) => void;
+}) => {
+  const range = `${formatOffset(section.startSeconds)}–${formatOffset(section.endSeconds)}`;
+
+  return (
+    <li className="pl-1">
+      <div className="mb-1 flex items-baseline gap-2">
+        {section.title.length > 0 && (
+          <span className="font-bold text-[16.5px] text-ink-muted">
+            {section.title}
+            {onSeek === undefined ? (
+              <span className={RANGE_CLS}>{range}</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSeek(section.startSeconds)}
+                aria-label={`${section.title} 구간 재생 · ${range}`}
+                className={`${RANGE_CLS} cursor-pointer border-0 bg-transparent underline-offset-4`}
+              >
+                {range}
+              </button>
+            )}
+          </span>
+        )}
+      </div>
+      {section.summary.length > 0 && (
+        <p className="text-[13.5px] leading-[1.75] text-ink-sub">{section.summary}</p>
       )}
-    </div>
-    {section.summary.length > 0 && (
-      <p className="text-[13.5px] leading-[1.75] text-ink-sub">{section.summary}</p>
-    )}
-  </li>
-);
+    </li>
+  );
+};
 
 /**
  * 수업 요약 카드 — 강사·학생 공통.
@@ -59,7 +87,7 @@ const SectionRow = ({ section }: { section: SessionSummarySection }) => (
  * <p>전체 문단을 먼저 두고 구간을 그 아래에 편다(S15P11A105-314). 절 구분은 화면이 지어내는 것이
  * 아니라 사후 분석이 나눈 구간이며, 구간이 없는 세션은 문단만 남는다 — 빈 목록은 오류가 아니다.
  */
-export function SessionSummaryCard({ sessionId, request }: SessionSummaryCardProps) {
+export function SessionSummaryCard({ sessionId, request, onSeek }: SessionSummaryCardProps) {
   const { status, summary, sections, retry } = useSessionSummary({ sessionId, request });
 
   return (
@@ -99,7 +127,11 @@ export function SessionSummaryCard({ sessionId, request }: SessionSummaryCardPro
           {sections.length > 0 && (
             <ul className="mt-6 flex flex-col gap-5">
               {sections.map((section) => (
-                <SectionRow key={`${section.startSeconds}-${section.title}`} section={section} />
+                <SectionRow
+                  key={`${section.startSeconds}-${section.title}`}
+                  section={section}
+                  onSeek={onSeek}
+                />
               ))}
             </ul>
           )}
