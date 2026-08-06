@@ -56,8 +56,9 @@ public record GroupAttentionTimelineResponse(
                 long offsetSeconds,
 
                 @Schema(
-                        description = "집중 흐름(1.00~4.00 단계 평균). 4단계 판정이 칸의 70% 를 못 덮거나 eligibleCount 가 5 미만이면"
-                                + " null 이며 0 도 1단계도 아니다.",
+                        description = "집중 흐름(1.00~4.00 단계 평균). 4단계 판정이 칸을 충분히 덮지 못했거나 eligibleCount 가 최소 집계"
+                                + " 인원 미만이면 null 이며 0 도 1단계도 아니다. 두 기준 모두 설정값이다"
+                                + "(attention.timeline.focus-coverage-floor · minimum-eligible).",
                         example = "3.67",
                         nullable = true)
                 Double focusLevel,
@@ -106,14 +107,15 @@ public record GroupAttentionTimelineResponse(
                 int eligibleCount,
 
                 @Schema(
-                        description = "확인 필요 비율. 분모는 eligibleCount 다. eligibleCount 가 5 미만이면 null.",
+                        description = "확인 필요 비율. 분모는 eligibleCount 다. eligibleCount 가 최소 집계 인원"
+                                + "(attention.timeline.minimum-eligible) 미만이면 null.",
                         example = "0.32",
                         nullable = true)
                 Double checkNeededRatio,
 
                 @Schema(
                         description = "카메라 OFF 비율. 분모는 connectedCount 로 checkNeededRatio 와 **다르다** — 두 값을 더하거나"
-                                + " 비교하면 안 된다. connectedCount 가 5 미만이면 null.",
+                                + " 비교하면 안 된다. connectedCount 가 최소 집계 인원 미만이면 null.",
                         example = "0.07",
                         nullable = true)
                 Double cameraOffRatio,
