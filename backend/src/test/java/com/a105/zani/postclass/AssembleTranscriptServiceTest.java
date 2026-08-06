@@ -1022,6 +1022,72 @@ class AssembleTranscriptServiceTest {
     }
 
     // ---------------------------------------------------------------------
+    // 무음 확률 임곗값이 실제 강의를 지운다는 증거(S15P11A105-316 에서 기본값을 되돌린 이유)
+    // ---------------------------------------------------------------------
+
+    /**
+     * 실제 강사 트랙(201.15초·10 세그먼트, 세션 873057758561862391)의 시각과 무음 확률.
+     *
+     * <p>텍스트는 형태만 같은 문장으로 대체했다 — 실제 강의 내용을 저장소에 박지 않는다. 다만 <b>종결 부호는 실제와 같이 문장을 끝내게</b> 둔다. 인접성 가드가 그것을 보기 때문에 자리표시자로
+     * 바꾸면 판정이 달라진다.
+     *
+     * <p>이 트랙에는 실제 강의 발화가 {@code 0.811}·{@code 0.864}·{@code 0.921}·{@code 0.921} 로 나온다. 같은 세션의 환각은 {@code 0.943} 부터
+     * 시작하지만 다른 세션에서는 환각이 {@code 0.790}·{@code 0.622} 에도 있었다 — 두 분포가 겹쳐서 임곗값으로 가를 수 없다.
+     */
+    private static List<TranscriptSegment> instructorTrackWithQuietWindows() {
+        return List.of(
+                segment(0, 21_000, "수업을 시작합니다.", 0.20536521077156067),
+                segment(30_000, 52_000, "자료 구조를 설명합니다.", 0.6983421444892883),
+                segment(52_000, 62_000, "해시 함수의 동작을 설명합니다.", 0.9211853742599487),
+                segment(63_000, 75_000, "충돌이 무엇인지 설명합니다.", 0.9211853742599487),
+                segment(75_000, 88_000, "해결 방법 두 가지를 소개합니다.", 0.6982080340385437),
+                segment(88_000, 116_000, "같은 부분을 다시 설명합니다.", 0.7448411583900452),
+                segment(119_000, 142_000, "학생 질문에 답합니다.", 0.6978709101676941),
+                segment(142_000, 154_000, "적재율을 설명합니다.", 0.8642942905426025),
+                segment(154_000, 183_000, "전체를 정리합니다.", 0.8110024333000183),
+                segment(184_000, 187_000, "수업을 마칩니다.", 0.20670771598815918));
+    }
+
+    private AssembleTranscriptResult assembleInstructorTrack(RecordingTranscriptPort port, double threshold) {
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                INSTRUCTOR_FILE,
+                0,
+                0L,
+                201_150L,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                instructorTrackWithQuietWindows());
+        return service(port, threshold)
+                .assemble(new AssembleTranscriptCommand(
+                        SESSION_ID, "ko", List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), List.of(chunk)));
+    }
+
+    @Test
+    void 임곗값_0_8_은_실제_강의를_지운다() {
+        // 회귀 방지 테스트다. 실제로 이 일이 일어났다 — 세션 873057758561862391 에서 강사 트랙 10개 중
+        // 4개(핵심 설명과 마무리 정리 63초)가 사라졌다. 임곗값을 다시 낮추려는 시도를 여기서 막는다.
+        AssembleTranscriptResult result = assembleInstructorTrack(new RecordingTranscriptPort(), 0.8);
+
+        assertEquals(4, result.filteredSegmentCount(), "0.921 x2, 0.864, 0.811 이 사라진다");
+        assertEquals(6, result.segmentCount());
+    }
+
+    @Test
+    void 새_기본_임곗값은_실제_강의를_지우지_않는다() {
+        // 0.98 은 관측된 실제 발화 최댓값(0.964)보다 위다. 누군가 스위치를 켜더라도 강의를 잃지 않는다.
+        RecordingTranscriptPort port = new RecordingTranscriptPort();
+
+        AssembleTranscriptResult result = assembleInstructorTrack(port, 0.98);
+
+        assertEquals(0, result.filteredSegmentCount());
+        assertEquals(10, port.only().segments().size());
+    }
+
+    // ---------------------------------------------------------------------
     // 반복 문구 환각(S15P11A105-316)
     //
     // 무음 확률로 잡히지 않는 환각을 다룬다. no_speech_prob 는 30초 창의 값이라 실제 발화와 같은

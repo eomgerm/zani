@@ -551,12 +551,13 @@ class PostClassTranscriptionIntegrationTest {
     // ---- 2-1. 무음 환각 필터(S15P11A105-306) ----
 
     @Test
-    void 무음_환각은_최종_전사에서_빠지고_체크포인트에는_남는다() {
-        // 실측 fixture. 2026-08-05 실제 세션에서 환각 "고맙습니다." 는 no_speech_prob 0.953/0.984 로,
-        // 실제 질문은 0.176 으로 나왔다. 기본 임곗값 0.8 이 그 사이를 가른다.
+    void 환각은_최종_전사에서_빠지고_체크포인트에는_남는다() {
+        // 실측 fixture. 2026-08-05 실제 세션에서 환각 "고맙습니다." 는 30초 간격으로 반복됐고 실제 질문은
+        // 그 뒤에 나왔다. 운영 기본값은 반복 문구 규칙만 켜 두므로(S15P11A105-316) 여기서도 그 경로를 탄다 —
+        // 같은 짧은 문구가 연속 3회 이상이고 과반이 무음이면 반복 전체가 빠진다.
         //
         // 이 테스트의 핵심은 두 저장소가 다른 것을 담는다는 것이다. 최종 전사는 정제된 결과이고
-        // 체크포인트는 GMS 원본이다. 원본이 함께 지워지면 임곗값을 바꿔도 되돌릴 수 없다.
+        // 체크포인트는 GMS 원본이다. 원본이 함께 지워지면 규칙을 바꿔도 되돌릴 수 없다.
         long studentId = createParticipant();
         long studentFile = insertTrackFile(studentId, TrackSource.MICROPHONE, 0);
         transcriptionPort.segments.put(
@@ -564,6 +565,7 @@ class PostClassTranscriptionIntegrationTest {
                 List.of(
                         new TranscriptSegment(15_000, 18_000, "고맙습니다.", -0.21, 0.953),
                         new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.984),
+                        new TranscriptSegment(75_000, 78_000, "고맙습니다.", -0.21, 0.976),
                         // 실제 세션의 발화 원문을 쓰지 않는다 — 확률값과 시각이 재현 대상이고 질문 내용은
                         // 판정에 쓰이지 않는다. 이유는 AssembleTranscriptServiceTest 의 같은 상수에 적었다.
                         new TranscriptSegment(
@@ -583,8 +585,8 @@ class PostClassTranscriptionIntegrationTest {
         assertTrue(document().contains("\"schemaVersion\": 1") || document().contains("\"schemaVersion\":1"));
         assertTrue(document().contains("\"partial\": false") || document().contains("\"partial\":false"));
 
-        // 체크포인트는 GMS 원본 3개를 그대로 들고 있다.
-        assertEquals(3, checkpointSegmentCount(studentFile, 0));
+        // 체크포인트는 GMS 원본 4개를 그대로 들고 있다.
+        assertEquals(4, checkpointSegmentCount(studentFile, 0));
         String checkpoint = checkpointDocument(studentFile, 0);
         assertTrue(checkpoint.contains("고맙습니다"), "체크포인트에는 원본이 남아야 한다");
         assertTrue(checkpoint.contains("0.953"), "무음 확률 원값도 남아야 한다");
@@ -600,7 +602,8 @@ class PostClassTranscriptionIntegrationTest {
                 ScriptedTranscriptionPort.key(studentFile, 0),
                 List.of(
                         new TranscriptSegment(15_000, 18_000, "고맙습니다.", -0.21, 0.953),
-                        new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.906)));
+                        new TranscriptSegment(45_000, 48_000, "고맙습니다.", -0.21, 0.906),
+                        new TranscriptSegment(75_000, 78_000, "고맙습니다.", -0.21, 0.924)));
         enqueueJob();
 
         dispatch();
@@ -608,7 +611,7 @@ class PostClassTranscriptionIntegrationTest {
         assertEquals(1, transcriptRows());
         assertEquals(0, segmentCount());
         assertEquals("ANALYZING", status());
-        assertEquals(2, checkpointSegmentCount(studentFile, 0));
+        assertEquals(3, checkpointSegmentCount(studentFile, 0));
     }
 
     // ---- 3. 다중 화자 정렬 ----
