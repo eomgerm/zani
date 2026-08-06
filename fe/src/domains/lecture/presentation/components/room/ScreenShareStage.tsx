@@ -60,9 +60,9 @@ export function ScreenShareStage({
         gap={TILE_GAP}
         // 비율이 맞지 않는 칸에서는 좌우에 여백을 남긴다 — 잘라내지 않는다(티켓 246).
         forceAspectRatio
-        // 공유 화면을 크게 고정하고 나머지를 옆줄로 보낸다.
+        // 공유 화면을 왼쪽에 크게 고정하고 참가자를 오른쪽 줄로 보낸다.
         pinnedIndex={SHARED_SCREEN_INDEX}
-        othersPosition="left"
+        othersPosition="right"
         // 2명일 때 기본값인 떠다니는 PiP 를 끈다. 진짜 Document PiP 를 따로 쓴다.
         disableFloat
         maxVisible={ITEMS_PER_PAGE}
@@ -99,7 +99,8 @@ export function ScreenShareStage({
       </GridContainer>
 
       {hasPages && (
-        <div className="absolute bottom-5 left-5 z-[8] flex items-center gap-2 rounded-full border border-room-line bg-[#0e1020cc] p-1 pl-1.5 backdrop-blur-[6px]">
+        /* 페이저는 참가자 줄 아래에 둔다 — 넘기는 대상이 그쪽이다. */
+        <div className="absolute bottom-5 right-5 z-[8] flex items-center gap-2 rounded-full border border-room-line bg-[#0e1020cc] p-1 pl-1.5 backdrop-blur-[6px]">
           <button
             type="button"
             onClick={() => setPage(Math.max(0, current - 1))}
