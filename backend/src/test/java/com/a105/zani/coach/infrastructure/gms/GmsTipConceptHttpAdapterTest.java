@@ -58,7 +58,8 @@ class GmsTipConceptHttpAdapterTest {
                 "gpt-5.4-mini",
                 Duration.ofSeconds(6),
                 "gpt-5.4-mini",
-                Duration.ofSeconds(60));
+                Duration.ofSeconds(60),
+                Duration.ofSeconds(25));
     }
 
     private TipConceptRequest request() {

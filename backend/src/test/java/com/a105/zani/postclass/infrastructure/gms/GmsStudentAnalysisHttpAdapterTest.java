@@ -221,7 +221,8 @@ class GmsStudentAnalysisHttpAdapterTest {
                 "gpt-5.4-mini",
                 Duration.ofSeconds(6),
                 "gpt-5.4-mini",
-                Duration.ofSeconds(60));
+                Duration.ofSeconds(60),
+                Duration.ofSeconds(25));
     }
 
     /** 요청에 식별자가 들어가지 않는지 보려면 세션·참여자 ID 가 실제로 흐르는 경로를 태워야 한다. */

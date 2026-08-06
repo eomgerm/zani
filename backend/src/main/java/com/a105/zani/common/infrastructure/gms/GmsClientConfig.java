@@ -72,6 +72,17 @@ public class GmsClientConfig {
         return buildClient(properties, properties.analysisTimeout(), false);
     }
 
+    /**
+     * 리포트 질의응답 전용 클라이언트(S15P11A105-259).
+     *
+     * <p>{@link #gmsAnalysisRestClient} 를 재사용하지 않는다. 그쪽 timeout 에는 "사후 배치라 8시간 SLA 안에서 기다려도 된다" 는 판단이 들어 있는데, 이쪽은 사람이
+     * 채팅창을 열어 둔 채 기다린다. 오래 매달려 있느니 실패를 보여 주고 다시 누르게 하는 편이 낫다.
+     */
+    @Bean
+    public RestClient gmsAssistantRestClient(GmsProperties properties) {
+        return buildClient(properties, properties.assistantTimeout(), false);
+    }
+
     private RestClient buildClient(GmsProperties properties, Duration readTimeout, boolean bufferRequest) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) properties.connectTimeout().toMillis());

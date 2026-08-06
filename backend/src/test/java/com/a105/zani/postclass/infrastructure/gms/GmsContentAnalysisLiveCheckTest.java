@@ -109,7 +109,8 @@ class GmsContentAnalysisLiveCheckTest {
                         "gpt-5.4-mini",
                         Duration.ofSeconds(6),
                         model,
-                        Duration.ofSeconds(60)),
+                        Duration.ofSeconds(60),
+                        Duration.ofSeconds(25)),
                 new ContentAnalysisProperties(12_000));
 
         ContentAnalysisOutcome outcome =
