@@ -1,6 +1,5 @@
 package com.a105.zani.report.application.getinstructorreport;
 
-import java.time.Instant;
 import java.util.List;
 
 /**
@@ -9,15 +8,13 @@ import java.util.List;
  * <p><b>개선 팁은 더 이상 따로 오지 않는다.</b> 250 이 {@code instructor_report_tips} 를 지우고 제안을 인사이트 안으로 접었다(V20). 화면이 "수업 개선 TIP" 카드와
  * "인사이트" 카드를 "수업 인사이트" 하나로 합쳤고, 구간 시각은 인사이트에만 있어 그쪽으로 접는 편이 붙일 컬럼이 적었다.
  *
+ * <p><b>공개 여부를 담지 않는다.</b> 공개 게이트는 공통 리포트의 게시이며 {@code InstructorReportQueryPort#sessionReportPublished} 가 따로 답한다 — 이
+ * 값에 {@code instructor_reports.published_at} 을 실어 두면 아무도 채우지 않는 컬럼으로 화면을 막게 된다.
+ *
  * @param questionCount 모델이 판단한 질문 수. 분석이 값을 내지 못했으면 {@code null} 이며 0 이 아니다
- * @param publishedAt 공개 완료 시각. {@code null} 이면 AI 가 아직 만드는 중이라 화면에 내보내지 않는다
  */
 public record InstructorReportView(
-        String overallFeedback,
-        Integer questionCount,
-        Instant publishedAt,
-        List<ScoreRecord> scores,
-        List<InsightRecord> insights) {
+        String overallFeedback, Integer questionCount, List<ScoreRecord> scores, List<InsightRecord> insights) {
 
     /**
      * 분야별 평가.

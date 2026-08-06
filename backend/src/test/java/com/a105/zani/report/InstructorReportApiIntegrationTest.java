@@ -18,6 +18,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import com.a105.zani.auth.application.port.TokenProvider;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,6 +48,7 @@ class InstructorReportApiIntegrationTest {
     private static final long LIVE_INSTRUCTOR_PARTICIPANT_ID = 9_100_932L;
 
     private static final long REPORT_ID = 9_100_940L;
+    private static final long SESSION_REPORT_ID = 9_100_950L;
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -93,6 +95,8 @@ class InstructorReportApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM group_alerts WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        jdbcTemplate.update(
+                "DELETE FROM session_reports WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
@@ -155,7 +159,7 @@ class InstructorReportApiIntegrationTest {
      */
     @Test
     void 질문_수를_저장된_판정_그대로_내린다() throws Exception {
-        insertReport(now, 184);
+        insertPublishedReport(184);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -165,7 +169,7 @@ class InstructorReportApiIntegrationTest {
     /** 아무도 질문하지 않은 것과 분석이 값을 내지 못한 것은 화면에서 다르게 보여야 한다. 0 으로 낮추면 둘이 같아진다. */
     @Test
     void 질문_수를_알_수_없으면_0_이_아니라_비운다() throws Exception {
-        insertReport(now, null);
+        insertPublishedReport(null);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -175,7 +179,7 @@ class InstructorReportApiIntegrationTest {
     /** 위와 갈려야 하는 값이다. 둘 다 비어 오면 화면이 두 사실을 구분할 수 없다. */
     @Test
     void 질문이_정말_0_건이면_0_을_지킨다() throws Exception {
-        insertReport(now, 0);
+        insertPublishedReport(0);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -220,12 +224,34 @@ class InstructorReportApiIntegrationTest {
     /** 행은 만들어졌지만 아직 공개 전이다. 중간 상태를 화면에 내보내면 반쯤 만들어진 리포트를 읽게 된다. */
     @Test
     void 공개_전이면_404() throws Exception {
+        insertSessionReportDraft();
         insertReport(null);
         insertScore("DELIVERY", 88);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REPORT_002"));
+    }
+
+    /**
+     * 이 티켓이 고친 것 — 강사 리포트 행의 {@code published_at} 이 비어 있어도 공통 리포트가 게시됐으면 보인다.
+     *
+     * <p>운영에서 그 컬럼을 채우는 코드가 없다. 공개 단계는 {@code session_reports} 에만 시각을 찍으므로(S15P11A105-304), 그 컬럼을 게이트로 두면 분석이 정상 완주해도
+     * 강사는 영구히 "아직 리포트가 만들어지지 않았어요" 를 본다. <b>이 테스트가 그 회귀를 막는다</b> — 게이트를 강사 리포트 쪽으로 되돌리면 여기서 깨진다.
+     */
+    @Test
+    void 강사_리포트_행의_공개_시각이_비어도_공통_리포트가_게시됐으면_200() throws Exception {
+        publishSessionReport();
+        insertReport(null);
+
+        report(INSTRUCTOR_ID, ENDED_SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.overallFeedback").value("전반적으로 흐름이 좋았습니다."));
+
+        assertNull(
+                jdbcTemplate.queryForObject(
+                        "SELECT published_at FROM instructor_reports WHERE id = ?", Object.class, REPORT_ID),
+                "강사 리포트 행의 공개 시각은 여전히 비어 있어야 한다 — 이 값이 노출을 정하지 않는다는 것이 이 테스트의 전제다");
     }
 
     /** 리포트는 수업이 끝난 뒤에만 만든다. 진행 중에 열면 아직 없는 것이 당연하다. */
@@ -249,25 +275,58 @@ class InstructorReportApiIntegrationTest {
         return tokenProvider.issueAccessToken(String.valueOf(memberId)).value();
     }
 
+    /** 정상 경로의 전제 — 공통 리포트가 게시됐고 강사 리포트 행이 있다. */
     private void insertPublishedReport() {
-        insertReport(now);
+        insertPublishedReport(null);
     }
 
-    private void insertReport(Instant publishedAt) {
-        insertReport(publishedAt, null);
+    private void insertPublishedReport(Integer questionCount) {
+        publishSessionReport();
+        insertReport(questionCount);
     }
 
-    /** {@code questionCount} 의 {@code null} 은 "분석이 값을 내지 못함" 이며 0 이 아니다. */
-    private void insertReport(Instant publishedAt, Integer questionCount) {
+    /**
+     * 공개 게이트는 여기다. 강사 리포트 행의 {@code published_at} 이 아니라 이 값이 화면 노출을 정한다.
+     *
+     * <p>사후 파이프라인의 공개 단계도 이 컬럼만 찍는다(S15P11A105-304). 테스트가 운영과 같은 컬럼을 쓰는 것이 이 파일의 요점이다.
+     */
+    private void publishSessionReport() {
+        insertSessionReport(now);
+    }
+
+    /** 분석은 끝나 공통 리포트가 생겼지만 아직 공개되지 않은 세션. */
+    private void insertSessionReportDraft() {
+        insertSessionReport(null);
+    }
+
+    private void insertSessionReport(Instant publishedAt) {
+        jdbcTemplate.update("DELETE FROM session_reports WHERE id = ?", SESSION_REPORT_ID);
+        jdbcTemplate.update(
+                "INSERT INTO session_reports (id, session_id, summary, published_at, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                SESSION_REPORT_ID,
+                ENDED_SESSION_ID,
+                "다익스트라 알고리즘의 동작 순서를 다뤘습니다.",
+                publishedAt == null ? null : utc(publishedAt),
+                utc(now),
+                utc(now));
+    }
+
+    /**
+     * 강사 리포트 행. {@code questionCount} 의 {@code null} 은 "분석이 값을 내지 못함" 이며 0 이 아니다.
+     *
+     * <p><b>{@code published_at} 을 인자로 받지 않는다 — 언제나 비운다.</b> 운영에서 이 컬럼을 채우는 코드가 없기 때문이다. 예전 이 파일은 이 값을 직접 넣어 200 을 받아
+     * 냈고, 그래서 "파이프라인이 완주해도 강사 리포트가 영구히 404" 라는 사실을 이 테스트가 놓쳤다. 테스트가 만들 수 있는 상태는 운영이 만들 수 있는 상태여야 한다.
+     */
+    private void insertReport(Integer questionCount) {
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
         jdbcTemplate.update(
-                "INSERT INTO instructor_reports (id, session_id, overall_feedback, question_count, published_at,"
-                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO instructor_reports (id, session_id, overall_feedback, question_count,"
+                        + " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
                 REPORT_ID,
                 ENDED_SESSION_ID,
                 "전반적으로 흐름이 좋았습니다.",
                 questionCount,
-                publishedAt == null ? null : utc(publishedAt),
                 utc(now),
                 utc(now));
     }
