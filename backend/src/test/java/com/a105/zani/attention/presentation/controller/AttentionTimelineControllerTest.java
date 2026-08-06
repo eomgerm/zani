@@ -208,9 +208,18 @@ class AttentionTimelineControllerTest {
                 .andExpect(jsonPath("$.data.sections.length()").value(0));
     }
 
+    /**
+     * 요약은 학생·강사 응답이 함께 싣는다.
+     *
+     * <p>전에는 강사 응답에서 이 필드를 뺐다. 뒤집은 이유: 요약은 학생별 값이 아니라 세션 하나의 산출물(248)이고, 강사에게는 자기 수업의 요약이라 익명 집단 응답에 담아도 개인이 드러나지 않는다.
+     * 게다가 수업 요약 카드(314)가 같은 요약을 이미 강사에게 보여주므로, 타임라인 상세에서만 감추면 한 화면의 두 곳이 다른 말을 한다.
+     *
+     * <p><b>{@code null} 과 빈 문자열을 가른다.</b> 요약이 없는 구간은 {@code null} 이어야 한다 — 빈 문자열로 내려가면 화면이 "요약이 있는데 비었다" 로 읽어 빈 문단을
+     * 그린다.
+     */
     @Test
-    @DisplayName("학생 구간에는 nullable 요약이 있고 강사 구간에는 요약 필드가 없다")
-    void only_personal_sections_contain_nullable_summaries() throws Exception {
+    @DisplayName("학생·강사 구간 모두 nullable 요약을 싣는다")
+    void both_scopes_contain_nullable_summaries() throws Exception {
         insertSection(SECTION_ID_BASE, "함수의 정의", "정의역과 공역을 설명한 구간", 0L, 150_000L);
         insertSection(SECTION_ID_BASE + 1, "합성 함수", null, 150_000L, 300_000L);
 
@@ -220,14 +229,11 @@ class AttentionTimelineControllerTest {
                 .andExpect(jsonPath("$.data.sections[0].summary").value("정의역과 공역을 설명한 구간"))
                 .andExpect(jsonPath("$.data.sections[1].summary").value(nullValue()));
 
-        String groupBody = mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
+        mockMvc.perform(get("/api/v1/sessions/{id}/reports/attention/group", ENDED_SESSION_ID)
                         .header("Authorization", "Bearer " + tokenOf(INSTRUCTOR_ID)))
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        assertThat(groupBody).doesNotContain("summary");
+                .andExpect(jsonPath("$.data.sections[0].summary").value("정의역과 공역을 설명한 구간"))
+                .andExpect(jsonPath("$.data.sections[1].summary").value(nullValue()));
     }
 
     @Test

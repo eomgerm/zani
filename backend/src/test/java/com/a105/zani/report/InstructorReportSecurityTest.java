@@ -53,6 +53,7 @@ class InstructorReportSecurityTest {
     private static final long OTHER_PARTICIPANT_ID = 9_200_932L;
 
     private static final long REPORT_ID = 9_200_940L;
+    private static final long SESSION_REPORT_ID = 9_200_950L;
 
     /** 응답에서 이 값들이 보이면 학생을 짚어낼 수 있게 된 것이다. */
     private static final Set<Long> STUDENT_IDENTIFIERS = Set.of(STUDENT_ID, STUDENT_PARTICIPANT_ID);
@@ -101,6 +102,7 @@ class InstructorReportSecurityTest {
         jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
+        jdbcTemplate.update("DELETE FROM session_reports WHERE session_id IN (?, ?)", SESSION_ID, OTHER_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE session_id IN (?, ?)", SESSION_ID, OTHER_SESSION_ID);
         jdbcTemplate.update("DELETE FROM sessions WHERE id IN (?, ?)", SESSION_ID, OTHER_SESSION_ID);
@@ -206,14 +208,27 @@ class InstructorReportSecurityTest {
         return tokenProvider.issueAccessToken(String.valueOf(memberId)).value();
     }
 
+    /**
+     * 공개된 강사 리포트.
+     *
+     * <p>공개 시각은 공통 리포트({@code session_reports})에만 찍는다 — 운영의 공개 단계가 그렇게 하고, 조회도 그 값을 게이트로 본다. 강사 리포트 행의
+     * {@code published_at} 은 아무도 채우지 않으므로 여기서도 비워 둔다.
+     */
     private void insertPublishedReport() {
         jdbcTemplate.update(
-                "INSERT INTO instructor_reports (id, session_id, overall_feedback, published_at, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO session_reports (id, session_id, summary, published_at, created_at, updated_at)"
+                        + " VALUES (?, ?, '보안 테스트 수업 요약', ?, ?, ?)",
+                SESSION_REPORT_ID,
+                SESSION_ID,
+                utc(now),
+                utc(now),
+                utc(now));
+        jdbcTemplate.update(
+                "INSERT INTO instructor_reports (id, session_id, overall_feedback, created_at, updated_at)"
+                        + " VALUES (?, ?, ?, ?, ?)",
                 REPORT_ID,
                 SESSION_ID,
                 "전반적으로 흐름이 좋았습니다.",
-                utc(now),
                 utc(now),
                 utc(now));
         jdbcTemplate.update(

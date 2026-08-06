@@ -94,7 +94,9 @@ class GmsPostClassTranscriptionAdapterTest {
                 Duration.ofMinutes(5),
                 MAX_UPLOAD_BYTES,
                 2,
-                false);
+                false,
+                true,
+                0.8);
     }
 
     private Fixture fixture() {

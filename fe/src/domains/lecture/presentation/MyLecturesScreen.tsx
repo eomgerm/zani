@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CalendarIcon, ListIcon, PictoInbox, SearchIcon, SortIcon } from "@/shared/ui";
 import type { SessionListRequester } from "@/domains/lecture/infrastructure/sessionListApi";
+import type { MyLecture } from "./myLectures";
 import { useMyLectures } from "./useMyLectures";
 import { LectureCard } from "./components/LectureCard";
 import { LectureCalendar } from "./components/LectureCalendar";
@@ -22,6 +23,18 @@ function viewCls(active: boolean) {
 }
 
 /**
+ * 정렬 키. 날짜 문자열(`date`)은 시:분이 잘려 있어 같은 날 수업끼리 순서가 정해지지 않는다.
+ *
+ * <p>시각 값으로 비교하는 이유: 서버가 `Instant` 를 내리면서 소수점 자릿수가 항목마다 달라질 수 있어(`...:00.500Z` vs `...:00Z`) 문자열 사전순은 뒤집힌다.
+ *
+ * <p>읽을 수 없는 값은 목록에서 빼지 않고 가장 오래된 것으로 둔다 — 시각을 모른다고 수업이 없었던 것은 아니다.
+ */
+function startedMs(l: MyLecture): number {
+  const at = new Date(l.startedAt).getTime();
+  return Number.isNaN(at) ? -Infinity : at;
+}
+
+/**
  * SC-05 내 강의실. 참여/진행 강의를 검색·정렬·리스트/캘린더로 확인한다.
  * 검색·정렬·보기 전환은 받아 온 목록 위에서 화면이 처리한다(서버는 페이지네이션 없이 전체를 준다).
  *
@@ -35,15 +48,18 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
 
   const { lectures, loading, error } = useMyLectures(requestList);
 
-  const mine = useMemo(() => lectures.filter((l) => l.role === tab), [lectures, tab]);
+  // 정렬은 목록을 만들 때 한 번만 한다. 리스트와 캘린더가 같은 배열을 받아 순서가 갈리지 않는다.
+  const mine = useMemo(
+    () => lectures.filter((l) => l.role === tab).sort((a, b) => startedMs(b) - startedMs(a)),
+    [lectures, tab],
+  );
 
+  // 캘린더는 늘 최신순이라 mine 을 그대로 쓰고, 리스트만 토글에 따라 뒤집는다.
   const visible = useMemo(() => {
     const filtered = mine.filter((l) =>
       l.title.toLowerCase().includes(search.trim().toLowerCase()),
     );
-    return [...filtered].sort((a, b) =>
-      sortDesc ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date),
-    );
+    return sortDesc ? filtered : filtered.reverse();
   }, [mine, search, sortDesc]);
 
   return (
@@ -74,10 +90,12 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
           />
         </div>
 
+        {/* 라벨이 "최신순"(3자)과 "오래된순"(4자)을 오가므로 폭을 긴 쪽에 맞춰 잡아 둔다.
+            폭이 라벨을 따라가면 전환할 때마다 왼쪽 검색 필드가 좌우로 밀린다. */}
         <button
           type="button"
           onClick={() => setSortDesc((v) => !v)}
-          className="z-btn h-10 gap-[7px] rounded-xl border border-line-muted bg-surface px-3.5 text-[13px] font-bold text-ink-muted"
+          className="z-btn h-10 min-w-28 gap-[7px] rounded-xl border border-line-muted bg-surface px-3.5 text-[13px] font-bold text-ink-muted"
         >
           <SortIcon />
           {sortDesc ? "최신순" : "오래된순"}

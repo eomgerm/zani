@@ -51,6 +51,8 @@ COACHING_TRIGGER_COOLDOWN=PT10M
 COACHING_TRIGGER_THRESHOLD=0.30
 RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media
 RECORDING_THUMBNAIL_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/thumbnail
+POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true
+POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.8
 NOTIFICATION_EMAIL_ENABLED=false
 NOTIFICATION_EMAIL_FROM=example@gmail.com
 NOTIFICATION_APP_BASE_URL=https://i15a105.p.ssafy.io
@@ -69,6 +71,17 @@ The default `COACHING_TRIGGER_THRESHOLD=0.30` already triggers for one flagged
 student in a one-to-three-student test; lower it only when the intended scenario
 needs one flagged student out of a larger denominator. Restore the cooldown to
 `PT10M` after testing.
+
+`POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED` drops post-class transcript
+segments whose `no_speech_prob` reaches
+`POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD`, which removes the silence
+hallucinations Whisper emits over quiet microphones (S15P11A105-306). It is on by
+default and it is a heuristic, so it is exposed here to be switchable in
+production: set the flag to `false` to restore the previous behaviour from the
+next assembly onward, without a redeploy of the image. The GMS response and the
+chunk checkpoints are never filtered, so raising or lowering the threshold and
+re-assembling changes the stored transcript without calling GMS again. The
+threshold must stay within `0.0`~`1.0`; the backend refuses to start otherwise.
 
 ## Required host directories
 
