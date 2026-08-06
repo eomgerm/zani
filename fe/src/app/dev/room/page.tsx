@@ -204,12 +204,22 @@ export default function RoomMockupPage() {
               <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
                 {/* PiP 창이 열리면 공유 화면째로 그쪽으로 옮긴다 — 실제 강의실과 같은 규칙 */}
                 {pip.pipWindow === null ? (
-                  <ScreenShareStage
-                    participants={participants}
-                    attachScreen={null}
-                    sharerLabel="내 화면"
-                    localParticipantId={ME}
-                  />
+                  view === "speaker" ? (
+                    /* 공유 중에도 보기 전환은 살아 있다. 발표자 보기에서는 옆줄 없이 자료만 크게 본다. */
+                    <SpeakerStage
+                      participants={participants}
+                      attachScreen={null}
+                      sharerLabel="내 화면"
+                      localParticipantId={ME}
+                    />
+                  ) : (
+                    <ScreenShareStage
+                      participants={participants}
+                      attachScreen={null}
+                      sharerLabel="내 화면"
+                      localParticipantId={ME}
+                    />
+                  )
                 ) : (
                   <div className="flex flex-1 items-center justify-center text-[13px] text-panel-muted">
                     PiP 창에서 보는 중입니다
