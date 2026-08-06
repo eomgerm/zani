@@ -38,11 +38,13 @@ public class HmacMediaAccessAdapter implements MediaAccessPort {
 
     private final byte[] masterKey;
     private final String urlTemplate;
+    private final String thumbnailUrlTemplate;
     private final java.time.Duration ttl;
     private final Clock clock;
 
     public HmacMediaAccessAdapter(RecordingProperties properties, Clock clock) {
         this.urlTemplate = properties.mediaUrlTemplate();
+        this.thumbnailUrlTemplate = properties.thumbnailUrlTemplate();
         this.ttl = properties.mediaUrlTtl();
         this.clock = clock;
         this.masterKey = new byte[SECRET_BYTES];
@@ -51,9 +53,18 @@ public class HmacMediaAccessAdapter implements MediaAccessPort {
 
     @Override
     public IssuedMediaUrl issue(long sessionId) {
+        return issueFor(sessionId, urlTemplate);
+    }
+
+    @Override
+    public IssuedMediaUrl issueThumbnail(long sessionId) {
+        return issueFor(sessionId, thumbnailUrlTemplate);
+    }
+
+    private IssuedMediaUrl issueFor(long sessionId, String template) {
         // 초 단위로 끊는다. 주소에 담기는 값과 서명 대상이 같아야 하는데, 나노초까지 남기면 왕복하면서 표현이 달라진다.
         Instant expiresAt = clock.instant().plus(ttl).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
-        String url = urlTemplate.replace("{sessionId}", String.valueOf(sessionId)) + "?expires="
+        String url = template.replace("{sessionId}", String.valueOf(sessionId)) + "?expires="
                 + expiresAt.getEpochSecond() + "&token=" + sign(sessionId, expiresAt);
         return new IssuedMediaUrl(url, expiresAt);
     }

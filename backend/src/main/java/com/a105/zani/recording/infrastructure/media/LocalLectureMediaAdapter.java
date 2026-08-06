@@ -27,6 +27,9 @@ public class LocalLectureMediaAdapter implements LectureMediaPort {
     /** 병합 워커가 내놓는 최종 산출물의 세션 루트 기준 상대 경로. */
     private static final String LECTURE_FILE = "final/lecture.mp4";
 
+    /** 병합 워커가 최종 검증 직후 뽑는 대표 프레임 중 1/2 지점(가이드 §6). 카드 썸네일이 그대로 쓴다. */
+    private static final String THUMBNAIL_FILE = "final/frames/frame-50.png";
+
     private final Path mediaRoot;
 
     public LocalLectureMediaAdapter(RecordingProperties properties) {
@@ -35,11 +38,20 @@ public class LocalLectureMediaAdapter implements LectureMediaPort {
 
     @Override
     public Optional<Path> findLectureRecording(long sessionId) {
+        return findReadableFile(sessionId, LECTURE_FILE);
+    }
+
+    @Override
+    public Optional<Path> findLectureThumbnail(long sessionId) {
+        return findReadableFile(sessionId, THUMBNAIL_FILE);
+    }
+
+    private Optional<Path> findReadableFile(long sessionId, String relativePath) {
         Path file;
         try {
             file = mediaRoot
                     .resolve(String.valueOf(sessionId))
-                    .resolve(LECTURE_FILE)
+                    .resolve(relativePath)
                     .normalize();
         } catch (InvalidPathException invalid) {
             return Optional.empty();

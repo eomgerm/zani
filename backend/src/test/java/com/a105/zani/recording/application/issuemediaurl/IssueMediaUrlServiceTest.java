@@ -105,6 +105,11 @@ class IssueMediaUrlServiceTest {
         public Optional<Path> findLectureRecording(long sessionId) {
             return Optional.ofNullable(file);
         }
+
+        @Override
+        public Optional<Path> findLectureThumbnail(long sessionId) {
+            throw new UnsupportedOperationException("녹화 발급 경로는 썸네일을 찾지 않는다");
+        }
     }
 
     private static final class StubMediaAccess implements MediaAccessPort {
@@ -115,6 +120,11 @@ class IssueMediaUrlServiceTest {
         public IssuedMediaUrl issue(long sessionId) {
             issued++;
             return new IssuedMediaUrl("https://zani.example/media?token=t", EXPIRES_AT);
+        }
+
+        @Override
+        public IssuedMediaUrl issueThumbnail(long sessionId) {
+            throw new UnsupportedOperationException("녹화 발급 경로는 썸네일 주소를 만들지 않는다");
         }
 
         @Override

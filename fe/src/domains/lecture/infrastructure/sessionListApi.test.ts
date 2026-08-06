@@ -64,6 +64,30 @@ describe("requestSessionList", () => {
 
     expect(sessions[0].sessionId).toBe("12345");
   });
+
+  /** 썸네일 하나 때문에 목록 전체가 거절되면 배포 순서가 계약이 된다. 이 필드를 모르는 서버도 받아야 한다. */
+  it("thumbnailUrl 이 없거나 null 이어도 목록을 읽는다", async () => {
+    respondWith([full, { ...full, sessionId: "101", thumbnailUrl: null }]);
+
+    const sessions = await requestSessionList("token");
+
+    expect(sessions).toHaveLength(2);
+  });
+
+  it("thumbnailUrl 주소는 그대로 옮긴다", async () => {
+    respondWith([{ ...full, thumbnailUrl: "https://zani.example/api/v1/sessions/100/thumbnail?expires=1&token=t" }]);
+
+    const sessions = await requestSessionList("token");
+
+    expect(sessions[0].thumbnailUrl).toContain("/thumbnail");
+  });
+
+  /** 모양이 어긋난 값은 다른 필드처럼 전체 거절이다 — 원인이 서버 변경인지 이쪽 버그인지 가릴 수 있어야 한다. */
+  it("thumbnailUrl 타입이 어긋나면 전체를 거절한다", async () => {
+    respondWith([{ ...full, thumbnailUrl: 7 }]);
+
+    await expect(requestSessionList("token")).rejects.toBeInstanceOf(SessionListRequestError);
+  });
 });
 
 describe("requestSessionIdentities", () => {

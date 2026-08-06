@@ -16,33 +16,26 @@ import com.a105.zani.recording.application.port.MediaAccessPort;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class StreamMediaServiceTest {
+/** 재생 경로({@code StreamMediaServiceTest})와 같은 규칙이다 — 서명이 곧 권한이고, 실패는 존재를 누설하지 않는다. */
+class StreamThumbnailServiceTest {
 
     private static final long SESSION_ID = 100L;
     private static final Instant EXPIRES_AT = Instant.parse("2026-08-04T10:05:00Z");
-    private static final Path FILE = Path.of("/srv/zani/recordings/100/final/lecture.mp4");
+    private static final Path FILE = Path.of("/srv/zani/recordings/100/final/frames/frame-50.png");
 
     private final StubMediaAccess mediaAccess = new StubMediaAccess();
     private final StubLectureMedia lectureMedia = new StubLectureMedia();
 
-    private final StreamMediaService service = new StreamMediaService(mediaAccess, lectureMedia);
+    private final StreamThumbnailService service = new StreamThumbnailService(mediaAccess, lectureMedia);
 
     private Path locate(Instant expiresAt, String token) {
         return service.locate(new StreamMediaQuery(SESSION_ID, expiresAt, token));
     }
 
     @Test
-    @DisplayName("자격이 유효하면 파일 위치를 준다")
-    void a_valid_credential_resolves_the_file() {
+    @DisplayName("자격이 유효하면 썸네일 위치를 준다")
+    void a_valid_credential_resolves_the_thumbnail() {
         assertThat(locate(EXPIRES_AT, "good")).isEqualTo(FILE);
-    }
-
-    @Test
-    @DisplayName("서명이 맞지 않으면 401 이다")
-    void a_forged_credential_is_rejected() {
-        mediaAccess.valid = false;
-
-        assertThatThrownBy(() -> locate(EXPIRES_AT, "forged")).isInstanceOf(InvalidMediaAccessException.class);
     }
 
     @Test
@@ -63,8 +56,8 @@ class StreamMediaServiceTest {
     }
 
     @Test
-    @DisplayName("자격은 맞는데 파일이 사라졌으면 404 다")
-    void a_deleted_recording_is_not_ready() {
+    @DisplayName("자격은 맞는데 썸네일이 없으면 404 다 — 추출은 best-effort 라 실제로 생기는 상황이다")
+    void a_missing_thumbnail_is_not_ready() {
         lectureMedia.file = null;
 
         assertThatThrownBy(() -> locate(EXPIRES_AT, "good")).isInstanceOf(MediaNotReadyException.class);
@@ -97,13 +90,13 @@ class StreamMediaServiceTest {
 
         @Override
         public Optional<Path> findLectureRecording(long sessionId) {
-            lookups++;
-            return Optional.ofNullable(file);
+            throw new UnsupportedOperationException("썸네일 경로는 녹화를 찾지 않는다");
         }
 
         @Override
         public Optional<Path> findLectureThumbnail(long sessionId) {
-            throw new UnsupportedOperationException("녹화 재생 경로는 썸네일을 찾지 않는다");
+            lookups++;
+            return Optional.ofNullable(file);
         }
     }
 }

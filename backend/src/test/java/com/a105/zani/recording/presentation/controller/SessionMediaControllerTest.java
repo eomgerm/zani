@@ -17,6 +17,7 @@ import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlQuery;
 import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlUseCase;
 import com.a105.zani.recording.application.streammedia.StreamMediaQuery;
 import com.a105.zani.recording.application.streammedia.StreamMediaUseCase;
+import com.a105.zani.recording.application.streammedia.StreamThumbnailUseCase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,20 +40,28 @@ class SessionMediaControllerTest {
 
     private MockMvc mockMvc;
     private StreamMediaQuery received;
+    private StreamMediaQuery thumbnailReceived;
 
     @BeforeEach
     void setUp() throws IOException {
         Path file = dir.resolve("lecture.mp4");
         Files.writeString(file, BODY);
+        Path thumbnail = dir.resolve("frame-50.png");
+        Files.writeString(thumbnail, "png");
 
         StreamMediaUseCase streamMedia = query -> {
             received = query;
             return file;
         };
+        StreamThumbnailUseCase streamThumbnail = query -> {
+            thumbnailReceived = query;
+            return thumbnail;
+        };
         IssueMediaUrlUseCase issueMediaUrl = (IssueMediaUrlQuery query) -> {
             throw new UnsupportedOperationException("이 테스트는 재생 경로만 본다");
         };
-        mockMvc = MockMvcBuilders.standaloneSetup(new SessionMediaController(issueMediaUrl, streamMedia))
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new SessionMediaController(issueMediaUrl, streamMedia, streamThumbnail))
                 .build();
     }
 
@@ -88,5 +97,23 @@ class SessionMediaControllerTest {
         assertThat(received.sessionId()).isEqualTo(SESSION_ID);
         assertThat(received.expiresAt()).isEqualTo(Instant.ofEpochSecond(1785840300L));
         assertThat(received.token()).isEqualTo("signature");
+    }
+
+    /**
+     * 썸네일은 발급마다 주소가 달라 브라우저 캐시가 항상 맞지는 않지만, 같은 주소로 다시 그리는 동안의 재요청은 사적 캐시가 막아야 한다 — 헤더가 빠지면 목록을 그릴 때마다 이미지 전체를 다시 받는다.
+     */
+    @Test
+    @DisplayName("썸네일은 PNG 와 사적 캐시 허용으로 내려간다")
+    void a_thumbnail_is_png_and_privately_cacheable() throws Exception {
+        mockMvc.perform(get("/api/v1/sessions/{id}/thumbnail", SESSION_ID)
+                        .param("expires", "1785840300")
+                        .param("token", "signature"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "image/png"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "max-age=86400, private"));
+
+        assertThat(thumbnailReceived.sessionId()).isEqualTo(SESSION_ID);
+        assertThat(thumbnailReceived.expiresAt()).isEqualTo(Instant.ofEpochSecond(1785840300L));
+        assertThat(thumbnailReceived.token()).isEqualTo("signature");
     }
 }

@@ -33,9 +33,15 @@ public record SessionSummaryResponse(
         @Schema(description = "리포트 처리 상태") SessionReportStatus reportStatus,
 
         @Schema(description = "카드에서 바로 강의실로 들어갈 수 있는지. 진행 중이면서 내 참가자 행이 있어야 true 다.", example = "true")
-        boolean rejoinable) {
+        boolean rejoinable,
 
-    public static SessionSummaryResponse from(SessionSummaryResult result) {
+        @Schema(
+                description =
+                        "카드 썸네일(최종 녹화 1/2 지점 프레임) 접근 주소. 서명이 들어 있어 그대로 <img src> 에 넣는다." + " 병합 전이거나 썸네일이 없으면 null 이다.",
+                example = "https://zani.example/api/v1/sessions/9876543210123456/thumbnail?expires=1785840300&token=…")
+        String thumbnailUrl) {
+
+    public static SessionSummaryResponse from(SessionSummaryResult result, String thumbnailUrl) {
         return new SessionSummaryResponse(
                 String.valueOf(result.sessionId()),
                 result.inviteCode(),
@@ -47,6 +53,7 @@ public record SessionSummaryResponse(
                 result.endedAt(),
                 result.participantCount(),
                 result.reportStatus(),
-                result.rejoinable());
+                result.rejoinable(),
+                thumbnailUrl);
     }
 }

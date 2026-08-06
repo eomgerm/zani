@@ -15,6 +15,7 @@ const lecture = (over: Partial<MyLecture> = {}): MyLecture => ({
   students: 12,
   instructor: "박서준",
   rejoinable: false,
+  thumbnailUrl: null,
   ...over,
 });
 

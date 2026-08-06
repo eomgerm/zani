@@ -28,7 +28,8 @@ class HmacMediaAccessAdapterTest {
                         "/srv/zani/recordings",
                         "/srv/zani/recordings",
                         TTL,
-                        "https://zani.example/api/v1/sessions/{sessionId}/media"),
+                        "https://zani.example/api/v1/sessions/{sessionId}/media",
+                        "https://zani.example/api/v1/sessions/{sessionId}/thumbnail"),
                 clock);
     }
 
@@ -44,6 +45,18 @@ class HmacMediaAccessAdapterTest {
         assertThat(issued.expiresAt()).isEqualTo(NOW.plus(TTL));
         assertThat(issued.url())
                 .startsWith("https://zani.example/api/v1/sessions/100/media?expires=")
+                .contains("&token=");
+        assertThat(adapter.matches(SESSION_ID, issued.expiresAt(), tokenOf(issued.url())))
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("썸네일 주소는 경로만 다르고 자격은 같다 — 같은 검증을 통과한다")
+    void a_thumbnail_url_shares_the_credential() {
+        IssuedMediaUrl issued = adapter.issueThumbnail(SESSION_ID);
+
+        assertThat(issued.url())
+                .startsWith("https://zani.example/api/v1/sessions/100/thumbnail?expires=")
                 .contains("&token=");
         assertThat(adapter.matches(SESSION_ID, issued.expiresAt(), tokenOf(issued.url())))
                 .isTrue();

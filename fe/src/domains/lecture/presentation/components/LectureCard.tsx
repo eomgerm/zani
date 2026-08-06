@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { PictoCalendarMuted, PictoClockMuted } from "@/shared/ui";
 import { type MyLecture } from "../myLectures";
@@ -9,27 +12,43 @@ function hrefFor(l: MyLecture) {
 }
 
 /**
- * 썸네일. 실제 화면 캡처가 없어 시안처럼 수업 자료를 닮은 판을 얹는다.
+ * 썸네일. 최종 녹화의 1/2 지점 프레임(목록 응답의 thumbnailUrl)을 깔고,
+ * 주소가 없으면(진행 중·병합 전·추출 실패) 시안처럼 수업 자료를 닮은 판을 얹는다.
  * 상태 필은 우상단, LIVE 표시는 좌하단이다.
  */
 function Thumb({ lecture }: { lecture: MyLecture }) {
   const si = statusInfo(lecture.status);
+  // 서명 주소는 짧게 살아서, 화면을 오래 두고 다시 그리면 만료된 채 로드될 수 있다. 깨진 이미지 아이콘 대신 자리 그림으로 되돌린다.
+  const [broken, setBroken] = useState(false);
+  const thumbnailSrc = broken ? null : lecture.thumbnailUrl;
 
   return (
     <div className="relative aspect-video overflow-hidden rounded-[18px] bg-[#1f2433]">
-      <div
-        aria-hidden="true"
-        className="absolute left-[8%] top-[10%] h-[80%] w-[84%] overflow-hidden rounded-lg bg-surface px-3.5 py-3"
-      >
-        <div className="mb-2.5 h-2.5 w-[52%] rounded-[5px] bg-[#22261f]" />
-        <div className="mb-1.5 h-1.5 w-[94%] rounded bg-[#e4e8e5]" />
-        <div className="mb-1.5 h-1.5 w-[86%] rounded bg-[#e4e8e5]" />
-        <div className="mb-2.5 h-1.5 w-[64%] rounded bg-[#e4e8e5]" />
-        <div className="flex gap-2">
-          <div className="h-[34px] w-[38%] rounded-md bg-[#dff0e7]" />
-          <div className="h-[34px] w-[30%] rounded-md bg-[#f0f2f0]" />
+      {thumbnailSrc !== null ? (
+        // 서명이 든 단기 주소라 next/image 를 쓰지 않는다 — 최적화 캐시의 키가 주소인데 주소가 발급마다 달라
+        // 캐시가 항상 빗나가고, 호스트도 배포마다 갈려 remotePatterns 를 좇아야 한다.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={thumbnailSrc}
+          alt=""
+          onError={() => setBroken(true)}
+          className="absolute inset-0 size-full object-cover"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="absolute left-[8%] top-[10%] h-[80%] w-[84%] overflow-hidden rounded-lg bg-surface px-3.5 py-3"
+        >
+          <div className="mb-2.5 h-2.5 w-[52%] rounded-[5px] bg-[#22261f]" />
+          <div className="mb-1.5 h-1.5 w-[94%] rounded bg-[#e4e8e5]" />
+          <div className="mb-1.5 h-1.5 w-[86%] rounded bg-[#e4e8e5]" />
+          <div className="mb-2.5 h-1.5 w-[64%] rounded bg-[#e4e8e5]" />
+          <div className="flex gap-2">
+            <div className="h-[34px] w-[38%] rounded-md bg-[#dff0e7]" />
+            <div className="h-[34px] w-[30%] rounded-md bg-[#f0f2f0]" />
+          </div>
         </div>
-      </div>
+      )}
       <div className="absolute right-3.5 top-3.5">
         <span className="z-pill bg-surface px-3 py-[5px] text-xs text-[#3a3f3c] shadow-[0_2px_8px_rgba(20,40,30,.12)]">
           <span className="size-[7px] rounded-full" style={{ background: si.dot }} />

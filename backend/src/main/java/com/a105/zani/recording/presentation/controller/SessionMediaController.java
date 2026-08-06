@@ -1,6 +1,7 @@
 package com.a105.zani.recording.presentation.controller;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +27,7 @@ import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlQuery;
 import com.a105.zani.recording.application.issuemediaurl.IssueMediaUrlUseCase;
 import com.a105.zani.recording.application.streammedia.StreamMediaQuery;
 import com.a105.zani.recording.application.streammedia.StreamMediaUseCase;
+import com.a105.zani.recording.application.streammedia.StreamThumbnailUseCase;
 import com.a105.zani.recording.presentation.response.MediaUrlResponse;
 
 @Tag(name = "녹화 미디어", description = "권한을 검증한 뒤 EC2 로컬에 저장된 수업 녹화를 단기 주소로 제공한다")
@@ -35,6 +38,7 @@ public class SessionMediaController {
 
     private final IssueMediaUrlUseCase issueMediaUrlUseCase;
     private final StreamMediaUseCase streamMediaUseCase;
+    private final StreamThumbnailUseCase streamThumbnailUseCase;
 
     @Operation(summary = "녹화 접근 주소 발급", description = """
                     이 수업에 실제로 참여한 사람에게 녹화 재생 주소를 발급한다. 강사와 학생 모두 공통 녹화를 열람한다.
@@ -83,5 +87,35 @@ public class SessionMediaController {
             @Parameter(description = "세션·만료 시각에 묶인 서명") @RequestParam("token") String token) {
         Path file = streamMediaUseCase.locate(new StreamMediaQuery(sessionId, Instant.ofEpochSecond(expires), token));
         return ResponseEntity.ok().contentType(MediaType.valueOf("video/mp4")).body(new FileSystemResource(file));
+    }
+
+    /**
+     * 내 강의실 카드가 쓰는 수업 썸네일(최종 녹화의 1/2 지점 프레임)을 내보낸다.
+     *
+     * <p>재생 경로와 같은 이유로 인증 필터를 지나지 않는다 — {@code <img>} 역시 Authorization 헤더를 싣지 못해 자격이 주소 안에 들어 있다.
+     *
+     * <p>파일은 병합이 끝나는 순간 확정되어 다시 바뀌지 않으므로 사적 캐시를 허용한다. 발급마다 주소가 달라져 캐시가 항상 맞지는 않지만, 같은 주소로 다시 그리는 동안의 재요청은 막아 준다.
+     */
+    @Operation(summary = "수업 썸네일", description = """
+                    목록 응답의 `thumbnailUrl` 로 받은 주소다. 최종 녹화의 1/2 지점 프레임(PNG)을 내려주며, 그대로 `<img src>` 에 넣는다.
+
+                    이 경로는 로그인 세션이 아니라 주소에 담긴 서명으로 권한을 확인한다. 서명이 맞지 않거나 유효 기간이
+                    지나면 401 이며, 목록을 다시 조회해 새 주소를 받아야 한다.""")
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "PNG 이미지"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "자격이 위조되었거나 만료됨"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "썸네일이 아직 준비되지 않음")
+    })
+    @GetMapping("/{sessionId}/thumbnail")
+    public ResponseEntity<Resource> streamThumbnail(
+            @Parameter(description = "세션 ID") @PathVariable Long sessionId,
+            @Parameter(description = "주소 만료 시각(epoch seconds)") @RequestParam("expires") long expires,
+            @Parameter(description = "세션·만료 시각에 묶인 서명") @RequestParam("token") String token) {
+        Path file =
+                streamThumbnailUseCase.locate(new StreamMediaQuery(sessionId, Instant.ofEpochSecond(expires), token));
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_PNG)
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePrivate())
+                .body(new FileSystemResource(file));
     }
 }

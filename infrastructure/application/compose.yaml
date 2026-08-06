@@ -122,6 +122,7 @@ services:
       # 117 재생 API가 최종 lecture.mp4 를 읽는 별칭. 인증·Range 처리는 117이 소유한다.
       RECORDING_MEDIA_ROOT: /recordings
       RECORDING_MEDIA_URL_TEMPLATE: "${RECORDING_MEDIA_URL_TEMPLATE:-https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media}"
+      RECORDING_THUMBNAIL_URL_TEMPLATE: "${RECORDING_THUMBNAIL_URL_TEMPLATE:-https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/thumbnail}"
       NOTIFICATION_EMAIL_ENABLED: "${NOTIFICATION_EMAIL_ENABLED:-false}"
       NOTIFICATION_EMAIL_FROM: "${NOTIFICATION_EMAIL_FROM:-}"
       NOTIFICATION_APP_BASE_URL: "${NOTIFICATION_APP_BASE_URL:-https://i15a105.p.ssafy.io}"
