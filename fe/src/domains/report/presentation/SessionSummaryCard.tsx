@@ -47,7 +47,9 @@ const SectionRow = ({
   const range = `${formatOffset(section.startSeconds)}–${formatOffset(section.endSeconds)}`;
 
   return (
-    <li className="pl-1">
+    // 드래그 앵커가 이 좌표를 읽는다. 선택 지점에서 위로 올라가 가장 가까운 [data-section-start-ms] 를
+    // 찾는 방식이라 API 를 더 부르지 않고도 "어느 구간을 짚었는지" 가 나온다.
+    <li className="pl-1" data-section-start-ms={section.startOffsetMs}>
       <div className="mb-1 flex items-baseline gap-2">
         {section.title.length > 0 && (
           <span className="font-bold text-[16.5px] text-ink-muted">
