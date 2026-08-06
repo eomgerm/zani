@@ -60,14 +60,27 @@ class ClassInsightTest {
     }
 
     @Test
-    @DisplayName("제목·근거·제안은 필수다")
+    @DisplayName("제목과 근거는 필수다")
     void rejects_missing_text() {
         assertThatThrownBy(() -> ClassInsight.of("  ", CONTENT, SUGGESTION, null, null))
                 .isInstanceOf(InvalidInstructorReportException.class);
         assertThatThrownBy(() -> ClassInsight.of(TITLE, null, SUGGESTION, null, null))
                 .isInstanceOf(InvalidInstructorReportException.class);
-        assertThatThrownBy(() -> ClassInsight.of(TITLE, CONTENT, "", null, null))
-                .isInstanceOf(InvalidInstructorReportException.class);
+    }
+
+    /**
+     * 유지 인사이트("이번 수업에서 잘 작동한 지점")에는 덧붙일 행동이 없다. 제안을 강제하면 모델이 없는 개선을 지어내고, 프롬프트가 "빈 문자열로 두라" 고 시키는데 여기서 거절하면 강사 리포트가 통째로
+     * 버려진다 — 실제로 그렇게 0건이 됐다(S15P11A105-332).
+     */
+    @Test
+    @DisplayName("제안은 비어 있어도 된다 — 유지 인사이트는 덧붙일 행동이 없다")
+    void accepts_a_blank_suggestion() {
+        assertThat(ClassInsight.of(TITLE, CONTENT, "", null, null).suggestion()).isEmpty();
+        assertThat(ClassInsight.of(TITLE, CONTENT, "   ", null, null).suggestion())
+                .isEmpty();
+        // null 도 빈 문자열로 굳힌다. 화면이 길이로 TIP 줄 표시를 정하므로 null 을 흘리지 않는다.
+        assertThat(ClassInsight.of(TITLE, CONTENT, null, null, null).suggestion())
+                .isEmpty();
     }
 
     @Test
