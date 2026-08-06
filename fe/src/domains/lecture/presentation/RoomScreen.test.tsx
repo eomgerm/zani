@@ -215,6 +215,7 @@ import {
   COACH_TIP_SHARE_PLACEMENT,
   COACH_TIP_STAGE_PLACEMENT,
 } from "./components/room/CoachTipCard";
+import { ITEMS_PER_PAGE } from "./components/room/roomGridLayout";
 
 const asStudent = () => {
   roomParticipants.participants = [
@@ -304,6 +305,18 @@ describe("RoomScreen active speaker", () => {
   });
 });
 
+/**
+ * 발표자 보기는 배치기의 spotlight 모드라 무대에 오른 한 명만 그린다.
+ *
+ * <p>예전에는 이름 칩("발표: 김도현")으로 누가 올랐는지 봤는데, 이제 무대에 남은 타일이 곧 그
+ * 사람이다. 타일이 하나뿐인 것까지 함께 확인해야 spotlight 가 실제로 걸렸다는 뜻이 된다.
+ */
+const expectOnStage = (name: string) => {
+  const tiles = screen.getAllByRole("group", { name: /카메라/ });
+  expect(tiles).toHaveLength(1);
+  expect(tiles[0]).toHaveAccessibleName(new RegExp(name));
+};
+
 describe("RoomScreen speaker view stage", () => {
   const withSpeakingStudent = (studentSpeaking: boolean) => {
     roomParticipants.participants = [
@@ -338,27 +351,27 @@ describe("RoomScreen speaker view stage", () => {
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
 
     // 학생이 스테이지에 오르면 "강의: ... 선생님" 대신 "발표: 이름"으로 표기한다.
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
   });
 
   it("keeps the last speaker on stage after the speech ends", () => {
     withSpeakingStudent(true);
     const view = render(<RoomScreen sessionId="123" />);
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
 
     // 침묵할 때마다 강사로 되돌리면 화면이 널뛴다 — 새 발화자가 나올 때까지 유지한다.
     withSpeakingStudent(false);
     view.rerender(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
   });
 
   it("does not steal the stage while the current speaker is still talking", () => {
     withSpeakingStudent(true);
     const view = render(<RoomScreen sessionId="123" />);
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
 
     // 배열 순서상 앞선(로컬) 강사가 동시에 말해도, 말하는 중인 스테이지는 뺏기지 않는다(!126 봇 리뷰).
     roomParticipants.participants = roomParticipants.participants.map((p) =>
@@ -366,21 +379,21 @@ describe("RoomScreen speaker view stage", () => {
     );
     view.rerender(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
   });
 
   it("hands the stage over once the current speaker goes silent", () => {
     withSpeakingStudent(true);
     const view = render(<RoomScreen sessionId="123" />);
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
-    expect(screen.getByText("발표: 김도현")).toBeVisible();
+    expectOnStage("김도현");
 
     roomParticipants.participants = roomParticipants.participants.map((p) =>
       p.id === "host" ? { ...p, speaking: true } : { ...p, speaking: false },
     );
     view.rerender(<RoomScreen sessionId="123" />);
 
-    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+    expectOnStage("박서준");
   });
 
   it("shows the instructor on stage while nobody has spoken yet", () => {
@@ -389,7 +402,7 @@ describe("RoomScreen speaker view stage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
 
-    expect(screen.getByText("강의: 박서준 선생님")).toBeVisible();
+    expectOnStage("박서준");
   });
 });
 
@@ -503,11 +516,12 @@ describe("RoomScreen view toggle", () => {
     render(<RoomScreen sessionId="123" />);
 
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
-    expect(screen.queryByRole("group", { name: /카메라 켜짐/ })).not.toBeInTheDocument();
+    // spotlight 는 무대에 오른 한 명만 남긴다.
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /전체 보기/ }));
 
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(3);
   });
 
   it("keeps showing tiles after the panel opens and closes", () => {
@@ -517,7 +531,8 @@ describe("RoomScreen view toggle", () => {
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
 
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
+    // 페이지당 인원은 roomGridLayout 이 정한다. 패널을 여닫아도 그 수가 유지돼야 한다.
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(ITEMS_PER_PAGE);
   });
 });
 
@@ -538,8 +553,8 @@ describe("RoomScreen controls", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.getByTestId("screen-share-video")).toBeVisible();
-    // 구글미트식 우측 상단 강의방 미니 레이아웃이 공유 화면 위에 함께 뜬다.
-    expect(screen.getByTestId("screen-share-roster")).toBeVisible();
+    // 공유 화면과 참가자가 한 배치기 안에 함께 들어간다 — 공유 화면이 고정되고 참가자는 옆줄이다.
+    expect(screen.getByRole("group", { name: /^공유 화면과 참가자 \d+명$/ })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "화면 공유 중지" }));
 
@@ -855,6 +870,25 @@ describe("RoomScreen coaching wiring", () => {
     expect(cards[0].className).toContain(COACH_TIP_PIP_PLACEMENT);
   });
 
+  /**
+   * 미니 창도 본 화면과 같은 배치기로 그린다.
+   *
+   * <p>PiP 는 사용자가 크기를 바꿀 수 있는 창이라 세로 1열 목록이면 넓혀도 옆이 빈다. 배치기가
+   * 붙었는지는 그것이 붙이는 이름(`참가자 N명`)으로 판별한다 — 세로 목록(`RoomRoster`)은
+   * `강의방 참가자` 라는 다른 이름을 쓴다.
+   */
+  it("draws the mini window roster with the shared grid layout", () => {
+    asInstructor();
+    screenShare.active = true;
+    screenShare.sharing = true;
+    const miniWindow = openPipWindow();
+    render(<RoomScreen sessionId="123" />);
+
+    const grid = within(miniWindow).getByRole("group", { name: /^참가자 \d+명$/ });
+    expect(miniWindow.contains(grid)).toBe(true);
+    expect(within(miniWindow).queryByRole("group", { name: "강의방 참가자" })).toBeNull();
+  });
+
   it("closes the tip from inside the mini window", () => {
     asInstructor();
     screenShare.active = true;
@@ -1036,7 +1070,8 @@ describe("RoomScreen attention wiring", () => {
     render(<RoomScreen sessionId="123" />);
     fireEvent.click(screen.getByRole("button", { name: /발표자 보기/ }));
 
-    expect(screen.getByTestId("speaker-video")).toBeInTheDocument();
+    // 무대에 오른 사람의 타일이 곧 그 사람의 영상 자리다.
+    expect(screen.getByTestId("participant-video-host-1")).toBeInTheDocument();
   });
   /**
    * 제목은 미디어 토큰 응답으로 오므로 연결이 끝나기 전에는 알 수 없다. 그 동안 최종값처럼 보이는 문구를 그리면

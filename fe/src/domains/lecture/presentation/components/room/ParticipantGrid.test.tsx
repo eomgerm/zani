@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGrid } from "@thangdevalone/meeting-grid-layout-core";
 
 import { ParticipantGrid } from "./ParticipantGrid";
+import { ITEMS_PER_PAGE } from "./roomGridLayout";
 
 const participant = (id: number) => ({
   id: `participant-${id}`,
@@ -55,36 +56,38 @@ describe("ParticipantGrid", () => {
     expect(screen.getByRole("group", { name: "참가자 18명" })).toBeVisible();
   });
 
-  it("renders exactly 12 tiles per page and pages through the rest", () => {
+  /** 18명이면 8·8·2 로 세 페이지다. 페이지당 인원은 roomGridLayout 이 한 곳에서 정한다. */
+  it(`renders exactly ${ITEMS_PER_PAGE} tiles per page and pages through the rest`, () => {
     render(<ParticipantGrid participants={many(18)} />);
 
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
-    expect(screen.getByText("1/2")).toBeVisible();
-    // 1페이지는 앞에서 12명.
-    expect(screen.getByRole("group", { name: /참가자 11,/ })).toBeVisible();
-    expect(screen.queryByRole("group", { name: /참가자 12,/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(ITEMS_PER_PAGE);
+    expect(screen.getByText("1/3")).toBeVisible();
+    // 1페이지는 앞에서 8명.
+    expect(screen.getByRole("group", { name: /참가자 7,/ })).toBeVisible();
+    expect(screen.queryByRole("group", { name: /참가자 8,/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
 
-    expect(screen.getByText("2/2")).toBeVisible();
-    expect(screen.getByRole("group", { name: /참가자 12,/ })).toBeVisible();
+    expect(screen.getByText("2/3")).toBeVisible();
+    expect(screen.getByRole("group", { name: /참가자 8,/ })).toBeVisible();
   });
 
   it("shows only the remaining participants on a short last page", () => {
     render(<ParticipantGrid participants={many(18)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
+    fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
 
     // 한 사람당 타일 하나다. 남는 칸을 앞 참가자로 채우면 인원을 오해하게 된다.
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(6);
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(2);
     expect(screen.queryByRole("group", { name: /참가자 0,/ })).not.toBeInTheDocument();
   });
 
   it("hides the pager when everyone fits on one page", () => {
-    render(<ParticipantGrid participants={many(12)} />);
+    render(<ParticipantGrid participants={many(ITEMS_PER_PAGE)} />);
 
     expect(screen.queryByRole("button", { name: "다음 페이지" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(ITEMS_PER_PAGE);
   });
 
   it("disables paging at both ends", () => {
@@ -92,6 +95,7 @@ describe("ParticipantGrid", () => {
 
     expect(screen.getByRole("button", { name: "이전 페이지" })).toBeDisabled();
 
+    fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
     fireEvent.click(screen.getByRole("button", { name: "다음 페이지" }));
 
     expect(screen.getByRole("button", { name: "다음 페이지" })).toBeDisabled();

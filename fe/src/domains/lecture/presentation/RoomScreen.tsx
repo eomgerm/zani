@@ -11,7 +11,6 @@ import {
   MicIcon,
   MicOffIcon,
   PeopleIcon,
-  PictoBars,
   ScreenShareIcon,
 } from "@/shared/ui";
 import {
@@ -38,8 +37,11 @@ import {
 } from "@/domains/interaction";
 import { useAuth } from "@/domains/auth";
 import { endSession, EndSessionRequestError } from "../infrastructure/endSessionApi";
+import { InviteStudentsPrompt } from "./components/room/InviteStudentsPrompt";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
-import { RoomRoster } from "./components/room/RoomRoster";
+import { PipStage } from "./components/room/PipStage";
+import { ScreenShareStage } from "./components/room/ScreenShareStage";
+import { SpeakerStage } from "./components/room/SpeakerStage";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { useParticipantVideos } from "./useParticipantVideos";
 import { useRemoteAudio } from "./useRemoteAudio";
@@ -60,6 +62,8 @@ import {
 import { useCoachingStatus } from "./useCoachingStatus";
 import { useCoachTipCard } from "./useCoachTipCard";
 import { useDocumentPictureInPicture } from "./useDocumentPictureInPicture";
+import { useInviteUrl } from "./useInviteUrl";
+import { useLastSpeaker } from "./useLastSpeaker";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useScreenShare } from "./useScreenShare";
 import { useSessionPresence } from "./useSessionPresence";
@@ -107,11 +111,11 @@ const UNDERSTANDING_CHECK_FEEDBACK: Record<UnderstandingCheckResponse, string> =
   MISSED: "응답을 보냈어요.",
 };
 
-/** PiP 미니 창 하단 컨트롤 버튼(원형). 끔 상태(마이크·카메라)는 danger, 그 외는 room-control. */
+/** PiP 창 하단 컨트롤 버튼(원형). 끔 상태(마이크·카메라)는 danger, 그 외는 room-control. */
 const pipBtn =
   "flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/10 text-white transition-[filter] hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50";
 
-/** 미니 창(Picture-in-Picture) 팝아웃 아이콘. */
+/** PiP 창(Picture-in-Picture) 팝아웃 아이콘. */
 function PopOutIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -212,6 +216,10 @@ function RoomScreenContent({
   // 마이크·카메라는 로컬 state 가 아니라 실제 publish 상태를 쓴다. 손들기도 이제 서버 확정 값이다.
   const me = { mic: media.microphoneEnabled, cam: media.cameraEnabled, hand: hands.myHandRaised };
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
+  // 강사에게만 뜨는 초대 안내. 닫기 전까지 남는다 — 링크를 아직 못 뿌렸는데 안내가 먼저 사라지면
+  // 학생이 왜 안 들어오는지 알 방법이 없다.
+  const [inviteDismissed, setInviteDismissed] = useState(false);
+  const inviteUrl = useInviteUrl(sessionId);
   // 화면 공유는 실제 LiveKit 트랙 + 서버 활성 슬롯을 쓴다. 로컬 로 토글하던 시연 상태를 대체한다.
   const {
     sharing: isSharing,
@@ -221,7 +229,7 @@ function RoomScreenContent({
     attachScreen,
     toggle: toggleScreenShare,
   } = useScreenShare(sessionId);
-  // 공유 중 강의방을 브라우저 밖 다른 앱 위에도 띄우는 미니 창(구글미트식).
+  // 공유 중 강의방을 브라우저 밖 다른 앱 위에도 띄우는 PiP 창(구글미트식).
   const {
     supported: pipSupported,
     pipWindow,
@@ -323,7 +331,7 @@ function RoomScreenContent({
     [],
   );
 
-  // 내가 공유를 시작하면(화면 선택까지 끝나 트랙이 올라온 뒤) 미니 창을 자동으로 띄운다.
+  // 내가 공유를 시작하면(화면 선택까지 끝나 트랙이 올라온 뒤) PiP 창을 자동으로 띄운다.
   // 화면 선택 직후라 사용자 제스처가 살아 있어 대개 허용된다. 창을 직접 닫으면 isSharing 은 그대로라 다시 뜨지 않는다.
   useEffect(() => {
     if (isSharing && pipSupported) {
@@ -331,14 +339,14 @@ function RoomScreenContent({
     }
   }, [isSharing, pipSupported, openPip]);
 
-  // 공유가 끝나면 떠 있는 미니 창을 닫는다.
+  // 공유가 끝나면 떠 있는 PiP 창을 닫는다.
   useEffect(() => {
     if (!shareActive) {
       closePip();
     }
   }, [shareActive, closePip]);
 
-  // 공유 중 다른 탭·창으로 전환하면(document.hidden) 미니 창을 띄운다. 사용자 제스처가 없으면 브라우저가 막을 수 있어
+  // 공유 중 다른 탭·창으로 전환하면(document.hidden) PiP 창을 띄운다. 사용자 제스처가 없으면 브라우저가 막을 수 있어
   // best-effort 로 시도하고, 팝아웃 버튼이 확실한 경로다.
   useEffect(() => {
     if (!shareActive || !pipSupported) {
@@ -389,23 +397,9 @@ function RoomScreenContent({
   // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
   // 자리만 잡고 기다리지 않고 기본 문구를 쓴다. 그러지 않으면 스켈레톤이 영원히 뛴다.
   const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
-  const host = tileParticipants.find((participant) => participant.role === "instructor");
-  const hostName = host?.name ?? list.find((p) => p.host)?.name ?? "";
-  // 발표자 보기 스테이지. 마지막 발화자를 유지하다가 새 발화자가 나오면 교체한다 — 침묵할 때마다
-  // 강사로 되돌리면 화면이 널뛴다. 아직 아무도 말하지 않았으면 강사를 보여준다(피드백 반영).
-  const speakingNow = tileParticipants.find((participant) => participant.speaking);
-  const [stageParticipantId, setStageParticipantId] = useState<string | null>(null);
-  // 스테이지 주인이 아직 말하는 중이면 유지한다. find 는 배열 순서(로컬 우선)라, 이 가드가 없으면
-  // 동시 발화 때 순서상 앞선 참가자가 말하던 사람의 화면을 뺏는다(!126 봇 리뷰 지적).
-  const stageStillSpeaking = tileParticipants.some(
-    (participant) => participant.id === stageParticipantId && participant.speaking,
-  );
-  if (!stageStillSpeaking && speakingNow !== undefined && speakingNow.id !== stageParticipantId) {
-    setStageParticipantId(speakingNow.id);
-  }
-  const stageParticipant =
-    tileParticipants.find((participant) => participant.id === stageParticipantId) ?? host;
-  const stageName = stageParticipant?.name ?? hostName;
+  // 직전 발화자는 보기를 전환하는 이 자리에서 붙든다. SpeakerStage 안에 두면 갤러리로 갔다 오는
+  // 순간 언마운트되면서 기억이 사라져, 돌아올 때마다 강사부터 다시 시작한다.
+  const lastSpeakerId = useLastSpeaker(tileParticipants);
   // 공유 중인 참가자의 표시 이름. LiveKit 참가자 목록에서 identity 로 찾는다(내 공유면 오버레이가 "내 화면"으로 덮는다).
   const activeSharerName =
     tileParticipants.find((participant) => participant.id === shareActiveIdentity)?.name ?? "참가자";
@@ -522,6 +516,11 @@ function RoomScreenContent({
       />
       {/* 최대 수업 시간 종료 임박 안내(서버 자동 종료와 짝) */}
       <SessionTimeWarning expiresAt={expiresAt ?? sessionExpiresAt ?? undefined} />
+      {/* 초대 안내(강사). 역할이 확정된 뒤에만 띄운다 — 확정 전에는 isInstructor 가 시연용 true 라
+          학생에게도 잠깐 뜬다. */}
+      {isConfirmedInstructor && !inviteDismissed && (
+        <InviteStudentsPrompt inviteUrl={inviteUrl} onClose={() => setInviteDismissed(true)} />
+      )}
       {/* 상단 바 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="shrink-0 text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
@@ -577,58 +576,67 @@ function RoomScreenContent({
             {shareActive ? (
               /* 화면 공유 오버레이 — 갤러리/발표자 보기를 모두 덮는다. 로컬·원격 트랙을 그대로 붙인다. */
               <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
-                <div className="relative m-3.5 flex flex-1 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e2740] bg-[#0f1626]">
-                  <video
-                    ref={attachScreen}
-                    autoPlay
-                    muted
-                    playsInline
-                    data-testid="screen-share-video"
-                    className="size-full object-contain"
-                  />
-                  <div className="z-stage-chip absolute left-4 top-4 flex items-center gap-1.5 font-bold">
-                    <span className="size-2 rounded-full bg-primary" />
-                    {isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
-                  </div>
-                </div>
-                {/* 공유 중 강의방 미니 레이아웃(구글미트식). PiP 창이 열려 있으면 인앱 대신 그 창으로 옮긴다(아래 portal).
-                    같은 타일을 두 곳에 동시에 그리지 않는다 — 카메라 트랙은 identity당 요소 하나에만 붙기 때문. */}
-                {galleryParticipants.length > 0 && !pipWindow && (
-                  <div className="absolute right-5 top-5 z-[8] flex flex-col items-end gap-2">
-                    {pipSupported && (
-                      <button
-                        type="button"
-                        onClick={() => void openPip()}
-                        title="미니 창으로 보기"
-                        aria-label="미니 창으로 보기"
-                        className="flex size-8 items-center justify-center rounded-lg border border-room-line bg-[#0e1020cc] text-panel-soft backdrop-blur-[6px] transition-colors hover:bg-room-control"
-                      >
-                        <PopOutIcon />
-                      </button>
-                    )}
-                    <RoomRoster
+                {/*
+                  공유 화면을 크게 고정하고 참가자를 왼쪽 줄에 세운다.
+
+                  PiP 창이 열려 있으면 공유 화면도 참가자도 그 창으로 통째로 옮긴다. 트랙은 요소
+                  하나에만 붙어 두 곳에 동시에 그릴 수 없고, PiP 창을 여는 상황 자체가 이 창이 공유
+                  자료 뒤로 가려진 때라 여기 남겨 봐야 아무도 보지 않는다.
+                */}
+                {pipWindow === null ? (
+                  view === "speaker" ? (
+                    /* 발표자 보기에서는 공유 화면 하나만 남긴다 — 옆줄 없이 자료를 가장 크게 본다. */
+                    <SpeakerStage
                       participants={galleryParticipants}
+                      attachScreen={attachScreen}
+                      sharerLabel={isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
                       videoRefFor={participantVideos.refFor}
                       localParticipantId={localParticipantId}
-                      testId="screen-share-roster"
-                      className="flex max-h-[calc(100%-140px)] w-[150px] flex-col gap-2 overflow-y-auto rounded-2xl border border-room-line bg-[#0e1020cc] p-2 shadow-[0_12px_32px_rgba(0,0,0,.45)] backdrop-blur-[6px] sm:w-[184px]"
+                      lastSpeakerId={lastSpeakerId}
                     />
+                  ) : (
+                    <ScreenShareStage
+                      participants={galleryParticipants}
+                      attachScreen={attachScreen}
+                      sharerLabel={isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
+                      videoRefFor={participantVideos.refFor}
+                      localParticipantId={localParticipantId}
+                    />
+                  )
+                ) : (
+                  <div className="flex flex-1 items-center justify-center text-[13px] text-panel-muted">
+                    PiP 창에서 보는 중입니다
                   </div>
                 )}
-                {/* 미니 창이 열려 있으면 강의방을 그 창(다른 앱 위에도 뜨는)으로 그린다. */}
+                {pipSupported && !pipWindow && (
+                  <button
+                    type="button"
+                    onClick={() => void openPip()}
+                    title="PiP 창으로 보기"
+                    aria-label="PiP 창으로 보기"
+                    className="absolute right-5 top-5 z-[8] flex size-8 items-center justify-center rounded-lg border border-room-line bg-[#0e1020cc] text-panel-soft backdrop-blur-[6px] transition-colors hover:bg-room-control"
+                  >
+                    <PopOutIcon />
+                  </button>
+                )}
+                {/* PiP 창이 열려 있으면 강의방을 그 창(다른 앱 위에도 뜨는)으로 그린다. */}
                 {pipWindow &&
                   galleryParticipants.length > 0 &&
                   createPortal(
                     <div className="relative flex h-screen flex-col bg-stage">
-                      <div className="flex-1 overflow-y-auto p-2">
-                        <RoomRoster
+                      {/*
+                        본 화면과 같은 배치기를 쓰되 설정이 다르다 — 작은 창이라 비율 여백 대신 칸을
+                        채우고, 페이지 대신 상한만 둔다. 공유 중이면 공유 화면이 위, 참가자가 아래다.
+                      */}
+                      <div className="min-h-0 flex-1 p-2">
+                        <PipStage
                           participants={galleryParticipants}
+                          attachScreen={attachScreen}
                           videoRefFor={participantVideos.refFor}
                           localParticipantId={localParticipantId}
-                          className="flex flex-col gap-2"
                         />
                       </div>
-                      {/* 미니 창 컨트롤: 마이크·카메라·공유중지·나가기. onClick 은 portal 이라도 React 트리로 전달돼 동작한다. */}
+                      {/* PiP 창 컨트롤: 마이크·카메라·공유중지·나가기. onClick 은 portal 이라도 React 트리로 전달돼 동작한다. */}
                       <div className="flex shrink-0 items-center justify-center gap-2 border-t border-room-line bg-[#0e1020] p-2">
                         <button
                           type="button"
@@ -718,54 +726,14 @@ function RoomScreenContent({
                 mutingIdentity={moderation.mutingIdentity}
               />
             ) : (
-              <>
-                <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
-                  <div className="flex size-[150px] items-center justify-center rounded-full bg-[linear-gradient(145deg,#12b585,#0b8a63)] text-[54px] font-extrabold text-[#eafff6] shadow-[0_0_0_12px_#10b98112,0_24px_60px_#10b98130]">
-                    {stageName.charAt(0)}
-                  </div>
-                </div>
-                {/*
-                  스테이지(마지막 발화자, 없으면 강사) 카메라. 아바타 뒤에 두어 영상이 위에 그려지고,
-                  카메라가 꺼져 있으면 감춰 아바타가 보이게 한다. 요소를 항상 마운트해 둬야 트랙 부착
-                  훅이 언제 동기화해도 붙는다(갤러리 타일과 같은 이유). 내 화면일 때만 거울처럼 뒤집는다.
-                */}
-                {stageParticipant !== undefined && (
-                  <video
-                    key={stageParticipant.id}
-                    ref={participantVideos.refFor(stageParticipant.id)}
-                    autoPlay
-                    muted
-                    playsInline
-                    data-testid="speaker-video"
-                    className={`absolute inset-0 size-full object-contain ${
-                      stageParticipant.id === localParticipantId ? "scale-x-[-1]" : ""
-                    } ${stageParticipant.cameraEnabled ? "" : "invisible"}`}
-                  />
-                )}
-                {/* 이름은 LiveKit 참가자 목록에서 온다. 아직 없을 때 칩을 그리면 "강의:  선생님" 처럼 빈칸이 남는다. */}
-                <div className="pointer-events-none absolute inset-0">
-                  {stageName === "" ? (
-                    <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                      강의자를 기다리고 있어요
-                    </div>
-                  ) : (
-                    <>
-                      <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                        {stageParticipant?.role === "instructor"
-                          ? `강의: ${stageName} 선생님`
-                          : `발표: ${stageName}`}
-                      </div>
-                      <div className="z-stage-chip absolute bottom-4 left-4 flex items-center gap-1.5 font-bold">
-                        <PictoBars size={12} />
-                        <span>
-                          {stageName}
-                          {stageParticipant?.role === "instructor" ? " 선생님" : ""}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </>
+              /* 발표자 보기 — 배치기의 spotlight 모드. 누구를 띄울지는 spotlightIndex 가 정한다:
+                 공유 화면 → 말하는 사람 → 강사 → 목록의 첫 사람. */
+              <SpeakerStage
+                participants={galleryParticipants}
+                videoRefFor={participantVideos.refFor}
+                localParticipantId={localParticipantId}
+                lastSpeakerId={lastSpeakerId}
+              />
             )}
 
             {/*
@@ -780,7 +748,7 @@ function RoomScreenContent({
               실제 집계와 무관했다(86).
             */}
             {/*
-              미니 창이 떠 있으면 그쪽에만 그린다(아래 portal). 그 창이 열렸다는 것은 메인 창이
+              PiP 창이 떠 있으면 그쪽에만 그린다(아래 portal). 그 창이 열렸다는 것은 메인 창이
               공유 자료 뒤로 가려졌다는 뜻이고, 닫아야 사라지는 카드를 두 곳에 띄우면 강사가
               어느 쪽을 닫아야 하는지 알 수 없다.
             */}
