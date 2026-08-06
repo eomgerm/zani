@@ -39,7 +39,8 @@ import {
 import { useAuth } from "@/domains/auth";
 import { endSession, EndSessionRequestError } from "../infrastructure/endSessionApi";
 import { ParticipantGrid } from "./components/room/ParticipantGrid";
-import { RoomRoster } from "./components/room/RoomRoster";
+import { PipStage } from "./components/room/PipStage";
+import { ScreenShareStage } from "./components/room/ScreenShareStage";
 import { useRoomParticipants } from "./useRoomParticipants";
 import { useParticipantVideos } from "./useParticipantVideos";
 import { useRemoteAudio } from "./useRemoteAudio";
@@ -83,14 +84,6 @@ type RoomScreenProps = {
  * 잠깐 보여준 뒤 내보내기까지의 시간(ms). 강사 본인은 사후 메모로 곧바로 이동하므로 해당 없다.
  */
 const ENDED_KICK_DELAY_MS = 4_000;
-
-/**
- * 화면 공유 중 인앱 스트립에 한 번에 보여줄 인원.
- *
- * <p>스트립은 150~184px 폭이라 인원이 늘수록 타일이 계속 작아진다. 넷을 넘어가면 얼굴을 알아볼
- * 수 없어, 다 그리는 대신 남은 인원 수만 마지막 타일에 얹는다. 전체 목록은 참여자 패널이 갖고 있다.
- */
-const ROSTER_MAX_VISIBLE = 4;
 
 
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
@@ -585,47 +578,36 @@ function RoomScreenContent({
             {shareActive ? (
               /* 화면 공유 오버레이 — 갤러리/발표자 보기를 모두 덮는다. 로컬·원격 트랙을 그대로 붙인다. */
               <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
-                <div className="relative m-3.5 flex flex-1 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e2740] bg-[#0f1626]">
-                  <video
-                    ref={attachScreen}
-                    autoPlay
-                    muted
-                    playsInline
-                    data-testid="screen-share-video"
-                    className="size-full object-contain"
+                {/*
+                  공유 화면을 크게 고정하고 참가자를 왼쪽 줄에 세운다.
+
+                  미니 창이 열려 있으면 공유 화면도 참가자도 그 창으로 통째로 옮긴다. 트랙은 요소
+                  하나에만 붙어 두 곳에 동시에 그릴 수 없고, 미니 창을 여는 상황 자체가 이 창이 공유
+                  자료 뒤로 가려진 때라 여기 남겨 봐야 아무도 보지 않는다.
+                */}
+                {pipWindow === null ? (
+                  <ScreenShareStage
+                    participants={galleryParticipants}
+                    attachScreen={attachScreen}
+                    sharerLabel={isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
+                    videoRefFor={participantVideos.refFor}
+                    localParticipantId={localParticipantId}
                   />
-                  <div className="z-stage-chip absolute left-4 top-4 flex items-center gap-1.5 font-bold">
-                    <span className="size-2 rounded-full bg-primary" />
-                    {isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
+                ) : (
+                  <div className="flex flex-1 items-center justify-center text-[13px] text-panel-muted">
+                    미니 창에서 보는 중입니다
                   </div>
-                </div>
-                {/* 공유 중 강의방 미니 레이아웃(구글미트식). PiP 창이 열려 있으면 인앱 대신 그 창으로 옮긴다(아래 portal).
-                    같은 타일을 두 곳에 동시에 그리지 않는다 — 카메라 트랙은 identity당 요소 하나에만 붙기 때문. */}
-                {galleryParticipants.length > 0 && !pipWindow && (
-                  <div className="absolute right-5 top-5 z-[8] flex flex-col items-end gap-2">
-                    {pipSupported && (
-                      <button
-                        type="button"
-                        onClick={() => void openPip()}
-                        title="미니 창으로 보기"
-                        aria-label="미니 창으로 보기"
-                        className="flex size-8 items-center justify-center rounded-lg border border-room-line bg-[#0e1020cc] text-panel-soft backdrop-blur-[6px] transition-colors hover:bg-room-control"
-                      >
-                        <PopOutIcon />
-                      </button>
-                    )}
-                    <RoomRoster
-                      participants={galleryParticipants}
-                      videoRefFor={participantVideos.refFor}
-                      localParticipantId={localParticipantId}
-                      testId="screen-share-roster"
-                      // 배치기가 칸을 나누려면 높이가 확정돼야 한다. 예전에는 내용만큼 늘어나다
-                      // 넘치면 스크롤했는데, 그러면 스트립이 공유 화면을 얼마나 가릴지 알 수 없다.
-                      className="h-[calc(100%-140px)] w-[150px] rounded-2xl border border-room-line bg-[#0e1020cc] p-2 shadow-[0_12px_32px_rgba(0,0,0,.45)] backdrop-blur-[6px] sm:w-[184px]"
-                      // 좁은 스트립이라 다 그리면 얼굴이 안 보인다. 넘치는 인원은 수만 얹는다.
-                      maxVisible={ROSTER_MAX_VISIBLE}
-                    />
-                  </div>
+                )}
+                {pipSupported && !pipWindow && (
+                  <button
+                    type="button"
+                    onClick={() => void openPip()}
+                    title="미니 창으로 보기"
+                    aria-label="미니 창으로 보기"
+                    className="absolute right-5 top-5 z-[8] flex size-8 items-center justify-center rounded-lg border border-room-line bg-[#0e1020cc] text-panel-soft backdrop-blur-[6px] transition-colors hover:bg-room-control"
+                  >
+                    <PopOutIcon />
+                  </button>
                 )}
                 {/* 미니 창이 열려 있으면 강의방을 그 창(다른 앱 위에도 뜨는)으로 그린다. */}
                 {pipWindow &&
@@ -633,18 +615,15 @@ function RoomScreenContent({
                   createPortal(
                     <div className="relative flex h-screen flex-col bg-stage">
                       {/*
-                        본 화면과 같은 배치기를 쓴다. PiP 는 사용자가 크기를 바꿀 수 있는 창인데
-                        세로 1열 목록이면 넓혀도 타일만 커지고 옆이 빈다. 배치기는 창 크기를 실측해
-                        넓히면 열을 늘린다(6명 기준 260px 에서 2×3, 640px 에서 3×2).
-
-                        relative 는 페이저가 기댈 자리다 — 배치기가 자식을 절대 배치하므로
-                        위치 기준이 되는 조상이 있어야 한다.
+                        본 화면과 같은 배치기를 쓰되 설정이 다르다 — 작은 창이라 비율 여백 대신 칸을
+                        채우고, 페이지 대신 상한만 둔다. 공유 중이면 공유 화면이 위, 참가자가 아래다.
                       */}
-                      <div className="relative min-h-0 flex-1">
-                        <ParticipantGrid
+                      <div className="min-h-0 flex-1 p-2">
+                        <PipStage
                           participants={galleryParticipants}
-                          currentParticipantId={localParticipantId ?? undefined}
+                          {...(shareActive ? { attachScreen } : {})}
                           videoRefFor={participantVideos.refFor}
+                          localParticipantId={localParticipantId}
                         />
                       </div>
                       {/* 미니 창 컨트롤: 마이크·카메라·공유중지·나가기. onClick 은 portal 이라도 React 트리로 전달돼 동작한다. */}

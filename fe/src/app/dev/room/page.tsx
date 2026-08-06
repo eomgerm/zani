@@ -6,7 +6,8 @@ import { ChatIcon, PeopleIcon } from "@/shared/ui";
 import { ParticipantGrid } from "@/domains/lecture/presentation/components/room/ParticipantGrid";
 import type { ParticipantTileData } from "@/domains/lecture/presentation/components/room/ParticipantTile";
 import { RoomControlBar } from "@/domains/lecture/presentation/components/room/RoomControlBar";
-import { RoomRoster } from "@/domains/lecture/presentation/components/room/RoomRoster";
+import { PipStage } from "@/domains/lecture/presentation/components/room/PipStage";
+import { ScreenShareStage } from "@/domains/lecture/presentation/components/room/ScreenShareStage";
 import { RoomSidePanel } from "@/domains/lecture/presentation/components/room/RoomSidePanel";
 import { useDocumentPictureInPicture } from "@/domains/lecture/presentation/useDocumentPictureInPicture";
 
@@ -34,9 +35,6 @@ const COLORS = [
 
 /** 내 identity 자리. 이 사람만 음소거 버튼이 붙지 않는다(자기 자신은 대상이 아니다). */
 const ME = "mock-0";
-
-/** 화면 공유 중 인앱 스트립에 한 번에 보여줄 인원. RoomScreen 과 같은 값이다. */
-const ROSTER_MAX_VISIBLE = 4;
 
 /** 상단 바 토글. RoomScreen 의 PanelToggle 과 같은 모양이다. */
 function PanelToggle({
@@ -194,23 +192,17 @@ export default function RoomMockupPage() {
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-[18px] bg-stage">
             {sharing ? (
               <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
-                <div className="relative m-3.5 flex flex-1 items-center justify-center overflow-hidden rounded-[14px] border border-[#1e2740] bg-[#0f1626] text-panel-muted">
-                  공유 화면 자리
-                  <div className="z-stage-chip absolute left-4 top-4 flex items-center gap-1.5 font-bold">
-                    <span className="size-2 rounded-full bg-primary" />내 화면
-                  </div>
-                </div>
-                {/* 미니 창이 열려 있으면 인앱 스트립을 그리지 않는다 — 실제 강의실과 같은 규칙 */}
-                {!pip.pipWindow && (
-                  <div className="absolute right-5 top-5 z-[8] flex flex-col items-end gap-2">
-                    <RoomRoster
-                      participants={participants}
-                      videoRefFor={() => null}
-                      localParticipantId={ME}
-                      testId="screen-share-roster"
-                      maxVisible={ROSTER_MAX_VISIBLE}
-                      className="h-[calc(100%-140px)] w-[150px] rounded-2xl border border-room-line bg-[#0e1020cc] p-2 shadow-[0_12px_32px_rgba(0,0,0,.45)] backdrop-blur-[6px] sm:w-[184px]"
-                    />
+                {/* 미니 창이 열리면 공유 화면째로 그쪽으로 옮긴다 — 실제 강의실과 같은 규칙 */}
+                {pip.pipWindow === null ? (
+                  <ScreenShareStage
+                    participants={participants}
+                    attachScreen={null}
+                    sharerLabel="내 화면"
+                    localParticipantId={ME}
+                  />
+                ) : (
+                  <div className="flex flex-1 items-center justify-center text-[13px] text-panel-muted">
+                    미니 창에서 보는 중입니다
                   </div>
                 )}
               </div>
@@ -281,11 +273,11 @@ export default function RoomMockupPage() {
       {pip.pipWindow &&
         createPortal(
           <div className="relative flex h-screen flex-col bg-stage">
-            <div className="relative min-h-0 flex-1">
-              <ParticipantGrid
+            <div className="min-h-0 flex-1 p-2">
+              <PipStage
                 participants={participants}
-                currentParticipantId={ME}
-                videoRefFor={undefined}
+                {...(sharing ? { attachScreen: null } : {})}
+                localParticipantId={ME}
               />
             </div>
             <div className="flex shrink-0 items-center justify-center gap-2 border-t border-room-line bg-[#0e1020] p-2 text-[12px] text-panel-muted">

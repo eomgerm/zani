@@ -215,6 +215,7 @@ import {
   COACH_TIP_SHARE_PLACEMENT,
   COACH_TIP_STAGE_PLACEMENT,
 } from "./components/room/CoachTipCard";
+import { ITEMS_PER_PAGE } from "./components/room/roomGridLayout";
 
 const asStudent = () => {
   roomParticipants.participants = [
@@ -517,7 +518,8 @@ describe("RoomScreen view toggle", () => {
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
     fireEvent.click(screen.getByRole("button", { name: "참여자" }));
 
-    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(12);
+    // 페이지당 인원은 roomGridLayout 이 정한다. 패널을 여닫아도 그 수가 유지돼야 한다.
+    expect(screen.getAllByRole("group", { name: /카메라 켜짐/ })).toHaveLength(ITEMS_PER_PAGE);
   });
 });
 
@@ -538,8 +540,8 @@ describe("RoomScreen controls", () => {
     render(<RoomScreen sessionId="123" />);
 
     expect(screen.getByTestId("screen-share-video")).toBeVisible();
-    // 구글미트식 우측 상단 강의방 미니 레이아웃이 공유 화면 위에 함께 뜬다.
-    expect(screen.getByTestId("screen-share-roster")).toBeVisible();
+    // 공유 화면과 참가자가 한 배치기 안에 함께 들어간다 — 공유 화면이 고정되고 참가자는 옆줄이다.
+    expect(screen.getByRole("group", { name: /^공유 화면과 참가자 \d+명$/ })).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "화면 공유 중지" }));
 

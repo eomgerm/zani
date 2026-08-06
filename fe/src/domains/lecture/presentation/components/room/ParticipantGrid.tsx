@@ -4,10 +4,13 @@ import { useState } from "react";
 import { GridContainer, GridItem } from "@thangdevalone/meeting-grid-layout-react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui";
 import { ParticipantTile, type ParticipantTileData } from "./ParticipantTile";
-import { SNAP_SIZE, TILE_ASPECT_RATIO, TILE_FILL, TILE_GAP } from "./roomGridLayout";
-
-/** 한 페이지에 보여주는 최대 타일 수 */
-const PER_PAGE = 12;
+import {
+  ITEMS_PER_PAGE as PER_PAGE,
+  SNAP_SIZE,
+  TILE_ASPECT_RATIO,
+  TILE_FILL,
+  TILE_GAP,
+} from "./roomGridLayout";
 
 type ParticipantGridProps = {
   participants: ParticipantTileData[];
