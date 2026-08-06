@@ -32,6 +32,9 @@ import com.a105.zani.postclass.domain.model.TranscriptDocumentSegment;
 import com.a105.zani.postclass.infrastructure.gms.GmsInstructorAnalysisMockAdapter;
 import com.a105.zani.postclass.infrastructure.gms.GmsStudentAnalysisMockAdapter;
 import com.a105.zani.recording.domain.model.TrackSource;
+import com.a105.zani.report.application.getinstructorreport.GetInstructorReportQuery;
+import com.a105.zani.report.application.getinstructorreport.GetInstructorReportResult;
+import com.a105.zani.report.application.getinstructorreport.GetInstructorReportUseCase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,14 +68,19 @@ class PostClassPipelineEndToEndIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    /** 공개가 곧 열람 가능인지 확인하기 위해 조회 유스케이스를 함께 부른다. 적재만 보면 게이트가 어긋난 것을 알 수 없다. */
+    @Autowired
+    private GetInstructorReportUseCase getInstructorReportUseCase;
+
     private long sessionId;
+    private long hostMemberId;
     private long instructorParticipantId;
 
     @BeforeEach
     void setUp() {
         studentPort.reset();
         instructorPort.reset();
-        long hostMemberId = insertMember("담당 강사");
+        hostMemberId = insertMember("담당 강사");
         sessionId = insertSession(hostMemberId);
         instructorParticipantId = insertParticipant(hostMemberId, "INSTRUCTOR");
         insertPipelineJob(PipelineStatus.ANALYZING);
@@ -91,6 +99,34 @@ class PostClassPipelineEndToEndIntegrationTest {
         assertThat(sectionCount()).isPositive();
         assertThat(studentReportParticipantIds()).containsExactly(student);
         assertThat(instructorReportCount()).isEqualTo(1);
+    }
+
+    /**
+     * <b>공개가 곧 열람 가능이어야 한다.</b> 이 파일이 원래 못 잡던 것을 잡는다(S15P11A105-310).
+     *
+     * <p>적재와 공개 시각까지만 보면 위 테스트로 충분하다. 그런데 조회가 <b>다른 컬럼</b>을 공개 게이트로 쓰고 있으면 리포트가 다 만들어지고 공개까지 끝나도 강사 화면은 영구히 비어 있다 — 실제로
+     * 그랬고, 파이프라인 테스트와 조회 API 테스트가 <b>각자 통과하는 동안</b> 그 사이로 빠져나갔다.
+     *
+     * <p>그래서 적재까지가 아니라 조회까지 해 본다. 파이프라인이 쓰는 값과 조회가 읽는 값이 갈리는 순간 여기서 깨진다.
+     */
+    @Test
+    @DisplayName("공개된 세션의 강사 리포트를 강사가 실제로 조회할 수 있다")
+    void a_published_session_serves_the_instructor_report() {
+        insertStudent();
+        givenTranscript(speech(instructorParticipantId, 2_000, 32_000, "오늘은 상태 관리를 다루겠습니다."));
+
+        runSessionAnalysisUseCase.run(sessionId);
+
+        assertThat(publishedAt()).isNotNull();
+
+        GetInstructorReportResult report =
+                getInstructorReportUseCase.get(new GetInstructorReportQuery(sessionId, hostMemberId));
+
+        // 본문과 분야별 평가가 함께 와야 화면의 "AI 수업 피드백" 블록이 그려진다. 셋을 한 가드로 묶어 그리므로
+        // 하나라도 비면 섹션 제목까지 사라진다.
+        assertThat(report.overallFeedback()).isNotBlank();
+        assertThat(report.scores()).isNotEmpty();
+        assertThat(report.insights()).isNotEmpty();
     }
 
     /** 공개 시각이 곧 발송 트리거다(S15P11A105-116). 이 조회가 세션을 담지 못하면 리포트가 만들어져도 메일이 나가지 않는다. */
