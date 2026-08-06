@@ -50,6 +50,34 @@ describe("SessionSummaryCard", () => {
     expect(screen.getByText(SUMMARY)).toBeInTheDocument();
   });
 
+  it("구간 시각을 누르면 그 구간 시작 시각으로 이동을 청한다", async () => {
+    const onSeek = vi.fn();
+    render(
+      <SessionSummaryCard
+        sessionId="s1"
+        request={async () => ({ summary: SUMMARY, sections: [...SECTIONS] })}
+        onSeek={onSeek}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Context 리렌더링 구간 재생/ }));
+
+    // 끝 시각이 아니라 시작 시각이다. 구간을 다시 보려면 그 앞머리부터 들어야 한다.
+    expect(onSeek).toHaveBeenCalledWith(600);
+  });
+
+  it("이동 배선이 없으면 시각을 버튼으로 내지 않는다", async () => {
+    render(
+      <SessionSummaryCard
+        sessionId="s1"
+        request={async () => ({ summary: SUMMARY, sections: [...SECTIONS] })}
+      />,
+    );
+
+    expect(await screen.findByText("00:00–10:00")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /구간 재생/ })).not.toBeInTheDocument();
+  });
+
   it("구간이 없으면 문단만 그린다 — 빈 목록은 오류가 아니다", async () => {
     render(<SessionSummaryCard sessionId="s1" request={async () => ({ summary: SUMMARY, sections: [] })} />);
 
