@@ -104,6 +104,24 @@ class AssembleTranscriptLoggingTest {
         assertThat(logged).contains("filteredSegmentCount=2");
     }
 
+    @Test
+    void 배치_불가로_버린_세그먼트도_전사문을_남기지_않는다() {
+        // 이 로그는 ERROR 라 눈에 띄고, 그래서 "어떤 문장이었는지" 를 넣고 싶은 압력이 가장 센 자리다
+        // (S15P11A105-330). 시각과 건수만으로 체크포인트에서 그 세그먼트를 찾을 수 있으므로 필요도 없다.
+        assemble(List.of(
+                segment(600_100, 600_400, STUDENT_QUESTION, 0.05), segment(599_000, 700_000, HALLUCINATION, 0.05)));
+
+        String logged = renderedLog();
+        assertThat(logged).doesNotContain(STUDENT_QUESTION);
+        assertThat(logged).doesNotContain(HALLUCINATION);
+        assertThat(logged).doesNotContain("적재율");
+        assertThat(logged).doesNotContain("고맙");
+        // 진단에 필요한 수치는 남긴다 — 로그를 통째로 지워서 통과하는 것을 막는다.
+        assertThat(logged).contains("segmentStartMs=600100");
+        assertThat(logged).contains("overshootMs=100000");
+        assertThat(logged).contains("unplaceableSegmentCount=2");
+    }
+
     private void assemble(List<TranscriptSegment> segments) {
         AssembleTranscriptService service = new AssembleTranscriptService(
                 new DiscardingTranscriptPort(),
