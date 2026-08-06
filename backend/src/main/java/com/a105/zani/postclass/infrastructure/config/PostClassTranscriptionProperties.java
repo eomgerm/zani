@@ -26,7 +26,12 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param maxUploadBytes 실질 업로드 상한(24 MiB). <b>업로드 직전 가드이고 자동 반분은 하지 않는다</b> — 넘는 청크는 GMS 를 호출하지 않고 비재시도 실패로 끊는다. 실측
  *     비트레이트(104.8~127 kbps)로 10분이면 7.9~9.5 MB 라 한도에 세 배 넘는 여유가 있어, 걸린다면 {@code chunk-duration} 을 낮춰 대응한다
  * @param concurrency GMS 청크 호출 동시성. 오케스트레이션 자체는 항상 1이고 이 값은 업로드에만 적용된다
- * @param silencePrefilterEnabled 무음 사전 판별. 기본 OFF(S15P11A105-292)
+ * @param silencePrefilterEnabled 무음 사전 판별. 기본 OFF(S15P11A105-292). <b>호출 <i>전</i></b> 에 무음 청크를 골라 GMS 호출 수를 줄이는 최적화다 —
+ *     아래 {@code hallucinationFilterEnabled} 와 다른 단계의 다른 목적이다
+ * @param hallucinationFilterEnabled 무음 환각 세그먼트 필터. 기본 ON(S15P11A105-306). 이쪽은 호출 <b>후</b> 에 돌아온 세그먼트를 최종 전사에서 빼는 것이다.
+ *     GMS 응답과 청크 체크포인트는 건드리지 않으므로, 끄면 다음 조립부터 예전 동작으로 돌아간다
+ * @param noSpeechThreshold 이 값 <b>이상</b> 인 {@code no_speech_prob} 세그먼트를 최종 전사에서 뺀다. 범위는 {@code 0.0}~{@code 1.0} 이고 벗어나면
+ *     기동하지 않는다
  */
 @ConfigurationProperties(prefix = "postclass.transcription")
 public record PostClassTranscriptionProperties(
@@ -42,7 +47,9 @@ public record PostClassTranscriptionProperties(
         @DefaultValue("PT5M") Duration leaseDuration,
         @DefaultValue("25165824") long maxUploadBytes,
         @DefaultValue("2") int concurrency,
-        @DefaultValue("false") boolean silencePrefilterEnabled) {
+        @DefaultValue("false") boolean silencePrefilterEnabled,
+        @DefaultValue("true") boolean hallucinationFilterEnabled,
+        @DefaultValue("0.8") double noSpeechThreshold) {
 
     public PostClassTranscriptionProperties {
         if (chunkDuration == null || chunkDuration.isZero() || chunkDuration.isNegative()) {
@@ -62,6 +69,11 @@ public record PostClassTranscriptionProperties(
         }
         if (dispatchBatchSize < 1) {
             throw new IllegalArgumentException("디스패치 배치 크기는 1 이상이어야 합니다: " + dispatchBatchSize);
+        }
+        // 확률이므로 0~1 을 벗어날 수 없다. 필터가 꺼져 있어도 검사한다 — 켜는 날 처음 터지면 그때는
+        // 이 값을 누가 왜 넣었는지 아는 사람이 없다.
+        if (!Double.isFinite(noSpeechThreshold) || noSpeechThreshold < 0.0 || noSpeechThreshold > 1.0) {
+            throw new IllegalArgumentException("무음 확률 임곗값은 0.0 이상 1.0 이하여야 합니다: " + noSpeechThreshold);
         }
     }
 }

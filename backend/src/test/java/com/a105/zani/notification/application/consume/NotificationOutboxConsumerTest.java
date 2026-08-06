@@ -44,7 +44,7 @@ class NotificationOutboxConsumerTest {
         EmailMessage message = sender.sent.get(0);
         assertEquals("a@zani.app", message.to());
         // 이메일은 세션 리포트로 가는 로그인 링크를 담아야 한다.
-        assertTrue(message.bodyHtml().contains("https://app.test/sessions/" + SESSION_ID + "/report"));
+        assertTrue(message.bodyHtml().contains("https://app.test/my-lectures/" + SESSION_ID + "/report"));
         assertEquals("SENT", outbox.rows.get(0).status);
         assertNotNull(outbox.rows.get(0).sentAt);
     }

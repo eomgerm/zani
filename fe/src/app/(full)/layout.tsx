@@ -26,6 +26,8 @@ export default function FullWidthLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-[1360px] px-12 py-[34px]">{children}</main>
+    <main className="mx-auto min-h-screen w-full max-w-[1360px] px-12 py-[34px] wide:max-w-[1680px]">
+      {children}
+    </main>
   );
 }

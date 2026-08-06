@@ -179,6 +179,43 @@ class GroupFocusCalculatorTest {
     }
 
     @Test
+    @DisplayName("설정으로 최소 인원을 낮추면 5명을 못 넘는 세션도 값을 낸다")
+    void a_lowered_minimum_eligible_yields_a_value() {
+        List<ParticipantReplay> students = List.of(
+                fullSessionStudent(1L, DetectorOutcome.HIGHLY_ENGAGED),
+                fullSessionStudent(2L, DetectorOutcome.HIGHLY_ENGAGED),
+                fullSessionStudent(3L, DetectorOutcome.HIGHLY_ENGAGED));
+
+        List<GroupFocusBucket> buckets =
+                GroupFocusCalculator.calculate(students, signalsWithEligible(3), DURATION_MS, policyWithMinimum(2));
+
+        assertThat(bucketAt(buckets, BUCKET).eligibleCount()).isEqualTo(3);
+        assertThat(bucketAt(buckets, BUCKET).focusLevel()).isEqualTo(4.0d);
+    }
+
+    /** 기본 정책에서 최소 인원만 바꾼다 — 설정으로 낮춘 시연 환경이다. */
+    private static TimelinePolicy policyWithMinimum(int minimumEligible) {
+        TimelinePolicy defaults = TimelinePolicy.defaults();
+        return new TimelinePolicy(
+                defaults.maxDuration(),
+                defaults.samplingInterval(),
+                defaults.groupWindow(),
+                defaults.focusBucket(),
+                defaults.connectionGap(),
+                defaults.requiredConnection(),
+                defaults.measurementOutage(),
+                defaults.significantTtl(),
+                defaults.unmeasurableRunLength(),
+                defaults.focusCoverageFloor(),
+                minimumEligible,
+                defaults.distractionStartRatio(),
+                defaults.distractionStartHold(),
+                defaults.distractionEndRatio(),
+                defaults.distractionEndHold(),
+                defaults.distractionMergeGap());
+    }
+
+    @Test
     @DisplayName("학생이 없으면 빈 목록이다")
     void no_students_yields_an_empty_list() {
         assertThat(GroupFocusCalculator.calculate(List.of(), List.of(), DURATION_MS, POLICY))

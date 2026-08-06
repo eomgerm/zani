@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 
 import com.a105.zani.common.infrastructure.gms.GmsProperties;
 import com.a105.zani.postclass.application.port.PostClassTranscriptionSettings;
+import com.a105.zani.postclass.application.port.TranscriptFilterSettings;
 
 /**
  * 설정을 application 계층 타입으로 옮긴다.
@@ -26,5 +27,16 @@ public class PostClassTranscriptionSettingsConfig {
                 properties.concurrency(),
                 gmsProperties.transcribeLanguage(),
                 properties.silencePrefilterEnabled());
+    }
+
+    /**
+     * 조립 단계 필터 설정.
+     *
+     * <p>{@link PostClassTranscriptionSettings} 에 얹지 않고 따로 두는 이유는 소비자가 다르기 때문이다. 그쪽은 오케스트레이션이 쓰는 값(원본 루트·작업
+     * 디렉터리·lease·동시성)이고 조립은 그중 아무것도 필요하지 않다. 한 record 에 합치면 조립 유스케이스가 파일 경로와 lease 기간을 주입받게 된다.
+     */
+    @Bean
+    public TranscriptFilterSettings transcriptFilterSettings(PostClassTranscriptionProperties properties) {
+        return new TranscriptFilterSettings(properties.hallucinationFilterEnabled(), properties.noSpeechThreshold());
     }
 }

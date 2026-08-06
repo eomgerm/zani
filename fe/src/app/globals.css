@@ -84,9 +84,16 @@
   /* 참가자 상태 보조 텍스트(카메라 꺼짐 등) */
   --color-room-status: #7b81a8;
 
+  /* 반응형 기준선 — 화면마다 다른 폭 값을 쓰지 말고 여기서만 정한다.
+     지원 하한은 1280px(노트북 전체화면, NFR-COMPAT-001)이라 기본 스타일이 곧 1280px 레이아웃이고,
+     넓어질 때만 wide 로 올린다.
+     Tailwind 기본 sm~2xl 은 전부 하한 아래이거나 겹치므로 새 코드에서 쓰지 않는다. */
+  --app-min-width: 1280px;
+  --breakpoint-wide: 1600px;
+
   /* fonts */
-  --font-sans: var(--font-space-grotesk), var(--font-noto-sans-kr), sans-serif;
-  --font-mono: var(--font-space-mono), monospace;
+  --font-sans: var(--font-noto-sans-kr), sans-serif;
+  --font-mono: var(--font-noto-sans-mono), monospace;
 
   /* shadows */
   /* 카드는 1px 테두리로 가른다. 그림자는 종이가 떠 보이지 않을 만큼만 남긴다(디자인 문서 §4). */
@@ -99,6 +106,13 @@ body {
   background: var(--color-surface);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  /*
+    지원 하한 아래에서는 레이아웃을 더 짜내지 않고 가로 스크롤로 넘긴다.
+    모바일·태블릿은 지원 대상이 아니므로(FRD §4) 창을 그보다 줄인 사람에게 필요한 것은
+    구겨진 화면이 아니라 원래 비율의 화면을 밀어서 보는 쪽이다. 하한 위에서는 이 값이
+    아무 일도 하지 않으므로 정상 폭의 레이아웃에는 영향이 없다.
+  */
+  min-width: var(--app-min-width);
 }
 
 /* 선택 영역·스크롤바는 시안이 값을 정해 둔 전역 표현이다(디자인 문서 §1·§10). */
@@ -138,6 +152,15 @@ body {
   /* 리포트 본문 블록. 제목은 박스 밖에 두고 내용만 담는다 — 박스 안의 박스를 만들지 않는다. */
   .z-report-box {
     @apply bg-surface border border-line-light rounded-2xl;
+  }
+  /* 차트는 폭이 줄면 축·라벨이 겹쳐 읽을 수 없게 된다. 페이지를 가로로 밀지 않고 담는 상자
+     안에서만 스크롤한다 — 상자에 z-chart-scroll, 그 안 차트에 z-chart-min 을 짝으로 붙인다.
+     읽을 수 있는 최소 폭은 여기 한 곳에서만 정한다. */
+  .z-chart-scroll {
+    @apply overflow-x-auto;
+  }
+  .z-chart-min {
+    @apply min-w-[720px];
   }
   /* 리포트 섹션 제목 + 부제 */
   .z-report-head {

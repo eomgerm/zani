@@ -146,6 +146,29 @@ postclass:
     # 호출 수를 줄이지 못하고, 마이크 ON 상태의 침묵(-30.3 dB)은 발화(-24.0 dB)와 6 dB 차이라 음량만으로
     # 가릴 수 없다. 잘못 건너뛰어 발화를 잃는 것이 호출 낭비보다 나쁘다.
     silence-prefilter-enabled: ${POSTCLASS_SILENCE_PREFILTER_ENABLED:false}
+    # 무음 환각 세그먼트 필터(S15P11A105-306). 위의 silence-prefilter 와 단계가 다르다 — 그쪽은 GMS 를
+    # 호출하기 전에 무음 청크를 골라 호출 수를 줄이는 최적화이고, 이쪽은 호출 후 돌아온 세그먼트를 최종
+    # 전사에서 빼는 것이다. 서로 대체하지 않는다.
+    #
+    # GMS 응답과 청크 체크포인트(result_document)는 건드리지 않고 transcripts.transcript_document 를
+    # 조립할 때만 뺀다. 그래서 임곗값을 바꿀 때 GMS 재호출 없이 재조립만으로 결과가 달라지고, 끄면 다음
+    # 조립부터 필터 이전 동작으로 돌아간다.
+    hallucination-filter-enabled: ${POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED:true}
+    # 이 값 이상인 no_speech_prob 세그먼트를 뺀다. 범위 0.0~1.0, 벗어나면 기동하지 않는다.
+    #
+    # 단 앞뒤로 시각이 맞물린 실제 발화가 있으면 남긴다. no_speech_prob 는 세그먼트 값이 아니라 30초
+    # 디코딩 창의 값이라(같은 seek 을 공유하는 세그먼트는 값이 전부 같다) 창 경계를 넘어간 문장의
+    # 뒷부분이 무음 창의 값을 물려받는다 — 실측에서 강사의 "을 반복하여 최단거리를 구합니다."가 0.964 로
+    # 나왔고, 그것은 바로 앞 조각과 0ms 로 맞물린 한 문장의 뒷부분이었다. 임곗값을 올려서는 못 막는다.
+    #
+    # 실측 근거(2026-08-05 실제 세션, 학생 마이크 240.21초): 환각 "고맙습니다." 8건이 0.906~0.985 였고
+    # 실제 학생 질문 세그먼트는 0.176 이었다. 관측값이 0.18~0.90 사이에 하나도 없어 이 구간
+    # 어디를 잡아도 결과가 같으며, 0.8 은 가장 낮은 환각(0.906)과 실제 발화(0.176) 양쪽에 여유가 있다.
+    # Whisper 자체 기본값 0.6 보다 보수적이라 실제 발화를 잃을 위험이 더 낮은 쪽이다.
+    #
+    # 이 규칙으로 잡히지 않는 것: 같은 디코딩 구간에서 실제 발화와 섞여 0.176 으로 나온 반복 환각 5건.
+    # 무음 확률로는 실제 질문과 구분할 수 없어 반복 문구 규칙이 필요하다(S15P11A105-316).
+    no-speech-threshold: ${POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD:0.8}
   analysis:
     # 전사와 접두사를 나눈다. 합치면 전사를 끄는 순간 분석까지 꺼지고 주기도 따로 조절할 수 없다.
     # 실행기는 전사와 공유한다(크기 1·큐 0) — 무거운 작업 둘이 같은 호스트에서 동시에 돌지 않게 한다.
@@ -243,6 +266,23 @@ attention:
       - mediapipe_98_v1
   timeline:
     # 리포트 타임라인 계산 임계값. 적지 않은 값은 TimelinePolicy.defaults() 를 쓴다.
+    # 아래 값들은 그 defaults() 와 같은 값을 다시 적은 것이다 — 코드만 보고는 조정 가능한지 알 수 없어
+    # 여기 드러낸다. 기본값의 출처는 여전히 TimelinePolicy.defaults() 이고 TimelinePolicyTest 가 지킨다.
+    # 세션 자동 종료 시각(Session.ACTIVE_DURATION)과 같은 값이다. 오프셋이 망가진 데이터에서 격자가
+    # 무한히 늘어나는 것을 막는 안전장치다.
+    max-duration: ${ATTENTION_TIMELINE_MAX_DURATION:PT3H}
+    # 시계열 격자 간격. 이 간격마다 집단 신호 점을 하나 찍는다.
+    sampling-interval: ${ATTENTION_TIMELINE_SAMPLING_INTERVAL:PT5S}
+    # 집단 비율이 참고하는 관찰창(FRD §18.2 의 최근 5분).
+    group-window: ${ATTENTION_TIMELINE_GROUP_WINDOW:PT5M}
+    # 이만큼 이어서 접속해야 집계 대상이 된다. 실시간 경로와 값을 맞춰야 한다.
+    required-connection: ${ATTENTION_TIMELINE_REQUIRED_CONNECTION:PT1M}
+    # 측정 불가가 이만큼 이어지면 분모에서 뺀다.
+    measurement-outage: ${ATTENTION_TIMELINE_MEASUREMENT_OUTAGE:PT1M}
+    # 확정된 유의 상태가 유효하게 남는 기간(확정 문서 §7.3).
+    significant-ttl: ${ATTENTION_TIMELINE_SIGNIFICANT_TTL:PT5M}
+    # 참여 상태 UNMEASURABLE 을 확정하는 연속 관측 수.
+    unmeasurable-run-length: ${ATTENTION_TIMELINE_UNMEASURABLE_RUN_LENGTH:3}
     # FRD §18.3 흐트러짐 구간 임계값. 원격 조정이 가능해야 한다는 요구사항 때문에 설정으로 뺀다.
     distraction-start-ratio: ${ATTENTION_TIMELINE_DISTRACTION_START_RATIO:0.30}
     distraction-start-hold: ${ATTENTION_TIMELINE_DISTRACTION_START_HOLD:PT20S}
@@ -257,6 +297,11 @@ attention:
     # 뜻이 다르므로 함께 움직이지 않는다.
     focus-bucket: ${ATTENTION_TIMELINE_FOCUS_BUCKET:PT30S}
     focus-coverage-floor: ${ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR:0.7}
+    # 집계 대상 최소 인원. 이 수 미만인 칸은 집단 값을 감춘다(NFR-SEC-007 · REPORT-I-005). 기본값 5 가
+    # 운영 기준이며, 참가자가 5명을 못 넘는 시연 세션에서만 낮춘다 — 그런 세션은 지금 전 구간이 비어
+    # 강사 화면에 그래프가 없는 것처럼 보인다. 1 로 두면 한 학생의 값이 그대로 집단 평균이 되어
+    # 익명성이 사라진다(REPORT-I-002).
+    minimum-eligible: ${ATTENTION_TIMELINE_MINIMUM_ELIGIBLE:5}
 
 coaching-trigger:
   # 최근 5분 유의 학생 비율의 하한. 이 값 이상이면 트리거한다(확정 문서 §7).
@@ -289,6 +334,14 @@ audio-clip:
 recording:
   # Egress 노드(EC2)의 로컬 저장 루트. S3는 사용하지 않는다(가이드 §14).
   base-path: ${RECORDING_BASE_PATH:/srv/zani/recordings}
+  # 최종 MP4 를 읽어서 서빙할 마운트 경로. base-path 와 값이 같아도 뜻이 다르다 — 배포에서 두 마운트가
+  # 갈린다(RecordingProperties 참고).
+  media-root: ${RECORDING_MEDIA_ROOT:/srv/zani/recordings}
+  # 발급한 접근 주소의 유효 기간. 짧을수록 새어 나간 주소의 수명이 짧다.
+  media-url-ttl: ${RECORDING_MEDIA_URL_TTL:PT5M}
+  # 발급할 주소의 형식. {sessionId} 를 치환한다. 기본값은 로컬 주소이므로 배포에서는 반드시 덮어야
+  # 한다 — 이 값이 이메일 링크로 그대로 나가 티켓 311 이 났다.
+  media-url-template: ${RECORDING_MEDIA_URL_TEMPLATE:http://localhost:18080/api/v1/sessions/{sessionId}/media}
   # 운영에서는 항상 활성화한다. 수동 relay를 검증하는 통합 테스트만 false로 격리한다.
   outbox-relay-enabled: ${RECORDING_OUTBOX_RELAY_ENABLED:true}
   # outbox 릴레이 주기(ISO-8601 duration).

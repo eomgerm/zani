@@ -389,12 +389,14 @@ public class TranscribeSessionService implements TranscribeSessionUseCase {
                 new AssembleTranscriptCommand(sessionId, settings.language(), toTranscriptionTracks(tracks), chunks));
         advancePipelineJobUseCase.advance(new AdvancePipelineJobCommand(sessionId, PipelineStatus.ANALYZING));
         log.info(
-                "Transcription finished: sessionId={}, tracks={}, chunks={}, segments={}, speakers={}",
+                "Transcription finished: sessionId={}, tracks={}, chunks={}, segments={}, speakers={},"
+                        + " filteredSegments={}",
                 sessionId,
                 tracks.size(),
                 chunks.size(),
                 assembled.segmentCount(),
-                assembled.speakerCount());
+                assembled.speakerCount(),
+                assembled.filteredSegmentCount());
     }
 
     private List<TranscriptionTrack> toTranscriptionTracks(List<SessionTrackFile> tracks) {

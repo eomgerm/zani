@@ -100,7 +100,11 @@ export function AppShell({
         </div>
       </aside>
 
-      <main className="min-w-0 max-w-[1180px] flex-1 px-10 py-[34px]">{children}</main>
+      {/* mx-auto 가 없으면 와이드 모니터에서 본문이 사이드바에 붙고 오른쪽이 통째로 빈다.
+          (full) 레이아웃과 같은 규칙으로 가운데에 두고, 넓어지면 상한만 올린다. */}
+      <main className="mx-auto min-w-0 max-w-[1180px] flex-1 px-10 py-[34px] wide:max-w-[1440px]">
+        {children}
+      </main>
     </div>
   );
 }

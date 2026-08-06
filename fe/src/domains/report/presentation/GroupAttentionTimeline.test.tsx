@@ -107,7 +107,7 @@ describe("GroupAttentionTimeline", () => {
   });
 
   /** 값을 감춘 사실은 알려야 한다(REPORT-I-005). 문구 대신 범례가 회색이 무엇인지 말한다. */
-  it("인원이 모자라 감춘 구간이 무엇인지 범례로 알린다", async () => {
+  it("값을 감춘 구간이 무엇인지 범례로 알린다", async () => {
     render(
       <GroupAttentionTimeline
         sessionId="s1"
@@ -122,7 +122,35 @@ describe("GroupAttentionTimeline", () => {
       />,
     );
 
-    expect(await screen.findByText("인원 부족")).toBeInTheDocument();
+    expect(await screen.findByText("값 없음")).toBeInTheDocument();
+  });
+
+  /**
+   * 최소 인원은 서버 설정값이라 화면이 그 숫자를 알 수 없다. 인원으로 판정하면 설정을 낮춘 환경에서
+   * 값이 있는 구간까지 회색으로 덮인다 — 여기서는 3명인 칸에 값이 있다.
+   */
+  it("값이 있는 구간은 인원이 적어도 회색으로 덮지 않는다", async () => {
+    const { container } = render(
+      <GroupAttentionTimeline
+        sessionId="s1"
+        request={async () =>
+          groupTimelineWith({
+            focusFlow: {
+              intervalSeconds: 30,
+              points: [
+                { offsetSeconds: 0, focusLevel: 3.1, eligibleCount: 3 },
+                { offsetSeconds: 30, focusLevel: null, eligibleCount: 3 },
+              ],
+            },
+          })
+        }
+      />,
+    );
+
+    await screen.findByRole("img");
+
+    // 값이 없는 칸 하나만 덮는다.
+    expect(container.querySelectorAll(".recharts-reference-area")).toHaveLength(1);
   });
 
   it("학생 이름이나 개별 값이 화면에 없다", async () => {

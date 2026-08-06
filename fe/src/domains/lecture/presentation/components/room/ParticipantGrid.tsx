@@ -1,43 +1,39 @@
 "use client";
 
 import { useState } from "react";
+import { GridContainer, GridItem } from "@thangdevalone/meeting-grid-layout-react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui";
 import { ParticipantTile, type ParticipantTileData } from "./ParticipantTile";
 
 /** 한 페이지에 보여주는 최대 타일 수 */
 const PER_PAGE = 12;
 
-/** 타일 가로:세로 비율. 웹캠 스트림 기본 비율(16:9)과 맞춰 영상 위아래가 잘리지 않게 한다(티켓 246). */
-const TILE_WIDTH = 16;
-const TILE_HEIGHT = 9;
+/**
+ * 타일 가로:세로 비율. 웹캠 스트림 기본 비율(16:9)과 맞춰 영상 위아래가 잘리지 않게 한다(티켓 246).
+ * 자르지 않으므로 칸이 이 비율이 아닐 때 남는 자리가 생기는데, 배치기가 그 남는 자리를 최소로 만든다.
+ */
+const TILE_ASPECT_RATIO = "16:9";
+
+/** 타일 사이 간격(px). 배치 계산에 들어가는 값이라 CSS gap 이 아니라 숫자로 넘긴다. */
+const TILE_GAP = 12;
 
 /**
- * 칸 안에 들어가는 최대 16:9 상자.
+ * 타일 크기 변화는 즉시 반영하고, 자리 이동만 애니메이션한다.
  *
- * <p>`aspectRatio` 만 주면 폭을 꽉 채운 뒤 높이가 칸을 넘쳐 잘린다. `max-height` 로는 막을 수 없다 — 높이를 깎아도 폭이 되돌아오지 않아 비율이 깨진다. 그래서 높이에서
- * 폭을 거꾸로 계산해 상한을 둔다. `cqh` 는 칸 높이의 1% 라 `100cqh` 가 칸 높이이고, 그 높이를 꽉 채우는 폭은 여기에 비율을 곱한 값이다(칸이 `container-type: size` 여야 한다).
- */
-export const TILE_FIT: React.CSSProperties = {
-  aspectRatio: `${TILE_WIDTH} / ${TILE_HEIGHT}`,
-  width: `min(100%, calc(100cqh * ${TILE_WIDTH} / ${TILE_HEIGHT}))`,
-};
-
-/**
- * 인원수에 맞는 열 수. Meet·Webex 처럼 인원이 늘 때만 열을 늘려, 적은 인원에서 타일이 크게 보이도록 한다.
+ * <p>배치기는 크기(`width`/`height`)와 자리(`x`/`y`)를 각각 다른 스프링으로 움직인다. 크기 쪽까지
+ * 스프링으로 두면 사이드 패널을 여닫을 때마다 문제가 된다 — 패널이 스테이지 폭을 1252→898 로 줄여
+ * 배치가 4×3 에서 3×4 로 재구성되는데, `smooth`(감쇠비 ≈0.92)는 부족감쇠라 목표 크기를 지나쳤다
+ * 되돌아온다. 참가자가 들고 나는 것도 아닌데 화면 전체가 출렁인다.
  *
- * <p>1명이면 1열(화면을 꽉 채운다), 2~4명이면 2열, 5~9명이면 3열, 그 이상은 4열이다. 사이드 패널이 열려 폭이 좁으면 3열까지만 쓴다.
+ * <p>자리 이동은 그대로 둔다. 새 참가자가 들어와 타일이 밀려나는 것은 실제로 일어난 일이라
+ * 따라가는 편이 읽기 쉽다.
  */
-export function columnsFor(count: number, narrow: boolean): number {
-  const columns = count <= 1 ? 1 : count <= 4 ? 2 : count <= 9 ? 3 : 4;
-  return narrow ? Math.min(columns, 3) : columns;
-}
+const SNAP_SIZE = { duration: 0 } as const;
 
 type ParticipantGridProps = {
   participants: ParticipantTileData[];
   currentParticipantId?: string;
   isInstructor?: boolean;
-  /** 사이드 패널이 열려 폭이 좁을 때 3열로 줄인다 */
-  narrow?: boolean;
   /** 참가자별 카메라 video ref 를 만들어 주는 함수. 없으면 화면 없이 아바타만 보여준다. */
   videoRefFor?: (identity: string) => React.Ref<HTMLVideoElement>;
   /** 강사가 학생을 음소거한다. 대상은 LiveKit identity(`p-{참가자ID}`)로 넘어온다. */
@@ -48,18 +44,20 @@ type ParticipantGridProps = {
 
 const pagerBtn = "flex size-[34px] items-center justify-center rounded-full border-0";
 
+/** 타일은 GridItem 이 정해 준 칸을 그대로 채운다. 크기 계산은 배치기가 이미 끝냈다. */
+const TILE_FILL: React.CSSProperties = { width: "100%", height: "100%" };
+
 /**
  * 갤러리 보기. 한 페이지에 최대 12명을 보여주고 넘치면 페이지로 나눈다.
  *
  * 한 사람당 타일 하나다. 예전에는 12칸을 채우려고 남는 자리에 앞 참가자를 다시 넣었는데, 실제 참가자로 바뀐 뒤에는 같은 사람이 여러 번 보여 인원을 오해하게 만든다.
  *
- * 행 수는 인원에 맞춰 늘어난다. 고정 3행이면 혼자 있을 때 타일이 좌상단에 작게 남는다.
+ * <p>열·행은 인원수만으로 정하지 않는다. 같은 6명이라도 넓고 낮은 창에서는 3×2, 좁고 높은 창에서는 2×3 이 타일이 훨씬 크다. 배치기(`GridContainer`)가 컨테이너 실측 크기와 인원수를 함께 보고 남는 자리가 가장 적은 배치를 고르며, 마지막 행은 가운데로 모아 오른쪽 아래에 구멍이 남지 않게 한다.
  */
 export function ParticipantGrid({
   participants,
   currentParticipantId,
   isInstructor = false,
-  narrow = false,
   videoRefFor,
   onMute,
   mutingIdentity = null,
@@ -73,42 +71,45 @@ export function ParticipantGrid({
   const hasPages = pageCount > 1;
 
   const slots = participants.slice(current * PER_PAGE, (current + 1) * PER_PAGE);
-  const columns = columnsFor(slots.length, narrow);
-  const rows = Math.max(1, Math.ceil(slots.length / columns));
 
   return (
     <>
-      <div
-        role="group"
-        aria-label={`참가자 ${total}명`}
-        className={`grid h-full min-h-0 gap-3 overflow-hidden p-4 ${hasPages ? "pb-[58px]" : ""}`}
-        style={{
-          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-        }}
-      >
-        {slots.map((participant) => (
-          // 칸 안에서 비율을 지키며 가운데 정렬한다. 칸을 그대로 채우면 인원수에 따라 타일이 찌그러진다.
-          <div
-            key={participant.id}
-            className="flex min-h-0 items-center justify-center [container-type:size]"
-          >
-            <ParticipantTile
-              fit={TILE_FIT}
-              participant={participant}
-              canControl={
-                isInstructor &&
-                participant.role === "student" &&
-                participant.id !== currentParticipantId
-              }
-              videoRef={videoRefFor?.(participant.id)}
-              mirrored={participant.id === currentParticipantId}
-              onMute={onMute === undefined ? undefined : () => onMute(participant.id)}
-              muting={mutingIdentity === participant.id}
-              busy={mutingIdentity !== null && mutingIdentity !== participant.id}
-            />
-          </div>
-        ))}
+      {/*
+        여백은 이 바깥 상자가 가진다. 배치기는 자식을 절대 배치하는데, 절대 배치는 padding 을 건너뛰고
+        padding box 기준으로 자리를 잡아 안쪽에 padding 을 주면 타일이 그만큼 밀린다.
+      */}
+      <div className={`size-full p-4 ${hasPages ? "pb-[58px]" : ""}`}>
+        <GridContainer
+          role="group"
+          aria-label={`참가자 ${total}명`}
+          count={slots.length}
+          aspectRatio={TILE_ASPECT_RATIO}
+          gap={TILE_GAP}
+          forceAspectRatio
+          // 2명일 때 기본값은 한 명 전체화면 + 한 명 떠다니는 PiP 다. 우리는 브라우저 밖까지 나가는
+          // 진짜 Document PiP 를 따로 두므로(useDocumentPictureInPicture), 여기서는 나란히 놓는다.
+          disableFloat
+          springPreset="smooth"
+        >
+          {slots.map((participant, index) => (
+            <GridItem key={participant.id} index={index} transition={SNAP_SIZE}>
+              <ParticipantTile
+                fit={TILE_FILL}
+                participant={participant}
+                canControl={
+                  isInstructor &&
+                  participant.role === "student" &&
+                  participant.id !== currentParticipantId
+                }
+                videoRef={videoRefFor?.(participant.id)}
+                mirrored={participant.id === currentParticipantId}
+                onMute={onMute === undefined ? undefined : () => onMute(participant.id)}
+                muting={mutingIdentity === participant.id}
+                busy={mutingIdentity !== null && mutingIdentity !== participant.id}
+              />
+            </GridItem>
+          ))}
+        </GridContainer>
       </div>
 
       {hasPages && (
