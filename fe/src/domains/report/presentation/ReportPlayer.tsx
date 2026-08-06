@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import { PictoClockMuted, PictoWarn } from "@/shared/ui";
+import {
+  FullscreenIcon,
+  PauseIcon,
+  PictoClockMuted,
+  PictoWarn,
+  PlayIcon,
+  SkipForwardIcon,
+  VolumeIcon,
+  VolumeOffIcon,
+} from "@/shared/ui";
 import { formatOffset } from "./offsetTime";
 
 /**
@@ -42,6 +51,31 @@ const safePlay = (video: HTMLVideoElement) => {
     // jsdom: Not implemented — 테스트에서는 이벤트로 상태를 흉내 낸다.
   }
 };
+
+/**
+ * 컨트롤 바 버튼. 글리프 하나가 곧 클릭 영역이면 20px 도 되지 않아 겨냥이 어렵다 —
+ * 눌리는 면을 아이콘과 따로 잡아 준다. 색은 바깥 줄의 `currentColor` 를 따른다.
+ */
+const ControlButton = ({
+  label,
+  onClick,
+  className = "size-8",
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  className?: string;
+  children: ReactNode;
+}) => (
+  <button
+    type="button"
+    aria-label={label}
+    onClick={onClick}
+    className={`flex shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-inherit transition-colors hover:bg-white/10 ${className}`}
+  >
+    {children}
+  </button>
+);
 
 const DarkNotice = ({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) => (
   <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-[linear-gradient(120deg,#1c2036,#20263f_55%,#1a1f34)] px-6 text-center">
@@ -192,6 +226,12 @@ export function ReportPlayer({
     void shellRef.current?.requestFullscreen?.().catch(() => {});
   };
 
+  // 메타데이터 전에는 길이를 모른다. 그때는 재생바를 0 길이로 잠가 둔다 — 잡을 수는 있는데
+  // 어디로도 가지 않는 손잡이는 고장으로 읽힌다.
+  const seekMax = durationSeconds > 0 ? durationSeconds : 0;
+  const seekValue = Math.min(currentSeconds, seekMax);
+  const playedPercent = seekMax > 0 ? (seekValue / seekMax) * 100 : 0;
+
   const body = () => {
     if (url === null) {
       return (
@@ -232,86 +272,73 @@ export function ReportPlayer({
             data-testid="report-video"
           />
           {!playing && (
-            <button
-              type="button"
-              aria-label="재생"
-              onClick={togglePlay}
-              className="absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-transparent"
-            >
-              <span className="flex size-[66px] items-center justify-center rounded-full bg-white/15 backdrop-blur-[4px]">
-                <span className="ml-[5px] text-[22px] text-white">▶</span>
-              </span>
-            </button>
-          )}
-          {!playing && (
-            <div className="pointer-events-none absolute inset-x-[22px] bottom-[18px]">
-              <div className="truncate text-base font-extrabold text-white [text-shadow:0_2px_8px_rgba(0,0,0,.4)]">
-                {title}
+            <>
+              <button
+                type="button"
+                aria-label="재생"
+                onClick={togglePlay}
+                className="group absolute inset-0 flex cursor-pointer items-center justify-center border-0 bg-transparent p-0"
+              >
+                {/* 밝은 슬라이드 위에서도 보여야 한다 — 흰 반투명 원은 흰 화면에서 사라진다. */}
+                <span className="flex size-[66px] items-center justify-center rounded-full bg-black/45 text-white ring-1 ring-white/25 backdrop-blur-[4px] transition-colors group-hover:bg-black/65">
+                  <PlayIcon size={26} className="ml-[3px]" />
+                </span>
+              </button>
+              <div className="pointer-events-none absolute inset-x-[22px] bottom-[18px]">
+                <div className="truncate text-base font-extrabold text-white [text-shadow:0_2px_8px_rgba(0,0,0,.4)]">
+                  {title}
+                </div>
+                <div className="mt-0.5 text-xs text-panel-dim [text-shadow:0_2px_8px_rgba(0,0,0,.4)]">
+                  강의 다시보기
+                </div>
               </div>
-              <div className="mt-0.5 text-xs text-panel-dim">강의 다시보기</div>
-            </div>
+            </>
           )}
         </div>
 
-        <input
-          type="range"
-          aria-label="재생 위치"
-          min={0}
-          max={durationSeconds > 0 ? durationSeconds : 0}
-          step={1}
-          value={Math.min(currentSeconds, durationSeconds > 0 ? durationSeconds : 0)}
-          disabled={durationSeconds <= 0}
-          onChange={(event) => scrubTo(Number(event.target.value))}
-          className="h-1 w-full cursor-pointer appearance-auto bg-[#2f3a37] accent-primary"
-        />
+        {/* 재생바와 버튼 줄은 한 덩어리로 묶어 좌우·상하 여백을 함께 준다. 재생바를 영상 바로
+            아래에 여백 없이 붙이면 썸이 영상 쪽으로 삐져나가 잘려 보인다(globals.css .z-scrub). */}
+        <div className="flex flex-col gap-1.5 px-4 pt-2.5 pb-3 text-panel-text-faint">
+          <input
+            type="range"
+            aria-label="재생 위치"
+            min={0}
+            max={seekMax}
+            step={1}
+            value={seekValue}
+            disabled={seekMax <= 0}
+            onChange={(event) => scrubTo(Number(event.target.value))}
+            style={{ "--z-scrub-played": `${playedPercent}%` } as CSSProperties}
+            className="z-scrub"
+          />
 
-        {/* 재생 컨트롤 글리프는 시안 그대로 둔다 — 픽토그램 카탈로그(258)에 재생·정지·볼륨·
-            전체화면 아이콘이 없다. 스크린리더는 각 버튼의 aria-label 을 읽는다. */}
-        <div className="flex items-center gap-4 px-4 py-3 text-[#c7ccf0]">
-          <button
-            type="button"
-            aria-label={playing ? "일시정지" : "재생"}
-            onClick={togglePlay}
-            className="cursor-pointer border-0 bg-transparent text-[15px] text-inherit"
-          >
-            {playing ? "⏸" : "▶"}
-          </button>
-          <button
-            type="button"
-            aria-label="10초 앞으로"
-            onClick={skipForward}
-            className="cursor-pointer border-0 bg-transparent text-[15px] text-inherit"
-          >
-            ⏭
-          </button>
-          <button
-            type="button"
-            aria-label={muted ? "소리 켜기" : "소리 끄기"}
-            onClick={toggleMuted}
-            className="cursor-pointer border-0 bg-transparent text-sm text-inherit"
-          >
-            {muted ? "🔇" : "🔊"}
-          </button>
-          <span className="font-mono text-[12.5px] text-panel-dim">
-            {formatOffset(currentSeconds)} / {formatOffset(durationSeconds)}
-          </span>
-          <span className="flex-1" />
-          <button
-            type="button"
-            aria-label="재생 속도 바꾸기"
-            onClick={cycleRate}
-            className="cursor-pointer border-0 bg-transparent text-[12.5px] font-bold text-inherit"
-          >
-            {rateLabel(rate)}
-          </button>
-          <button
-            type="button"
-            aria-label="전체 화면"
-            onClick={toggleFullscreen}
-            className="cursor-pointer border-0 bg-transparent text-sm text-inherit"
-          >
-            ⛶
-          </button>
+          {/* 픽토그램 카탈로그(258)에 재생·정지·볼륨·전체화면 대응이 없어 shared/ui/icons 의
+              선형 아이콘을 쓴다. 스크린리더는 각 버튼의 aria-label 을 읽는다. */}
+          <div className="flex items-center gap-0.5">
+            <ControlButton label={playing ? "일시정지" : "재생"} onClick={togglePlay}>
+              {playing ? <PauseIcon size={17} /> : <PlayIcon size={17} />}
+            </ControlButton>
+            <ControlButton label="10초 앞으로" onClick={skipForward}>
+              <SkipForwardIcon size={17} />
+            </ControlButton>
+            <ControlButton label={muted ? "소리 켜기" : "소리 끄기"} onClick={toggleMuted}>
+              {muted ? <VolumeOffIcon size={17} /> : <VolumeIcon size={17} />}
+            </ControlButton>
+            <span className="ml-1.5 font-mono text-[12.5px] text-panel-dim">
+              {formatOffset(currentSeconds)} / {formatOffset(durationSeconds)}
+            </span>
+            <span className="flex-1" />
+            <ControlButton
+              label="재생 속도 바꾸기"
+              onClick={cycleRate}
+              className="h-8 px-2 text-[12.5px] font-bold"
+            >
+              {rateLabel(rate)}
+            </ControlButton>
+            <ControlButton label="전체 화면" onClick={toggleFullscreen}>
+              <FullscreenIcon size={17} />
+            </ControlButton>
+          </div>
         </div>
       </>
     );
