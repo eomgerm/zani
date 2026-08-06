@@ -12,6 +12,7 @@ import com.a105.zani.report.application.getstudentreport.StudentReportView;
 import com.a105.zani.report.infrastructure.persistence.entity.ReviewRecommendationJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.entity.StudentReportJpaEntity;
 import com.a105.zani.report.infrastructure.persistence.repository.ReviewRecommendationJpaRepository;
+import com.a105.zani.report.infrastructure.persistence.repository.SessionReportJpaRepository;
 import com.a105.zani.report.infrastructure.persistence.repository.StudentReportJpaRepository;
 
 @Component
@@ -37,14 +38,21 @@ public class StudentReportQueryAdapter implements StudentReportQueryPort {
 
     private final StudentReportJpaRepository studentReportRepository;
     private final ReviewRecommendationJpaRepository recommendationRepository;
+    private final SessionReportJpaRepository sessionReportRepository;
     private final JdbcTemplate jdbcTemplate;
     // 전사 펼치기는 강사 수업 클립(308)과 공유한다. 규칙은 SessionTranscriptQuery 가 소유한다.
     private final SessionTranscriptQuery transcriptQuery;
 
+    /** 강사 리포트·수업 클립과 같은 조회를 쓴다. 공개를 판정하는 값은 하나여야 한다. */
+    @Override
+    public boolean sessionReportPublished(long sessionId) {
+        return sessionReportRepository.existsBySessionIdAndPublishedAtIsNotNull(sessionId);
+    }
+
     @Override
     public Optional<StudentReportView> findBySessionIdAndParticipantId(long sessionId, long participantId) {
         return studentReportRepository
-                .findBySessionIdAndSessionParticipantIdAndPublishedAtIsNotNull(sessionId, participantId)
+                .findBySessionIdAndSessionParticipantId(sessionId, participantId)
                 .map(report -> toView(report, sessionId, participantId));
     }
 

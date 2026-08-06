@@ -17,6 +17,13 @@ import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSes
 import com.a105.zani.session.application.resolveendedparticipant.ResolveEndedSessionParticipantUseCase;
 import com.a105.zani.session.domain.model.SessionParticipantRole;
 
+/**
+ * 저장된 개인 리포트를 읽어 화면이 쓰는 모양으로 합친다.
+ *
+ * <p><b>공개 게이트는 공통 리포트의 게시다.</b> 개인 리포트 행의 {@code published_at} 이 아니라 {@code session_reports} 의 게시를 본다 — 사후 파이프라인은 공개
+ * 단계에서 공통 리포트에만 시각을 찍으므로(S15P11A105-304), 개인 리포트의 컬럼을 게이트로 쓰면 분석이 정상 완주해도 학생 화면이 영구히 404 다. 강사 리포트가 같은 이유로 막혀 있었고 같은
+ * 방식으로 고쳤다(S15P11A105-310).
+ */
 @Service
 @RequiredArgsConstructor
 public class GetStudentReportService implements GetStudentReportUseCase {
@@ -40,6 +47,12 @@ public class GetStudentReportService implements GetStudentReportUseCase {
                 new ResolveEndedSessionParticipantQuery(query.sessionId(), query.memberId()));
         if (participant.role() != SessionParticipantRole.STUDENT) {
             throw new NotSessionStudentReportException();
+        }
+
+        // 공개 게이트는 공통 리포트의 게시다. 개인 리포트 행의 published_at 이 아니다 — 그 컬럼을 채우는
+        // 코드가 없어서, 그것을 보면 분석이 완주해도 학생이 리포트를 영구히 열 수 없다(S15P11A105-310).
+        if (!queryPort.sessionReportPublished(query.sessionId())) {
+            throw new ReportNotReadyException();
         }
 
         StudentReportView view = queryPort

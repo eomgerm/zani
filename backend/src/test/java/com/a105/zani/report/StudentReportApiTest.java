@@ -41,6 +41,7 @@ class StudentReportApiTest {
     private static final long LIVE_PARTICIPANT_ID = 9_112_523L;
     private static final long STUDENT_REPORT_ID = 9_112_530L;
     private static final long OTHER_REPORT_ID = 9_112_531L;
+    private static final long SESSION_REPORT_ID = 9_112_540L;
     private static final LocalDateTime NOW =
             LocalDateTime.ofInstant(Instant.parse("2026-08-04T01:00:00Z"), ZoneOffset.UTC);
 
@@ -70,13 +71,15 @@ class StudentReportApiTest {
         insertParticipant(STUDENT_PARTICIPANT_ID, SESSION_ID, STUDENT_ID, "STUDENT");
         insertParticipant(OTHER_PARTICIPANT_ID, SESSION_ID, OTHER_STUDENT_ID, "STUDENT");
         insertParticipant(LIVE_PARTICIPANT_ID, LIVE_SESSION_ID, STUDENT_ID, "STUDENT");
+        // 공개 게이트는 공통 리포트의 게시다. 개인 리포트 행의 published_at 이 아니다(S15P11A105-310).
+        publishSessionReport();
     }
 
     @Test
     @DisplayName("학생은 본인의 활동·참여 요약·정렬된 추천 5개만 조회한다")
     void returns_only_the_calling_students_report() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
-        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", 9, NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2);
+        insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", 9);
         seedActivity();
         seedRecommendations();
         insertRecommendation(9_112_607L, OTHER_REPORT_ID, "MISSED", "다른 학생 제목", 0L, 1_000L, 0);
@@ -110,7 +113,7 @@ class StudentReportApiTest {
     @Test
     @DisplayName("질문 수 판정이 없으면 0이 아니라 null로 내린다")
     void sends_a_null_question_count_when_the_analysis_has_none() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", null, NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", null);
         seedActivity();
 
         // 0 으로 내리면 화면이 "0개" 를 적어 질문을 안 한 학생과 구분되지 않는다. 세는 값이 아니라
@@ -124,7 +127,7 @@ class StudentReportApiTest {
     @Test
     @DisplayName("복습 클립이 쓰는 재생 정보를 함께 내린다 — 녹화 파일이 없으면 recordingUrl만 null이다")
     void returns_the_clip_playback_contract() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2);
         seedRecommendations();
         insertTranscript();
 
@@ -150,7 +153,7 @@ class StudentReportApiTest {
     @Test
     @DisplayName("전사가 아직 없으면 빈 배열이며 오류가 아니다")
     void returns_an_empty_transcript_when_none_exists() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2, NOW);
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", 2);
 
         fetchReport(STUDENT_ID, SESSION_ID)
                 .andExpect(status().isOk())
@@ -190,14 +193,37 @@ class StudentReportApiTest {
                 .andExpect(jsonPath("$.code").value("REPORT_002"));
     }
 
+    /** 행은 만들어졌지만 아직 공개 전이다. 중간 상태를 화면에 내보내면 반쯤 만들어진 리포트를 읽게 된다. */
     @Test
-    @DisplayName("학생 리포트가 미게시 상태면 404다")
-    void reports_not_ready_when_the_report_is_unpublished() throws Exception {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "미게시 요약", null);
+    @DisplayName("공통 리포트가 미게시 상태면 404다")
+    void reports_not_ready_when_the_session_report_is_unpublished() throws Exception {
+        unpublishSessionReport();
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "미게시 요약");
 
         fetchReport(STUDENT_ID, SESSION_ID)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REPORT_002"));
+    }
+
+    /**
+     * 이 티켓이 고친 것 — 개인 리포트 행의 {@code published_at} 이 비어 있어도 공통 리포트가 게시됐으면 보인다.
+     *
+     * <p>운영에서 그 컬럼을 채우는 코드가 없다. 공개 단계는 {@code session_reports} 에만 시각을 찍으므로(S15P11A105-304), 그 컬럼을 게이트로 두면 분석이 정상 완주해도
+     * 학생은 영구히 리포트를 열 수 없다. 강사 리포트가 같은 이유로 막혀 있었다(S15P11A105-310).
+     */
+    @Test
+    @DisplayName("개인 리포트 행의 공개 시각이 비어도 공통 리포트가 게시됐으면 200이다")
+    void serves_the_report_even_when_the_row_has_no_published_at() throws Exception {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약");
+
+        fetchReport(STUDENT_ID, SESSION_ID)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.participationSummary").value("참여 요약"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT published_at FROM student_reports WHERE id = ?", Object.class, STUDENT_REPORT_ID))
+                .as("개인 리포트 행의 공개 시각은 여전히 비어 있어야 한다 — 이 값이 노출을 정하지 않는다는 것이 이 테스트의 전제다")
+                .isNull();
     }
 
     private ResultActions fetchReport(long memberId, long sessionId) throws Exception {
@@ -293,23 +319,44 @@ class StudentReportApiTest {
     }
 
     /** 질문 수는 모델이 채우는 값이라 없는 리포트가 정상이다. 따로 주지 않으면 비워 둔다. */
-    private void insertStudentReport(long id, long participantId, String summary, LocalDateTime publishedAt) {
-        insertStudentReport(id, participantId, summary, null, publishedAt);
+    private void insertStudentReport(long id, long participantId, String summary) {
+        insertStudentReport(id, participantId, summary, null);
     }
 
-    private void insertStudentReport(
-            long id, long participantId, String summary, Integer questionCount, LocalDateTime publishedAt) {
+    /**
+     * 개인 리포트 행.
+     *
+     * <p><b>{@code published_at} 을 인자로 받지 않는다 — 언제나 비운다.</b> 운영에서 이 컬럼을 채우는 코드가 없기 때문이다. 예전 이 파일은 값을 직접 넣어 200 을 받아 냈고,
+     * 그래서 "분석이 완주해도 학생 리포트가 영구히 404" 라는 사실을 놓쳤다. 테스트가 만들 수 있는 상태는 운영이 만들 수 있는 상태여야 한다.
+     */
+    private void insertStudentReport(long id, long participantId, String summary, Integer questionCount) {
         jdbcTemplate.update(
                 "INSERT INTO student_reports (id, session_id, session_participant_id, participation_summary,"
-                        + " question_count, published_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        + " question_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 id,
                 SESSION_ID,
                 participantId,
                 summary,
                 questionCount,
-                publishedAt,
                 NOW,
                 NOW);
+    }
+
+    /** 공개 게이트. 강사 리포트·수업 클립·수업 요약이 모두 이 값 하나를 본다. */
+    private void publishSessionReport() {
+        jdbcTemplate.update(
+                "INSERT INTO session_reports (id, session_id, summary, published_at, created_at, updated_at)"
+                        + " VALUES (?, ?, '수업 공통 요약', ?, ?, ?)",
+                SESSION_REPORT_ID,
+                SESSION_ID,
+                NOW,
+                NOW,
+                NOW);
+    }
+
+    /** 분석은 끝나 공통 리포트가 생겼지만 아직 공개되지 않은 상태로 되돌린다. */
+    private void unpublishSessionReport() {
+        jdbcTemplate.update("UPDATE session_reports SET published_at = NULL WHERE id = ?", SESSION_REPORT_ID);
     }
 
     private void insertChat(long id, long senderParticipantId, Long recipientParticipantId, String channelType) {
