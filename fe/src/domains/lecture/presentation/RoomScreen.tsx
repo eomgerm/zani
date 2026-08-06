@@ -84,6 +84,14 @@ type RoomScreenProps = {
  */
 const ENDED_KICK_DELAY_MS = 4_000;
 
+/**
+ * 화면 공유 중 인앱 스트립에 한 번에 보여줄 인원.
+ *
+ * <p>스트립은 150~184px 폭이라 인원이 늘수록 타일이 계속 작아진다. 넷을 넘어가면 얼굴을 알아볼
+ * 수 없어, 다 그리는 대신 남은 인원 수만 마지막 타일에 얹는다. 전체 목록은 참여자 패널이 갖고 있다.
+ */
+const ROSTER_MAX_VISIBLE = 4;
+
 
 /** 카메라 안내 문구는 원인별로 갈린다(기준 문서 §5.2). 상태는 셋 다 CAMERA_OFF 하나다. */
 const CAMERA_GUIDE_COPY: Record<CameraGuideCause, { title: string; body: string }> = {
@@ -611,7 +619,11 @@ function RoomScreenContent({
                       videoRefFor={participantVideos.refFor}
                       localParticipantId={localParticipantId}
                       testId="screen-share-roster"
-                      className="flex max-h-[calc(100%-140px)] w-[150px] flex-col gap-2 overflow-y-auto rounded-2xl border border-room-line bg-[#0e1020cc] p-2 shadow-[0_12px_32px_rgba(0,0,0,.45)] backdrop-blur-[6px] sm:w-[184px]"
+                      // 배치기가 칸을 나누려면 높이가 확정돼야 한다. 예전에는 내용만큼 늘어나다
+                      // 넘치면 스크롤했는데, 그러면 스트립이 공유 화면을 얼마나 가릴지 알 수 없다.
+                      className="h-[calc(100%-140px)] w-[150px] rounded-2xl border border-room-line bg-[#0e1020cc] p-2 shadow-[0_12px_32px_rgba(0,0,0,.45)] backdrop-blur-[6px] sm:w-[184px]"
+                      // 좁은 스트립이라 다 그리면 얼굴이 안 보인다. 넘치는 인원은 수만 얹는다.
+                      maxVisible={ROSTER_MAX_VISIBLE}
                     />
                   </div>
                 )}
