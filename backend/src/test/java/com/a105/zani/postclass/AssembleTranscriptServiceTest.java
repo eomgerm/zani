@@ -883,6 +883,114 @@ class AssembleTranscriptServiceTest {
         assertEquals(1, result.filteredSegmentCount());
     }
 
+    // ---------------------------------------------------------------------
+    // 범위 밖 타임스탬프(S15P11A105-324)
+    //
+    // 환각은 무음 구간에 5.5초 고정 길이 세그먼트를 찍으므로 오디오 끝 근처에서 구조적으로 범위를
+    // 넘는다. 그 세그먼트를 거르기 전에 경계 검사를 하면, 어차피 버릴 것 하나 때문에 수업 하나가
+    // 통째로 저장되지 않는다. 실제로 그렇게 실패한 세션이 있었다.
+    // ---------------------------------------------------------------------
+
+    @Test
+    void 범위를_넘긴_환각은_조립을_실패시키지_않고_빠진다() {
+        // 실측(세션 873018724616549018, 학생 마이크 237,528ms 청크). 마지막 환각이 239,500ms 까지라고
+        // 주장해 1,972ms 를 넘겼고, 허용폭 1,000ms 를 초과해 세션 전체가 FAILED 로 끝났다.
+        long durationMs = 237_528L;
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                durationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(
+                        segment(149_500, 152_500, "질문이 있습니다.", 0.1109),
+                        segment(152_500, 167_500, "체인이 사용하면 하나의 넥스에 데이터가 너무", 0.1109),
+                        segment(234_500, 239_500, HALLUCINATION, 0.9787)));
+
+        AssembleTranscriptResult result = service.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(List.of("질문이 있습니다.", "체인이 사용하면 하나의 넥스에 데이터가 너무"), textsOf(transcriptPort.only()));
+        assertEquals(1, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 범위를_넘긴_실제_발화는_여전히_분할_오류로_거절한다() {
+        // 필터를 앞으로 옮겨도 탐지력이 유지되는지 본다. 남기기로 한 세그먼트가 범위를 크게 벗어나면
+        // 그것은 환각이 아니라 분할이 잘못됐다는 신호이므로 조립을 멈춰야 한다.
+        long durationMs = 237_528L;
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                durationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(segment(234_500, 239_500, "실제 발화인데 청크 밖으로 나간다", 0.05)));
+
+        assertThrows(
+                TranscriptAssemblyInvalidException.class,
+                () -> service.assemble(new AssembleTranscriptCommand(
+                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk))));
+    }
+
+    @Test
+    void 실측_세션의_학생_트랙을_그대로_조립한다() {
+        // 세션 873018724616549018 학생 마이크 13 세그먼트를 순서·시각·확률 그대로 옮긴 것이다.
+        // 환각 11건이 전부 같은 문구이고 #1~#8 이 연속이다 — 잔존분은 S15P11A105-316 의 대상이다.
+        String repeated = "지금까지 재택 플러스였습니다.";
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                237_528L,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(
+                        segment(0, 1_840, repeated, 0.6215),
+                        segment(30_000, 35_500, repeated, 0.9924),
+                        segment(60_000, 65_500, repeated, 0.9920),
+                        segment(90_000, 95_500, repeated, 0.9776),
+                        segment(120_500, 128_000, repeated, 0.7898),
+                        segment(130_500, 135_500, repeated, 0.7898),
+                        segment(137_500, 144_500, repeated, 0.7898),
+                        segment(144_500, 149_500, repeated, 0.1109),
+                        segment(149_500, 152_500, "질문이 있습니다.", 0.1109),
+                        segment(152_500, 167_500, "체인이 사용하면 하나의 넥스에 데이터가 너무", 0.1109),
+                        segment(174_500, 179_500, repeated, 0.8946),
+                        segment(204_500, 209_500, repeated, 0.9652),
+                        segment(234_500, 239_500, repeated, 0.9787)));
+
+        AssembleTranscriptResult result = service.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        // 조립이 끝까지 간다. 이것이 이 티켓의 핵심이다.
+        assertEquals(6, result.filteredSegmentCount(), "0.895 이상 6건이 빠진다");
+        assertEquals(7, result.segmentCount());
+        // 실제 발화 두 건은 시각까지 그대로 남는다.
+        List<TranscriptDocumentSegment> stored = transcriptPort.only().segments();
+        assertEquals("질문이 있습니다.", stored.get(5).text());
+        assertEquals(149_500, stored.get(5).startOffsetMs());
+        assertEquals("체인이 사용하면 하나의 넥스에 데이터가 너무", stored.get(6).text());
+        assertEquals(167_500, stored.get(6).endOffsetMs());
+        // 임곗값 아래의 반복 환각은 이 규칙으로 잡히지 않는다(S15P11A105-316).
+        assertEquals(
+                5, stored.stream().filter(s -> s.text().equals(repeated)).count(), "0.79·0.62·0.11 로 나온 반복 환각은 남는다");
+    }
+
     @Test
     void 임곗값을_올리면_같은_체크포인트에서_더_많이_남는다() {
         // 재조립만으로 판정을 바꿀 수 있다는 것을 고정한다. GMS 를 다시 부르지 않는다.

@@ -32,6 +32,8 @@ import com.a105.zani.postclass.application.exception.TranscriptStoreUnavailableE
  *   <li>필터는 <b>실패가 아니다</b>. 전부 걸러져 세그먼트가 0개가 되어도 정상 저장이고 {@code partial} 은 여전히 {@code false} 다 — {@code partial=true} 는
  *       "구간이 빠진 전사" 를 뜻하고 소비 계약이 하류에 없다
  *   <li>남은 세그먼트는 <b>손대지 않는다</b>. 시각·화자·식별자·확률값 그대로이고, 빠진 자리를 메우거나 주변 시각을 당기지 않는다. 문서 형태와 {@code schemaVersion} 도 그대로다
+ *   <li><b>거절 검사보다 먼저 거른다</b>(S15P11A105-324). 아래 청크 경계 검사는 <b>남긴 세그먼트에만</b> 적용된다 — 환각은 오디오 끝을 넘는 시각을 찍는 일이 흔해서, 나중에
+ *       거르면 어차피 버릴 세그먼트 하나 때문에 세션 전체 조립이 죽는다. 실제로 그렇게 실패한 세션이 있었다
  * </ul>
  *
  * <p><b>예외는 재시도 여부로 나뉜다.</b> 호출자가 {@code RecordPipelineFailureCommand.retryable} 에 그대로 옮길 수 있게 만든 구분이다. 하나로 합치면 두 방향으로
