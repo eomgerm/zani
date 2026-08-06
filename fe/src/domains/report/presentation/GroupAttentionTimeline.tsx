@@ -191,7 +191,8 @@ export function GroupAttentionTimeline({
 
     return (
       <>
-        <div role="img" aria-label={chartLabel}>
+        {/* 좁아지면 상자 안에서만 가로로 스크롤한다 — 폭 값은 globals 의 z-chart-min 이 정한다. */}
+        <div role="img" aria-label={chartLabel} className="z-chart-min">
           <ResponsiveContainer width="100%" height={hasSections ? 264 : 240}>
             {/* 배열이 둘이라 차트에 data 를 주지 않고 계열마다 자기 data 를 준다. */}
             <ComposedChart margin={{ top: hasSections ? 34 : 12, right: 18, left: 4, bottom: 4 }}>
@@ -351,7 +352,7 @@ export function GroupAttentionTimeline({
         </div>
       </div>
 
-      <div className="z-report-box px-6 pb-3 pt-[18px]">{body()}</div>
+      <div className="z-report-box z-chart-scroll px-6 pb-3 pt-[18px]">{body()}</div>
 
       {status === "ready" && timeline !== null && (
         <>
