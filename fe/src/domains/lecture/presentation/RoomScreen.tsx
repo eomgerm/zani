@@ -63,6 +63,7 @@ import { useCoachingStatus } from "./useCoachingStatus";
 import { useCoachTipCard } from "./useCoachTipCard";
 import { useDocumentPictureInPicture } from "./useDocumentPictureInPicture";
 import { useInviteUrl } from "./useInviteUrl";
+import { useLastSpeaker } from "./useLastSpeaker";
 import { useRoomMediaControls } from "./useRoomMediaControls";
 import { useScreenShare } from "./useScreenShare";
 import { useSessionPresence } from "./useSessionPresence";
@@ -396,8 +397,9 @@ function RoomScreenContent({
   // 아직 모르는 상태와 "제목 없음" 을 구분한다. 연결이 끝났는데도 제목이 없으면 서버가 안 내려주는 구성이므로
   // 자리만 잡고 기다리지 않고 기본 문구를 쓴다. 그러지 않으면 스켈레톤이 영원히 뛴다.
   const title = roomTitle ?? sessionTitle ?? (connectionState === "connected" ? "수업" : null);
-  // 발표자 보기에서 누구를 띄울지는 SpeakerStage 가 정한다(spotlightIndex). 여기서 스테이지 주인을
-  // 따로 붙들던 상태는 그쪽으로 옮겼다 — 같은 판단을 두 곳에서 하면 서로 다른 사람을 가리킨다.
+  // 직전 발화자는 보기를 전환하는 이 자리에서 붙든다. SpeakerStage 안에 두면 갤러리로 갔다 오는
+  // 순간 언마운트되면서 기억이 사라져, 돌아올 때마다 강사부터 다시 시작한다.
+  const lastSpeakerId = useLastSpeaker(tileParticipants);
   // 공유 중인 참가자의 표시 이름. LiveKit 참가자 목록에서 identity 로 찾는다(내 공유면 오버레이가 "내 화면"으로 덮는다).
   const activeSharerName =
     tileParticipants.find((participant) => participant.id === shareActiveIdentity)?.name ?? "참가자";
@@ -590,6 +592,7 @@ function RoomScreenContent({
                       sharerLabel={isSharing ? "내 화면" : `${activeSharerName} 님의 화면`}
                       videoRefFor={participantVideos.refFor}
                       localParticipantId={localParticipantId}
+                      lastSpeakerId={lastSpeakerId}
                     />
                   ) : (
                     <ScreenShareStage
@@ -628,7 +631,7 @@ function RoomScreenContent({
                       <div className="min-h-0 flex-1 p-2">
                         <PipStage
                           participants={galleryParticipants}
-                          {...(shareActive ? { attachScreen } : {})}
+                          attachScreen={attachScreen}
                           videoRefFor={participantVideos.refFor}
                           localParticipantId={localParticipantId}
                         />
@@ -729,6 +732,7 @@ function RoomScreenContent({
                 participants={galleryParticipants}
                 videoRefFor={participantVideos.refFor}
                 localParticipantId={localParticipantId}
+                lastSpeakerId={lastSpeakerId}
               />
             )}
 

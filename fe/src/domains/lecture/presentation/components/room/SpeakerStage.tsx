@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { GridContainer, GridItem } from "@thangdevalone/meeting-grid-layout-react";
 import { ParticipantTile, type ParticipantTileData } from "./ParticipantTile";
 import { SNAP_SIZE, TILE_ASPECT_RATIO, TILE_FILL, TILE_GAP } from "./roomGridLayout";
@@ -58,6 +57,13 @@ type SpeakerStageProps = {
   videoRefFor?: (identity: string) => React.Ref<HTMLVideoElement>;
   /** 내 타일은 거울처럼 뒤집는다. */
   localParticipantId: string | null;
+  /**
+   * 직전에 발화가 잡힌 참가자.
+   *
+   * <p>이 컴포넌트가 스스로 기억하지 않는다 — 갤러리로 갔다 오면 언마운트되면서 기억이 사라져,
+   * 돌아올 때마다 강사부터 다시 시작한다. 보기를 전환하는 쪽(`useLastSpeaker`)이 들고 있어야 한다.
+   */
+  lastSpeakerId?: string | null;
 };
 
 /**
@@ -73,20 +79,10 @@ export function SpeakerStage({
   sharerLabel,
   videoRefFor,
   localParticipantId,
+  lastSpeakerId = null,
 }: SpeakerStageProps) {
   const sharing = attachScreen !== undefined;
   const offset = sharing ? 1 : 0;
-
-  // 직전 발화자를 붙들어 둔다. 말 사이 침묵마다 강사로 돌아가면 화면이 널뛴다.
-  const [lastSpeakerId, setLastSpeakerId] = useState<string | null>(null);
-  const stillSpeaking = participants.some(
-    (participant) => participant.id === lastSpeakerId && participant.speaking,
-  );
-  const speakingNow = participants.find((participant) => participant.speaking);
-  if (!stillSpeaking && speakingNow !== undefined && speakingNow.id !== lastSpeakerId) {
-    setLastSpeakerId(speakingNow.id);
-  }
-
   const subject = spotlightIndex(participants, sharing, lastSpeakerId);
 
   if (subject === null) {
