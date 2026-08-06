@@ -135,14 +135,16 @@ export function StudentReport({
                         </span>
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="flex flex-col flex-wrap">
                           <span className="font-mono text-[11.5px] font-extrabold text-primary">
                             {formatOffset(r.startSeconds)}
                           </span>
-                          <Badge bg={badge.bg} fg={badge.fg}>
-                            {badge.label}
-                          </Badge>
-                          <span className="text-[13.5px] font-extrabold">{r.title}</span>
+                          <span className="flex gap-2">
+                            <span className="text-[13.5px] font-extrabold">{r.title}</span>
+                            <Badge bg={badge.bg} fg={badge.fg}>
+                              {badge.label}
+                            </Badge>
+                          </span>
                         </span>
                         <span className="block text-xs leading-[1.5] text-ink-faint">
                           {r.description}
