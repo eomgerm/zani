@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "record:landing": "playwright test --config=playwright.landing.config.ts",
     "generate:types": "openapi-typescript http://localhost:8080/v3/api-docs -o src/shared/types/api.d.ts"
   },
   "dependencies": {
