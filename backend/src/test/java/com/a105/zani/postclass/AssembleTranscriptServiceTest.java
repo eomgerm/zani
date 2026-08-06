@@ -932,8 +932,8 @@ class AssembleTranscriptServiceTest {
     }
 
     @Test
-    void 범위를_넘긴_실제_발화는_여전히_분할_오류로_거절한다() {
-        // 필터를 앞으로 옮겨도 탐지력이 유지되는지 본다. 남기기로 한 세그먼트가 범위를 크게 벗어나면
+    void 범위를_분_단위로_넘긴_세그먼트는_여전히_분할_오류로_거절한다() {
+        // 필터를 앞으로 옮겨도 탐지력이 유지되는지 본다. 남기기로 한 세그먼트가 분 단위로 벗어나면
         // 그것은 환각이 아니라 분할이 잘못됐다는 신호이므로 조립을 멈춰야 한다.
         long durationMs = 237_528L;
         TranscriptionChunk chunk = new TranscriptionChunk(
@@ -947,7 +947,82 @@ class AssembleTranscriptServiceTest {
                 1,
                 null,
                 null,
-                List.of(segment(234_500, 239_500, "실제 발화인데 청크 밖으로 나간다", 0.05)));
+                List.of(segment(234_500, durationMs + 120_000, "실제 발화인데 청크를 2분 넘긴다", 0.05)));
+
+        assertThrows(
+                TranscriptAssemblyInvalidException.class,
+                () -> service.assemble(new AssembleTranscriptCommand(
+                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk))));
+    }
+
+    // ---------------------------------------------------------------------
+    // 환각 타임스탬프의 초 단위 초과(S15P11A105-329)
+    //
+    // 처음 허용폭 1초는 두 경우만 가정했다 — 분 단위로 어긋나는 분할 오류와, GMS 가 문장 끝을
+    // 반올림해 몇 ms 넘기는 정상 범위. 실측에 세 번째가 있다: whisper 가 무음 구간에 찍는 환각의
+    // 종료 시각은 초 단위로 넘친다. 그 하나가 수업 전체를 실패시켰다.
+    // ---------------------------------------------------------------------
+
+    @Test
+    void 환각의_초_단위_초과는_청크_끝으로_맞추고_조립을_계속한다() {
+        // 실측 세 사례를 한 청크에 모았다(초과 1,972 / 2,733 / 4,032ms). 각각 다른 세션·트랙에서
+        // 나왔지만 모두 "필터가 남긴 세그먼트가 오디오 끝을 초 단위로 넘는" 같은 모양이다.
+        //
+        // 이 셋은 서로 다른 문구라 반복 규칙에 걸리지 않고, 무음 규칙은 기본 OFF 다. 즉 남는다 —
+        // 그래서 경계 검사가 이들을 감당해야 한다.
+        long durationMs = 241_267L;
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                durationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(
+                        segment(200_000, 205_000, "실제 발화입니다.", 0.05),
+                        segment(238_000, durationMs + 1_972, "구독과 좋아요", 0.987),
+                        segment(239_000, durationMs + 2_733, "부탁드려요", 0.987),
+                        segment(240_000, durationMs + 4_032, "감사합니다", 0.987)));
+
+        // 운영 기본값으로 돈다 — 무음 규칙 OFF, 반복 규칙 ON. 이 셋은 서로 다른 문구라 반복 규칙에도
+        // 걸리지 않아 그대로 남고, 그래서 경계 검사가 이들을 감당해야 한다. 무음 규칙을 켜면 지워져
+        // 버려서 이 테스트가 아무것도 검증하지 못한다.
+        AssembleTranscriptService production = new AssembleTranscriptService(
+                transcriptPort, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(false, 0.98, true));
+
+        AssembleTranscriptResult result = production.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(4, result.segmentCount(), "조립이 끝까지 간다");
+        // 넘긴 것은 청크 끝으로 맞춘다. 없는 시간을 가리키는 세그먼트를 남기지 않는다.
+        List<TranscriptDocumentSegment> stored = transcriptPort.only().segments();
+        assertEquals(205_000, stored.get(0).endOffsetMs(), "정상 세그먼트는 손대지 않는다");
+        assertEquals(durationMs, stored.get(1).endOffsetMs());
+        assertEquals(durationMs, stored.get(2).endOffsetMs());
+        assertEquals(durationMs, stored.get(3).endOffsetMs());
+    }
+
+    @Test
+    void 허용폭을_넘는_초과는_그대로_거절한다() {
+        // 5초는 관측된 최대 초과(4.0초)를 덮되 분 단위 오류는 잡는 폭이다. 경계 바로 밖을 고정해
+        // 두어, 폭을 더 넓히려면 이 테스트를 함께 고치게 만든다.
+        long durationMs = 241_267L;
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                durationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(segment(240_000, durationMs + 5_001, "허용폭을 1ms 넘긴다", 0.05)));
 
         assertThrows(
                 TranscriptAssemblyInvalidException.class,
