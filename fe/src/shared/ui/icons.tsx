@@ -73,13 +73,21 @@ export function ListIcon({ size = 16, className }: IconProps) {
   );
 }
 
+/**
+ * 날짜 칸은 흰색으로 덧칠하지 않고 판에서 뚫는다.
+ *
+ * <p>흰색으로 칠하면 아이콘이 흰색인 자리(활성 토글의 초록 배경 위)에서 판과 칸이 같은 색이 되어 캘린더가 아니라 흰 사각형 덩어리로 보인다. 뚫어 두면 어느 배경 위에서든 그 배경이 칸으로
+ * 비친다.
+ */
 export function CalendarIcon({ size = 16, className }: IconProps) {
   return (
     <svg {...solidProps(size, className)}>
-      <rect x="3" y="4.4" width="18" height="16.2" rx="3" fill="currentColor" />
-      <rect x="6.4" y="11" width="3" height="3" rx=".8" fill="#fff" />
-      <rect x="10.7" y="11" width="3" height="3" rx=".8" fill="#fff" opacity=".75" />
-      <rect x="6.4" y="15.2" width="3" height="3" rx=".8" fill="#fff" opacity=".75" />
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M6 4.4h12a3 3 0 0 1 3 3v10.2a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7.4a3 3 0 0 1 3-3Zm.4 6.6h3v3h-3v-3Zm4.3 0h3v3h-3v-3Zm-4.3 4.2h3v3h-3v-3Z"
+      />
     </svg>
   );
 }
