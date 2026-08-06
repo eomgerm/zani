@@ -30,6 +30,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  *     아래 {@code hallucinationFilterEnabled} 와 다른 단계의 다른 목적이다
  * @param hallucinationFilterEnabled 무음 환각 세그먼트 필터. 기본 ON(S15P11A105-306). 이쪽은 호출 <b>후</b> 에 돌아온 세그먼트를 최종 전사에서 빼는 것이다.
  *     GMS 응답과 청크 체크포인트는 건드리지 않으므로, 끄면 다음 조립부터 예전 동작으로 돌아간다
+ * @param repeatedPhraseFilterEnabled 반복 문구 환각 필터. 기본 ON(S15P11A105-316). 무음 확률이 낮게 나온 환각을 잡는다 — 그 값은 30초 창 단위라 실제 발화와
+ *     같은 창에 떨어진 환각은 발화와 값이 같아져 위 필터로는 구분할 수 없다
  * @param noSpeechThreshold 이 값 <b>이상</b> 인 {@code no_speech_prob} 세그먼트를 최종 전사에서 뺀다. 범위는 {@code 0.0}~{@code 1.0} 이고 벗어나면
  *     기동하지 않는다
  */
@@ -49,7 +51,8 @@ public record PostClassTranscriptionProperties(
         @DefaultValue("2") int concurrency,
         @DefaultValue("false") boolean silencePrefilterEnabled,
         @DefaultValue("true") boolean hallucinationFilterEnabled,
-        @DefaultValue("0.8") double noSpeechThreshold) {
+        @DefaultValue("0.8") double noSpeechThreshold,
+        @DefaultValue("true") boolean repeatedPhraseFilterEnabled) {
 
     public PostClassTranscriptionProperties {
         if (chunkDuration == null || chunkDuration.isZero() || chunkDuration.isNegative()) {

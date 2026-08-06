@@ -52,9 +52,21 @@ class AssembleTranscriptServiceTest {
     private final RecordingTranscriptPort transcriptPort = new RecordingTranscriptPort();
     private final AssembleTranscriptService service = service(transcriptPort, DEFAULT_THRESHOLD);
 
+    /**
+     * 무음 확률 규칙만 켠 조립.
+     *
+     * <p>반복 문구 필터를 끄는 이유는 이 클래스의 대부분이 306 규칙을 보기 때문이다. 켜 두면 fixture 의 텍스트를 바꾸는 순간 기대값이 함께 흔들리고 무엇이 깨졌는지 흐려진다. 316 은 아래
+     * 전용 묶음에서 본다.
+     */
     private static AssembleTranscriptService service(TranscriptPort port, double threshold) {
         return new AssembleTranscriptService(
-                port, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(true, threshold));
+                port, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(true, threshold, false));
+    }
+
+    /** 두 규칙을 모두 켠 조립. 운영 기본값과 같다. */
+    private static AssembleTranscriptService serviceWithRepeatFilter(TranscriptPort port) {
+        return new AssembleTranscriptService(
+                port, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(true, DEFAULT_THRESHOLD, true));
     }
 
     /** 저장된 문서를 들여다보기 위한 가짜 포트. 조립 결과가 정본과 같은 형태인지 보려면 실제로 저장되는 값이 필요하다. */
@@ -1007,5 +1019,156 @@ class AssembleTranscriptServiceTest {
         service(lenient, 0.99).assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", tracks, chunks));
 
         assertEquals(List.of(HALLUCINATION, STUDENT_QUESTION), textsOf(lenient.only()));
+    }
+
+    // ---------------------------------------------------------------------
+    // 반복 문구 환각(S15P11A105-316)
+    //
+    // 무음 확률로 잡히지 않는 환각을 다룬다. no_speech_prob 는 30초 창의 값이라 실제 발화와 같은
+    // 창에 떨어진 환각은 발화와 값이 같아진다 — 어떤 임곗값으로도 가를 수 없다. 남는 신호가
+    // 텍스트뿐이라 여기서만 텍스트를 본다.
+    // ---------------------------------------------------------------------
+
+    /** 실측 반복 환각 문구(세션 873018724616549018). 정규화 후 17자. */
+    private static final String REPEATED_HALLUCINATION = "지금까지 재택 플러스였습니다.";
+
+    private AssembleTranscriptResult assembleWithRepeatFilter(List<TranscriptSegment> segments, long chunkDurationMs) {
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                chunkDurationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                segments);
+        return serviceWithRepeatFilter(transcriptPort)
+                .assemble(new AssembleTranscriptCommand(
+                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+    }
+
+    @Test
+    void 실측_세션의_반복_환각을_전부_뺀다() {
+        // 세션 873018724616549018 학생 마이크 13 세그먼트를 순서·시각·확률 그대로 옮긴 것이다.
+        // 무음 규칙만으로는 6건만 빠지고 5건이 남았다(0.79 x3, 0.62, 0.11). 전부 같은 문구의 연속
+        // 반복이므로 이 규칙이 나머지를 가져간다.
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(
+                        segment(0, 1_840, REPEATED_HALLUCINATION, 0.6215),
+                        segment(30_000, 35_500, REPEATED_HALLUCINATION, 0.9924),
+                        segment(60_000, 65_500, REPEATED_HALLUCINATION, 0.9920),
+                        segment(90_000, 95_500, REPEATED_HALLUCINATION, 0.9776),
+                        segment(120_500, 128_000, REPEATED_HALLUCINATION, 0.7898),
+                        segment(130_500, 135_500, REPEATED_HALLUCINATION, 0.7898),
+                        segment(137_500, 144_500, REPEATED_HALLUCINATION, 0.7898),
+                        segment(144_500, 149_500, REPEATED_HALLUCINATION, 0.1109),
+                        segment(149_500, 152_500, "질문이 있습니다.", 0.1109),
+                        segment(152_500, 167_500, "체인이 사용하면 하나의 넥스에 데이터가 너무", 0.1109),
+                        segment(174_500, 179_500, REPEATED_HALLUCINATION, 0.8946),
+                        segment(204_500, 209_500, REPEATED_HALLUCINATION, 0.9652),
+                        segment(234_500, 239_500, REPEATED_HALLUCINATION, 0.9787)),
+                237_528L);
+
+        // 실제 발화 둘만 남는다. 환각 11건 전부 사라진다.
+        assertEquals(List.of("질문이 있습니다.", "체인이 사용하면 하나의 넥스에 데이터가 너무"), textsOf(transcriptPort.only()));
+        assertEquals(11, result.filteredSegmentCount());
+        // 남은 세그먼트의 시각은 그대로다.
+        assertEquals(149_500, transcriptPort.only().segments().get(0).startOffsetMs());
+        assertEquals(167_500, transcriptPort.only().segments().get(1).endOffsetMs());
+    }
+
+    @Test
+    void 강사가_대본을_다시_읽은_것은_반복으로_보지_않는다() {
+        // 실측 반례. 마이크를 바꾸며 같은 대본을 두 번 낭독한 세션에서 "안녕하세요" 가 두 번 나왔지만
+        // 사이에 다른 문장이 있어 연속이 아니었다. 사이에 낀 발화를 무시하고 세면 강의 절반이 사라진다.
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(
+                        segment(0, 2_000, "안녕하세요", 0.13),
+                        segment(2_000, 8_000, "오늘은 해시 테이블의 동작원리를 설명하겠습니다", 0.13),
+                        segment(8_000, 14_000, "해시 테이블은 키를 이용해 데이터를 저장합니다", 0.13),
+                        segment(14_000, 16_000, "안녕하세요", 0.13),
+                        segment(16_000, 22_000, "오늘은 해시 테이블의 동작원리를 설명하겠습니다", 0.13),
+                        segment(22_000, 28_000, "해시 테이블은 키를 이용해 데이터를 저장합니다", 0.13)),
+                600_000L);
+
+        assertEquals(6, transcriptPort.only().segments().size(), "재낭독은 하나도 빠지지 않는다");
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 긴_문장은_연속_반복돼도_남긴다() {
+        // 실측 반례. 강사가 같은 52자 문장을 3회 연속 읽은 세션이 있었고 그것은 실제 발화였다.
+        // 세 반복이 서로 다른 디코딩 창에 걸쳐 있었다는 것이 근거다(환각 루프는 한 창 안에서 돈다).
+        String longSentence = "다익스트라 알고리즘은 가장 가까운 정점을 선택하고 간선 완화 연산을 반복하여 최단거리를 구합니다";
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(
+                        segment(126_000, 134_000, longSentence, 0.0716),
+                        segment(135_000, 141_000, longSentence, 0.3446),
+                        segment(141_000, 147_000, longSentence, 0.2565)),
+                600_000L);
+
+        assertEquals(3, transcriptPort.only().segments().size(), "20자를 넘으면 반복 판정 대상이 아니다");
+        assertEquals(0, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 두_번_반복은_지우지_않는다() {
+        // 강사가 같은 말을 두 번 하는 것은 흔하다. 최소 3회로 둔 이유다.
+        // 무음 확률은 낮게 둔다 — 높이면 무음 규칙이 먼저 가져가 반복 규칙을 시험할 수 없다.
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(segment(0, 2_000, "중요합니다", 0.05), segment(2_000, 4_000, "중요합니다", 0.05)), 600_000L);
+
+        assertEquals(2, transcriptPort.only().segments().size());
+        assertEquals(0, result.filteredSegmentCount(), "반복으로는 빠지지 않는다");
+    }
+
+    @Test
+    void 무음_위가_아닌_연속_반복은_첫_하나를_남긴다() {
+        // 그 구간에 소리가 있었으면 강사가 실제로 반복했을 수 있다. 지우는 쪽으로 기울되 근거가 없으면
+        // 흔적을 남긴다.
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(
+                        segment(0, 2_000, "여기 중요해요", 0.05),
+                        segment(2_000, 4_000, "여기 중요해요", 0.05),
+                        segment(4_000, 6_000, "여기 중요해요", 0.05),
+                        segment(6_000, 12_000, "적재율이 높아지면 배열을 확장합니다", 0.05)),
+                600_000L);
+
+        assertEquals(List.of("여기 중요해요", "적재율이 높아지면 배열을 확장합니다"), textsOf(transcriptPort.only()));
+        assertEquals(2, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 공백과_종결_부호_차이는_같은_문구로_센다() {
+        // 정규화가 없으면 "고맙습니다." 와 "고맙습니다" 가 다른 문구로 세어져 반복이 끊긴다.
+        AssembleTranscriptResult result = assembleWithRepeatFilter(
+                List.of(
+                        segment(0, 3_000, " 고맙습니다. ", 0.95),
+                        segment(30_000, 33_000, "고맙습니다", 0.96),
+                        segment(60_000, 63_000, "고맙습니다!", 0.97)),
+                600_000L);
+
+        assertTrue(transcriptPort.only().segments().isEmpty());
+        assertEquals(3, result.filteredSegmentCount());
+    }
+
+    @Test
+    void 반복_필터를_끄면_무음_규칙만_적용된다() {
+        RecordingTranscriptPort port = new RecordingTranscriptPort();
+        List<TranscriptSegment> segments = List.of(
+                segment(0, 2_000, REPEATED_HALLUCINATION, 0.11),
+                segment(2_000, 4_000, REPEATED_HALLUCINATION, 0.11),
+                segment(4_000, 6_000, REPEATED_HALLUCINATION, 0.11));
+        TranscriptionChunk chunk = chunk(STUDENT_FILE, 0, TranscriptionChunkStatus.SUCCEEDED, segments);
+
+        AssembleTranscriptResult result = service(port, DEFAULT_THRESHOLD)
+                .assemble(new AssembleTranscriptCommand(
+                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(3, port.only().segments().size(), "무음 확률이 낮아 이 규칙으로는 안 빠진다");
+        assertEquals(0, result.filteredSegmentCount());
     }
 }

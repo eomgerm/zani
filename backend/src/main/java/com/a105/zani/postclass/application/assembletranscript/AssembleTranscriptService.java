@@ -86,10 +86,20 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
             List<TranscriptSegment> source = chunk.segments();
             totalSegmentCount += source.size();
 
+            // 반복 판정을 먼저 한다. 무음 필터가 반복 중 일부를 먼저 빼면 남은 것들이 짧은 조각으로
+            // 갈려 "연속 3회" 를 못 채운다 — 실측에서 8연속 반복이 무음 필터를 먼저 태우면 1+4 로
+            // 쪼개져 앞의 하나가 살아남았다. 원본 순서 그대로 봐야 한 덩어리로 잡힌다.
+            boolean[] repeated = markRepeatedPhrases(source);
+
             int filteredInChunk = 0;
+            int repeatedInChunk = 0;
             int rescuedInChunk = 0;
             for (int index = 0; index < source.size(); index++) {
                 TranscriptSegment candidate = source.get(index);
+                if (repeated[index]) {
+                    repeatedInChunk++;
+                    continue;
+                }
                 if (filterSettings.exceedsNoSpeechThreshold(candidate.noSpeechProb())) {
                     if (continuesRealSpeech(source, index)) {
                         rescuedInChunk++;
@@ -101,20 +111,21 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
                 // 남기기로 한 것만 문서 세그먼트로 옮긴다. 청크 경계 검사가 여기서 돈다.
                 segments.add(toDocumentSegment(track, chunk, candidate));
             }
-            filteredSegmentCount += filteredInChunk;
+            filteredSegmentCount += filteredInChunk + repeatedInChunk;
             rescuedSegmentCount += rescuedInChunk;
-            if (filteredInChunk > 0 || rescuedInChunk > 0) {
+            if (filteredInChunk > 0 || repeatedInChunk > 0 || rescuedInChunk > 0) {
                 // 청크 단위로 남긴다 — 어느 트랙의 어느 구간이 통째로 무음이었는지는 운영에서 볼 일이다.
                 // 텍스트는 남기지 않는다: 이 로그의 목적은 몇 개가 빠졌는지이고, 무엇이 빠졌는지는 체크포인트에 있다.
                 log.info(
-                        "Filtered silence-hallucination segments: sessionId={}, recordingFileId={}, chunkIndex={},"
-                                + " chunkSegmentCount={}, filteredSegmentCount={}, rescuedSegmentCount={},"
-                                + " threshold={}",
+                        "Filtered hallucination segments: sessionId={}, recordingFileId={}, chunkIndex={},"
+                                + " chunkSegmentCount={}, silenceFilteredCount={}, repeatFilteredCount={},"
+                                + " rescuedSegmentCount={}, threshold={}",
                         command.sessionId(),
                         chunk.recordingFileId(),
                         chunk.chunkIndex(),
                         source.size(),
                         filteredInChunk,
+                        repeatedInChunk,
                         rescuedInChunk,
                         filterSettings.noSpeechThreshold());
             }
@@ -271,6 +282,55 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
                 unfinished.get(0).chunkIndex(),
                 unfinished.get(0).status());
         throw new TranscriptNotReadyException();
+    }
+
+    /**
+     * 같은 짧은 문구가 연속으로 반복된 구간을 찾아 뺄 자리를 표시한다(S15P11A105-316).
+     *
+     * <p><b>왜 텍스트를 보는가.</b> {@code no_speech_prob} 는 30초 디코딩 창의 값이라 실제 발화와 같은 창에 떨어진 환각은 발화와 값이 똑같다 — 실측에서 학생 질문과 환각
+     * 5건이 모두 {@code 0.1109} 였다. whisper 가 주는 품질 지표가 전부 창 단위라 어떤 조합으로도 그 둘을 가를 수 없고, 남는 신호가 텍스트뿐이다.
+     *
+     * <p>판정 조건과 그 근거는 {@link TranscriptFilterSettings} 에 있다. 여기서는 <b>연속 구간을 끊는 일</b>만 한다 — 사이에 다른 발화가 끼면 다른 구간으로 본다.
+     *
+     * @return 인덱스별로 뺄지 여부. 필터가 꺼져 있으면 전부 {@code false}
+     */
+    private boolean[] markRepeatedPhrases(List<TranscriptSegment> source) {
+        boolean[] repeated = new boolean[source.size()];
+        int runStart = 0;
+        for (int index = 1; index <= source.size(); index++) {
+            boolean sameAsPrevious = index < source.size()
+                    && filterSettings
+                            .normalizeForRepeat(source.get(index).text())
+                            .equals(filterSettings.normalizeForRepeat(
+                                    source.get(index - 1).text()));
+            if (sameAsPrevious) {
+                continue;
+            }
+            markRun(source, repeated, runStart, index);
+            runStart = index;
+        }
+        return repeated;
+    }
+
+    /** 반복 구간 하나를 판정한다. {@code [from, toExclusive)} 는 정규화 텍스트가 같은 연속 구간이다. */
+    private void markRun(List<TranscriptSegment> source, boolean[] repeated, int from, int toExclusive) {
+        int runLength = toExclusive - from;
+        String normalized = filterSettings.normalizeForRepeat(source.get(from).text());
+        if (!filterSettings.isRepeatCandidate(normalized, runLength)) {
+            return;
+        }
+        int silentCount = 0;
+        for (int index = from; index < toExclusive; index++) {
+            if (filterSettings.looksSilent(source.get(index).noSpeechProb())) {
+                silentCount++;
+            }
+        }
+        // 무음 위에서 만들어진 반복이면 전부 뺀다. 아니면 첫 하나를 남긴다 — 강사가 실제로 반복해
+        // 말했을 수 있으므로 근거가 없으면 흔적을 남긴다.
+        int keepFrom = filterSettings.dropsWholeRun(runLength, silentCount) ? from : from + 1;
+        for (int index = keepFrom; index < toExclusive; index++) {
+            repeated[index] = true;
+        }
     }
 
     /**

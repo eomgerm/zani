@@ -96,7 +96,8 @@ class GmsPostClassTranscriptionAdapterTest {
                 2,
                 false,
                 true,
-                0.8);
+                0.8,
+                true);
     }
 
     private Fixture fixture() {

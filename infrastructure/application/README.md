@@ -56,6 +56,7 @@ RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{session
 RECORDING_THUMBNAIL_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/thumbnail
 POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true
 POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.8
+POSTCLASS_TRANSCRIPTION_REPEATED_PHRASE_FILTER_ENABLED=true
 NOTIFICATION_EMAIL_ENABLED=false
 NOTIFICATION_EMAIL_FROM=example@gmail.com
 NOTIFICATION_APP_BASE_URL=https://i15a105.p.ssafy.io
@@ -102,6 +103,15 @@ next assembly onward, without a redeploy of the image. The GMS response and the
 chunk checkpoints are never filtered, so raising or lowering the threshold and
 re-assembling changes the stored transcript without calling GMS again. The
 threshold must stay within `0.0`~`1.0`; the backend refuses to start otherwise.
+
+`POSTCLASS_TRANSCRIPTION_REPEATED_PHRASE_FILTER_ENABLED` covers the hallucinations
+the threshold above cannot reach (S15P11A105-316). `no_speech_prob` is a value of
+the 30-second decoding window, so a hallucination that lands in the same window as
+real speech carries the same number as that speech — every quality field Whisper
+returns is per-window, which leaves the text itself as the only signal. The rule
+drops a run of three or more consecutive identical short phrases (20 characters or
+fewer after normalisation) when most of the run also looks silent; otherwise it
+keeps the first occurrence. It is on by default and can be switched off here.
 
 ## Required host directories
 

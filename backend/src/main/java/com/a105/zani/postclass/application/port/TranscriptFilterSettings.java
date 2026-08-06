@@ -15,8 +15,10 @@ package com.a105.zani.postclass.application.port;
  *
  * @param silenceHallucinationFilterEnabled 무음 환각 필터를 적용할지. 껐을 때는 필터 이전 동작과 완전히 같아야 한다
  * @param noSpeechThreshold 이 값 <b>이상</b> 인 {@code noSpeechProb} 세그먼트를 뺀다. {@code 0.0}~{@code 1.0}
+ * @param repeatedPhraseFilterEnabled 반복 문구 환각 필터를 적용할지(S15P11A105-316). 무음 확률만으로는 잡히지 않는 반복을 다룬다
  */
-public record TranscriptFilterSettings(boolean silenceHallucinationFilterEnabled, double noSpeechThreshold) {
+public record TranscriptFilterSettings(
+        boolean silenceHallucinationFilterEnabled, double noSpeechThreshold, boolean repeatedPhraseFilterEnabled) {
 
     public TranscriptFilterSettings {
         // 확률과 비교하는 값이므로 0~1 을 벗어나면 뜻이 없다. 꺼져 있어도 검사한다 — 켜는 순간이 아니라
@@ -26,9 +28,9 @@ public record TranscriptFilterSettings(boolean silenceHallucinationFilterEnabled
         }
     }
 
-    /** 필터를 끈 설정. 임곗값은 쓰이지 않지만 유효 범위 안의 값을 둔다. */
+    /** 두 필터를 모두 끈 설정. 임곗값은 쓰이지 않지만 유효 범위 안의 값을 둔다. */
     public static TranscriptFilterSettings disabled() {
-        return new TranscriptFilterSettings(false, 1.0);
+        return new TranscriptFilterSettings(false, 1.0, false);
     }
 
     /**
@@ -117,4 +119,87 @@ public record TranscriptFilterSettings(boolean silenceHallucinationFilterEnabled
      * <p>전각 형태를 함께 담는다 — 한국어 전사에 섞여 나오고, 빠뜨리면 문장이 끝났는데도 이어지는 것으로 보아 환각을 살린다. 쉼표·가운뎃점 같은 연결 부호는 담지 않는다.
      */
     private static final String SENTENCE_TERMINATORS = ".?!…。．？！";
+
+    // ---------------------------------------------------------------------
+    // 반복 문구 환각(S15P11A105-316)
+    //
+    // 무음 확률이 낮게 나온 환각은 위 규칙으로 잡히지 않는다. no_speech_prob 는 30초 디코딩 창의
+    // 값이라, 실제 발화와 같은 창에 떨어진 환각은 발화와 값이 똑같아진다 — 실측에서 학생 질문과
+    // 환각 5건이 모두 0.1109 였다. whisper 가 주는 품질 지표는 전부 창 단위라 어떤 조합으로도
+    // 그 둘을 가를 수 없다. 남는 신호는 텍스트 자체다.
+    // ---------------------------------------------------------------------
+
+    /**
+     * 반복으로 볼 최소 횟수.
+     *
+     * <p>둘로 두면 안 된다. 강사가 같은 말을 두 번 하는 것은 흔하고, 그것까지 지우면 정상 설명을 잃는다. 실측된 환각은 8회·13회처럼 훨씬 길게 반복됐다.
+     */
+    private static final int MIN_REPEAT_RUN = 3;
+
+    /**
+     * 반복 판정 대상이 될 최대 길이(정규화 후).
+     *
+     * <p>긴 문장은 반복돼도 건드리지 않는다. 실측 반례가 있다 — 강사가 같은 52자 문장을 3회 연속 읽은 세션이 있었고, 그것은 실제 발화였다. 반면 환각 문구는 짧다:
+     * {@code "고맙습니다."}(6자), {@code "지금까지 재택 플러스였습니다."}(17자), {@code "시청해 주셔서 감사합니다"}(12자).
+     */
+    private static final int MAX_REPEAT_LENGTH = 20;
+
+    /**
+     * 반복 구간이 무음 위에서 만들어졌다고 볼 무음 확률.
+     *
+     * <p>{@link #noSpeechThreshold} 보다 낮게 둔다. 이 값은 <b>단독으로 세그먼트를 지우는 기준이 아니라</b> 이미 반복으로 걸린 구간의 성격을 가르는 보조 신호다. 실측 반복
+     * 8건의 무음 확률은 {@code 0.62·0.99·0.99·0.98·0.79·0.79·0.79·0.11} 로 7개가 이 값을 넘었다. 반대로 강사가 숨 쉬듯 이어서 반복한 실제 발화는 그 구간에 소리가
+     * 있으므로 낮게 나온다.
+     */
+    private static final double REPEAT_SILENCE_HINT = 0.5;
+
+    /**
+     * 반복 판정에 쓸 정규화. 공백과 종결 부호 차이로 같은 문구가 다르게 세지지 않게 한다.
+     *
+     * <p>내용을 해석하지 않는다 — 유니코드 정규화, 공백 축소, 끝 구두점 제거뿐이다.
+     */
+    public String normalizeForRepeat(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFC)
+                .strip()
+                .replaceAll("\\s+", " ");
+        int end = normalized.length();
+        while (end > 0 && REPEAT_TRIMMED_MARKS.indexOf(normalized.charAt(end - 1)) >= 0) {
+            end--;
+        }
+        return normalized.substring(0, end).strip();
+    }
+
+    /** 끝에서 떼어 낼 부호. 종결 부호에 쉼표·가운뎃점을 더한다 — 같은 문구가 부호 차이로 갈리면 안 된다. */
+    private static final String REPEAT_TRIMMED_MARKS = SENTENCE_TERMINATORS + ",·、，";
+
+    /**
+     * 이 길이의 반복이 환각 후보인지.
+     *
+     * <p>짧은 문장이 최소 횟수 이상 <b>연속으로</b> 나온 경우만 본다. 사이에 다른 발화가 끼면 반복으로 보지 않는다 — 실측에서 강사가 대본을 두 번 낭독했을 때 {@code "안녕하세요"} 가 두
+     * 번 나왔지만 사이에 다른 문장이 있어 연속이 아니었다. 그 재낭독을 지우지 않는 것이 이 조건이다.
+     */
+    public boolean isRepeatCandidate(String normalizedText, int runLength) {
+        return repeatedPhraseFilterEnabled
+                && runLength >= MIN_REPEAT_RUN
+                && !normalizedText.isEmpty()
+                && normalizedText.length() <= MAX_REPEAT_LENGTH;
+    }
+
+    /**
+     * 반복 전체를 뺄지, 첫 하나만 남길지.
+     *
+     * <p>반복 중 <b>과반</b>이 무음 위에서 나왔으면 그 구간에 실제 발화가 없었다고 보고 전부 뺀다. 그렇지 않으면 강사가 실제로 반복해 말했을 수 있으므로 첫 하나를 남긴다 — 지우는 쪽으로 기울되
+     * 근거가 없으면 흔적을 남긴다.
+     */
+    public boolean dropsWholeRun(int runLength, int silentCount) {
+        return silentCount * 2 > runLength;
+    }
+
+    /** 이 세그먼트가 무음 위에서 만들어졌다는 신호인지. 반복 구간의 성격을 가를 때만 쓴다. */
+    public boolean looksSilent(double noSpeechProb) {
+        return noSpeechProb >= REPEAT_SILENCE_HINT;
+    }
 }
