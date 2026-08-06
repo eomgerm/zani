@@ -380,21 +380,23 @@ class AssembleTranscriptServiceTest {
     }
 
     @Test
-    void 청크_길이를_크게_넘는_세그먼트는_분할_오류로_거절한다() {
-        // 분할이 잘못되면 청크 하나 단위로 어긋나므로 분 단위로 벗어난다.
+    void 청크_길이를_크게_넘는_세그먼트는_그것만_버린다() {
+        // 디코딩 창 하나(30초)를 넘게 벗어난 종료 시각은 어느 시각에 속하는지 알 수 없다. 그렇다고
+        // 세션 전체를 실패시키지는 않는다(S15P11A105-330) — 같은 청크의 멀쩡한 발화는 그대로 남는다.
         List<TranscriptionChunk> chunks = List.of(chunk(
                 INSTRUCTOR_FILE,
                 0,
                 TranscriptionChunkStatus.SUCCEEDED,
-                List.of(segment(0, CHUNK_MS + 120_000, "청크를 2분 넘긴 문장"))));
+                List.of(segment(0, 3_000, "멀쩡한 문장"), segment(0, CHUNK_MS + 120_000, "청크를 2분 넘긴 문장"))));
 
-        assertThrows(
-                TranscriptAssemblyInvalidException.class,
-                () -> assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks));
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(1, result.segmentCount());
+        assertEquals(List.of("멀쩡한 문장"), textsOf(transcriptPort.only()));
     }
 
     @Test
-    void 청크_밖에서_시작하는_세그먼트는_거절한다() {
+    void 청크_밖에서_시작하는_세그먼트는_버린다() {
         // 종료만 줄이면 start=600_500, end=600_000 처럼 시각이 뒤집힌 구간이 만들어진다.
         // 줄여서 살릴 수 있는 것은 청크 안에서 시작해 경계를 살짝 넘긴 문장뿐이다.
         List<TranscriptionChunk> chunks = List.of(chunk(
@@ -403,13 +405,14 @@ class AssembleTranscriptServiceTest {
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(segment(CHUNK_MS + 500, CHUNK_MS + 800, "청크 밖에서 시작한 문장"))));
 
-        assertThrows(
-                TranscriptAssemblyInvalidException.class,
-                () -> assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks));
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(0, result.segmentCount());
+        assertTrue(transcriptPort.only().segments().isEmpty());
     }
 
     @Test
-    void 청크_끝과_같은_시각에_시작하는_세그먼트도_거절한다() {
+    void 청크_끝과_같은_시각에_시작하는_세그먼트도_버린다() {
         // 길이가 0 인 구간은 발화가 아니고, 경계에 정확히 걸친 값은 다음 청크가 담당한다.
         List<TranscriptionChunk> chunks = List.of(chunk(
                 INSTRUCTOR_FILE,
@@ -417,9 +420,9 @@ class AssembleTranscriptServiceTest {
                 TranscriptionChunkStatus.SUCCEEDED,
                 List.of(segment(CHUNK_MS, CHUNK_MS + 200, "경계에 걸친 문장"))));
 
-        assertThrows(
-                TranscriptAssemblyInvalidException.class,
-                () -> assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks));
+        AssembleTranscriptResult result = assemble(List.of(track(INSTRUCTOR_FILE, INSTRUCTOR, 0L)), chunks);
+
+        assertEquals(0, result.segmentCount());
     }
 
     @Test
@@ -932,9 +935,10 @@ class AssembleTranscriptServiceTest {
     }
 
     @Test
-    void 범위를_분_단위로_넘긴_세그먼트는_여전히_분할_오류로_거절한다() {
-        // 필터를 앞으로 옮겨도 탐지력이 유지되는지 본다. 남기기로 한 세그먼트가 분 단위로 벗어나면
-        // 그것은 환각이 아니라 분할이 잘못됐다는 신호이므로 조립을 멈춰야 한다.
+    void 범위를_분_단위로_넘긴_세그먼트는_실제_발화라도_버린다() {
+        // 무음 확률이 낮아(0.05) 필터가 남기는 세그먼트다. 그래도 종료 시각이 디코딩 창을 넘게
+        // 벗어났으면 어느 시각에 놓아야 할지 알 수 없으므로 버린다 — 억지로 청크 끝에 맞추면
+        // 엉뚱한 시각에 붙은 문장이 타임라인에 남는다. 세션 전체를 실패시키지는 않는다.
         long durationMs = 237_528L;
         TranscriptionChunk chunk = new TranscriptionChunk(
                 1L,
@@ -949,18 +953,23 @@ class AssembleTranscriptServiceTest {
                 null,
                 List.of(segment(234_500, durationMs + 120_000, "실제 발화인데 청크를 2분 넘긴다", 0.05)));
 
-        assertThrows(
-                TranscriptAssemblyInvalidException.class,
-                () -> service.assemble(new AssembleTranscriptCommand(
-                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk))));
+        AssembleTranscriptResult result = service.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(0, result.segmentCount());
+        // 필터가 지운 것이 아니다. 두 수를 섞으면 "임곗값을 보라" 와 "타임스탬프를 보라" 를 구분할 수 없다.
+        assertEquals(0, result.filteredSegmentCount());
     }
 
     // ---------------------------------------------------------------------
-    // 환각 타임스탬프의 초 단위 초과(S15P11A105-329)
+    // 타임스탬프 하나가 세션 전체를 실패시키지 않는다(S15P11A105-329, 330)
     //
     // 처음 허용폭 1초는 두 경우만 가정했다 — 분 단위로 어긋나는 분할 오류와, GMS 가 문장 끝을
     // 반올림해 몇 ms 넘기는 정상 범위. 실측에 세 번째가 있다: whisper 가 무음 구간에 찍는 환각의
     // 종료 시각은 초 단위로 넘친다. 그 하나가 수업 전체를 실패시켰다.
+    //
+    // 329 는 폭을 5초로 늘려 그 사례를 덮었을 뿐이라, 다음 초과 앞에서 다시 무너진다. 330 은
+    // 처분을 바꾼다 — 놓을 수 없는 세그먼트는 그것만 버리고 조립은 끝까지 간다.
     // ---------------------------------------------------------------------
 
     @Test
@@ -1007,9 +1016,10 @@ class AssembleTranscriptServiceTest {
     }
 
     @Test
-    void 허용폭을_넘는_초과는_그대로_거절한다() {
-        // 5초는 관측된 최대 초과(4.0초)를 덮되 분 단위 오류는 잡는 폭이다. 경계 바로 밖을 고정해
-        // 두어, 폭을 더 넓히려면 이 테스트를 함께 고치게 만든다.
+    void 디코딩_창_경계의_양쪽을_고정한다() {
+        // 30초는 관측값에 맞춘 여유폭이 아니라 whisper 의 구조적 상한이다 — 세그먼트 타임스탬프는
+        // 30초 디코딩 창 안에서 매겨지고 창의 시작은 오디오 길이를 넘지 못한다. 경계의 양쪽을 1ms
+        // 차이로 고정해, 이 상한을 흔들려면 이 테스트를 함께 고치게 만든다.
         long durationMs = 241_267L;
         TranscriptionChunk chunk = new TranscriptionChunk(
                 1L,
@@ -1022,12 +1032,46 @@ class AssembleTranscriptServiceTest {
                 1,
                 null,
                 null,
-                List.of(segment(240_000, durationMs + 5_001, "허용폭을 1ms 넘긴다", 0.05)));
+                List.of(
+                        segment(240_000, durationMs + 30_000, "창 상한에 정확히 걸친다", 0.05),
+                        segment(240_100, durationMs + 30_001, "창 상한을 1ms 넘긴다", 0.05)));
 
-        assertThrows(
-                TranscriptAssemblyInvalidException.class,
-                () -> service.assemble(new AssembleTranscriptCommand(
-                        SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk))));
+        AssembleTranscriptResult result = service.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(1, result.segmentCount());
+        assertEquals(List.of("창 상한에 정확히 걸친다"), textsOf(transcriptPort.only()));
+        assertEquals(durationMs, transcriptPort.only().segments().get(0).endOffsetMs(), "맞춘 쪽은 청크 끝이 된다");
+    }
+
+    @Test
+    void 모든_세그먼트가_배치_불가여도_빈_전사로_정상_저장된다() {
+        // 최악을 고정한다. 여기서 예외가 나면 파이프라인은 ANALYZING 으로 넘어가지 못하고 세션이
+        // POSTCLASS_TRANSCRIPTION_007 로 죽는다 — 이 티켓이 막으려는 바로 그 실패다.
+        long durationMs = 241_267L;
+        TranscriptionChunk chunk = new TranscriptionChunk(
+                1L,
+                SESSION_ID,
+                STUDENT_FILE,
+                0,
+                0L,
+                durationMs,
+                TranscriptionChunkStatus.SUCCEEDED,
+                1,
+                null,
+                null,
+                List.of(
+                        segment(durationMs + 100, durationMs + 200, "청크 밖에서 시작한다", 0.05),
+                        segment(240_000, durationMs + 90_000, "창 상한을 한참 넘긴다", 0.05)));
+
+        AssembleTranscriptResult result = service.assemble(new AssembleTranscriptCommand(
+                SESSION_ID, "ko", List.of(track(STUDENT_FILE, STUDENT, 0L)), List.of(chunk)));
+
+        assertEquals(0, result.segmentCount());
+        assertEquals(0, result.speakerCount());
+        assertEquals(0, result.lastEndOffsetMs());
+        // 저장은 일어난다. 빈 전사도 정본이어야 뒤 단계가 "아직 안 만들어진 것" 과 구분할 수 있다.
+        assertTrue(transcriptPort.only().segments().isEmpty());
     }
 
     @Test
