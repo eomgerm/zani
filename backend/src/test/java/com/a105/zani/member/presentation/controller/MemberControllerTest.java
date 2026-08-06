@@ -127,4 +127,44 @@ class MemberControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.reportEmailEnabled").value(false));
     }
+
+    @Test
+    void respondsUnauthorizedWhenRenamingWithoutAuthentication() throws Exception {
+        mockMvc.perform(patch("/api/v1/members/me/display-name")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"새 이름\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Transactional
+    void renamesTheDisplayNameAndReflectsItOnGet() throws Exception {
+        insertMember();
+        String token = tokenOf(MEMBER_ID);
+
+        // 앞뒤 공백은 다듬어 저장한다.
+        mockMvc.perform(patch("/api/v1/members/me/display-name")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"  바뀐 이름  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isSuccess").value(true))
+                .andExpect(jsonPath("$.data.displayName").value("바뀐 이름"));
+
+        mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.displayName").value("바뀐 이름"));
+    }
+
+    @Test
+    @Transactional
+    void rejectsABlankDisplayName() throws Exception {
+        insertMember();
+
+        mockMvc.perform(patch("/api/v1/members/me/display-name")
+                        .header("Authorization", "Bearer " + tokenOf(MEMBER_ID))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+    }
 }

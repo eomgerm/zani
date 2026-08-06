@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Avatar, Card, FileIcon } from "@/shared/ui";
 import { getCurrentMember, useAuth } from "@/domains/auth";
 import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
+import { updateDisplayName } from "../infrastructure/updateDisplayNameApi";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -37,7 +38,7 @@ function NotifRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3.5 border-t border-line-light py-4">
+    <div className="flex items-center gap-3.5 py-2">
       <span className="flex size-[38px] items-center justify-center rounded-[11px] bg-primary-soft">
         {icon}
       </span>
@@ -53,12 +54,14 @@ function NotifRow({
 /**
  * SC-07 계정 설정. 프로필 · 알림 설정 · 계정 관리(회원 탈퇴).
  * "강의 리포트 알림" 토글은 서버 설정(GET·PATCH /api/v1/members/me)에 연결돼 실제 이메일 수신 여부를 바꾼다.
- * 이름 편집·탈퇴는 아직 시연용 로컬 상태로만 동작한다.
+ * 이름 변경도 서버(PATCH /api/v1/members/me/display-name)에 저장한다. 탈퇴는 아직 시연용 로컬 상태로만 동작한다.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const { member, accessToken } = useAuth();
+  const { member, accessToken, applyDisplayName } = useAuth();
   const [name, setName] = useState<string>(member?.displayName ?? "");
+  const [namePending, setNamePending] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [notifReport, setNotifReport] = useState(true);
   const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -88,6 +91,21 @@ export function SettingsScreen() {
       .finally(() => setReportPending(false));
   };
 
+  // 이름을 저장한다. 리포트 토글과 달리 낙관적으로 먼저 바꾸지 않는다 — 사이드바까지 새 이름으로 바뀐 뒤
+  // 되돌아가면 저장된 것으로 오해하기 쉽다. 서버가 받아들인 이름(공백을 다듬은 값)만 반영한다.
+  const saveName = () => {
+    if (accessToken === null || !nameChanged || namePending) return;
+    setNamePending(true);
+    setNameError(null);
+    updateDisplayName(accessToken, name.trim())
+      .then((result) => {
+        setName(result.displayName);
+        applyDisplayName(result.displayName);
+      })
+      .catch(() => setNameError("이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요."))
+      .finally(() => setNamePending(false));
+  };
+
   return (
     <>
       <h1 className="mb-1 text-[26px] font-extrabold tracking-[-.5px]">계정 설정</h1>
@@ -102,8 +120,10 @@ export function SettingsScreen() {
             <div className="flex min-w-[260px] flex-1 flex-wrap gap-[22px]">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-[7px] block text-[13px] font-bold text-ink-faint">이름</label>
+                {/* 서버 제약(members.display_name 100자)과 같이 둔다 — 넘겨 보내고 400 을 받을 이유가 없다. */}
                 <input
                   value={name}
+                  maxLength={100}
                   onChange={(e) => setName(e.target.value)}
                   className="z-input rounded-[11px] px-3.5 py-3"
                 />
@@ -118,16 +138,24 @@ export function SettingsScreen() {
               </div>
             </div>
           </div>
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex items-center justify-end gap-3">
+            {nameError !== null && (
+              <p role="alert" className="text-[13px] font-bold text-danger">
+                {nameError}
+              </p>
+            )}
             {/* 이름을 바꾸지 않았으면 저장할 것이 없어 비활성으로 둔다 */}
             <button
               type="button"
-              disabled={!nameChanged}
+              onClick={saveName}
+              disabled={!nameChanged || namePending}
               className={`z-btn z-btn-md ${
-                nameChanged ? "z-btn-primary" : "cursor-not-allowed bg-disabled text-white"
+                nameChanged && !namePending
+                  ? "z-btn-primary"
+                  : "cursor-not-allowed bg-disabled text-white"
               }`}
             >
-              저장하기
+              {namePending ? "저장 중…" : "저장하기"}
             </button>
           </div>
         </Card>
