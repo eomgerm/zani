@@ -19,7 +19,7 @@ public class UpdateReportEmailService implements UpdateReportEmailUseCase {
     @Override
     @Transactional
     public UpdateReportEmailResult updateReportEmail(UpdateReportEmailCommand command) {
-        Member member = memberRepository.findById(command.memberId()).orElseThrow(MemberNotFoundException::new);
+        Member member = memberRepository.findActiveById(command.memberId()).orElseThrow(MemberNotFoundException::new);
         Member updated = memberRepository.save(member.changeReportEmailEnabled(command.reportEmailEnabled()));
         return new UpdateReportEmailResult(updated.reportEmailEnabled());
     }

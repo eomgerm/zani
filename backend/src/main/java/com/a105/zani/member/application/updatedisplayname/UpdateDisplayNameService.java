@@ -19,7 +19,7 @@ public class UpdateDisplayNameService implements UpdateDisplayNameUseCase {
     @Override
     @Transactional
     public UpdateDisplayNameResult updateDisplayName(UpdateDisplayNameCommand command) {
-        Member member = memberRepository.findById(command.memberId()).orElseThrow(MemberNotFoundException::new);
+        Member member = memberRepository.findActiveById(command.memberId()).orElseThrow(MemberNotFoundException::new);
         Member updated = memberRepository.save(member.changeDisplayName(command.displayName()));
         return new UpdateDisplayNameResult(updated.displayName());
     }

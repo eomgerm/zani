@@ -6,6 +6,7 @@ import { Avatar, Card, FileIcon } from "@/shared/ui";
 import { getCurrentMember, useAuth } from "@/domains/auth";
 import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
 import { updateDisplayName } from "../infrastructure/updateDisplayNameApi";
+import { withdrawMember } from "../infrastructure/withdrawMemberApi";
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -54,17 +55,20 @@ function NotifRow({
 /**
  * SC-07 계정 설정. 프로필 · 알림 설정 · 계정 관리(회원 탈퇴).
  * "강의 리포트 알림" 토글은 서버 설정(GET·PATCH /api/v1/members/me)에 연결돼 실제 이메일 수신 여부를 바꾼다.
- * 이름 변경도 서버(PATCH /api/v1/members/me/display-name)에 저장한다. 탈퇴는 아직 시연용 로컬 상태로만 동작한다.
+ * 이름 변경도 서버(PATCH /api/v1/members/me/display-name)에 저장한다.
+ * 회원 탈퇴(DELETE /api/v1/members/me)는 소프트 삭제이며, 성공 후 로그아웃까지 이어서 세션을 정리한다.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const { member, accessToken, applyDisplayName } = useAuth();
+  const { member, accessToken, applyDisplayName, logout } = useAuth();
   const [name, setName] = useState<string>(member?.displayName ?? "");
   const [namePending, setNamePending] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [notifReport, setNotifReport] = useState(true);
   const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const nameChanged = name.trim() !== (member?.displayName ?? "").trim() && name.trim().length > 0;
 
   // 저장된 리포트 알림 수신 설정을 서버에서 읽어 토글 초기값을 맞춘다. 토큰이 없으면(비로그인) 건드리지 않는다.
@@ -104,6 +108,23 @@ export function SettingsScreen() {
       })
       .catch(() => setNameError("이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요."))
       .finally(() => setNamePending(false));
+  };
+
+  // 회원 탈퇴. 탈퇴 API 는 세션을 끊지 않으므로 성공한 뒤 로그아웃까지 불러 refresh 토큰과 쿠키를 정리한다.
+  // 실패하면 화면을 그대로 두고 모달 안에서 알린다 — 탈퇴됐는지 아닌지 모른 채 로그인 화면으로 보내면 안 된다.
+  const withdraw = () => {
+    if (accessToken === null || deletePending) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    withdrawMember(accessToken)
+      .then(() => {
+        logout();
+        router.push("/login");
+      })
+      .catch(() => {
+        setDeleteError("탈퇴 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
+        setDeletePending(false);
+      });
   };
 
   return (
@@ -202,18 +223,25 @@ export function SettingsScreen() {
             <p className="mb-[22px] text-sm leading-[1.6] text-ink-muted">
               계정을 탈퇴하면 ZANI에 저장된 개인 정보와 이용 기록을 복구할 수 없습니다.
             </p>
+            {deleteError !== null && (
+              <p role="alert" className="mb-3 text-[13px] font-bold text-danger">
+                {deleteError}
+              </p>
+            )}
             <div className="flex gap-2.5">
               <button
                 onClick={() => setDeleteOpen(false)}
+                disabled={deletePending}
                 className="z-btn z-btn-outline flex-1 rounded-[13px] py-[13px]"
               >
                 취소
               </button>
               <button
-                onClick={() => router.push("/login")}
+                onClick={withdraw}
+                disabled={deletePending}
                 className="z-btn z-btn-danger flex-1 rounded-[13px] py-[13px]"
               >
-                계정 탈퇴
+                {deletePending ? "탈퇴 중…" : "계정 탈퇴"}
               </button>
             </div>
           </div>

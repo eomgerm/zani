@@ -19,7 +19,7 @@ public class GetCurrentMemberService implements GetCurrentMemberUseCase {
     @Override
     @Transactional(readOnly = true)
     public GetCurrentMemberResult getCurrentMember(GetCurrentMemberQuery query) {
-        Member member = memberRepository.findById(query.memberId()).orElseThrow(MemberNotFoundException::new);
+        Member member = memberRepository.findActiveById(query.memberId()).orElseThrow(MemberNotFoundException::new);
         return new GetCurrentMemberResult(
                 member.email(), member.displayName(), member.profileImageUrl(), member.reportEmailEnabled());
     }

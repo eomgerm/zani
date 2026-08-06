@@ -3,6 +3,7 @@ package com.a105.zani.member.presentation.controller;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,9 @@ import org.springframework.web.context.WebApplicationContext;
 
 import com.a105.zani.auth.application.port.TokenProvider;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -166,5 +169,65 @@ class MemberControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"   \"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void respondsUnauthorizedWhenWithdrawingWithoutAuthentication() throws Exception {
+        mockMvc.perform(delete("/api/v1/members/me")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @Transactional
+    void withdrawsTheMemberAndStopsServingTheirStillValidToken() throws Exception {
+        insertMember();
+        // 탈퇴 뒤에도 만료 전까지 살아 있는 바로 그 토큰이다. 탈퇴가 즉시 먹히는지 이 토큰으로 확인한다.
+        String token = tokenOf(MEMBER_ID);
+
+        mockMvc.perform(delete("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.isSuccess").value(true));
+
+        mockMvc.perform(get("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MEMBER_APP_002"));
+        mockMvc.perform(patch("/api/v1/members/me/display-name")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"되살아나면 안 된다\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @Transactional
+    void withdrawalIsSoftAndReleasesTheGoogleSubjectSoTheAccountCanSignUpAgain() throws Exception {
+        insertMember();
+
+        mockMvc.perform(delete("/api/v1/members/me").header("Authorization", "Bearer " + tokenOf(MEMBER_ID)))
+                .andExpect(status().isOk());
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT google_subject, email, display_name, deleted_at FROM members WHERE id = ?", MEMBER_ID);
+        // 행은 남고(소프트 삭제), 과거 리포트·참여자 목록이 쓰는 이름과 이메일도 그대로다.
+        assertThat(row.get("deleted_at")).isNotNull();
+        assertThat(row.get("email")).isEqualTo(MEMBER_ID + "@example.com");
+        assertThat(row.get("display_name")).isEqualTo("내 정보 테스트 회원");
+        // UNIQUE 인 google_subject 만 비켜 준다 — 안 그러면 같은 구글 계정이 다시 가입할 수 없다.
+        assertThat(row.get("google_subject")).isEqualTo("withdrawn:" + MEMBER_ID);
+        assertThat(jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM members WHERE google_subject = ?", Integer.class, "google-" + MEMBER_ID))
+                .isZero();
+    }
+
+    @Test
+    @Transactional
+    void respondsNotFoundWhenWithdrawingTwice() throws Exception {
+        insertMember();
+        String token = tokenOf(MEMBER_ID);
+
+        mockMvc.perform(delete("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/members/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MEMBER_APP_002"));
     }
 }

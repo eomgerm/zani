@@ -52,12 +52,22 @@ class GetCurrentMemberServiceTest {
         }
 
         @Override
+        public Optional<Member> findActiveById(Long id) {
+            return Optional.ofNullable(member);
+        }
+
+        @Override
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             throw new UnsupportedOperationException("not needed for this test");
         }
 
         @Override
         public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
+            throw new UnsupportedOperationException("not needed for this test");
+        }
+
+        @Override
+        public boolean withdraw(Long id, java.time.Instant deletedAt) {
             throw new UnsupportedOperationException("not needed for this test");
         }
     }

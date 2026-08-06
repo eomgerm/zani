@@ -1,5 +1,6 @@
 package com.a105.zani.member.infrastructure.persistence;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +40,16 @@ public class MemberPersistenceAdapter implements MemberRepository {
     @Override
     public Optional<Member> findById(Long id) {
         return memberJpaRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public Optional<Member> findActiveById(Long id) {
+        return memberJpaRepository.findByIdAndDeletedAtIsNull(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public boolean withdraw(Long id, Instant deletedAt) {
+        return memberJpaRepository.withdraw(id, deletedAt, Member.withdrawnGoogleSubject(id)) > 0;
     }
 
     @Override

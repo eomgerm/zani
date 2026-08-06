@@ -80,6 +80,11 @@ class ResolveGoogleMemberServiceTest {
         }
 
         @Override
+        public Optional<Member> findActiveById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             return Optional.ofNullable(membersByGoogleSubject.get(googleSubject));
         }
@@ -87,6 +92,11 @@ class ResolveGoogleMemberServiceTest {
         @Override
         public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
             return java.util.List.of();
+        }
+
+        @Override
+        public boolean withdraw(Long id, java.time.Instant deletedAt) {
+            throw new UnsupportedOperationException("not needed for this test");
         }
 
         int saveCount() {
@@ -119,6 +129,11 @@ class ResolveGoogleMemberServiceTest {
         }
 
         @Override
+        public Optional<Member> findActiveById(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
         public Optional<Member> findByGoogleSubject(String googleSubject) {
             return saveAttempted ? Optional.of(winner) : Optional.empty();
         }
@@ -126,6 +141,11 @@ class ResolveGoogleMemberServiceTest {
         @Override
         public java.util.List<Member> findAllByIds(java.util.Collection<Long> ids) {
             return java.util.List.of();
+        }
+
+        @Override
+        public boolean withdraw(Long id, java.time.Instant deletedAt) {
+            throw new UnsupportedOperationException("not needed for this test");
         }
 
         Long winnerId() {

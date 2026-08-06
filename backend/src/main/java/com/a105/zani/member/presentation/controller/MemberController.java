@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,6 +23,8 @@ import com.a105.zani.member.application.updatedisplayname.UpdateDisplayNameComma
 import com.a105.zani.member.application.updatedisplayname.UpdateDisplayNameUseCase;
 import com.a105.zani.member.application.updatereportemail.UpdateReportEmailCommand;
 import com.a105.zani.member.application.updatereportemail.UpdateReportEmailUseCase;
+import com.a105.zani.member.application.withdraw.WithdrawMemberCommand;
+import com.a105.zani.member.application.withdraw.WithdrawMemberUseCase;
 import com.a105.zani.member.presentation.request.UpdateDisplayNameRequest;
 import com.a105.zani.member.presentation.request.UpdateReportEmailRequest;
 import com.a105.zani.member.presentation.response.GetCurrentMemberResponse;
@@ -37,6 +40,7 @@ public class MemberController {
     private final GetCurrentMemberUseCase getCurrentMemberUseCase;
     private final UpdateReportEmailUseCase updateReportEmailUseCase;
     private final UpdateDisplayNameUseCase updateDisplayNameUseCase;
+    private final WithdrawMemberUseCase withdrawMemberUseCase;
 
     @Operation(summary = "내 정보 조회", description = """
                     Access Token 이 가리키는 로그인한 본인의 정보를 돌려줍니다. 새로고침 직후 세션을 복원할 때 사용합니다.
@@ -98,5 +102,28 @@ public class MemberController {
             @AuthenticationPrincipal Jwt jwt, @Valid @RequestBody UpdateDisplayNameRequest request) {
         return ApiResponse.success(UpdateDisplayNameResponse.from(updateDisplayNameUseCase.updateDisplayName(
                 new UpdateDisplayNameCommand(Long.parseLong(jwt.getSubject()), request.displayName()))));
+    }
+
+    @Operation(summary = "회원 탈퇴", description = """
+                    로그인한 본인의 계정을 탈퇴 처리합니다(소프트 삭제). 되돌릴 수 없습니다.
+
+                    - 탈퇴 직후부터 내 정보 조회·설정 변경은 404 가 납니다. 남아 있는 Access Token 으로도 마찬가지입니다.
+                    - 세션은 이 API 가 끊지 않습니다. 호출한 쪽에서 이어서 `POST /api/v1/auth/logout` 을 불러 refresh 토큰과 쿠키를 정리하세요.
+                    - 같은 구글 계정으로 다시 로그인하면 이전 데이터와 이어지지 않는 **새 회원**으로 가입됩니다.
+                    - 진행했던 강의와 그 리포트는 함께 지워지지 않습니다. 수업을 들은 다른 학생들의 기록이 같이 끊기기 때문입니다.
+                    """)
+    @ApiResponses({
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "탈퇴 완료"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "401",
+                description = "로그인이 필요합니다. (`COMM_401`)"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                responseCode = "404",
+                description = "토큰의 회원이 없거나 이미 탈퇴했습니다. (`MEMBER_APP_002`)")
+    })
+    @DeleteMapping("/me")
+    public ApiResponse<Void> withdraw(@AuthenticationPrincipal Jwt jwt) {
+        withdrawMemberUseCase.withdraw(new WithdrawMemberCommand(Long.parseLong(jwt.getSubject())));
+        return ApiResponse.success();
     }
 }
