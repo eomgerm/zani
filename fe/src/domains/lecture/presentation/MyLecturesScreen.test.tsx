@@ -125,4 +125,81 @@ describe("MyLecturesScreen", () => {
 
     expect(await screen.findByText("아직 참여한 수업이 없습니다.")).toBeVisible();
   });
+
+  /**
+   * 하루에 수업을 둘 이상 한 사람에게는 날짜만으로 순서가 정해지지 않는다. 시:분까지 봐야 카드가 매번 같은 자리에 온다.
+   *
+   * <p>날짜를 "오늘" 로 만드는 이유: 캘린더가 오늘이 속한 달에서 시작하므로, 고정 날짜를 쓰면 실행하는 달에 따라 칩이 보이지 않는다.
+   */
+  describe("같은 날 수업 정렬", () => {
+    const at = (hour: number) => new Date(new Date().setHours(hour, 0, 0, 0)).toISOString();
+
+    const twoOnOneDay = () =>
+      listing([
+        summary({ sessionId: "1", title: "1교시", startedAt: at(9), endedAt: at(10) }),
+        summary({ sessionId: "2", title: "3교시", startedAt: at(15), endedAt: at(16) }),
+      ]);
+
+    const titles = () => screen.getAllByText(/교시/).map((el) => el.textContent);
+
+    it("최신순에서는 늦게 시작한 수업이 위에 온다", async () => {
+      render(<MyLecturesScreen requestList={twoOnOneDay()} />);
+      await screen.findByText("1교시");
+
+      expect(titles()).toEqual(["3교시", "1교시"]);
+    });
+
+    it("오래된순으로 바꾸면 같은 날 안에서도 순서가 뒤집힌다", async () => {
+      render(<MyLecturesScreen requestList={twoOnOneDay()} />);
+      await screen.findByText("1교시");
+
+      fireEvent.click(screen.getByRole("button", { name: "최신순" }));
+
+      expect(titles()).toEqual(["1교시", "3교시"]);
+    });
+
+    it("검색으로 걸러낸 뒤에도 정렬이 유지된다", async () => {
+      render(
+        <MyLecturesScreen
+          requestList={listing([
+            summary({ sessionId: "1", title: "1교시", startedAt: at(9), endedAt: at(10) }),
+            summary({ sessionId: "2", title: "특강", startedAt: at(12), endedAt: at(13) }),
+            summary({ sessionId: "3", title: "3교시", startedAt: at(15), endedAt: at(16) }),
+          ])}
+        />,
+      );
+      await screen.findByText("1교시");
+
+      fireEvent.change(screen.getByPlaceholderText("강의 제목 검색"), {
+        target: { value: "교시" },
+      });
+
+      expect(titles()).toEqual(["3교시", "1교시"]);
+    });
+
+    /** 캘린더는 정렬 토글을 따르지 않는다. 칸 안에서는 늘 늦게 시작한 수업이 위다. */
+    it("캘린더의 같은 날 칸은 정렬 토글과 무관하게 최신순으로 쌓인다", async () => {
+      render(<MyLecturesScreen requestList={twoOnOneDay()} />);
+      await screen.findByText("1교시");
+
+      fireEvent.click(screen.getByRole("button", { name: "최신순" }));
+      fireEvent.click(screen.getByRole("button", { name: "캘린더 보기" }));
+
+      expect(titles()).toEqual(["3교시", "1교시"]);
+    });
+
+    /** 시각을 읽을 수 없다고 수업이 없었던 것은 아니다. 분석 실패 강의를 남기는 원칙과 같다. */
+    it("시작 시각을 읽을 수 없는 수업도 목록에 남는다", async () => {
+      render(
+        <MyLecturesScreen
+          requestList={listing([
+            summary({ sessionId: "1", title: "정상 수업", startedAt: at(9), endedAt: at(10) }),
+            summary({ sessionId: "2", title: "시각이 깨진 수업", startedAt: "", endedAt: null }),
+          ])}
+        />,
+      );
+
+      expect(await screen.findByText("시각이 깨진 수업")).toBeVisible();
+    });
+  });
 });
