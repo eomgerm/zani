@@ -114,10 +114,12 @@ distributions interleave (real speech at `0.515 · 0.698 · 0.745 · 0.811 · 0.
 0.965`), so no threshold separates the full distributions. In the stored 32-track
 corpus, the highest real-speech value was `0.921`, while all nine segments at or
 above `0.98` were hallucinations. A separate GMS response contained a real-speech
-continuation at `0.964`; the adjacency rescue keeps that continuation. The `0.98`
-rule therefore catches only the extremes of fully silent stretches that the
-repeated-phrase rule misses. Set the flag to `false` for immediate rollback. The
-threshold must stay within `0.0`~`1.0`; the backend refuses to start otherwise.
+continuation at `0.964`; it remains directly because it is below the threshold.
+The adjacency rescue is a separate safeguard for a continuation that does reach
+the threshold. The `0.98` rule therefore catches only the extremes of fully silent
+stretches that the repeated-phrase rule misses. Set the flag to `false` for
+immediate rollback. The threshold must stay within `0.0`~`1.0`; the backend refuses
+to start otherwise.
 
 Neither filter touches the GMS response or the chunk checkpoints, so changing
 either setting and re-assembling produces a different stored transcript without
