@@ -156,13 +156,27 @@ class StudentReportQueryAdapterTest {
     }
 
     @Test
-    @DisplayName("리포트가 없거나 아직 게시되지 않았으면 projection이 없다")
-    void hides_missing_and_unpublished_reports() {
-        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "미게시 요약", null);
+    @DisplayName("리포트 행이 없으면 projection이 없다")
+    void hides_missing_reports() {
         insertStudentReport(OTHER_REPORT_ID, OTHER_PARTICIPANT_ID, "다른 학생 요약", NOW);
 
         assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
                 .isEmpty();
+    }
+
+    /**
+     * 공개 여부로 거르지 않는다. 그 판정은 공통 리포트의 게시가 소유한다({@code sessionReportPublished}).
+     *
+     * <p>예전에는 이 조회가 {@code published_at IS NOT NULL} 로 걸렀는데, 그 컬럼을 채우는 코드가 없어서 분석이 정상 완주해도 학생이 리포트를 영구히 열 수 없었다. 강사
+     * 리포트가 같은 이유로 404 였다(S15P11A105-310).
+     */
+    @Test
+    @DisplayName("행의 공개 시각이 비어 있어도 projection을 준다 — 공개 판정은 이 조회의 몫이 아니다")
+    void does_not_filter_by_the_rows_published_at() {
+        insertStudentReport(STUDENT_REPORT_ID, STUDENT_PARTICIPANT_ID, "참여 요약", null);
+
+        assertThat(adapter.findBySessionIdAndParticipantId(SESSION_ID, STUDENT_PARTICIPANT_ID))
+                .isPresent();
     }
 
     private static StudentReportView.Recommendation recommendation(

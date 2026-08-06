@@ -27,6 +27,7 @@ import com.a105.zani.session.domain.model.SessionParticipantRole;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -104,6 +105,7 @@ class GetStudentReportServiceTest {
         given(resolver.resolve(new ResolveEndedSessionParticipantQuery(SESSION_ID, MEMBER_ID)))
                 .willReturn(new ResolveEndedSessionParticipantResult(
                         PARTICIPANT_ID, SessionParticipantRole.STUDENT, STARTED_AT, null));
+        given(queryPort.sessionReportPublished(SESSION_ID)).willReturn(true);
         given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
                 .willReturn(Optional.of(reportView()));
         given(issueMediaUrlUseCase.issue(new IssueMediaUrlQuery(SESSION_ID, MEMBER_ID)))
@@ -165,7 +167,7 @@ class GetStudentReportServiceTest {
     }
 
     @Test
-    @DisplayName("게시된 학생 리포트가 없으면 REPORT_NOT_READY다")
+    @DisplayName("학생 리포트 행이 없으면 REPORT_NOT_READY다")
     void reports_not_ready_when_the_projection_is_empty() {
         givenStudentAccess(PARTICIPANT_ID);
         given(queryPort.findBySessionIdAndParticipantId(SESSION_ID, PARTICIPANT_ID))
@@ -173,6 +175,25 @@ class GetStudentReportServiceTest {
 
         assertThatThrownBy(() -> service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID)))
                 .isInstanceOf(ReportNotReadyException.class);
+    }
+
+    /**
+     * 공개 게이트는 공통 리포트의 게시다. 미게시면 리포트 행을 <b>읽지도 않는다</b>.
+     *
+     * <p>개인 리포트 행의 {@code published_at} 을 게이트로 쓰면 그 컬럼을 채우는 코드가 없어 학생이 리포트를 영구히 열 수 없다 — 강사 리포트가 같은 이유로 404
+     * 였다(S15P11A105-310).
+     */
+    @Test
+    @DisplayName("공통 리포트가 미게시면 REPORT_NOT_READY이고 리포트 행을 읽지 않는다")
+    void reports_not_ready_when_the_session_report_is_unpublished() {
+        given(resolver.resolve(new ResolveEndedSessionParticipantQuery(SESSION_ID, MEMBER_ID)))
+                .willReturn(new ResolveEndedSessionParticipantResult(
+                        PARTICIPANT_ID, SessionParticipantRole.STUDENT, STARTED_AT, ENDED_AT));
+        given(queryPort.sessionReportPublished(SESSION_ID)).willReturn(false);
+
+        assertThatThrownBy(() -> service.get(new GetStudentReportQuery(SESSION_ID, MEMBER_ID)))
+                .isInstanceOf(ReportNotReadyException.class);
+        then(queryPort).should(never()).findBySessionIdAndParticipantId(anyLong(), anyLong());
     }
 
     @Test
@@ -208,10 +229,12 @@ class GetStudentReportServiceTest {
         then(queryPort).shouldHaveNoInteractions();
     }
 
+    /** 학생 접근과 공개 게이트를 함께 연다. 게이트는 공통 리포트의 게시이며 개인 리포트 행의 published_at 이 아니다(S15P11A105-310). */
     private void givenStudentAccess(long participantId) {
         given(resolver.resolve(new ResolveEndedSessionParticipantQuery(SESSION_ID, MEMBER_ID)))
                 .willReturn(new ResolveEndedSessionParticipantResult(
                         participantId, SessionParticipantRole.STUDENT, STARTED_AT, ENDED_AT));
+        given(queryPort.sessionReportPublished(SESSION_ID)).willReturn(true);
     }
 
     private void givenIssuedMediaUrl(String mediaUrl) {
