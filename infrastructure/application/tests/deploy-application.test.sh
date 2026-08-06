@@ -73,4 +73,22 @@ if ((${#missing_passthrough[@]} > 0)); then
   exit 1
 fi
 
+# The silence-hallucination filter previously diverged across application.yaml,
+# Compose, and runtime.env.example (S15P11A105-306). Pin both the enable flag and
+# threshold in all three deployment contracts so a future edit cannot silently
+# change only one layer.
+readonly BACKEND_APPLICATION_YAML="${APPLICATION_DIR}/../../backend/src/main/resources/application.yaml"
+grep -Fq 'hallucination-filter-enabled: ${POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED:true}' \
+  "${BACKEND_APPLICATION_YAML}"
+grep -Fq 'no-speech-threshold: ${POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD:0.98}' \
+  "${BACKEND_APPLICATION_YAML}"
+grep -Fq 'POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED: "${POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED:-true}"' \
+  "${APPLICATION_DIR}/compose.yaml"
+grep -Fq 'POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD: "${POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD:-0.98}"' \
+  "${APPLICATION_DIR}/compose.yaml"
+grep -Fxq 'POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true' \
+  "${APPLICATION_DIR}/runtime.env.example"
+grep -Fxq 'POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.98' \
+  "${APPLICATION_DIR}/runtime.env.example"
+
 printf 'deploy-application tests passed\n'
