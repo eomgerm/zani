@@ -20,7 +20,11 @@ import com.a105.zani.report.application.savestudentanalysis.SaveStudentAnalysisU
  *
  * <p>서비스에서 분리한 이유는 자기 호출이 프록시를 타지 않기 때문이다. 그리고 LLM 호출은 이 트랜잭션 밖에 있어야 한다 — 수 초 걸리는 호출을 안에 넣으면 커넥션을 그동안 붙잡는다.
  *
- * <p>둘이 한 트랜잭션이라 "리포트는 있는데 퀴즈가 없는" 상태가 생기지 않는다. 그래서 리포트 유무 하나로 멱등을 판정할 수 있다.
+ * <p><b>"리포트는 있는데 퀴즈가 없는" 상태를 허용한다.</b> 예전에는 둘이 한 트랜잭션이라 그 상태가 생기지 않는다고 적혀 있었지만, 그 대가로 퀴즈 문항 하나가 계약을 어기면 리포트까지 롤백되고 그
+ * 학생이 {@code FAILED} 로 집계되어 <b>세션 공개까지 막혔다</b>(S15P11A105-333). 퀴즈 하나 때문에 리포트와 수업 전체의 공개를 잃는 것보다, 퀴즈 없는 리포트가 낫다.
+ *
+ * <p><b>알고 남긴 대가</b>: 멱등 판정이 여전히 리포트 유무 하나라서, 퀴즈 없이 저장된 학생은 다음 실행의 {@code findStudentsWithoutReport} 에서 빠지고 퀴즈가 다시 채워지지
+ * 않는다. 화면은 그 경우 "이번 수업에서는 풀어볼 문제가 없어요" 를 그린다 — 학생이 오지 않는 퀴즈를 기다리지 않게 하는 것이 이 선택의 조건이다.
  */
 @Component
 @RequiredArgsConstructor
@@ -41,8 +45,10 @@ class StudentAnalysisPersister {
         }
         boolean created = createGeneratedQuizUseCase.create(quizCommand(reportId.get(), quiz, sections));
         if (!created) {
-            // 리포트를 우리가 넣었으면 그 리포트에 퀴즈가 있을 수 없다. 있었다면 UK 전제가 깨진 것이라 남겨 둔다.
-            log.warn("Quiz already existed for a report this run inserted: reportId={}", reportId.get());
+            // 두 가지 뜻이 있다 — 초안이 계약을 어겨 만들지 못했거나(사유는 퀴즈 쪽이 남겼다), 이미 있었다.
+            // 뒤쪽은 우리가 방금 넣은 리포트에는 있을 수 없으므로 UK 전제가 깨진 신호다.
+            // 어느 쪽이든 리포트는 살린다. 퀴즈 없는 리포트가 리포트 없는 학생보다 낫다.
+            log.warn("리포트는 저장했지만 퀴즈는 남기지 못했습니다. reportId={}", reportId.get());
         }
         return true;
     }
