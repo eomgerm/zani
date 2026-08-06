@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import type { ReportQuestionAsker } from "../infrastructure/reportAssistantApi";
@@ -10,7 +10,6 @@ import type {
 } from "../infrastructure/sessionSummaryApi";
 import { formatOffset } from "./offsetTime";
 import { ReportAssistantPanel } from "./ReportAssistantPanel";
-import { SelectionAskButton } from "./SelectionAskButton";
 import { useReportAssistant } from "./useReportAssistant";
 import { useReportSelection } from "./useReportSelection";
 import { useSessionSummary } from "./useSessionSummary";
@@ -103,6 +102,19 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
   const cardRef = useRef<HTMLDivElement | null>(null);
   const { selection, clear } = useReportSelection(cardRef);
   const assistant = useReportAssistant({ sessionId, ask });
+  const { askAbout } = assistant;
+
+  /**
+   * 드래그가 곧 질문이다. 무엇을 물을지 먼저 입력하게 하면, 읽다가 막힌 순간에 바로 묻는 흐름이 끊긴다.
+   *
+   * <p>보낸 뒤 선택을 비우는 것이 이 효과가 한 번만 도는 이유다 — `clear()` 로 selection 이 null 이 되고,
+   * 다시 들어오면 위에서 끊긴다.
+   */
+  useEffect(() => {
+    if (selection === null) return;
+    askAbout({ anchorStartMs: selection.anchorStartMs, selectedText: selection.text });
+    clear();
+  }, [selection, askAbout, clear]);
 
   return (
     <div ref={cardRef} className="z-card px-7 py-6">
@@ -152,18 +164,9 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
         </>
       )}
 
-      {/* 둘 다 position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
-      <SelectionAskButton
-        selection={selection}
-        onAsk={(picked) => {
-          // 패널이 열려 있어도 새 드래그로 앵커를 바꿀 수 있다. 대화는 이어지고 앵커만 갈린다.
-          assistant.openWith({ anchorStartMs: picked.anchorStartMs, selectedText: picked.text });
-          clear();
-        }}
-      />
+      {/* position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
       {assistant.anchor !== null && (
         <ReportAssistantPanel
-          anchor={assistant.anchor}
           messages={assistant.messages}
           status={assistant.status}
           failure={assistant.failure}

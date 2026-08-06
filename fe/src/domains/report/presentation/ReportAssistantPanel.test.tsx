@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { ReportAssistantPanel } from "./ReportAssistantPanel";
 import type { AssistantMessage } from "./useReportAssistant";
 
-const ANCHOR = { anchorStartMs: 95_000, selectedText: "개방주소법" };
-
 const ANSWER: AssistantMessage = {
   id: "a0",
   role: "assistant",
@@ -17,7 +15,6 @@ const ANSWER: AssistantMessage = {
 const panel = (overrides: Partial<Parameters<typeof ReportAssistantPanel>[0]> = {}) =>
   render(
     <ReportAssistantPanel
-      anchor={ANCHOR}
       messages={[]}
       status="idle"
       failure={null}
@@ -28,14 +25,6 @@ const panel = (overrides: Partial<Parameters<typeof ReportAssistantPanel>[0]> = 
   );
 
 describe("ReportAssistantPanel", () => {
-  it("남긴 앵커로 무엇에 대해 묻는 중인지 알려준다", () => {
-    panel();
-
-    // 후속 질문에는 새 드래그가 없어 앵커가 화면에서 사라진다. 헤더가 유일한 단서다.
-    expect(screen.getByText("개방주소법")).toBeInTheDocument();
-    expect(screen.getByText(/구간에 대해 묻는 중/)).toBeInTheDocument();
-  });
-
   it("인용을 누르면 밀리초가 아니라 초로 이동을 요청한다", () => {
     const onSeek = vi.fn();
     panel({ messages: [ANSWER], onSeek });
@@ -54,11 +43,18 @@ describe("ReportAssistantPanel", () => {
     expect(screen.getByText(/체이닝과 개방주소법이 있습니다/)).toBeInTheDocument();
   });
 
+  it("입력칸은 후속 질문 전용이다", () => {
+    panel();
+
+    // 첫 질문은 드래그가 이미 보냈다. 안내 문구가 그것을 말해야 한다.
+    expect(screen.getByPlaceholderText("추가로 질문하기...")).toBeInTheDocument();
+  });
+
   it("빈 질문은 보내지 않는다", () => {
     const onSend = vi.fn();
     panel({ onSend });
 
-    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
 
     expect(onSend).not.toHaveBeenCalled();
   });
@@ -67,11 +63,11 @@ describe("ReportAssistantPanel", () => {
     const onSend = vi.fn();
     panel({ onSend });
 
-    const input = screen.getByLabelText("질문 입력");
-    fireEvent.change(input, { target: { value: "개방주소법이 뭐야?" } });
-    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    const input = screen.getByLabelText("추가 질문 입력");
+    fireEvent.change(input, { target: { value: "그럼 체이닝은?" } });
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
 
-    expect(onSend).toHaveBeenCalledWith("개방주소법이 뭐야?");
+    expect(onSend).toHaveBeenCalledWith("그럼 체이닝은?");
     expect(input).toHaveValue("");
   });
 
@@ -79,9 +75,9 @@ describe("ReportAssistantPanel", () => {
     const onSend = vi.fn();
     panel({ status: "asking", onSend });
 
-    const input = screen.getByLabelText("질문 입력");
+    const input = screen.getByLabelText("추가 질문 입력");
     fireEvent.change(input, { target: { value: "또 물어보기" } });
-    fireEvent.click(screen.getByRole("button", { name: "보내기" }));
+    fireEvent.click(screen.getByRole("button", { name: "전송" }));
 
     // 연타하면 GMS 호출이 그만큼 나간다. 크레딧이 걸린 자리라 화면에서도 막는다.
     expect(onSend).not.toHaveBeenCalled();
@@ -89,7 +85,7 @@ describe("ReportAssistantPanel", () => {
   });
 
   it("실패 문구를 그대로 보여준다", () => {
-    panel({ failure: "질문이 너무 빨라요. 잠시 후 다시 물어봐 주세요." });
+    panel({ failure: "질문이 너무 빨라요. 잠시 후 다시 드래그해 주세요." });
 
     expect(screen.getByText(/질문이 너무 빨라요/)).toBeInTheDocument();
   });

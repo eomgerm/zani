@@ -3,34 +3,28 @@
 import { useEffect, useRef, useState } from "react";
 
 import { formatOffset } from "./offsetTime";
-import type { AssistantAnchor, AssistantMessage, AssistantStatus } from "./useReportAssistant";
+import type { AssistantMessage, AssistantStatus } from "./useReportAssistant";
 import type { ReportAnswerCitation } from "../infrastructure/reportAssistantApi";
 
 /**
- * 드래그한 곳에 대해 묻는 채팅 드로어. 오른쪽에서 밀려 들어온다.
+ * 드래그한 곳에 대한 답을 띄우는 작은 채팅 카드.
  *
- * <p>카드 안에 붙이지 않고 오른쪽 드로어로 띄우는 이유는 <b>읽던 자리가 밀리지 않아야</b> 하기 때문이다.
- * 카드 아래에 펼치면 답이 길어질수록 방금 드래그한 문장이 위로 밀려 올라가, 무엇을 물었는지 보면서
- * 답을 읽을 수 없다.
+ * <p>화면 절반을 덮는 패널이 아니라 <b>메모지만 한 카드</b>다. 이 기능은 리포트를 읽다가 막힌 곳을 짚는
+ * 것이라, 답을 보려고 읽던 화면을 잃으면 안 된다. 오른쪽 아래에 띄워 뒤가 계속 보이게 한다.
  *
- * <p>배경을 덮지 않는다(backdrop 없음). 답을 읽다가 다른 구간을 이어서 드래그하는 흐름이 이 기능의
- * 핵심이라, 뒤를 막으면 그 흐름이 끊긴다.
+ * <p>배경을 덮지 않는다. 답을 읽다가 다른 구간을 이어서 드래그하는 흐름이 이 기능의 핵심이라, 뒤를 막으면
+ * 그 흐름이 끊긴다.
  *
- * <p>헤더에 무엇에 대해 묻는 중인지 남긴다. 후속 질문에는 새 드래그가 없어 앵커가 화면에서 사라지는데,
- * 그러면 "그건 왜 그래?" 가 어느 구간을 가리키는지 사용자도 알 수 없다.
+ * <p>첫 질문은 드래그가 이미 보냈다. 입력칸은 후속 질문 전용이라 안내 문구도 "추가로 질문하기" 다.
  *
  * <p>인용은 버튼이다. 누르면 강의 녹화가 그 시각으로 이동한다 — 구간 시각 버튼과 같은 문(`onSeek`)으로
  * 들어가므로 이동 방식이 두 벌로 갈리지 않는다.
- *
- * <p>스트리밍하지 않는다. GMS 가 SSE 를 지원하는지 실측되지 않았고, 블로킹 호출에 타이핑 인디케이터를
- * 붙이는 편이 확인되지 않은 경로에 기대는 것보다 낫다.
  */
 
-/** 밀려 들어오고 나가는 시간. 닫을 때 이 시간만큼 기다렸다 언마운트해야 나가는 동작이 보인다. */
-const SLIDE_MS = 260;
+/** 떠오르고 사라지는 시간. 닫을 때 이만큼 기다렸다 언마운트해야 사라지는 동작이 보인다. */
+const FADE_MS = 200;
 
 export function ReportAssistantPanel({
-  anchor,
   messages,
   status,
   failure,
@@ -38,7 +32,6 @@ export function ReportAssistantPanel({
   onClose,
   onSeek,
 }: {
-  readonly anchor: AssistantAnchor;
   readonly messages: readonly AssistantMessage[];
   readonly status: AssistantStatus;
   readonly failure: string | null;
@@ -60,7 +53,7 @@ export function ReportAssistantPanel({
   // 새 말풍선이 붙으면 아래로 따라간다. 답이 길면 시작 부분만 보이고 끝이 잘린다.
   //
   // scrollIntoView 가 아니라 scrollTop 을 쓰는 것은 채팅 목록(RoomSidePanel)과 같은 방식이라서다.
-  // 그쪽이 jsdom 에 없어 테스트에서 터지기도 하지만, 더 큰 이유는 scrollIntoView 가 드로어 밖의
+  // 그쪽이 jsdom 에 없어 테스트에서 터지기도 하지만, 더 큰 이유는 scrollIntoView 가 카드 밖의
   // 페이지까지 함께 스크롤해 읽던 자리를 옮긴다는 것이다.
   useEffect(() => {
     const list = listRef.current;
@@ -71,7 +64,7 @@ export function ReportAssistantPanel({
 
   const dismiss = () => {
     setShown(false);
-    window.setTimeout(onClose, SLIDE_MS);
+    window.setTimeout(onClose, FADE_MS);
   };
 
   const submit = () => {
@@ -82,44 +75,31 @@ export function ReportAssistantPanel({
 
   return (
     <aside
-      aria-label="수업 요약 질의응답"
-      style={{ transitionDuration: `${SLIDE_MS}ms` }}
-      className={`fixed right-0 top-0 z-40 flex h-dvh w-full max-w-[400px] flex-col border-l border-shell-toggle bg-surface shadow-xl transition-transform ease-out ${
-        shown ? "translate-x-0" : "translate-x-full"
+      aria-label="ZANI AI 질의응답"
+      style={{ transitionDuration: `${FADE_MS}ms` }}
+      className={`fixed bottom-6 right-6 z-40 flex max-h-[60vh] w-[min(380px,calc(100vw-3rem))] flex-col overflow-hidden rounded-[16px] border border-line bg-surface shadow-xl transition-all ease-out ${
+        shown ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
       }`}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-shell-toggle px-5 py-4">
-        <div>
-          <div className="mb-0.5 text-[14.5px] font-bold text-ink-muted">AI에게 묻기</div>
-          <div className="text-[12.5px] leading-[1.5] text-ink-fainter">
-            <span className="font-bold">{anchor.selectedText}</span>
-            {anchor.anchorStartMs === null ? " 에 대해 묻는 중" : " 구간에 대해 묻는 중"}
-          </div>
-        </div>
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <div className="text-[15px] font-bold text-primary">ZANI AI</div>
         <button
           type="button"
           onClick={dismiss}
           aria-label="질의응답 닫기"
-          className="shrink-0 cursor-pointer border-0 bg-transparent text-[13px] text-ink-fainter hover:text-ink-muted"
+          className="shrink-0 cursor-pointer border-0 bg-transparent px-1 text-[15px] leading-none text-ink-fainter hover:text-ink-muted"
         >
-          닫기
+          ✕
         </button>
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-5 py-4">
-        {messages.length === 0 && status === "idle" && (
-          <p className="text-[13px] leading-[1.7] text-ink-fainter">
-            이 구간에서 다룬 내용을 물어보세요. 답변에는 실제 발화가 근거로 붙습니다.
-          </p>
-        )}
-        <ul className="flex list-none flex-col gap-3 p-0">
+      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3.5">
+        <ul className="flex list-none flex-col gap-2.5 p-0">
           {messages.map((message) => (
             <li key={message.id} className={message.role === "user" ? "text-right" : ""}>
               <div
-                className={`inline-block max-w-[88%] whitespace-pre-line rounded-[10px] px-3 py-2 text-left text-[13.5px] leading-[1.7] ${
-                  message.role === "user"
-                    ? "bg-primary text-white"
-                    : "border border-shell-toggle bg-faint text-ink-sub"
+                className={`inline-block max-w-[86%] whitespace-pre-line rounded-[14px] px-3.5 py-2.5 text-left text-[13.5px] leading-[1.65] ${
+                  message.role === "user" ? "bg-primary text-white" : "bg-faint text-ink-sub"
                 }`}
               >
                 {message.content}
@@ -136,7 +116,7 @@ export function ReportAssistantPanel({
         </ul>
       </div>
 
-      <div className="flex gap-2 border-t border-shell-toggle px-5 py-4">
+      <div className="flex gap-2 border-t border-line px-4 py-3">
         <input
           type="text"
           value={draft}
@@ -147,18 +127,18 @@ export function ReportAssistantPanel({
               submit();
             }
           }}
-          placeholder="이 부분에 대해 물어보세요"
-          aria-label="질문 입력"
+          placeholder="추가로 질문하기..."
+          aria-label="추가 질문 입력"
           maxLength={500}
-          className="min-w-0 flex-1 rounded-[9px] border border-shell-toggle bg-surface px-3 py-2 text-[13.5px] text-ink-sub outline-none focus:border-primary"
+          className="min-w-0 flex-1 rounded-[10px] border border-line bg-surface px-3 py-2 text-[13px] text-ink-sub outline-none focus:border-primary"
         />
         <button
           type="button"
           onClick={submit}
           disabled={status === "asking" || draft.trim().length === 0}
-          className="z-btn z-btn-primary z-btn-md shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
+          className="z-btn z-btn-primary shrink-0 rounded-[10px] px-3.5 py-2 text-[13px] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          보내기
+          전송
         </button>
       </div>
     </aside>
@@ -183,7 +163,7 @@ function CitationRow({
           return (
             <span
               key={citation.offsetMs}
-              className="max-w-full truncate rounded-full bg-faint px-2.5 py-1 text-[11.5px] text-ink-fainter"
+              className="max-w-full truncate rounded-full bg-faint px-2.5 py-1 text-[11px] text-ink-fainter"
             >
               {label}
             </span>
@@ -195,7 +175,7 @@ function CitationRow({
             type="button"
             onClick={() => onSeek(seconds)}
             aria-label={`${formatOffset(seconds)} 구간 재생`}
-            className="max-w-full cursor-pointer truncate rounded-full border border-shell-toggle bg-surface px-2.5 py-1 text-left text-[11.5px] text-primary/80 hover:text-primary"
+            className="max-w-full cursor-pointer truncate rounded-full border border-line bg-surface px-2.5 py-1 text-left text-[11px] text-primary/80 hover:text-primary"
           >
             {label}
           </button>
