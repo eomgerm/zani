@@ -15,16 +15,29 @@ function hrefFor(l: MyLecture) {
  * 썸네일. 최종 녹화의 1/2 지점 프레임(목록 응답의 thumbnailUrl)을 깔고,
  * 주소가 없으면(진행 중·병합 전·추출 실패) 시안처럼 수업 자료를 닮은 판을 얹는다.
  * 상태 필은 우상단, LIVE 표시는 좌하단이다.
+ *
+ * 분석 중에는 그림 대신 검은 판에 스피너만 돈다. 이 강의는 아직 열 수 없다는 것을
+ * 상태 필의 글자보다 먼저 알리려는 것이고, 자리 그림은 다 만들어진 화면처럼 보여 그 역할을 못 한다.
  */
 function Thumb({ lecture }: { lecture: MyLecture }) {
   const si = statusInfo(lecture.status);
   // 서명 주소는 짧게 살아서, 화면을 오래 두고 다시 그리면 만료된 채 로드될 수 있다. 깨진 이미지 아이콘 대신 자리 그림으로 되돌린다.
   const [broken, setBroken] = useState(false);
+  const analyzing = lecture.status === "PROCESSING";
   const thumbnailSrc = broken ? null : lecture.thumbnailUrl;
 
   return (
     <div className="relative aspect-video overflow-hidden rounded-[18px] bg-[#1f2433]">
-      {thumbnailSrc !== null ? (
+      {analyzing ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black">
+          {/* 도는 머리는 상태 칩의 점과 같은 색을 쓴다 — 값을 따로 적으면 한쪽만 바뀐다. */}
+          <span
+            aria-hidden="true"
+            style={{ borderTopColor: si.dot }}
+            className="size-9 animate-[zSpin_.9s_linear_infinite] rounded-full border-[3px] border-white/20"
+          />
+        </div>
+      ) : thumbnailSrc !== null ? (
         // 서명이 든 단기 주소라 next/image 를 쓰지 않는다 — 최적화 캐시의 키가 주소인데 주소가 발급마다 달라
         // 캐시가 항상 빗나가고, 호스트도 배포마다 갈려 remotePatterns 를 좇아야 한다.
         // eslint-disable-next-line @next/next/no-img-element
