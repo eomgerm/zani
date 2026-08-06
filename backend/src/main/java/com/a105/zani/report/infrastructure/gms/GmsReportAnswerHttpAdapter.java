@@ -73,7 +73,10 @@ public class GmsReportAnswerHttpAdapter implements ReportAnswerPort {
             - summary 는 질문한 사람이 화면에서 읽고 있는 문장이고, transcript 가 실제 발화다.
               답변은 transcript 를 근거로 하고, 둘이 어긋나면 transcript 를 따른다.
             - selectedText 는 화면에서 짚은 부분을 알려 줄 뿐 근거가 아니다.
-            - transcript 와 outline 에 없는 내용은 지어내지 않는다.
+            - transcript 가 없는 요청도 있다. 수업 전체를 훑는 문단을 짚어 시각을 특정할 수 없을 때다.
+              그때는 sectionSummaries 와 outline 으로 답하고, 몇 번째 구간에서 다뤘는지 알려 준다.
+              transcript 가 없다는 사실 자체는 언급하지 않는다 — 묻는 사람에게는 우리 내부 사정이다.
+            - transcript, sectionSummaries, outline 에 없는 내용은 지어내지 않는다.
             - 질문이 앵커 구간 밖의 내용이면 outline 에서 찾아 몇 번째 구간에서 다뤘는지 알려 준다.
             - 이 수업에서 다루지 않은 내용이면 grounded 를 false 로 두고 그렇게 말한다.
               일반 상식으로 답을 채우지 않는다.
@@ -273,7 +276,17 @@ public class GmsReportAnswerHttpAdapter implements ReportAnswerPort {
         }
 
         List<AnswerCitation> citations = validCitations(parsed.offsets(), request, elapsedMs);
-        log.info("Report answer returned {} citations after {}ms", citations.size(), elapsedMs);
+        // 인용이 0개일 때 원인이 셋이라 로그로 갈라 둔다 — 앵커가 없어 전사를 안 보냈거나, 창은
+        // 보냈는데 그 시간대가 침묵이었거나, 모델이 근거를 못 찾았거나. 이 값이 없으면 구분이 안 된다.
+        log.info(
+                "Report answer returned {} citations after {}ms (anchored={}, lines={}, window=[{},{}], grounded={})",
+                citations.size(),
+                elapsedMs,
+                request.anchored(),
+                request.lines().size(),
+                request.windowFromMs(),
+                request.windowToMs(),
+                parsed.grounded());
         return ReportAnswerOutcome.success(new ReportAnswer(answer, citations, parsed.grounded()));
     }
 
