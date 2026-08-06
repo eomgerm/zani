@@ -54,7 +54,7 @@ ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR=0.7
 ATTENTION_TIMELINE_REQUIRED_CONNECTION=PT1M
 RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media
 RECORDING_THUMBNAIL_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/thumbnail
-POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=false
+POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true
 POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.98
 POSTCLASS_TRANSCRIPTION_REPEATED_PHRASE_FILTER_ENABLED=true
 NOTIFICATION_EMAIL_ENABLED=false
@@ -103,17 +103,20 @@ nothing, and on the observed hallucination tracks it removed every one. It is on
 by default and can be switched off here.
 
 `POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED` drops segments whose
-`no_speech_prob` reaches `POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD`. **It is off
-by default.** It shipped on at `0.8` and had to be reverted: on a real session it
+`no_speech_prob` reaches `POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD`. **It is on
+by default at `0.98` as a tail-cleanup rule.** It shipped on at `0.8` and had to be reverted: on a real session it
 deleted four of the instructor's ten segments — 63 seconds of the core explanation
 and the closing summary. `no_speech_prob` belongs to the 30-second decoding window,
 not to the segment, so real speech inside a mostly quiet window inherits a high
 value while a hallucination beside real speech inherits a low one. The observed
 distributions interleave (real speech at `0.515 · 0.698 · 0.745 · 0.811 · 0.864 ·
 0.921 · 0.964`, hallucinations at `0.622 · 0.790 · 0.895 · 0.906 · 0.924 · 0.953 ·
-0.965`), so no threshold separates them. The default threshold is now `0.98`, above
-every real-speech value observed, so that switching the flag on cannot delete a
-lecture; in exchange it only catches the extremes of fully silent stretches. The
+0.965`), so no threshold separates the full distributions. In the stored 32-track
+corpus, the highest real-speech value was `0.921`, while all nine segments at or
+above `0.98` were hallucinations. A separate GMS response contained a real-speech
+continuation at `0.964`; the adjacency rescue keeps that continuation. The `0.98`
+rule therefore catches only the extremes of fully silent stretches that the
+repeated-phrase rule misses. Set the flag to `false` for immediate rollback. The
 threshold must stay within `0.0`~`1.0`; the backend refuses to start otherwise.
 
 Neither filter touches the GMS response or the chunk checkpoints, so changing

@@ -977,8 +977,8 @@ class AssembleTranscriptServiceTest {
         // 실측 세 사례를 한 청크에 모았다(초과 1,972 / 2,733 / 4,032ms). 각각 다른 세션·트랙에서
         // 나왔지만 모두 "필터가 남긴 세그먼트가 오디오 끝을 초 단위로 넘는" 같은 모양이다.
         //
-        // 이 셋은 서로 다른 문구라 반복 규칙에 걸리지 않고, 무음 규칙은 기본 OFF 다. 즉 남는다 —
-        // 그래서 경계 검사가 이들을 감당해야 한다.
+        // 이 셋은 서로 다른 문구라 반복 규칙에 걸리지 않는다. 여기서는 타임스탬프 보정 자체를
+        // 검증해야 하므로 무음 규칙을 명시적으로 끈다.
         long durationMs = 241_267L;
         TranscriptionChunk chunk = new TranscriptionChunk(
                 1L,
@@ -997,9 +997,8 @@ class AssembleTranscriptServiceTest {
                         segment(239_000, durationMs + 2_733, "부탁드려요", 0.987),
                         segment(240_000, durationMs + 4_032, "감사합니다", 0.987)));
 
-        // 운영 기본값으로 돈다 — 무음 규칙 OFF, 반복 규칙 ON. 이 셋은 서로 다른 문구라 반복 규칙에도
-        // 걸리지 않아 그대로 남고, 그래서 경계 검사가 이들을 감당해야 한다. 무음 규칙을 켜면 지워져
-        // 버려서 이 테스트가 아무것도 검증하지 못한다.
+        // 무음 규칙을 명시적으로 끄고 반복 규칙만 켠다. 이 셋은 서로 다른 문구라 반복 규칙에도 걸리지
+        // 않아 그대로 남고, 그래서 경계 검사가 이들을 감당해야 한다.
         AssembleTranscriptService production = new AssembleTranscriptService(
                 transcriptPort, Clock.fixed(NOW, ZoneOffset.UTC), new TranscriptFilterSettings(false, 0.98, true));
 

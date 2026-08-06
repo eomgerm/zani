@@ -28,14 +28,15 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param concurrency GMS 청크 호출 동시성. 오케스트레이션 자체는 항상 1이고 이 값은 업로드에만 적용된다
  * @param silencePrefilterEnabled 무음 사전 판별. 기본 OFF(S15P11A105-292). <b>호출 <i>전</i></b> 에 무음 청크를 골라 GMS 호출 수를 줄이는 최적화다 —
  *     아래 {@code hallucinationFilterEnabled} 와 다른 단계의 다른 목적이다
- * @param hallucinationFilterEnabled 무음 환각 세그먼트 필터. <b>기본 OFF</b>(S15P11A105-306 에서 ON 으로 냈다가 316 에서 되돌렸다). 0.8 로 켜 둔
- *     상태에서 실제 세션의 강사 트랙 10개 중 4개가 삭제됐다 — 핵심 설명과 마무리 정리 63초였다. 근거는 {@code noSpeechThreshold} 에 적었다
+ * @param hallucinationFilterEnabled 무음 환각 세그먼트 필터. <b>기본 ON</b>(S15P11A105-340). 0.8 로 켰을 때 실제 강의를 지운 문제는 임곗값을 0.98 로
+ *     올려 해결했고, 반복 규칙이 놓친 극단적인 무음 환각만 정리하는 보조 수단으로 쓴다. 환경변수로 즉시 끌 수 있다
  * @param noSpeechThreshold 이 값 <b>이상</b> 인 {@code no_speech_prob} 세그먼트를 최종 전사에서 뺀다. 범위는 {@code 0.0}~{@code 1.0} 이고 벗어나면
  *     기동하지 않는다.
  *     <p><b>이 값으로는 환각과 실제 발화를 가를 수 없다.</b> {@code no_speech_prob} 는 세그먼트가 아니라 30초 디코딩 창의 값이라, 침묵이 섞인 창의 실제 발화는 높은 값을
  *     물려받고 실제 발화와 같은 창의 환각은 낮은 값을 물려받는다. 실측 분포가 겹친다 — 실제 발화가 {@code 0.515·0.698·0.745·0.811·0.864·0.921·0.964}, 환각이
  *     {@code 0.622·0.790·0.895·0.906·0.924·0.953·0.965} 로 번갈아 나온다.
- *     <p>{@code 0.98} 은 관측된 실제 발화 최댓값({@code 0.964})보다 확실히 위라 <b>켜더라도 강의를 잃지 않는</b> 값이다. 대신 잡는 범위는 완전 무음 구간의 극단값뿐이다
+ *     <p>저장된 32개 트랙에서 실제 발화 최댓값은 {@code 0.921} 이고 {@code 0.98} 이상 9건은 전부 환각이었다. 별도 GMS 응답에서 관측된 {@code 0.964} 실제 발화는
+ *     연속성 rescue 가 보존한다. 따라서 {@code 0.98} 은 반복 규칙이 놓친 완전 무음 구간의 극단값만 정리하는 보조 임곗값이다
  * @param repeatedPhraseFilterEnabled 반복 문구 환각 필터. 기본 ON(S15P11A105-316). <b>환각 제거의 주 수단이다</b> — 무음 확률과 달리 텍스트를 보므로 실제
  *     발화와 섞이지 않는다
  */
@@ -54,7 +55,7 @@ public record PostClassTranscriptionProperties(
         @DefaultValue("25165824") long maxUploadBytes,
         @DefaultValue("2") int concurrency,
         @DefaultValue("false") boolean silencePrefilterEnabled,
-        @DefaultValue("false") boolean hallucinationFilterEnabled,
+        @DefaultValue("true") boolean hallucinationFilterEnabled,
         @DefaultValue("0.98") double noSpeechThreshold,
         @DefaultValue("true") boolean repeatedPhraseFilterEnabled) {
 
