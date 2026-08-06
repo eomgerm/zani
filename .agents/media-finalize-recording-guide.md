@@ -165,8 +165,12 @@ multiple sharers or manual layout switching become necessary, add
     Any stderr output fails validation. This is the "playable" criterion.
   - SHA-256 of the output is computed and reported.
 - Representative PNG frames are extracted to `<output_dir>/frames/` at 5 %,
-  25 %, 50 %, 75 %, and 95 % as `frame-05.png` ... `frame-95.png`. This is
-  best-effort QA support; a failed extraction only warns.
+  25 %, 50 %, 75 %, and 95 % as `frame-05.png` ... `frame-95.png`. Extraction
+  is best-effort; a failed extraction only warns. `frame-50.png` is not just
+  QA support anymore: the backend serves it as the lecture card thumbnail
+  (`GET /api/v1/sessions/{sessionId}/thumbnail`, S15P11A105-320). A missing
+  frame stays non-fatal — the list response carries `thumbnailUrl: null` and
+  the card falls back to its placeholder.
 
 ## 7. Operational safety
 

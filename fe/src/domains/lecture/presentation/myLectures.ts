@@ -23,6 +23,8 @@ export interface MyLecture {
   instructor: string;
   /** 프리조인을 다시 거치지 않고 강의실로 바로 들어갈 수 있는지. */
   rejoinable: boolean;
+  /** 카드 썸네일(최종 녹화 1/2 지점 프레임) 주소. 병합 전이거나 없으면 null 이고, 카드가 자리 그림을 그린다. */
+  thumbnailUrl: string | null;
 }
 
 /**
@@ -87,5 +89,7 @@ export function toMyLecture(summary: SessionSummary): MyLecture {
     students: summary.participantCount,
     instructor: summary.instructorName,
     rejoinable: summary.rejoinable,
+    // 이 필드를 모르는 서버 배포(undefined)도 null 로 접어, 화면은 "있다/없다"만 다룬다.
+    thumbnailUrl: summary.thumbnailUrl ?? null,
   };
 }

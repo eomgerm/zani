@@ -1,0 +1,48 @@
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { LectureCard } from "./LectureCard";
+import type { MyLecture } from "../myLectures";
+
+const lecture = (over: Partial<MyLecture> = {}): MyLecture => ({
+  id: "l1",
+  title: "CS 네트워크 기초",
+  date: "2026-07-10",
+  startedAt: "2026-07-10T01:00:00Z",
+  role: "student",
+  status: "COMPLETED",
+  dur: "1시간 12분",
+  students: 12,
+  instructor: "박서준",
+  rejoinable: false,
+  thumbnailUrl: null,
+  ...over,
+});
+
+afterEach(cleanup);
+
+describe("LectureCard 썸네일", () => {
+  it("주소가 있으면 녹화 1/2 지점 프레임을 그린다", () => {
+    const url = "https://zani.example/api/v1/sessions/1/thumbnail?expires=1&token=t";
+    const { container } = render(<LectureCard lecture={lecture({ thumbnailUrl: url })} />);
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(url);
+  });
+
+  it("주소가 없으면(진행 중·병합 전·추출 실패) 자리 그림을 그린다", () => {
+    const { container } = render(<LectureCard lecture={lecture()} />);
+
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  /** 서명 주소는 짧게 살아서, 화면을 오래 두면 만료된 채 로드될 수 있다. 깨진 이미지 아이콘을 그대로 두면 안 된다. */
+  it("이미지가 깨지면 자리 그림으로 되돌린다", () => {
+    const { container } = render(
+      <LectureCard lecture={lecture({ thumbnailUrl: "https://zani.example/broken.png" })} />,
+    );
+
+    fireEvent.error(container.querySelector("img")!);
+
+    expect(container.querySelector("img")).toBeNull();
+  });
+});

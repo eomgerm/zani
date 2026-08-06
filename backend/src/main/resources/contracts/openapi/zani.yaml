@@ -352,6 +352,11 @@ components:
         rejoinable:
           # 진행 중이면서 내 참가자 행이 있을 때만 true. 프리조인을 다시 거치지 않고 강의실로 들어갈 수 있다.
           type: boolean
+        thumbnailUrl:
+          # 카드 썸네일(최종 녹화 1/2 지점 프레임) 주소. 서명이 들어 있어 그대로 <img src> 에 넣는다.
+          # 병합 전이거나 썸네일이 없으면 null 이다.
+          type: string
+          nullable: true
       # required 가 없으면 OpenAPI 는 모든 필드를 선택으로 본다. 그러면 서버가 필드를 빼도 계약 테스트가
       # 통과하고, 어긋남이 프론트의 응답 가드까지 흘러가서야 드러난다 — 그때는 목록뿐 아니라 같은 응답을
       # 쓰는 다른 화면까지 함께 멈춘다. 필드 삭제를 백엔드에서 잡으려면 여기에 적어 두어야 한다.
@@ -371,6 +376,7 @@ components:
         - participantCount
         - reportStatus
         - rejoinable
+        - thumbnailUrl
 
     SessionReportStatus:
       # pipeline_jobs 의 여섯 단계를 화면이 구분해야 하는 셋으로 접은 값이다.

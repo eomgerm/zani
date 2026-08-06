@@ -174,6 +174,16 @@ class SessionListApiIntegrationTest {
                         .value("FAILED"));
     }
 
+    /** 썸네일 파일은 최종 병합이 만든다. 이 테스트의 세션은 디스크에 녹화가 없으므로 주소 대신 null 이 와야 한다. */
+    @Test
+    void 썸네일이_없는_수업은_thumbnailUrl_이_null_이다() throws Exception {
+        list(STUDENT_ID)
+                .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].thumbnailUrl".formatted(ENDED_SESSION_ID))
+                        .value((Object) null))
+                .andExpect(jsonPath("$.data[?(@.sessionId == '%s')].thumbnailUrl".formatted(LIVE_SESSION_ID))
+                        .value((Object) null));
+    }
+
     @Test
     void 참여한_수업이_없으면_빈_목록이다() throws Exception {
         list(STRANGER_ID)

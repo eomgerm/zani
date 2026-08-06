@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.a105.zani.common.response.ApiResponse;
 import com.a105.zani.common.response.CommonSuccessCode;
+import com.a105.zani.recording.application.issuethumbnailurl.IssueThumbnailUrlUseCase;
 import com.a105.zani.session.application.create.CreateSessionCommand;
 import com.a105.zani.session.application.create.CreateSessionResult;
 import com.a105.zani.session.application.create.CreateSessionUseCase;
@@ -40,14 +41,17 @@ public class SessionInviteController {
     private final CreateSessionUseCase createSessionUseCase;
     private final GetSessionListUseCase getSessionListUseCase;
     private final JoinSessionUseCase joinSessionUseCase;
+    private final IssueThumbnailUrlUseCase issueThumbnailUrlUseCase;
 
     public SessionInviteController(
             CreateSessionUseCase createSessionUseCase,
             GetSessionListUseCase getSessionListUseCase,
-            JoinSessionUseCase joinSessionUseCase) {
+            JoinSessionUseCase joinSessionUseCase,
+            IssueThumbnailUrlUseCase issueThumbnailUrlUseCase) {
         this.createSessionUseCase = createSessionUseCase;
         this.getSessionListUseCase = getSessionListUseCase;
         this.joinSessionUseCase = joinSessionUseCase;
+        this.issueThumbnailUrlUseCase = issueThumbnailUrlUseCase;
     }
 
     @Operation(summary = "수업 생성 (강사)", description = """
@@ -88,6 +92,8 @@ public class SessionInviteController {
                     - `participantCount` 는 **들어온 적 있는 사람 수**입니다. 지금 접속 중인 인원이 아닙니다(참가자 행은 퇴장해도 남습니다).
                     - `reportStatus` 는 사후 처리 진행 상태입니다. `NONE`(시작 전) · `PROCESSING` · `COMPLETED` · `FAILED`.
                     - `rejoinable` 이 `true` 면 프리조인을 다시 거치지 않고 강의실로 바로 들어갈 수 있습니다.
+                    - `thumbnailUrl` 은 카드 썸네일(최종 녹화 1/2 지점 프레임) 주소입니다. 서명이 들어 있어 그대로 `<img src>` 에
+                      넣으면 되고, 병합 전이거나 썸네일이 없으면 `null` 입니다.
                     """)
     @ApiResponses({
         @io.swagger.v3.oas.annotations.responses.ApiResponse(
@@ -97,9 +103,15 @@ public class SessionInviteController {
     })
     @GetMapping
     public ApiResponse<List<SessionSummaryResponse>> list(@AuthenticationPrincipal Jwt jwt) {
+        // 썸네일 주소를 목록 위에서 발급한다. 이 목록은 이미 "내가 참여한 세션"이라 참여자 판정을 반복하지 않고,
+        // 파일이 없는 세션(진행 중·병합 전·추출 실패)은 null 로 내려 카드가 자리 그림으로 그린다.
         List<SessionSummaryResponse> summaries =
                 getSessionListUseCase.getList(new GetSessionListQuery(Long.parseLong(jwt.getSubject()))).stream()
-                        .map(SessionSummaryResponse::from)
+                        .map(result -> SessionSummaryResponse.from(
+                                result,
+                                issueThumbnailUrlUseCase
+                                        .issue(result.sessionId())
+                                        .orElse(null)))
                         .toList();
         return ApiResponse.success(summaries);
     }

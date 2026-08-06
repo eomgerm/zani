@@ -74,6 +74,14 @@ describe("toMyLecture", () => {
   it("세션 ID 를 문자열 그대로 쓴다", () => {
     expect(toMyLecture(summary()).id).toBe("9876543210123456");
   });
+
+  /** 화면은 "있다/없다"만 다룬다. 이 필드를 모르는 서버(undefined)도 없음으로 접는다. */
+  it("썸네일 주소는 그대로 옮기고 없으면 null 로 접는다", () => {
+    const url = "https://zani.example/api/v1/sessions/1/thumbnail?expires=1&token=t";
+    expect(toMyLecture(summary({ thumbnailUrl: url })).thumbnailUrl).toBe(url);
+    expect(toMyLecture(summary({ thumbnailUrl: null })).thumbnailUrl).toBeNull();
+    expect(toMyLecture(summary()).thumbnailUrl).toBeNull();
+  });
 });
 
 describe("formatSessionStartedAt", () => {

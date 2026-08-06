@@ -25,7 +25,8 @@ class LocalLectureMediaAdapterTest {
                 "/srv/zani/recordings",
                 mediaRoot.toString(),
                 Duration.ofMinutes(5),
-                "https://zani.example/api/v1/sessions/{sessionId}/media"));
+                "https://zani.example/api/v1/sessions/{sessionId}/media",
+                "https://zani.example/api/v1/sessions/{sessionId}/thumbnail"));
     }
 
     private Path writeLecture(long sessionId) throws IOException {
@@ -33,6 +34,17 @@ class LocalLectureMediaAdapterTest {
                 mediaRoot.resolve(String.valueOf(sessionId)).resolve("final").resolve("lecture.mp4");
         Files.createDirectories(file.getParent());
         Files.writeString(file, "mp4");
+        return file;
+    }
+
+    private Path writeThumbnail(long sessionId) throws IOException {
+        Path file = mediaRoot
+                .resolve(String.valueOf(sessionId))
+                .resolve("final")
+                .resolve("frames")
+                .resolve("frame-50.png");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "png");
         return file;
     }
 
@@ -65,5 +77,29 @@ class LocalLectureMediaAdapterTest {
                 mediaRoot.resolve(String.valueOf(SESSION_ID)).resolve("final").resolve("lecture.mp4"));
 
         assertThat(adapter().findLectureRecording(SESSION_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("병합 워커가 뽑아 둔 1/2 지점 대표 프레임을 썸네일로 찾는다")
+    void it_finds_the_midpoint_frame_as_the_thumbnail() throws IOException {
+        Path file = writeThumbnail(SESSION_ID);
+
+        assertThat(adapter().findLectureThumbnail(SESSION_ID)).contains(file);
+    }
+
+    @Test
+    @DisplayName("대표 프레임 추출은 best-effort 라, 최종 MP4 만 있고 썸네일이 없으면 비어 있다")
+    void a_lecture_without_extracted_frames_has_no_thumbnail() throws IOException {
+        writeLecture(SESSION_ID);
+
+        assertThat(adapter().findLectureThumbnail(SESSION_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("다른 세션의 썸네일이 있어도 내 세션 것만 찾는다")
+    void it_never_returns_another_sessions_thumbnail() throws IOException {
+        writeThumbnail(SESSION_ID + 1);
+
+        assertThat(adapter().findLectureThumbnail(SESSION_ID)).isEmpty();
     }
 }

@@ -19,6 +19,12 @@ export type SessionSummary = {
   reportStatus: string;
   /** 프리조인을 다시 거치지 않고 강의실로 들어갈 수 있는지. */
   rejoinable: boolean;
+  /**
+   * 카드 썸네일(최종 녹화 1/2 지점 프레임) 주소. 서명이 들어 있어 그대로 `<img src>` 에 넣는다.
+   * 병합 전이거나 썸네일이 없으면 null. 이 필드를 모르는 서버 배포도 있어 없음(undefined)도 허용한다 —
+   * 썸네일 하나 때문에 목록 전체가 거절되면 배포 순서가 계약이 된다.
+   */
+  thumbnailUrl?: string | null;
 };
 
 export class SessionListRequestError extends Error {
@@ -88,7 +94,10 @@ const isSessionSummary = (value: unknown): value is SessionSummary => {
     (summary.endedAt === null || typeof summary.endedAt === "string") &&
     typeof summary.participantCount === "number" &&
     typeof summary.reportStatus === "string" &&
-    typeof summary.rejoinable === "boolean"
+    typeof summary.rejoinable === "boolean" &&
+    (summary.thumbnailUrl === undefined ||
+      summary.thumbnailUrl === null ||
+      typeof summary.thumbnailUrl === "string")
   );
 };
 
