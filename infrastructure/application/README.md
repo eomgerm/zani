@@ -54,8 +54,9 @@ ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR=0.7
 ATTENTION_TIMELINE_REQUIRED_CONNECTION=PT1M
 RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media
 RECORDING_THUMBNAIL_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/thumbnail
-POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true
-POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.8
+POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=false
+POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.98
+POSTCLASS_TRANSCRIPTION_REPEATED_PHRASE_FILTER_ENABLED=true
 NOTIFICATION_EMAIL_ENABLED=false
 NOTIFICATION_EMAIL_FROM=example@gmail.com
 NOTIFICATION_APP_BASE_URL=https://i15a105.p.ssafy.io
@@ -92,16 +93,32 @@ the live view and in the report. Environment changes reach the backend only when
 the container is recreated, so deploy a release — `docker restart zani-backend`
 keeps the old values.
 
-`POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED` drops post-class transcript
-segments whose `no_speech_prob` reaches
-`POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD`, which removes the silence
-hallucinations Whisper emits over quiet microphones (S15P11A105-306). It is on by
-default and it is a heuristic, so it is exposed here to be switchable in
-production: set the flag to `false` to restore the previous behaviour from the
-next assembly onward, without a redeploy of the image. The GMS response and the
-chunk checkpoints are never filtered, so raising or lowering the threshold and
-re-assembling changes the stored transcript without calling GMS again. The
+`POSTCLASS_TRANSCRIPTION_REPEATED_PHRASE_FILTER_ENABLED` is the primary defence
+against Whisper's silence hallucinations (S15P11A105-316). It drops a run of three
+or more consecutive identical short phrases (20 characters or fewer after
+normalisation) when most of the run also looks silent; otherwise it keeps the
+first occurrence. Because it reads the text rather than a probability, it does not
+confuse hallucinations with real speech: across five real lectures it removed
+nothing, and on the observed hallucination tracks it removed every one. It is on
+by default and can be switched off here.
+
+`POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED` drops segments whose
+`no_speech_prob` reaches `POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD`. **It is off
+by default.** It shipped on at `0.8` and had to be reverted: on a real session it
+deleted four of the instructor's ten segments — 63 seconds of the core explanation
+and the closing summary. `no_speech_prob` belongs to the 30-second decoding window,
+not to the segment, so real speech inside a mostly quiet window inherits a high
+value while a hallucination beside real speech inherits a low one. The observed
+distributions interleave (real speech at `0.515 · 0.698 · 0.745 · 0.811 · 0.864 ·
+0.921 · 0.964`, hallucinations at `0.622 · 0.790 · 0.895 · 0.906 · 0.924 · 0.953 ·
+0.965`), so no threshold separates them. The default threshold is now `0.98`, above
+every real-speech value observed, so that switching the flag on cannot delete a
+lecture; in exchange it only catches the extremes of fully silent stretches. The
 threshold must stay within `0.0`~`1.0`; the backend refuses to start otherwise.
+
+Neither filter touches the GMS response or the chunk checkpoints, so changing
+either setting and re-assembling produces a different stored transcript without
+calling GMS again.
 
 ## Required host directories
 

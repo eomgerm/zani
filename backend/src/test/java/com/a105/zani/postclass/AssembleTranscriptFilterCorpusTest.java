@@ -331,7 +331,7 @@ class AssembleTranscriptFilterCorpusTest {
         AssembleTranscriptService service = new AssembleTranscriptService(
                 new DiscardingTranscriptPort(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                new TranscriptFilterSettings(true, threshold));
+                new TranscriptFilterSettings(true, threshold, false));
         return service.assemble(new AssembleTranscriptCommand(SESSION_ID, "ko", List.of(track), List.of(chunk)));
     }
 

@@ -108,7 +108,7 @@ class AssembleTranscriptLoggingTest {
         AssembleTranscriptService service = new AssembleTranscriptService(
                 new DiscardingTranscriptPort(),
                 Clock.fixed(NOW, ZoneOffset.UTC),
-                new TranscriptFilterSettings(true, 0.8));
+                new TranscriptFilterSettings(true, 0.8, false));
         TranscriptionTrack track =
                 new TranscriptionTrack(STUDENT_FILE, STUDENT, TrackSource.MICROPHONE, "TR_STUDENT", 0L);
         TranscriptionChunk chunk = new TranscriptionChunk(

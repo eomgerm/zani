@@ -37,6 +37,9 @@ public class PostClassTranscriptionSettingsConfig {
      */
     @Bean
     public TranscriptFilterSettings transcriptFilterSettings(PostClassTranscriptionProperties properties) {
-        return new TranscriptFilterSettings(properties.hallucinationFilterEnabled(), properties.noSpeechThreshold());
+        return new TranscriptFilterSettings(
+                properties.hallucinationFilterEnabled(),
+                properties.noSpeechThreshold(),
+                properties.repeatedPhraseFilterEnabled());
     }
 }

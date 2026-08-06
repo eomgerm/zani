@@ -102,7 +102,8 @@ class PostClassTranscriptionSchedulerTest {
                 2,
                 false,
                 true,
-                0.8);
+                0.8,
+                true);
         return new PostClassTranscriptionScheduler(executor, port, tryStart, transcribe, properties, clock);
     }
 

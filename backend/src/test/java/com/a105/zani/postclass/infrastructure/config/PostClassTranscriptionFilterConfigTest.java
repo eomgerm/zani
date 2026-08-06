@@ -28,14 +28,33 @@ class PostClassTranscriptionFilterConfigTest {
             .withPropertyValues("gms.transcribe-language=ko");
 
     @Test
-    void 기본값은_필터를_켜고_임곗값_0_8_을_쓴다() {
-        // 실측 근거는 application.yaml 주석에 있다. 값이 바뀌면 그 근거도 함께 바뀌어야 한다.
+    void 기본값은_반복_규칙만_켜고_무음_규칙은_끈다() {
+        // 무음 확률로는 환각과 실제 발화를 가를 수 없다는 것이 실측으로 확인돼(S15P11A105-316) 무음
+        // 규칙을 껐다. 임곗값 0.98 은 관측된 실제 발화 최댓값(0.964)보다 위라 켜더라도 강의를 잃지 않는
+        // 값이다. 근거는 application.yaml 주석에 있고, 값이 바뀌면 그 근거도 함께 바뀌어야 한다.
         runner.run(context -> {
             assertThat(context).hasSingleBean(TranscriptFilterSettings.class);
             TranscriptFilterSettings settings = context.getBean(TranscriptFilterSettings.class);
-            assertThat(settings.silenceHallucinationFilterEnabled()).isTrue();
-            assertThat(settings.noSpeechThreshold()).isEqualTo(0.8);
+            assertThat(settings.silenceHallucinationFilterEnabled()).isFalse();
+            assertThat(settings.noSpeechThreshold()).isEqualTo(0.98);
+            assertThat(settings.repeatedPhraseFilterEnabled()).isTrue();
         });
+    }
+
+    @Test
+    void 무음_규칙은_설정으로_다시_켤_수_있다() {
+        runner.withPropertyValues("postclass.transcription.hallucination-filter-enabled=true")
+                .run(context -> assertThat(
+                                context.getBean(TranscriptFilterSettings.class).silenceHallucinationFilterEnabled())
+                        .isTrue());
+    }
+
+    @Test
+    void 반복_규칙도_설정으로_끌_수_있다() {
+        runner.withPropertyValues("postclass.transcription.repeated-phrase-filter-enabled=false")
+                .run(context -> assertThat(
+                                context.getBean(TranscriptFilterSettings.class).repeatedPhraseFilterEnabled())
+                        .isFalse());
     }
 
     @Test

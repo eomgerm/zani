@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TranscriptFilterSettingsTest {
 
-    private static final TranscriptFilterSettings DEFAULTS = new TranscriptFilterSettings(true, 0.8);
+    private static final TranscriptFilterSettings DEFAULTS = new TranscriptFilterSettings(true, 0.8, true);
 
     @Test
     void 임곗값보다_높으면_뺀다() {
@@ -105,22 +105,23 @@ class TranscriptFilterSettingsTest {
     void 임곗값이_범위를_벗어나면_만들_수_없다() {
         // 확률과 비교하는 값이라 0~1 밖에서는 뜻이 없다. 여기서 막지 않으면 "1.5 로 두었는데 아무것도
         // 안 빠진다" 같은 조용한 오설정이 남는다.
-        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, -0.1));
-        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, 1.1));
-        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, Double.NaN));
+        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, -0.1, true));
+        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, 1.1, true));
+        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, Double.NaN, true));
         assertThrows(
-                IllegalArgumentException.class, () -> new TranscriptFilterSettings(true, Double.POSITIVE_INFINITY));
+                IllegalArgumentException.class,
+                () -> new TranscriptFilterSettings(true, Double.POSITIVE_INFINITY, true));
     }
 
     @Test
     void 꺼진_설정도_임곗값을_검증한다() {
         // 켜는 날 처음 터지면 그때는 그 값을 누가 왜 넣었는지 아는 사람이 없다.
-        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(false, 2.0));
+        assertThrows(IllegalArgumentException.class, () -> new TranscriptFilterSettings(false, 2.0, false));
     }
 
     @Test
     void 경계값은_유효하다() {
-        assertEquals(0.0, new TranscriptFilterSettings(true, 0.0).noSpeechThreshold(), 1e-9);
-        assertEquals(1.0, new TranscriptFilterSettings(true, 1.0).noSpeechThreshold(), 1e-9);
+        assertEquals(0.0, new TranscriptFilterSettings(true, 0.0, true).noSpeechThreshold(), 1e-9);
+        assertEquals(1.0, new TranscriptFilterSettings(true, 1.0, true).noSpeechThreshold(), 1e-9);
     }
 }
