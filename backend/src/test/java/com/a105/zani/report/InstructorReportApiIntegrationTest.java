@@ -92,6 +92,15 @@ class InstructorReportApiIntegrationTest {
         jdbcTemplate.update("DELETE FROM instructor_report_scores WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_report_insights WHERE instructor_report_id = ?", REPORT_ID);
         jdbcTemplate.update("DELETE FROM instructor_reports WHERE id = ?", REPORT_ID);
+        jdbcTemplate.update(
+                "DELETE c FROM coaching_history_response_counts c"
+                        + " JOIN coaching_histories h ON h.id = c.coaching_history_id"
+                        + " WHERE h.session_id IN (?, ?)",
+                ENDED_SESSION_ID,
+                LIVE_SESSION_ID);
+        jdbcTemplate.update(
+                "DELETE FROM coaching_histories WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
+        // 이전 구현이 남긴 행도 세션 FK를 막지 않게 지운다. alertCount의 정본은 coaching_histories다.
         jdbcTemplate.update("DELETE FROM group_alerts WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
         jdbcTemplate.update(
                 "DELETE FROM session_sections WHERE session_id IN (?, ?)", ENDED_SESSION_ID, LIVE_SESSION_ID);
@@ -130,8 +139,8 @@ class InstructorReportApiIntegrationTest {
     @Test
     void 한눈에_보기_집계를_함께_내린다() throws Exception {
         insertPublishedReport();
-        insertGroupAlert(600_000L);
-        insertGroupAlert(1_200_000L);
+        insertCoachingHistory(600_000L);
+        insertCoachingHistory(1_200_000L);
 
         report(INSTRUCTOR_ID, ENDED_SESSION_ID)
                 .andExpect(status().isOk())
@@ -343,17 +352,22 @@ class InstructorReportApiIntegrationTest {
                 utc(now));
     }
 
-    /** 이해도 알림 한 건. 값 자체는 세는 대상이 아니라 행 수만 쓰이므로 최소한만 채운다. */
-    private void insertGroupAlert(long occurredOffsetMs) {
+    /** 실시간 경로가 남기는 코칭 이력 한 건. 리포트는 이 행 수를 이해도 알림 횟수로 센다. */
+    private void insertCoachingHistory(long triggeredOffsetMs) {
+        Instant triggeredAt = now.minusSeconds(4_500).plusMillis(triggeredOffsetMs);
         jdbcTemplate.update(
-                "INSERT INTO group_alerts (id, session_id, alert_type, window_started_offset_ms,"
-                        + " window_ended_offset_ms, numerator_count, denominator_count, occurred_offset_ms,"
-                        + " created_at) VALUES (?, ?, 'CHECK_NEEDED', ?, ?, 8, 20, ?, ?)",
-                REPORT_ID + 40 + occurredOffsetMs / 600_000L,
+                "INSERT INTO coaching_histories (id, session_id, trigger_id, triggered_at, completed_at,"
+                        + " denominator_count, selected_tip_type, outcome_status, transcript_status, tip_type,"
+                        + " tip_title, tip_message, created_at)"
+                        + " VALUES (?, ?, ?, ?, ?, 20, 'NON_RESPONSE', 'TIP_DELIVERED',"
+                        + " 'SKIPPED_NOT_REQUIRED', 'NON_RESPONSE', ?, ?, ?)",
+                REPORT_ID + 40 + triggeredOffsetMs / 600_000L,
                 ENDED_SESSION_ID,
-                occurredOffsetMs,
-                occurredOffsetMs + 30_000L,
-                occurredOffsetMs,
+                "report-test-trigger-" + triggeredOffsetMs,
+                utc(triggeredAt),
+                utc(triggeredAt.plusSeconds(1)),
+                "학생 반응을 확인해 주세요",
+                "간단한 질문을 통해 학생들의 참여 상태를 확인해 주세요.",
                 utc(now));
     }
 
