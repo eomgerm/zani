@@ -1,20 +1,27 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
+import type { ReportQuestionAsker } from "../infrastructure/reportAssistantApi";
 import type {
   SessionSummaryRequester,
   SessionSummarySection,
 } from "../infrastructure/sessionSummaryApi";
 import { formatOffset } from "./offsetTime";
+import { ReportAssistantPanel } from "./ReportAssistantPanel";
+import { SelectionAskButton } from "./SelectionAskButton";
+import { useReportAssistant } from "./useReportAssistant";
+import { useReportSelection } from "./useReportSelection";
 import { useSessionSummary } from "./useSessionSummary";
 
 export interface SessionSummaryCardProps {
   readonly sessionId: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: SessionSummaryRequester;
-  /** 구간 시각을 눌렀을 때 녹화를 그 자리로 옮긴다. 배선이 없으면 시각을 버튼으로 내지 않는다. */
+  /** 질의응답 어댑터. 같은 이유로 갈아끼울 수 있게 열어 둔다. */
+  readonly ask?: ReportQuestionAsker;
+  /** 구간 시각이나 인용을 눌렀을 때 녹화를 그 자리로 옮긴다. 배선이 없으면 시각을 버튼으로 내지 않는다. */
   readonly onSeek?: (offsetSeconds: number) => void;
 }
 
@@ -89,11 +96,16 @@ const SectionRow = ({
  * <p>전체 문단을 먼저 두고 구간을 그 아래에 편다(S15P11A105-314). 절 구분은 화면이 지어내는 것이
  * 아니라 사후 분석이 나눈 구간이며, 구간이 없는 세션은 문단만 남는다 — 빈 목록은 오류가 아니다.
  */
-export function SessionSummaryCard({ sessionId, request, onSeek }: SessionSummaryCardProps) {
+export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionSummaryCardProps) {
   const { status, summary, sections, retry } = useSessionSummary({ sessionId, request });
 
+  // 드래그를 카드 안쪽으로 한정한다. 리포트 화면에는 전사 패널처럼 드래그할 곳이 더 있다.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const { selection, clear } = useReportSelection(cardRef);
+  const assistant = useReportAssistant({ sessionId, ask });
+
   return (
-    <div className="z-card px-7 py-6">
+    <div ref={cardRef} className="z-card px-7 py-6">
       <div className="z-section-title mb-4">수업 요약 레포트</div>
       {status === "loading" && (
         <Notice icon={<PictoClockMuted size={36} />} title="수업 요약을 불러오는 중이에요" />
@@ -138,6 +150,27 @@ export function SessionSummaryCard({ sessionId, request, onSeek }: SessionSummar
             </ul>
           )}
         </>
+      )}
+
+      {/* 둘 다 position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
+      <SelectionAskButton
+        selection={selection}
+        onAsk={(picked) => {
+          // 패널이 열려 있어도 새 드래그로 앵커를 바꿀 수 있다. 대화는 이어지고 앵커만 갈린다.
+          assistant.openWith({ anchorStartMs: picked.anchorStartMs, selectedText: picked.text });
+          clear();
+        }}
+      />
+      {assistant.anchor !== null && (
+        <ReportAssistantPanel
+          anchor={assistant.anchor}
+          messages={assistant.messages}
+          status={assistant.status}
+          failure={assistant.failure}
+          onSend={assistant.send}
+          onClose={assistant.close}
+          onSeek={onSeek}
+        />
       )}
     </div>
   );
