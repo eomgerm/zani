@@ -49,6 +49,9 @@ GOOGLE_OAUTH_CLIENT_ID=example.apps.googleusercontent.com
 GMS_MOCK_ENABLED=false
 COACHING_TRIGGER_COOLDOWN=PT10M
 COACHING_TRIGGER_THRESHOLD=0.30
+ATTENTION_TIMELINE_MINIMUM_ELIGIBLE=5
+ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR=0.7
+ATTENTION_TIMELINE_REQUIRED_CONNECTION=PT1M
 RECORDING_MEDIA_URL_TEMPLATE=https://i15a105.p.ssafy.io/api/v1/sessions/{sessionId}/media
 POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED=true
 POSTCLASS_TRANSCRIPTION_NO_SPEECH_THRESHOLD=0.8
@@ -70,6 +73,23 @@ The default `COACHING_TRIGGER_THRESHOLD=0.30` already triggers for one flagged
 student in a one-to-three-student test; lower it only when the intended scenario
 needs one flagged student out of a larger denominator. Restore the cooldown to
 `PT10M` after testing.
+
+The three `ATTENTION_TIMELINE_*` values are the gates that decide whether a report
+timeline shows a group value at all (S15P11A105-315 exposed them; the remaining
+thresholds in `attention.timeline` are still image-only). A bucket is hidden when
+fewer than `ATTENTION_TIMELINE_MINIMUM_ELIGIBLE` students are eligible, when the
+four-level judgements cover less than `ATTENTION_TIMELINE_FOCUS_COVERAGE_FLOOR` of
+the bucket, or — for a given student — when that student has not been continuously
+connected for `ATTENTION_TIMELINE_REQUIRED_CONNECTION`. A demo session that never
+reaches five participants therefore renders as an empty graph rather than as a
+report with gaps. Lower `ATTENTION_TIMELINE_MINIMUM_ELIGIBLE` only for such
+sessions and never to `1`, which makes one student's value the group average and
+removes the anonymity the gate exists for (NFR-SEC-007 · REPORT-I-002 ·
+REPORT-I-005); restore `5` afterwards. `ATTENTION_TIMELINE_REQUIRED_CONNECTION`
+must keep matching the real-time path, or the same moment is judged differently in
+the live view and in the report. Environment changes reach the backend only when
+the container is recreated, so deploy a release — `docker restart zani-backend`
+keeps the old values.
 
 `POSTCLASS_TRANSCRIPTION_HALLUCINATION_FILTER_ENABLED` drops post-class transcript
 segments whose `no_speech_prob` reaches
