@@ -43,6 +43,10 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
      * 범위이고, 그것까지 실패로 보면 멀쩡한 수업 전체가 저장되지 않는다.
      *
      * <p>그래서 두 경우를 가른다. 이 폭 안이면 청크 끝으로 맞추고 {@code WARN} 을 남긴다(조용히 넘기지 않는다). 넘으면 조립을 멈춘다.
+     *
+     * <p><b>이 검사는 남기기로 한 세그먼트에만 적용된다</b>(S15P11A105-324). 환각은 무음 구간에 5.5초 고정 길이 세그먼트를 찍으므로 오디오 끝 근처에서 구조적으로 범위를 넘는다 —
+     * 실측에서 237,528ms 짜리 청크에 {@code 234,500~239,500ms} 환각이 나와 세션 전체 조립이 실패했다. 어차피 버릴 세그먼트로 수업 하나를 잃지 않도록 무음 환각 판정을 먼저
+     * 한다. 분할이 진짜로 잘못되면 남은 정상 세그먼트들이 무더기로 걸리므로 탐지력은 유지된다.
      */
     private static final long CHUNK_OVERSHOOT_TOLERANCE_MS = 1_000L;
 
@@ -79,29 +83,23 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
         int rescuedSegmentCount = 0;
         for (TranscriptionChunk chunk : command.chunks()) {
             TranscriptionTrack track = tracks.get(chunk.recordingFileId());
-            // 문서 세그먼트를 먼저 다 만든다. 이유가 둘이다. 필터를 앞에 두면 청크 경계 검사를 환각
-            // 세그먼트가 우회해 분할 오류 탐지가 약해지고(clampToChunk 참고), 인접성 판정에는 이웃의
-            // 확정된 시각이 필요하다.
-            List<TranscriptDocumentSegment> built =
-                    new ArrayList<>(chunk.segments().size());
-            for (TranscriptSegment segment : chunk.segments()) {
-                built.add(toDocumentSegment(track, chunk, segment));
-            }
-            totalSegmentCount += built.size();
+            List<TranscriptSegment> source = chunk.segments();
+            totalSegmentCount += source.size();
 
             int filteredInChunk = 0;
             int rescuedInChunk = 0;
-            for (int index = 0; index < built.size(); index++) {
-                TranscriptDocumentSegment candidate = built.get(index);
+            for (int index = 0; index < source.size(); index++) {
+                TranscriptSegment candidate = source.get(index);
                 if (filterSettings.exceedsNoSpeechThreshold(candidate.noSpeechProb())) {
-                    if (continuesRealSpeech(built, index)) {
+                    if (continuesRealSpeech(source, index)) {
                         rescuedInChunk++;
                     } else {
                         filteredInChunk++;
                         continue;
                     }
                 }
-                segments.add(candidate);
+                // 남기기로 한 것만 문서 세그먼트로 옮긴다. 청크 경계 검사가 여기서 돈다.
+                segments.add(toDocumentSegment(track, chunk, candidate));
             }
             filteredSegmentCount += filteredInChunk;
             rescuedSegmentCount += rescuedInChunk;
@@ -115,7 +113,7 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
                         command.sessionId(),
                         chunk.recordingFileId(),
                         chunk.chunkIndex(),
-                        built.size(),
+                        source.size(),
                         filteredInChunk,
                         rescuedInChunk,
                         filterSettings.noSpeechThreshold());
@@ -287,20 +285,23 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
      *
      * <p><b>한계.</b> 같은 청크 안에서만 본다. 10분 청크가 갈리는 자리에서 문장이 쪼개지면 앵커가 다른 청크에 있어 찾지 못하고, 그때는 원래 규칙대로 빠진다. 청크마다 한 번뿐인 경계라 감수한다
      * — 청크를 넘어 이웃을 찾으려면 조립이 트랙별 청크 순서를 다시 세워야 하고, 그 복잡도가 이득보다 크다.
+     *
+     * <p><b>청크 기준 상대 시각으로 판정한다.</b> 절대 시각으로 옮긴 뒤 보는 것과 결과가 같다 — 같은 청크의 세그먼트는 모두 같은 base 를 더하므로 <b>차이</b>가 보존된다. 그리고 판정을
+     * 변환 앞에 두어야 한다(S15P11A105-324): 변환이 청크 경계 검사를 겸하는데, 환각은 오디오 끝을 넘는 시각을 찍는 일이 흔해서 뒤에 두면 <b>지울 세그먼트 때문에 세션 전체 조립이
+     * 죽는다.</b>
      */
-    private boolean continuesRealSpeech(List<TranscriptDocumentSegment> built, int index) {
-        return anchoredBefore(built, index) || anchoredAfter(built, index);
+    private boolean continuesRealSpeech(List<TranscriptSegment> source, int index) {
+        return anchoredBefore(source, index) || anchoredAfter(source, index);
     }
 
     /** 앞 세그먼트가 실제 발화이고, 문장을 끝내지 않은 채로 이 세그먼트와 맞물려 있는가. */
-    private boolean anchoredBefore(List<TranscriptDocumentSegment> built, int index) {
+    private boolean anchoredBefore(List<TranscriptSegment> source, int index) {
         if (index == 0) {
             return false;
         }
-        TranscriptDocumentSegment previous = built.get(index - 1);
+        TranscriptSegment previous = source.get(index - 1);
         return filterSettings.anchors(previous.noSpeechProb())
-                && filterSettings.adjacent(
-                        previous.endOffsetMs(), built.get(index).startOffsetMs())
+                && filterSettings.adjacent(previous.endMs(), source.get(index).startMs())
                 && filterSettings.sentenceContinues(previous.text());
     }
 
@@ -309,14 +310,14 @@ public class AssembleTranscriptService implements AssembleTranscriptUseCase {
      *
      * <p>종결 여부를 보는 대상이 앞쪽 검사와 다르다. 경계 {@code A -> B} 에서 문장이 이어지는지는 항상 <b>앞선 쪽</b>의 끝으로 판정하고, 이 경우 앞선 쪽이 후보 자신이다.
      */
-    private boolean anchoredAfter(List<TranscriptDocumentSegment> built, int index) {
-        if (index + 1 >= built.size()) {
+    private boolean anchoredAfter(List<TranscriptSegment> source, int index) {
+        if (index + 1 >= source.size()) {
             return false;
         }
-        TranscriptDocumentSegment candidate = built.get(index);
-        TranscriptDocumentSegment next = built.get(index + 1);
+        TranscriptSegment candidate = source.get(index);
+        TranscriptSegment next = source.get(index + 1);
         return filterSettings.anchors(next.noSpeechProb())
-                && filterSettings.adjacent(candidate.endOffsetMs(), next.startOffsetMs())
+                && filterSettings.adjacent(candidate.endMs(), next.startMs())
                 && filterSettings.sentenceContinues(candidate.text());
     }
 
