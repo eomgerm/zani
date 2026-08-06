@@ -7,7 +7,9 @@ import { ParticipantGrid } from "@/domains/lecture/presentation/components/room/
 import type { ParticipantTileData } from "@/domains/lecture/presentation/components/room/ParticipantTile";
 import { RoomControlBar } from "@/domains/lecture/presentation/components/room/RoomControlBar";
 import { PipStage } from "@/domains/lecture/presentation/components/room/PipStage";
+import { InviteStudentsPrompt } from "@/domains/lecture/presentation/components/room/InviteStudentsPrompt";
 import { ScreenShareStage } from "@/domains/lecture/presentation/components/room/ScreenShareStage";
+import { SpeakerStage } from "@/domains/lecture/presentation/components/room/SpeakerStage";
 import { RoomSidePanel } from "@/domains/lecture/presentation/components/room/RoomSidePanel";
 import { useDocumentPictureInPicture } from "@/domains/lecture/presentation/useDocumentPictureInPicture";
 
@@ -75,10 +77,11 @@ export default function RoomMockupPage() {
   const [muted, setMuted] = useState<string[]>([]);
   const [me, setMe] = useState({ mic: true, cam: true, hand: false });
   const [reactMenuOpen, setReactMenuOpen] = useState(false);
+  const [inviteDismissed, setInviteDismissed] = useState(false);
 
   const pip = useDocumentPictureInPicture();
 
-  // 공유를 멈추면 미니 창도 닫는다. 실제 강의실과 같은 규칙이다.
+  // 공유를 멈추면 PiP 창도 닫는다. 실제 강의실과 같은 규칙이다.
   useEffect(() => {
     if (!sharing) pip.close();
   }, [sharing, pip]);
@@ -150,7 +153,7 @@ export default function RoomMockupPage() {
             onClick={() => (pip.pipWindow ? pip.close() : void pip.open())}
             className="cursor-pointer rounded-lg border border-room-line bg-panel px-3 py-1.5 font-bold text-panel-soft"
           >
-            미니 창 {pip.pipWindow ? "닫기" : "열기"}
+            PiP 창 {pip.pipWindow ? "닫기" : "열기"}
           </button>
         )}
         <span className="text-panel-muted">
@@ -158,6 +161,13 @@ export default function RoomMockupPage() {
         </span>
       </div>
 
+      {/* 초대 안내(강사). 실제 화면에서는 역할이 확정된 강사에게만 뜬다. */}
+      {!inviteDismissed && (
+        <InviteStudentsPrompt
+          inviteUrl="http://localhost:3000/prejoin/ABCD-1234"
+          onClose={() => setInviteDismissed(true)}
+        />
+      )}
       {/* 상단 바 — RoomScreen 과 같은 구성 */}
       <div className="flex shrink-0 items-center gap-4 px-6 py-[13px]">
         <div className="shrink-0 text-xl font-black tracking-[-.5px] text-primary">ZANI</div>
@@ -192,7 +202,7 @@ export default function RoomMockupPage() {
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-[18px] bg-stage">
             {sharing ? (
               <div className="absolute inset-0 z-[6] flex flex-col bg-stage">
-                {/* 미니 창이 열리면 공유 화면째로 그쪽으로 옮긴다 — 실제 강의실과 같은 규칙 */}
+                {/* PiP 창이 열리면 공유 화면째로 그쪽으로 옮긴다 — 실제 강의실과 같은 규칙 */}
                 {pip.pipWindow === null ? (
                   <ScreenShareStage
                     participants={participants}
@@ -202,7 +212,7 @@ export default function RoomMockupPage() {
                   />
                 ) : (
                   <div className="flex flex-1 items-center justify-center text-[13px] text-panel-muted">
-                    미니 창에서 보는 중입니다
+                    PiP 창에서 보는 중입니다
                   </div>
                 )}
               </div>
@@ -215,16 +225,7 @@ export default function RoomMockupPage() {
                 onMute={mute}
               />
             ) : (
-              /* 발표자 보기. 타일이 하나뿐이라 배치기가 관여하지 않는다 — 상단 바 토글이
-                 실제와 같이 동작하는지 보기 위해 자리만 맞춰 둔다. */
-              <div className="absolute inset-0 flex items-center justify-center [background:radial-gradient(ellipse_at_50%_32%,#191d33,#101322_78%)]">
-                <div className="flex size-[150px] items-center justify-center rounded-full bg-[linear-gradient(145deg,#12b585,#0b8a63)] text-[54px] font-extrabold text-[#eafff6] shadow-[0_0_0_12px_#10b98112,0_24px_60px_#10b98130]">
-                  {participants[0]?.name.charAt(0) ?? "?"}
-                </div>
-                <div className="z-stage-chip absolute left-4 top-4 font-bold">
-                  강의: {participants[0]?.name ?? ""} 선생님
-                </div>
-              </div>
+              <SpeakerStage participants={participants} localParticipantId={ME} />
             )}
           </div>
 
@@ -269,7 +270,7 @@ export default function RoomMockupPage() {
         )}
       </div>
 
-      {/* 미니 창(Document PiP). 실제 강의실과 같이 배치기로 그린다. */}
+      {/* PiP 창(Document PiP). 실제 강의실과 같이 배치기로 그린다. */}
       {pip.pipWindow &&
         createPortal(
           <div className="relative flex h-screen flex-col bg-stage">
@@ -281,7 +282,7 @@ export default function RoomMockupPage() {
               />
             </div>
             <div className="flex shrink-0 items-center justify-center gap-2 border-t border-room-line bg-[#0e1020] p-2 text-[12px] text-panel-muted">
-              미니 창 컨트롤 자리
+              PiP 창 컨트롤 자리
             </div>
           </div>,
           pip.pipWindow.document.body,

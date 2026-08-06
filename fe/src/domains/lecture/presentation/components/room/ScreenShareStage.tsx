@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { GridContainer, GridItem } from "@thangdevalone/meeting-grid-layout-react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@/shared/ui";
+import { GridPager } from "./GridPager";
 import { ParticipantTile, type ParticipantTileData } from "./ParticipantTile";
 import {
   ITEMS_PER_PAGE,
@@ -14,8 +14,6 @@ import {
 
 /** 공유 화면은 배치기의 0번 칸이다. 참가자는 그 뒤로 이어진다. */
 const SHARED_SCREEN_INDEX = 0;
-
-const pagerBtn = "flex size-[30px] items-center justify-center rounded-full border-0";
 
 type ScreenShareStageProps = {
   participants: ParticipantTileData[];
@@ -30,7 +28,7 @@ type ScreenShareStageProps = {
 };
 
 /**
- * 화면 공유 스테이지. 공유 화면을 크게 고정(pin)하고 참가자를 왼쪽 줄에 세운다.
+ * 화면 공유 스테이지. 공유 화면을 왼쪽에 크게 고정(pin)하고 참가자를 오른쪽 줄에 세운다.
  *
  * <p>공유 화면과 참가자를 각각 다른 방식으로 배치하지 않는다 — 예전에는 공유 영상이 스테이지를 꽉 채우고 참가자 줄이 그 위에 절대 위치로 얹혀 있어, 줄이 공유 화면의 어느 부분을 가릴지 알 수 없었다. 배치기에 둘을 함께 넘기면 핀과 나머지가 서로 자리를 비켜 준다.
  *
@@ -99,38 +97,12 @@ export function ScreenShareStage({
       </GridContainer>
 
       {hasPages && (
-        /* 페이저는 참가자 줄 아래에 둔다 — 넘기는 대상이 그쪽이다. */
-        <div className="absolute bottom-5 right-5 z-[8] flex items-center gap-2 rounded-full border border-room-line bg-[#0e1020cc] p-1 pl-1.5 backdrop-blur-[6px]">
-          <button
-            type="button"
-            onClick={() => setPage(Math.max(0, current - 1))}
-            disabled={current === 0}
-            aria-label="이전 참가자 페이지"
-            className={`${pagerBtn} ${
-              current === 0
-                ? "cursor-default bg-transparent text-[#565b78]"
-                : "cursor-pointer bg-room-control text-white"
-            }`}
-          >
-            <ChevronLeftIcon size={16} />
-          </button>
-          <span className="min-w-8 text-center font-mono text-[12px] font-extrabold text-[#e7e9fb]">
-            {current + 1}/{pageCount}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage(Math.min(pageCount - 1, current + 1))}
-            disabled={current === pageCount - 1}
-            aria-label="다음 참가자 페이지"
-            className={`${pagerBtn} ${
-              current === pageCount - 1
-                ? "cursor-default bg-transparent text-[#565b78]"
-                : "cursor-pointer bg-room-control text-white"
-            }`}
-          >
-            <ChevronRightIcon size={16} />
-          </button>
-        </div>
+        <GridPager
+          current={current}
+          pageCount={pageCount}
+          onChange={setPage}
+          label="참가자 페이지"
+        />
       )}
     </div>
   );

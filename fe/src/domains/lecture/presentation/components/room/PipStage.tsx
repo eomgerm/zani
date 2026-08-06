@@ -23,7 +23,7 @@ type PipStageProps = {
 };
 
 /**
- * 미니 창(Document PiP) 안의 강의방.
+ * PiP 창(Document PiP) 안의 강의방.
  *
  * <p>본 화면과 설정이 다르다. 창이 작아 비율을 지키려 여백을 남기면 정작 얼굴이 안 보이므로 칸을
  * 채우고(`forceAspectRatio` 끔), 페이지를 넘길 자리도 마땅치 않아 상한만 둔다. 공유 중이면 공유
@@ -46,7 +46,7 @@ export function PipStage({
       gap={TILE_GAP}
       // 작은 창에서는 비율을 지키느라 남기는 여백이 타일보다 크다. 칸을 채운다.
       forceAspectRatio={false}
-      // 2명일 때 기본값인 떠다니는 PiP 를 끈다 — 미니 창 안에 또 떠다니는 창을 두지 않는다.
+      // 2명일 때 기본값인 떠다니는 PiP 를 끈다 — PiP 창 안에 또 떠다니는 창을 두지 않는다.
       disableFloat
       {...(sharing
         ? { pinnedIndex: SHARED_SCREEN_INDEX, othersPosition: "bottom" as const }
