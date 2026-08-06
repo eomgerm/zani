@@ -31,6 +31,11 @@ export type AuthContextValue = {
   isInitializing: boolean;
   loginWithGoogle: (idToken: string) => Promise<{ newMember: boolean }>;
   logout: () => void;
+  /**
+   * 이름 변경이 서버에 반영된 뒤 세션의 회원 정보를 맞춘다 — 사이드바·아바타가 새로고침 없이 새 이름을 쓴다.
+   * 서버에 요청하지 않는다. 저장에 성공한 쪽에서만 부른다.
+   */
+  applyDisplayName: (displayName: string) => void;
 };
 
 export type AuthProviderProps = {
@@ -141,6 +146,10 @@ export function AuthProvider({
     });
   }, [requestLogoutFn]);
 
+  const applyDisplayName = useCallback((displayName: string) => {
+    setMember((current) => (current === null ? null : { ...current, displayName }));
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       accessToken,
@@ -149,8 +158,9 @@ export function AuthProvider({
       isInitializing,
       loginWithGoogle,
       logout,
+      applyDisplayName,
     }),
-    [accessToken, member, isInitializing, loginWithGoogle, logout],
+    [accessToken, member, isInitializing, loginWithGoogle, logout, applyDisplayName],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

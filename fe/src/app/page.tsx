@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './landing.module.css';
 
 type AssetPanelProps = {
@@ -15,31 +15,31 @@ const showcaseCards = [
     eyebrow: '실시간 연결',
     title: '수업의 흐름을 함께 연결해요',
     copy: '강사와 학생이 같은 순간을 공유하며 온라인 수업에 자연스럽게 참여합니다.',
-    src: '/asset/showcase-live-classroom-v2.png',
+    src: '/asset/showcase-live-classroom-v3.png',
   },
   {
     eyebrow: '안전한 온디바이스 AI',
     title: '집중 흐름은 브라우저 안에서',
     copy: '원본 카메라 영상을 서버에 보내지 않고 수업 참여 신호를 분석합니다.',
-    src: '/asset/showcase-browser-analysis-v2.png',
+    src: '/asset/showcase-browser-analysis-v3.png',
   },
   {
     eyebrow: '학생 체크인',
     title: '놓친 순간에는 짧게 알려요',
     copy: '학생은 부담 없는 응답으로 이해 상태를 표현하고 배움의 흐름을 이어갑니다.',
-    src: '/asset/showcase-student-checkin-v2.png',
+    src: '/asset/showcase-student-checkin-v3.png',
   },
   {
     eyebrow: '강사 코칭',
     title: '필요한 순간, 수업 팁을 전해요',
     copy: '익명 집단 신호를 바탕으로 설명 보완과 확인 질문을 제안합니다.',
-    src: '/asset/showcase-instructor-coaching-v2.png',
+    src: '/asset/showcase-instructor-coaching-v3.png',
   },
   {
     eyebrow: '수업 이후',
     title: '수업 기록을 다음 행동으로',
     copy: '강사 리포트와 학생 개인 복습 추천으로 수업 이후까지 연결합니다.',
-    src: '/asset/showcase-after-report-v2.png',
+    src: '/asset/showcase-after-report-v3.png',
   },
 ];
 
@@ -109,7 +109,15 @@ export default function Home() {
   const [showcaseIndex, setShowcaseIndex] = useState(0);
   const [afterIndex, setAfterIndex] = useState(0);
 
-  const visibleShowcaseCards = Array.from({ length: 4 }, (_, offset) => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setShowcaseIndex((current) => (current + 1) % showcaseCards.length);
+    }, 4_000);
+
+    return () => window.clearTimeout(timer);
+  }, [showcaseIndex]);
+
+  const visibleShowcaseCards = Array.from({ length: 1 }, (_, offset) => {
     return showcaseCards[(showcaseIndex + offset) % showcaseCards.length];
   });
 
@@ -151,28 +159,43 @@ export default function Home() {
       </section>
 
       <section className={styles.showcase} aria-label="ZANI 주요 기능">
-        <div className={styles.showcaseViewport}>
-          <div className={styles.showcaseGrid} key={showcaseIndex}>
-            {visibleShowcaseCards.map((card, index) => (
-              <article className={styles.showcaseCard} key={`${card.title}-${index}`}>
-                <AssetPanel
-                  src={card.src}
-                  label={`${card.title} 이미지`}
-                  className={styles.showcaseAsset}
-                />
-                <div className={styles.showcaseContent}>
-                  <p className={styles.showcaseEyebrow}>{card.eyebrow}</p>
-                  <h3>{card.title}</h3>
-                  <p className={styles.showcaseCopy}>{card.copy}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-        <div className={styles.carouselControls}>
-          <button type="button" onClick={() => moveShowcase(-1)} aria-label="이전 기능">
+        <div className={styles.showcaseStage}>
+          <button
+            className={`${styles.showcaseArrow} ${styles.showcaseArrowPrevious}`}
+            type="button"
+            onClick={() => moveShowcase(-1)}
+            aria-label="이전 기능"
+          >
             ←
           </button>
+          <div className={styles.showcaseViewport}>
+            <div className={styles.showcaseGrid} key={showcaseIndex}>
+              {visibleShowcaseCards.map((card, index) => (
+                <article className={styles.showcaseCard} key={`${card.title}-${index}`}>
+                  <AssetPanel
+                    src={card.src}
+                    label={`${card.title} 이미지`}
+                    className={styles.showcaseAsset}
+                  />
+                  <div className={styles.showcaseContent}>
+                    <p className={styles.showcaseEyebrow}>{card.eyebrow}</p>
+                    <h3>{card.title}</h3>
+                    <p className={styles.showcaseCopy}>{card.copy}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+          <button
+            className={`${styles.showcaseArrow} ${styles.showcaseArrowNext}`}
+            type="button"
+            onClick={() => moveShowcase(1)}
+            aria-label="다음 기능"
+          >
+            →
+          </button>
+        </div>
+        <div className={styles.carouselControls}>
           <div className={styles.dots} aria-label="기능 갤러리 위치">
             {showcaseCards.map((card, index) => (
               <button
@@ -185,9 +208,6 @@ export default function Home() {
               />
             ))}
           </div>
-          <button type="button" onClick={() => moveShowcase(1)} aria-label="다음 기능">
-            →
-          </button>
         </div>
       </section>
 

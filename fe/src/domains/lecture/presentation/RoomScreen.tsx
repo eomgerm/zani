@@ -827,19 +827,16 @@ function RoomScreenContent({
             {
               value: "OK",
               label: "이해했어요",
-              emoji: "👍",
               toneClassName: "border-[#d4f0e5] bg-primary-mint text-primary-dark",
             },
             {
               value: "CONFUSED",
               label: "헷갈려요",
-              emoji: "🤔",
               toneClassName: "border-[#f6e3a7] bg-warn-soft text-warn-text",
             },
             {
               value: "MISSED",
               label: "놓쳤어요",
-              emoji: "😅",
               toneClassName: "border-line-muted bg-primary-softer text-ink-muted",
             },
           ]}

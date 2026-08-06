@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import { Avatar, Card, FileIcon } from "@/shared/ui";
 import { getCurrentMember, useAuth } from "@/domains/auth";
 import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
+import { updateDisplayName } from "../infrastructure/updateDisplayNameApi";
+import { withdrawMember } from "../infrastructure/withdrawMemberApi";
+
+/** 이름 저장 성공 토스트가 떠 있는 시간. 지나면 저절로 사라진다. */
+const NAME_SAVED_TOAST_MS = 2_600;
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -37,7 +42,7 @@ function NotifRow({
   onToggle: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3.5 border-t border-line-light py-4">
+    <div className="flex items-center gap-3.5 py-2">
       <span className="flex size-[38px] items-center justify-center rounded-[11px] bg-primary-soft">
         {icon}
       </span>
@@ -53,15 +58,22 @@ function NotifRow({
 /**
  * SC-07 계정 설정. 프로필 · 알림 설정 · 계정 관리(회원 탈퇴).
  * "강의 리포트 알림" 토글은 서버 설정(GET·PATCH /api/v1/members/me)에 연결돼 실제 이메일 수신 여부를 바꾼다.
- * 이름 편집·탈퇴는 아직 시연용 로컬 상태로만 동작한다.
+ * 이름 변경도 서버(PATCH /api/v1/members/me/display-name)에 저장한다.
+ * 회원 탈퇴(DELETE /api/v1/members/me)는 소프트 삭제이며, 성공 후 로그아웃까지 이어서 세션을 정리한다.
  */
 export function SettingsScreen() {
   const router = useRouter();
-  const { member, accessToken } = useAuth();
+  const { member, accessToken, applyDisplayName, logout } = useAuth();
   const [name, setName] = useState<string>(member?.displayName ?? "");
+  const [namePending, setNamePending] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  // 0 이면 안 떠 있다. 저장할 때마다 올려서, 연달아 저장해도 토스트가 다시 뜨고 타이머도 다시 걸린다.
+  const [nameSavedToast, setNameSavedToast] = useState(0);
   const [notifReport, setNotifReport] = useState(true);
   const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const nameChanged = name.trim() !== (member?.displayName ?? "").trim() && name.trim().length > 0;
 
   // 저장된 리포트 알림 수신 설정을 서버에서 읽어 토글 초기값을 맞춘다. 토큰이 없으면(비로그인) 건드리지 않는다.
@@ -76,6 +88,14 @@ export function SettingsScreen() {
     return () => controller.abort();
   }, [accessToken]);
 
+  // 저장 성공 토스트를 스스로 걷는다. 저장할 때마다 nameSavedToast 가 올라 이펙트가 다시 돌므로
+  // 이전 타이머는 정리되고 표시 시간이 처음부터 다시 간다.
+  useEffect(() => {
+    if (nameSavedToast === 0) return;
+    const timer = setTimeout(() => setNameSavedToast(0), NAME_SAVED_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [nameSavedToast]);
+
   // "강의 리포트 알림"을 켜고 끈다. 낙관적으로 먼저 바꾸고, 서버 반영에 실패하면 이전 값으로 되돌린다.
   const toggleReport = () => {
     if (accessToken === null || reportPending) return;
@@ -86,6 +106,39 @@ export function SettingsScreen() {
       .then((result) => setNotifReport(result.reportEmailEnabled))
       .catch(() => setNotifReport(!next))
       .finally(() => setReportPending(false));
+  };
+
+  // 이름을 저장한다. 리포트 토글과 달리 낙관적으로 먼저 바꾸지 않는다 — 사이드바까지 새 이름으로 바뀐 뒤
+  // 되돌아가면 저장된 것으로 오해하기 쉽다. 서버가 받아들인 이름(공백을 다듬은 값)만 반영한다.
+  const saveName = () => {
+    if (accessToken === null || !nameChanged || namePending) return;
+    setNamePending(true);
+    setNameError(null);
+    updateDisplayName(accessToken, name.trim())
+      .then((result) => {
+        setName(result.displayName);
+        applyDisplayName(result.displayName);
+        setNameSavedToast((n) => n + 1);
+      })
+      .catch(() => setNameError("이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요."))
+      .finally(() => setNamePending(false));
+  };
+
+  // 회원 탈퇴. 탈퇴 API 는 세션을 끊지 않으므로 성공한 뒤 로그아웃까지 불러 refresh 토큰과 쿠키를 정리한다.
+  // 실패하면 화면을 그대로 두고 모달 안에서 알린다 — 탈퇴됐는지 아닌지 모른 채 로그인 화면으로 보내면 안 된다.
+  const withdraw = () => {
+    if (accessToken === null || deletePending) return;
+    setDeletePending(true);
+    setDeleteError(null);
+    withdrawMember(accessToken)
+      .then(() => {
+        logout();
+        router.push("/login");
+      })
+      .catch(() => {
+        setDeleteError("탈퇴 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
+        setDeletePending(false);
+      });
   };
 
   return (
@@ -102,8 +155,10 @@ export function SettingsScreen() {
             <div className="flex min-w-[260px] flex-1 flex-wrap gap-[22px]">
               <div className="min-w-[200px] flex-1">
                 <label className="mb-[7px] block text-[13px] font-bold text-ink-faint">이름</label>
+                {/* 서버 제약(members.display_name 100자)과 같이 둔다 — 넘겨 보내고 400 을 받을 이유가 없다. */}
                 <input
                   value={name}
+                  maxLength={100}
                   onChange={(e) => setName(e.target.value)}
                   className="z-input rounded-[11px] px-3.5 py-3"
                 />
@@ -118,16 +173,24 @@ export function SettingsScreen() {
               </div>
             </div>
           </div>
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex items-center justify-end gap-3">
+            {nameError !== null && (
+              <p role="alert" className="text-[13px] font-bold text-danger">
+                {nameError}
+              </p>
+            )}
             {/* 이름을 바꾸지 않았으면 저장할 것이 없어 비활성으로 둔다 */}
             <button
               type="button"
-              disabled={!nameChanged}
+              onClick={saveName}
+              disabled={!nameChanged || namePending}
               className={`z-btn z-btn-md ${
-                nameChanged ? "z-btn-primary" : "cursor-not-allowed bg-disabled text-white"
+                nameChanged && !namePending
+                  ? "z-btn-primary"
+                  : "cursor-not-allowed bg-disabled text-white"
               }`}
             >
-              저장하기
+              {namePending ? "저장 중…" : "저장하기"}
             </button>
           </div>
         </Card>
@@ -174,21 +237,40 @@ export function SettingsScreen() {
             <p className="mb-[22px] text-sm leading-[1.6] text-ink-muted">
               계정을 탈퇴하면 ZANI에 저장된 개인 정보와 이용 기록을 복구할 수 없습니다.
             </p>
+            {deleteError !== null && (
+              <p role="alert" className="mb-3 text-[13px] font-bold text-danger">
+                {deleteError}
+              </p>
+            )}
             <div className="flex gap-2.5">
               <button
                 onClick={() => setDeleteOpen(false)}
+                disabled={deletePending}
                 className="z-btn z-btn-outline flex-1 rounded-[13px] py-[13px]"
               >
                 취소
               </button>
               <button
-                onClick={() => router.push("/login")}
+                onClick={withdraw}
+                disabled={deletePending}
                 className="z-btn z-btn-danger flex-1 rounded-[13px] py-[13px]"
               >
-                계정 탈퇴
+                {deletePending ? "탈퇴 중…" : "계정 탈퇴"}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 저장 성공 알림. key 로 리마운트해 연달아 저장해도 등장 애니메이션이 다시 돈다.
+          클릭은 통과시켜 아래 내용 조작을 막지 않는다. */}
+      {nameSavedToast > 0 && (
+        <div
+          key={nameSavedToast}
+          role="status"
+          className="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 animate-[zToast_.2s] rounded-[14px] bg-ink px-5 py-3 text-[13.5px] font-bold text-white shadow-pop"
+        >
+          이름을 저장했어요
         </div>
       )}
     </>

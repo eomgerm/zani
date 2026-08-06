@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useDismissOnOutsidePointer } from "./useDismissOnOutsidePointer";
 
 export interface SelectOption {
   readonly value: string;
@@ -76,18 +77,11 @@ export function Select({
   const selected = selectedIndex >= 0 ? options[selectedIndex] : null;
 
   // 바깥 클릭으로 닫기
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function handlePointerDown(event: PointerEvent) {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
+  useDismissOnOutsidePointer(
+    rootRef,
+    open,
+    useCallback(() => setOpen(false), []),
+  );
 
   function openList() {
     if (disabled || options.length === 0) {

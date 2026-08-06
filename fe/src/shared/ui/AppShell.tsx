@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./Logo";
 import { Avatar } from "./Avatar";
 import { PictoCards, PictoGear, PictoHome } from "./pictograms";
+import { useDismissOnOutsidePointer } from "./useDismissOnOutsidePointer";
 
 export type AppShellMember = {
   displayName: string;
@@ -36,6 +37,13 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [popOpen, setPopOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement | null>(null);
+
+  useDismissOnOutsidePointer(
+    profileRef,
+    popOpen,
+    useCallback(() => setPopOpen(false), []),
+  );
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -68,7 +76,8 @@ export function AppShell({
 
         <div className="flex-1" />
 
-        <div className="relative">
+        {/* 팝오버와 여는 버튼을 한 ref 안에 둔다 — 버튼을 다시 눌러 닫는 토글이 살아 있어야 한다. */}
+        <div ref={profileRef} className="relative">
           {popOpen && (
             <div className="absolute bottom-[60px] left-0 right-0 animate-[zPop_.15s] rounded-[14px] border border-line bg-surface p-1.5 shadow-pop">
               <button
