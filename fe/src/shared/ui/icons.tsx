@@ -208,6 +208,71 @@ export function CloseIcon({ size = 22, className }: IconProps) {
   );
 }
 
+/* ---- 녹화 플레이어 컨트롤 ----
+   카탈로그에 재생·일시정지·볼륨·전체화면 대응이 없다. 글리프(▶ ⏸ 🔊 ⛶)로 두면 OS·폰트에 따라
+   컬러 이모지나 다른 두께로 렌더돼 한 줄 안에서 크기·기준선이 제각각이 되므로 SVG 로 고정한다
+   (HandIcon 과 같은 이유). 어두운 컨트롤 바 위에 얹히므로 색은 `currentColor` 를 따른다. */
+
+export function PlayIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.2, className)}>
+      <path d="M8.8 5.9 18.2 12l-9.4 6.1V5.9Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function PauseIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...solidProps(size, className)}>
+      <rect x="6.6" y="5" width="4.2" height="14" rx="1.6" fill="currentColor" />
+      <rect x="13.2" y="5" width="4.2" height="14" rx="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** 앞으로 건너뛰기. 건너뛰는 시간은 호출부가 정하므로 아이콘에는 숫자를 넣지 않는다. */
+export function SkipForwardIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.2, className)}>
+      <path d="M6 6.6 14 12l-8 5.4V6.6Z" fill="currentColor" />
+      <rect x="16.2" y="5.6" width="2.6" height="12.8" rx="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function VolumeIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <path
+        d="M11.5 5.2 7 9.3H4.2A1.2 1.2 0 0 0 3 10.5v3a1.2 1.2 0 0 0 1.2 1.2H7l4.5 4.1V5.2Z"
+        fill="currentColor"
+      />
+      <path d="M15 9.4a3.7 3.7 0 0 1 0 5.2M17.8 6.9a7.3 7.3 0 0 1 0 10.2" />
+    </svg>
+  );
+}
+
+/** 소리 꺼짐. 대각선 슬래시는 MicOffIcon·CameraOffIcon 과 같은 규칙이다. */
+export function VolumeOffIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 1.9, className)}>
+      <path
+        d="M11.5 5.2 7 9.3H4.2A1.2 1.2 0 0 0 3 10.5v3a1.2 1.2 0 0 0 1.2 1.2H7l4.5 4.1V5.2Z"
+        fill="currentColor"
+      />
+      <path d="M15.4 9.8l5 4.4M20.4 9.8l-5 4.4" />
+    </svg>
+  );
+}
+
+export function FullscreenIcon({ size = 16, className }: IconProps) {
+  return (
+    <svg {...svgProps(size, 2.2, className)}>
+      <path d="M9 4H4v5M15 4h5v5M15 20h5v-5M9 20H4v-5" />
+    </svg>
+  );
+}
+
 /* ---- 셰브론 (월 이동 · 갤러리 페이지 이동, stroke 2.4) ---- */
 
 export function ChevronLeftIcon({ size = 14, className }: IconProps) {

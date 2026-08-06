@@ -32,4 +32,10 @@ export {
   HandIcon,
   ReactionIcon,
   CloseIcon,
+  PlayIcon,
+  PauseIcon,
+  SkipForwardIcon,
+  VolumeIcon,
+  VolumeOffIcon,
+  FullscreenIcon,
 } from "./icons";

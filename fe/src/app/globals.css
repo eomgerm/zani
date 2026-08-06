@@ -251,6 +251,67 @@ body {
            bg-surface text-[22px] shadow-[0_4px_12px_rgba(18,184,134,.18)];
   }
 
+  /* ---- 녹화 플레이어 재생바 ----
+     네이티브 range 의 썸은 트랙보다 크고, 입력 상자를 넘겨서라도 제 크기를 지킨다. 그래서
+     입력 자체를 트랙 두께(4px)로 눌러 두면 썸의 위아래가 상자 밖으로 나가고, 바로 위에 있는
+     <video> 는 자체 합성 레이어라 그 삐져나온 부분을 덮어 버린다 — 손잡이가 반쯤 잘려 보인다.
+     입력에는 썸이 통째로 들어갈 높이를 주고, "얇게 보이는 것"은 트랙만 맡는다.
+     네 개의 벤더 의사요소를 다뤄야 해 유틸리티 대신 여기서 한 번에 적는다. */
+  .z-scrub {
+    @apply h-3.5 w-full cursor-pointer appearance-none bg-transparent outline-none;
+    /* 재생 위치. 호출부가 인라인 스타일로 덮어쓴다. */
+    --z-scrub-played: 0%;
+  }
+  .z-scrub:disabled {
+    @apply cursor-default opacity-50;
+  }
+  /* 지나온 구간만 브랜드색으로 채운다 — 남은 길이가 한눈에 보여야 한다. */
+  .z-scrub::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--color-primary) var(--z-scrub-played),
+      var(--color-panel-line-soft) var(--z-scrub-played)
+    );
+  }
+  .z-scrub::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    /* 4px 트랙의 한가운데에 놓는다: (4 - 14) / 2 */
+    margin-top: -5px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  }
+  /* 파이어폭스는 지나온 구간을 별도 의사요소로 그린다 — 그라데이션을 쓸 수 없다. */
+  .z-scrub::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-panel-line-soft);
+  }
+  .z-scrub::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-primary);
+  }
+  .z-scrub::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  }
+  .z-scrub:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.55);
+  }
+  .z-scrub:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.55);
+  }
+
   /* ---- 체크 표시 (장치 점검 등) ---- */
   .z-check {
     @apply flex size-[26px] items-center justify-center rounded-lg

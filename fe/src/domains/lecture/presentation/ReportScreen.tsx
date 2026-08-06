@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  ChevronLeftIcon,
-  DownloadIcon,
-  PictoClockMuted,
-  PictoLock,
-  PictoWarn,
-} from "@/shared/ui";
+import { ChevronLeftIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import { formatSessionStartedAt } from "./myLectures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
@@ -139,18 +133,6 @@ export function ReportScreen({
           <h1 className="mb-1 text-2xl font-extrabold tracking-[-.5px]">{lecture.title}</h1>
           <div className="text-[13.5px] font-semibold text-ink-fainter">{meta}</div>
         </div>
-        {/* 다운로드는 리포트 탭에서만 노출한다(클립 탭에는 내려받을 문서가 없다). */}
-        {ready && tab === "report" && (
-          <button
-            type="button"
-            /* 아직 만들 문서가 없다. 눌러도 아무 일이 없으면 고장으로 읽히므로 상태를 말해 준다. */
-            onClick={() => window.alert("준비 중입니다.")}
-            className="z-btn z-btn-primary shrink-0 gap-2 rounded-xl px-[22px] py-[13px] text-sm"
-          >
-            <DownloadIcon />
-            리포트 다운로드
-          </button>
-        )}
       </div>
 
       {failed && (
