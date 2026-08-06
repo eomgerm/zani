@@ -86,6 +86,10 @@ export function useDocumentPictureInPicture(): DocumentPictureInPicture {
     }
     copyStyles(pip);
     pip.document.body.style.margin = "0";
+    // 앱의 지원 하한(--app-min-width)은 이 창에 해당하지 않는다. copyStyles 가 body 규칙까지
+    // 통째로 옮기는 탓에 260px 짜리 창에 1280px 하한이 걸려 가로 스크롤이 생긴다. PiP 는 브라우저가
+    // 크기를 정하는 작은 창이라 하한이라는 개념 자체가 없다.
+    pip.document.body.style.minWidth = "0";
     // 사용자가 창을 직접 닫으면(네이티브 X) 상태를 되돌린다.
     pip.addEventListener("pagehide", () => setPipWindow(null), { once: true });
     setPipWindow(pip);
