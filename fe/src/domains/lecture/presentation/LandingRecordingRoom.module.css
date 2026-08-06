@@ -1,0 +1,18 @@
+.root {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: #090a12;
+}
+
+/* RoomMockupScreen의 개발용 조절판만 숨기고 실제 강의실 UI는 그대로 사용한다. */
+.root > div:first-child > div:first-child {
+  display: none;
+}
+
+.analysisNotice {
+  position: absolute;
+  top: 66px;
+  right: 174px;
+  z-index: 70;
+}

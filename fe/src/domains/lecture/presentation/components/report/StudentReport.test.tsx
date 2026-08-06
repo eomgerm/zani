@@ -139,7 +139,8 @@ describe("StudentReport", () => {
 
     expect(await screen.findByText("헷갈림")).toBeInTheDocument();
     expect(screen.getByText("24:10")).toBeInTheDocument();
-    expect(screen.getByText("‘헷갈려요’ 로 답한 구간이에요.")).toBeInTheDocument();
+    // 카드는 배지·시각·제목까지만 읽는다. 설명은 카드를 늘려 목록을 짧게 만들어 뺐다.
+    expect(screen.queryByText("‘헷갈려요’ 로 답한 구간이에요.")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /useMemo 메모이제이션 패턴/ }));
 

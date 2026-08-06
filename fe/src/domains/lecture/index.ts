@@ -10,6 +10,10 @@ export { RoomScreen } from "./presentation/RoomScreen";
 // 강의실 배치 검토용 목업. 강의실 내부 컴포넌트를 여러 개 조합하지만, 밖으로는 이 화면 하나만
 // 내보낸다 — 검토용 화면 때문에 방 내부 부품이 공개 API 가 되면 도메인 경계가 그만큼 얇아진다.
 export { RoomMockupScreen } from "./presentation/RoomMockupScreen";
+export {
+  LandingRecordingRoom,
+  type LandingRecordingScene,
+} from "./presentation/LandingRecordingRoom";
 export { RoomProvider, useRoomConnection } from "./presentation/RoomProvider";
 export { useRoomParticipants } from "./presentation/useRoomParticipants";
 export type { UseRoomParticipantsResult } from "./presentation/useRoomParticipants";
