@@ -415,8 +415,12 @@ class PostClassTranscriptionIntegrationTest {
                                 25_165_824L,
                                 2,
                                 false,
-                                true,
-                                0.8,
+                                // 이 객체는 스케줄러의 폴링 주기·배치 크기에만 쓰인다. 필터는 스프링
+                                // 컨텍스트의 TranscriptFilterSettings 빈에서 오므로 여기 값이 조립에
+                                // 닿지 않는다. 그래도 운영 기본값과 같게 둔다 — 다르면 이 파일을 읽는
+                                // 사람이 "테스트는 무음 필터를 켜고 도는구나" 로 오해한다.
+                                false,
+                                0.98,
                                 true),
                         clock)
                 .dispatchDueTranscriptions();
