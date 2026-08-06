@@ -2,13 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  ChevronLeftIcon,
-  DownloadIcon,
-  PictoClockMuted,
-  PictoLock,
-  PictoWarn,
-} from "@/shared/ui";
+import { ChevronLeftIcon, PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
 import { formatSessionStartedAt } from "./myLectures";
 import { ReportClipTab } from "./components/report/ReportClipTab";
 import { InstructorReport } from "./components/report/InstructorReport";
