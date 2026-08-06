@@ -8,6 +8,9 @@ import { updateReportEmail } from "../infrastructure/updateReportEmailApi";
 import { updateDisplayName } from "../infrastructure/updateDisplayNameApi";
 import { withdrawMember } from "../infrastructure/withdrawMemberApi";
 
+/** 이름 저장 성공 토스트가 떠 있는 시간. 지나면 저절로 사라진다. */
+const NAME_SAVED_TOAST_MS = 2_600;
+
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
@@ -64,6 +67,8 @@ export function SettingsScreen() {
   const [name, setName] = useState<string>(member?.displayName ?? "");
   const [namePending, setNamePending] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
+  // 0 이면 안 떠 있다. 저장할 때마다 올려서, 연달아 저장해도 토스트가 다시 뜨고 타이머도 다시 걸린다.
+  const [nameSavedToast, setNameSavedToast] = useState(0);
   const [notifReport, setNotifReport] = useState(true);
   const [reportPending, setReportPending] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -82,6 +87,14 @@ export function SettingsScreen() {
       });
     return () => controller.abort();
   }, [accessToken]);
+
+  // 저장 성공 토스트를 스스로 걷는다. 저장할 때마다 nameSavedToast 가 올라 이펙트가 다시 돌므로
+  // 이전 타이머는 정리되고 표시 시간이 처음부터 다시 간다.
+  useEffect(() => {
+    if (nameSavedToast === 0) return;
+    const timer = setTimeout(() => setNameSavedToast(0), NAME_SAVED_TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [nameSavedToast]);
 
   // "강의 리포트 알림"을 켜고 끈다. 낙관적으로 먼저 바꾸고, 서버 반영에 실패하면 이전 값으로 되돌린다.
   const toggleReport = () => {
@@ -105,6 +118,7 @@ export function SettingsScreen() {
       .then((result) => {
         setName(result.displayName);
         applyDisplayName(result.displayName);
+        setNameSavedToast((n) => n + 1);
       })
       .catch(() => setNameError("이름을 저장하지 못했어요. 잠시 후 다시 시도해주세요."))
       .finally(() => setNamePending(false));
@@ -245,6 +259,18 @@ export function SettingsScreen() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 저장 성공 알림. key 로 리마운트해 연달아 저장해도 등장 애니메이션이 다시 돈다.
+          클릭은 통과시켜 아래 내용 조작을 막지 않는다. */}
+      {nameSavedToast > 0 && (
+        <div
+          key={nameSavedToast}
+          role="status"
+          className="pointer-events-none fixed bottom-8 left-1/2 z-50 -translate-x-1/2 animate-[zToast_.2s] rounded-[14px] bg-ink px-5 py-3 text-[13.5px] font-bold text-white shadow-pop"
+        >
+          이름을 저장했어요
         </div>
       )}
     </>
