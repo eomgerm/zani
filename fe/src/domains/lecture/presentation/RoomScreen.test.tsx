@@ -855,6 +855,25 @@ describe("RoomScreen coaching wiring", () => {
     expect(cards[0].className).toContain(COACH_TIP_PIP_PLACEMENT);
   });
 
+  /**
+   * 미니 창도 본 화면과 같은 배치기로 그린다.
+   *
+   * <p>PiP 는 사용자가 크기를 바꿀 수 있는 창이라 세로 1열 목록이면 넓혀도 옆이 빈다. 배치기가
+   * 붙었는지는 그것이 붙이는 이름(`참가자 N명`)으로 판별한다 — 세로 목록(`RoomRoster`)은
+   * `강의방 참가자` 라는 다른 이름을 쓴다.
+   */
+  it("draws the mini window roster with the shared grid layout", () => {
+    asInstructor();
+    screenShare.active = true;
+    screenShare.sharing = true;
+    const miniWindow = openPipWindow();
+    render(<RoomScreen sessionId="123" />);
+
+    const grid = within(miniWindow).getByRole("group", { name: /^참가자 \d+명$/ });
+    expect(miniWindow.contains(grid)).toBe(true);
+    expect(within(miniWindow).queryByRole("group", { name: "강의방 참가자" })).toBeNull();
+  });
+
   it("closes the tip from inside the mini window", () => {
     asInstructor();
     screenShare.active = true;

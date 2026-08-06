@@ -620,12 +620,19 @@ function RoomScreenContent({
                   galleryParticipants.length > 0 &&
                   createPortal(
                     <div className="relative flex h-screen flex-col bg-stage">
-                      <div className="flex-1 overflow-y-auto p-2">
-                        <RoomRoster
+                      {/*
+                        본 화면과 같은 배치기를 쓴다. PiP 는 사용자가 크기를 바꿀 수 있는 창인데
+                        세로 1열 목록이면 넓혀도 타일만 커지고 옆이 빈다. 배치기는 창 크기를 실측해
+                        넓히면 열을 늘린다(6명 기준 260px 에서 2×3, 640px 에서 3×2).
+
+                        relative 는 페이저가 기댈 자리다 — 배치기가 자식을 절대 배치하므로
+                        위치 기준이 되는 조상이 있어야 한다.
+                      */}
+                      <div className="relative min-h-0 flex-1">
+                        <ParticipantGrid
                           participants={galleryParticipants}
+                          currentParticipantId={localParticipantId ?? undefined}
                           videoRefFor={participantVideos.refFor}
-                          localParticipantId={localParticipantId}
-                          className="flex flex-col gap-2"
                         />
                       </div>
                       {/* 미니 창 컨트롤: 마이크·카메라·공유중지·나가기. onClick 은 portal 이라도 React 트리로 전달돼 동작한다. */}
