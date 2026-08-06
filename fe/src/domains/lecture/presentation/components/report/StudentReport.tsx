@@ -146,9 +146,6 @@ export function StudentReport({
                             </Badge>
                           </span>
                         </span>
-                        <span className="block text-xs leading-[1.5] text-ink-faint">
-                          {r.description}
-                        </span>
                       </span>
                     </button>
                   </li>
