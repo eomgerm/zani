@@ -6,7 +6,8 @@
 - `landing-browser-analysis.png`
 - `during-student-prompt.png`
 - `during-instructor-tip.png`
-- `after-instructor-report.webm`
-- `after-student-report.webm`
+- `after-instructor-report.png`
+- `after-student-report.png`
+- `after-student-quiz-result.png`
 
-수업 이후 리포트 영상만 `/` 랜딩페이지에서 자동 재생·반복됩니다. 강의실 캡처 화면은 `src/app/dev/landing-recording/[scene]`, 실제 리포트 녹화 경로는 `src/app/(full)/my-lectures/[sessionId]/report`입니다. 동작 순서와 데모 API 응답은 `recording/landing-demos.spec.ts`에서 관리합니다.
+수업 이후 리포트 캡처는 `/` 랜딩페이지에서 확대·이동 애니메이션으로 재생됩니다. 강의실 캡처 화면은 `src/app/dev/landing-recording/[scene]`에서 만들며, 녹화 동작 순서는 `recording/landing-demos.spec.ts`에서 관리합니다.
