@@ -104,7 +104,10 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
   const { selection, clear } = useReportSelection(cardRef);
   const assistant = useReportAssistant({ sessionId, ask });
   return (
-    <div ref={cardRef} className="z-card px-7 py-6">
+    // 버튼과 패널은 카드 **밖**에 둔다. 안에 두면 cardRef 가 그 둘까지 품어, 패널에서 답변을
+    // 긁어 복사하려는 선택까지 "요약 카드 안의 드래그" 로 잡힌다.
+    <>
+      <div ref={cardRef} className="z-card px-7 py-6">
       <div className="z-section-title mb-4">수업 요약 레포트</div>
       {status === "loading" && (
         <Notice icon={<PictoClockMuted size={36} />} title="수업 요약을 불러오는 중이에요" />
@@ -150,8 +153,8 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
           )}
         </>
       )}
+      </div>
 
-      {/* 둘 다 position: fixed 라 카드 안에 두어도 뷰포트 기준으로 뜬다 — z-card 에 transform 이 없다. */}
       <SelectionAskButton
         selection={selection}
         onAsk={(picked) => {
@@ -171,6 +174,6 @@ export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionS
           onSeek={onSeek}
         />
       )}
-    </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { anchorStartMsOf } from "./useReportSelection";
+import { anchorStartMsOf, useReportSelection } from "./useReportSelection";
 
 /**
  * 앵커 추출은 화면으로 검증되지 않는다.
@@ -67,5 +68,102 @@ describe("anchorStartMsOf", () => {
 
   it("reports no anchor for a null node", () => {
     expect(anchorStartMsOf(null)).toBeNull();
+  });
+});
+
+/**
+ * 드래그를 어디까지 "요약 카드 안" 으로 볼 것인가, 그리고 스크롤 뒤에도 버튼이 제자리인가.
+ *
+ * <p>둘 다 실제로 겪은 버그다 — 채팅 패널을 카드 안에 두었더니 답변을 긁어 복사하려는 선택까지
+ * 질문으로 잡혔고, 버튼이 position: fixed 라 스크롤하면 글과 따로 놀았다.
+ */
+describe("useReportSelection", () => {
+  const inViewport = { top: 100, bottom: 120, left: 50, right: 130, width: 80, height: 20 } as DOMRect;
+  const scrolledAway = { top: -80, bottom: -60, left: 50, right: 130, width: 80, height: 20 } as DOMRect;
+
+  let rect = inViewport;
+  const originalRect = Range.prototype.getBoundingClientRect;
+
+  beforeEach(() => {
+    rect = inViewport;
+    Range.prototype.getBoundingClientRect = () => rect;
+  });
+
+  afterEach(() => {
+    Range.prototype.getBoundingClientRect = originalRect;
+    window.getSelection()?.removeAllRanges();
+    document.body.innerHTML = "";
+  });
+
+  const selectContentsOf = (element: Element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const settle = () => act(() => void document.dispatchEvent(new MouseEvent("mouseup")));
+
+  /** 카드와 그 **밖**의 채팅 패널. 실제 렌더 구조와 같은 모양이다. */
+  const layout = () => {
+    document.body.innerHTML = `
+      <div id="card">
+        <li data-section-start-ms="95000"><p id="section">해시 충돌 해결</p></li>
+      </div>
+      <aside id="panel"><p id="answer">충돌이 나면 빈 자리를 찾습니다.</p></aside>
+    `;
+    return { current: document.getElementById("card") };
+  };
+
+  it("카드 안을 드래그하면 앵커와 좌표를 준다", () => {
+    const cardRef = layout();
+    const { result } = renderHook(() => useReportSelection(cardRef));
+
+    selectContentsOf(document.getElementById("section")!);
+    settle();
+
+    expect(result.current.selection?.anchorStartMs).toBe(95_000);
+    expect(result.current.selection?.y).toBe(100);
+  });
+
+  it("채팅 패널 안의 드래그는 잡지 않는다", () => {
+    const cardRef = layout();
+    const { result } = renderHook(() => useReportSelection(cardRef));
+
+    selectContentsOf(document.getElementById("answer")!);
+    settle();
+
+    // 답변을 긁어 복사하려던 것이지 새 질문이 아니다. 패널을 카드 안에 두면 이게 깨진다.
+    expect(result.current.selection).toBeNull();
+  });
+
+  it("스크롤로 선택이 화면 밖으로 나가면 버튼을 거둔다", () => {
+    const cardRef = layout();
+    const { result } = renderHook(() => useReportSelection(cardRef));
+
+    selectContentsOf(document.getElementById("section")!);
+    settle();
+    expect(result.current.selection).not.toBeNull();
+
+    rect = scrolledAway;
+    act(() => void window.dispatchEvent(new Event("scroll")));
+
+    // 버튼은 fixed 라 화면에 남는다. 가리킬 글이 사라졌으면 버튼도 사라져야 한다.
+    expect(result.current.selection).toBeNull();
+  });
+
+  it("스크롤해도 선택이 보이면 좌표를 다시 잰다", () => {
+    const cardRef = layout();
+    const { result } = renderHook(() => useReportSelection(cardRef));
+
+    selectContentsOf(document.getElementById("section")!);
+    settle();
+
+    rect = { ...inViewport, top: 40, bottom: 60 } as DOMRect;
+    act(() => void window.dispatchEvent(new Event("scroll")));
+
+    // 다시 재지 않으면 버튼이 방금 드래그한 문장이 아니라 엉뚱한 곳을 가리킨다.
+    expect(result.current.selection?.y).toBe(40);
   });
 });

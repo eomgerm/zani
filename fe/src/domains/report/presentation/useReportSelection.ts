@@ -73,6 +73,12 @@ export function useReportSelection(containerRef: RefObject<HTMLElement | null>) 
       }
 
       const rect = range.getBoundingClientRect();
+      // 스크롤로 선택이 화면 밖으로 나갔다. 버튼만 화면에 남으면 아무것도 가리키지 않는 채 떠 있다.
+      if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        setSelection(null);
+        return;
+      }
+
       setSelection({
         text: text.slice(0, MAX_SELECTED_LENGTH),
         anchorStartMs: anchorStartMsOf(range.startContainer),
@@ -83,9 +89,18 @@ export function useReportSelection(containerRef: RefObject<HTMLElement | null>) 
 
     document.addEventListener("mouseup", onSelectionSettled);
     document.addEventListener("keyup", onSelectionSettled);
+    // 좌표를 다시 잰다. 버튼은 position: fixed 라 뷰포트에 못 박혀 있는데 글은 스크롤로 움직이므로,
+    // 다시 재지 않으면 버튼이 방금 드래그한 문장이 아니라 엉뚱한 곳을 가리킨다.
+    //
+    // capture 로 듣는 이유는 스크롤이 window 가 아니라 안쪽 컨테이너에서 일어날 수 있어서다 —
+    // scroll 이벤트는 버블링하지 않으므로 캡처 단계에서만 잡힌다.
+    window.addEventListener("scroll", onSelectionSettled, true);
+    window.addEventListener("resize", onSelectionSettled);
     return () => {
       document.removeEventListener("mouseup", onSelectionSettled);
       document.removeEventListener("keyup", onSelectionSettled);
+      window.removeEventListener("scroll", onSelectionSettled, true);
+      window.removeEventListener("resize", onSelectionSettled);
     };
   }, [containerRef]);
 
