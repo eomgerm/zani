@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
 
 import com.jayway.jsonpath.JsonPath;
@@ -54,13 +55,9 @@ class CoachingTipPollingIntegrationTest {
 
     private static final long INSTRUCTOR_ID = 9_200_910L;
     private static final long STUDENT_ID = 9_200_911L;
-    private static final long SESSION_ID = 9_200_912L;
     private static final long PARTICIPANT_ID = 9_200_913L;
     private static final long INSTRUCTOR_PARTICIPANT_ID = 9_200_914L;
-
-    private static final String OPEN_KEY = "attention:" + SESSION_ID + ":coaching:open";
-    private static final String LAST_TIP_KEY = "attention:" + SESSION_ID + ":coaching:last-tip";
-    private static final String PRESENCE_KEY = "session:" + SESSION_ID + ":presence:" + PARTICIPANT_ID;
+    private static final AtomicLong NEXT_SESSION_ID = new AtomicLong(9_200_912L);
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -84,6 +81,7 @@ class CoachingTipPollingIntegrationTest {
     @Qualifier("coachingTipExecutor") private ThreadPoolTaskExecutor coachingTipExecutor;
 
     private MockMvc mockMvc;
+    private long sessionId;
 
     /** 시각은 테스트마다 새로 잡는다. 고정 시각을 쓰면 3시간 뒤부터 만료 스케줄러가 세션을 끝낸다. */
     private Instant now;
@@ -97,6 +95,7 @@ class CoachingTipPollingIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        sessionId = NEXT_SESSION_ID.getAndIncrement();
         now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         sessionStartedAt = now.minusSeconds(600);
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
@@ -114,15 +113,15 @@ class CoachingTipPollingIntegrationTest {
     void cleanUp() {
         awaitCoachingTasks();
         clearState();
-        instructorAudioBuffer.release(SESSION_ID);
+        instructorAudioBuffer.release(sessionId);
         jdbcTemplate.update(
                 "DELETE FROM coaching_history_response_counts WHERE coaching_history_id IN"
                         + " (SELECT id FROM coaching_histories WHERE session_id = ?)",
-                SESSION_ID);
-        jdbcTemplate.update("DELETE FROM coaching_histories WHERE session_id = ?", SESSION_ID);
+                sessionId);
+        jdbcTemplate.update("DELETE FROM coaching_histories WHERE session_id = ?", sessionId);
         jdbcTemplate.update(
                 "DELETE FROM session_participants WHERE id IN (?, ?)", PARTICIPANT_ID, INSTRUCTOR_PARTICIPANT_ID);
-        jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", sessionId);
     }
 
     private void awaitCoachingTasks() {
@@ -163,9 +162,9 @@ class CoachingTipPollingIntegrationTest {
                 .andExpect(jsonPath("$.data.tip").isEmpty())
                 .andExpect(jsonPath("$.data.unavailableReason").isEmpty());
 
-        assertNotNull(redisTemplate.opsForValue().get(OPEN_KEY));
+        assertNotNull(redisTemplate.opsForValue().get(openKey()));
         // 쿨타임은 트리거를 연 순간부터다. TTL 이 없으면 키가 남아 다음 수업까지 트리거를 막는다.
-        Long ttl = redisTemplate.getExpire(OPEN_KEY);
+        Long ttl = redisTemplate.getExpire(openKey());
         assertNotNull(ttl);
         assertTrue(ttl > 0 && ttl <= Duration.ofMinutes(10).toSeconds(), "쿨타임 TTL 이 어긋납니다: " + ttl);
     }
@@ -189,7 +188,7 @@ class CoachingTipPollingIntegrationTest {
         String triggerId = triggerIdOf(poll(INSTRUCTOR_ID));
 
         coachingTriggerStatePort.completeOutcome(
-                SESSION_ID,
+                sessionId,
                 CoachingOutcome.completed(
                         triggerId,
                         new CoachingTip(
@@ -207,7 +206,7 @@ class CoachingTipPollingIntegrationTest {
                 .andExpect(jsonPath("$.data.tip.targetConcept").value("재귀 호출의 종료 조건"));
 
         // 다음 트리거가 같은 유형을 반복하지 않도록 직전 팁을 남긴다.
-        String lastTip = redisTemplate.opsForValue().get(LAST_TIP_KEY);
+        String lastTip = redisTemplate.opsForValue().get(lastTipKey());
         assertNotNull(lastTip);
         assertTrue(lastTip.startsWith(CoachingTipType.CONFUSED.name() + "|"), "직전 팁 값이 어긋납니다: " + lastTip);
     }
@@ -219,13 +218,13 @@ class CoachingTipPollingIntegrationTest {
         String stale = triggerIdOf(poll(INSTRUCTOR_ID));
 
         // 파이프라인이 쿨타임(10분)보다 오래 걸린 상황이다. 그 사이 키가 만료되고 다음 폴링이 새 트리거를 연다.
-        redisTemplate.delete(OPEN_KEY);
+        redisTemplate.delete(openKey());
         String current = triggerIdOf(poll(INSTRUCTOR_ID));
         // 둘이 실제로 다른 트리거여야 아래 단정이 뜻을 갖는다. 같은 값이면 무엇을 확인해도 통과한다.
         assertNotEquals(stale, current);
 
         coachingTriggerStatePort.completeOutcome(
-                SESSION_ID,
+                sessionId,
                 CoachingOutcome.completed(
                         stale,
                         new CoachingTip(
@@ -242,7 +241,7 @@ class CoachingTipPollingIntegrationTest {
                 .andExpect(jsonPath("$.data.tip").isEmpty());
 
         // 직전 팁도 남기지 않는다. 남기면 다음 트리거가 뜨지도 않은 팁을 피하려 유형을 바꾼다.
-        assertNull(redisTemplate.opsForValue().get(LAST_TIP_KEY));
+        assertNull(redisTemplate.opsForValue().get(lastTipKey()));
     }
 
     @Test
@@ -253,24 +252,24 @@ class CoachingTipPollingIntegrationTest {
         poll(STUDENT_ID).andExpect(status().isForbidden());
 
         // 학생의 폴링이 트리거를 열면 쿨타임이 강사 몰래 소모된다.
-        assertTrue(redisTemplate.opsForValue().get(OPEN_KEY) == null);
+        assertTrue(redisTemplate.opsForValue().get(openKey()) == null);
     }
 
     @Test
     void refusesAPollWithoutAToken() throws Exception {
-        mockMvc.perform(get("/api/v1/sessions/{sessionId}/coaching-tip", SESSION_ID))
+        mockMvc.perform(get("/api/v1/sessions/{sessionId}/coaching-tip", sessionId))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void tellsTheClientToStopPollingOnceTheSessionEnded() throws Exception {
-        jdbcTemplate.update("UPDATE sessions SET status = 'ENDED' WHERE id = ?", SESSION_ID);
+        jdbcTemplate.update("UPDATE sessions SET status = 'ENDED' WHERE id = ?", sessionId);
 
         poll(INSTRUCTOR_ID).andExpect(status().isConflict());
     }
 
     private ResultActions poll(long memberId) throws Exception {
-        return mockMvc.perform(get("/api/v1/sessions/{sessionId}/coaching-tip", SESSION_ID)
+        return mockMvc.perform(get("/api/v1/sessions/{sessionId}/coaching-tip", sessionId)
                 .header(
                         "Authorization",
                         "Bearer "
@@ -287,11 +286,11 @@ class CoachingTipPollingIntegrationTest {
     private void markCountedStudent() {
         redisTemplate
                 .opsForValue()
-                .set(PRESENCE_KEY, "since:" + now.minusSeconds(120).toEpochMilli(), Duration.ofMinutes(5));
+                .set(presenceKey(), "since:" + now.minusSeconds(120).toEpochMilli(), Duration.ofMinutes(5));
         redisTemplate
                 .opsForValue()
                 .set(
-                        "attention:" + SESSION_ID + ":significant:" + AttentionState.CONFUSED.name() + ":"
+                        "attention:" + sessionId + ":significant:" + AttentionState.CONFUSED.name() + ":"
                                 + PARTICIPANT_ID,
                         "1",
                         Duration.ofMinutes(5));
@@ -304,19 +303,31 @@ class CoachingTipPollingIntegrationTest {
         int chunk = sampleRate * bytesPerSample;
         long remaining = length.toSeconds();
         for (long second = 0; second < remaining; second++) {
-            instructorAudioBuffer.append(SESSION_ID, new byte[chunk]);
+            instructorAudioBuffer.append(sessionId, new byte[chunk]);
         }
     }
 
     private void clearState() {
-        redisTemplate.delete(OPEN_KEY);
-        redisTemplate.delete(LAST_TIP_KEY);
-        redisTemplate.delete(PRESENCE_KEY);
+        redisTemplate.delete(openKey());
+        redisTemplate.delete(lastTipKey());
+        redisTemplate.delete(presenceKey());
         redisTemplate.delete(COACHING_HISTORY_RETRY_KEY);
         for (AttentionState state : AttentionState.values()) {
-            redisTemplate.delete("attention:" + SESSION_ID + ":significant:" + state.name() + ":" + PARTICIPANT_ID);
+            redisTemplate.delete("attention:" + sessionId + ":significant:" + state.name() + ":" + PARTICIPANT_ID);
         }
-        redisTemplate.delete("attention:" + SESSION_ID + ":excluded:" + PARTICIPANT_ID);
+        redisTemplate.delete("attention:" + sessionId + ":excluded:" + PARTICIPANT_ID);
+    }
+
+    private String openKey() {
+        return "attention:" + sessionId + ":coaching:open";
+    }
+
+    private String lastTipKey() {
+        return "attention:" + sessionId + ":coaching:last-tip";
+    }
+
+    private String presenceKey() {
+        return "session:" + sessionId + ":presence:" + PARTICIPANT_ID;
     }
 
     private void insertMember(long id, String displayName) {
@@ -332,12 +343,12 @@ class CoachingTipPollingIntegrationTest {
     }
 
     private void insertLiveSession() {
-        jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", SESSION_ID);
+        jdbcTemplate.update("DELETE FROM sessions WHERE id = ?", sessionId);
         jdbcTemplate.update(
                 "INSERT INTO sessions (id, host_member_id, title, invite_code, status, analysis_status,"
                         + " started_at, created_at, updated_at)"
                         + " VALUES (?, ?, ?, ?, 'LIVE', 'NOT_STARTED', ?, ?, ?)",
-                SESSION_ID,
+                sessionId,
                 INSTRUCTOR_ID,
                 "코칭 팁 폴링 테스트",
                 "COACH910",
@@ -353,7 +364,7 @@ class CoachingTipPollingIntegrationTest {
                         + " last_accessed_at, created_at, updated_at)"
                         + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 participantId,
-                SESSION_ID,
+                sessionId,
                 memberId,
                 role,
                 utc(now),

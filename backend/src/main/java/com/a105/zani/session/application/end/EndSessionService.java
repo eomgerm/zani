@@ -63,6 +63,9 @@ public class EndSessionService implements EndSessionUseCase {
     public EndSessionResult end(EndSessionCommand command) {
         EndSessionResult result = transactionTemplate.execute(status -> endInTransaction(command));
         if (result.ended()) {
+            // DB 종료가 커밋된 뒤 tombstone 을 남긴다. 커밋 실패 시 살아 있는 세션의 오디오를 영구 차단하지 않고,
+            // 이어지는 Egress 정리 중 늦은 PCM 이 도착해도 버퍼가 다시 생성되지 않게 한다.
+            releaseInstructorAudioUseCase.release(result.sessionId());
             log.info("Session {} ended: reason={}", result.sessionId(), command.reason());
             // LiveKit 정리는 커밋 뒤에, 그리고 호출 스레드가 아닌 곳에서 한다.
             //
@@ -80,7 +83,7 @@ public class EndSessionService implements EndSessionUseCase {
         return result;
     }
 
-    /** 세션 종료의 DB 상태 전이. 빠른 메모리·Redis 반납까지만 여기 두고, 외부 HTTP 는 {@link #end}가 커밋 뒤에 한다. */
+    /** 세션 종료의 DB 상태 전이. Redis 반납까지만 여기 두고, 오디오 메모리·외부 HTTP 정리는 {@link #end}가 커밋 뒤에 한다. */
     private EndSessionResult endInTransaction(EndSessionCommand command) {
         Session session = sessionRepository.findById(command.sessionId()).orElseThrow(SessionNotFoundException::new);
         if (session.isEnded()) {
@@ -89,9 +92,6 @@ public class EndSessionService implements EndSessionUseCase {
         }
         session.end(clock.instant());
         Session ended = sessionRepository.save(session);
-        // 코칭 오디오 버퍼는 세션당 수십 MB를 잡고 있어 종료 시 반납해야 한다. 메모리 조작뿐이라
-        // 실패해도 종료를 되돌릴 이유가 없고, 되돌아가더라도 스트림이 다시 채운다.
-        releaseInstructorAudioUseCase.release(ended.id());
         releaseActivationLock(ended.instructorId());
         return new EndSessionResult(ended.id(), ended.status(), true);
     }

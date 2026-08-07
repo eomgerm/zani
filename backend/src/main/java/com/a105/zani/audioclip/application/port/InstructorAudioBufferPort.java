@@ -21,6 +21,6 @@ public interface InstructorAudioBufferPort {
     /** 지금 확보된 오디오의 재생 시간(ms). 전사 최소 길이 판정에 쓴다. */
     long availableMs(long sessionId);
 
-    /** 세션의 버퍼를 비우고 메모리를 반납한다(수업 종료). */
+    /** 세션의 버퍼를 비우고 메모리를 반납한다. 종료 뒤 늦은 오디오가 도착해도 같은 세션의 버퍼를 다시 만들지 않는다. */
     void release(long sessionId);
 }

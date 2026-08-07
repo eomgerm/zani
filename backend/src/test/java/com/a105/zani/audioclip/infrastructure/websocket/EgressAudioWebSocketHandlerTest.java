@@ -173,6 +173,19 @@ class EgressAudioWebSocketHandlerTest {
     }
 
     @Test
+    void 세션_종료_뒤_남은_Egress_프레임은_버퍼를_다시_만들지_않는다() throws Exception {
+        FakeWebSocketSession session = authorized();
+        handler.afterConnectionEstablished(session);
+        handler.handleMessage(session, new BinaryMessage(pcm(200, 1)));
+
+        buffer.release(SESSION_ID);
+        handler.handleMessage(session, new BinaryMessage(pcm(200, 2)));
+
+        assertEquals(0, buffer.availableMs(SESSION_ID));
+        assertEquals(0, buffer.activeSessions());
+    }
+
+    @Test
     void 바이너리가_아닌_메시지는_무시한다() throws Exception {
         FakeWebSocketSession session = authorized();
         handler.afterConnectionEstablished(session);
