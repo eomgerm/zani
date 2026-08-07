@@ -133,6 +133,21 @@ class GmsInstructorAnalysisHttpAdapterTest {
     }
 
     @Test
+    @DisplayName("강사에게 말하는 해요체와 종합 피드백 작성 순서를 지시한다")
+    void asks_for_friendly_tone_and_orders_the_overall_feedback() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andExpect(content().string(containsString("모든 문장은 강사에게 직접 말하는 해요체로 끝낸다")))
+                .andExpect(content().string(containsString("먼저 이번 수업에서 잘 작동한 것 → 그다음 아쉬운 것 → 마지막에 다음 수업에서 할 것 하나")))
+                .andRespond(MockRestResponseCreators.withSuccess(
+                        chatResponse(validInner(), "stop"), MediaType.APPLICATION_JSON));
+
+        assertThat(fixture.adapter().analyze(request())).isPresent();
+        fixture.server().verify();
+    }
+
+    @Test
     @DisplayName("본문에 식별자를 싣지 않는다 — 요청 타입 자체가 담지 못한다")
     void never_sends_identifiers() {
         Fixture fixture = fixture();

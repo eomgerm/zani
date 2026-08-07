@@ -90,6 +90,20 @@ class GmsStudentAnalysisHttpAdapterTest {
         fixture.server().verify();
     }
 
+    @Test
+    void asksForFriendlyToneAndOrdersTheParticipationSummary() {
+        Fixture fixture = fixture();
+        fixture.server()
+                .expect(requestTo(CHAT_URL))
+                .andExpect(content().string(containsString("모든 문장은 학생에게 직접 말하는 해요체로 끝낸다")))
+                .andExpect(content().string(containsString("먼저 인정할 관측 → 그다음 아쉬운 관측 → 마지막에 다음 수업에서 해 볼 것 하나")))
+                .andRespond(
+                        MockRestResponseCreators.withSuccess(chatResponse(analysisJson()), MediaType.APPLICATION_JSON));
+
+        assertThat(fixture.adapter().analyze(request())).isPresent();
+        fixture.server().verify();
+    }
+
     /**
      * 길이 가드가 통과시킨 최대 크기 요청이 게이트웨이 상한 안에 드는지 본다.
      *

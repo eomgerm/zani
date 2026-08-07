@@ -111,7 +111,9 @@ class GmsContentAnalysisLiveCheckTest {
                         model,
                         Duration.ofSeconds(60),
                         Duration.ofSeconds(25)),
-                new ContentAnalysisProperties(12_000));
+                // application.yaml 의 기본값과 같은 값을 쓴다. 이 검사의 목적 하나가 그 예산이 게이트웨이에
+                // 받아들여지는지 보는 것이라, 여기에 다른 값을 적으면 배포본과 다른 것을 확인하고 초록이 된다.
+                new ContentAnalysisProperties(30_000));
 
         ContentAnalysisOutcome outcome =
                 adapter.analyze(new ContentAnalysisRequest(CLASS_DURATION_MS, mockTranscript()));

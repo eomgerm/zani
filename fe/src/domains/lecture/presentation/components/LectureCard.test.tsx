@@ -35,6 +35,18 @@ describe("LectureCard 썸네일", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  /** 분석 중에는 아직 열 수 없는 강의라, 다 만들어진 화면처럼 보이는 자리 그림 대신 스피너만 돈다. */
+  it("분석 중이면 주소가 있어도 스피너를 그린다", () => {
+    const { container } = render(
+      <LectureCard
+        lecture={lecture({ status: "PROCESSING", thumbnailUrl: "https://zani.example/t.png" })}
+      />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('[class*="zSpin"]')).not.toBeNull();
+  });
+
   /** 서명 주소는 짧게 살아서, 화면을 오래 두면 만료된 채 로드될 수 있다. 깨진 이미지 아이콘을 그대로 두면 안 된다. */
   it("이미지가 깨지면 자리 그림으로 되돌린다", () => {
     const { container } = render(

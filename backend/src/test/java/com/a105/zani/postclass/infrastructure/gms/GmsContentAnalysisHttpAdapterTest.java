@@ -176,17 +176,21 @@ class GmsContentAnalysisHttpAdapterTest {
     }
 
     /**
-     * 요약 말투를 평서형으로 지시하고, 존댓말을 요구하지 않는지(S15P11A105-313).
+     * 구간 말투는 평서형으로, 수업 전체 요약만 해요체로 지시하는지(S15P11A105-313).
      *
-     * <p>요약은 강사에게 말을 거는 글이 아니라 수업 기록이다. 지시가 "존댓말" 로 돌아가면 주어가 강사일 때 "설명하셨습니다" 로 높여 버리는데, 다른 테스트는 문장 내용을 보지 않으므로 그 회귀를 잡지
-     * 못한다. 형제 어댑터(학생·강사 분석)의 존댓말은 그대로 두는 것이 의도이므로 여기서만 본다.
+     * <p>{@code title}·{@code summary} 는 타임라인에 한 줄로 붙는 수업 기록이다. 지시가 존댓말로 돌아가면 주어가 강사일 때 "설명하셨습니다" 로 높여 버려 기록이 강사에게 보내는
+     * 편지가 되는데, 다른 테스트는 문장 내용을 보지 않으므로 그 회귀를 잡지 못한다.
+     *
+     * <p>{@code classSummary} 는 반대로 학생에게 말을 거는 리포트 첫 문단이라 해요체다. 한 프롬프트에 말투가 둘이라 <b>둘 다</b> 본다 — 한쪽만 단언하면 다른 쪽을 지운 회귀가
+     * 초록으로 지나간다. 형제 어댑터(학생·강사 분석)는 전부 해요체이고 그쪽 말투는 {@code AnalysisPrompts.tone} 이 소유한다.
      */
     @Test
-    void asksForPlainStyleSentencesInsteadOfHonorifics() {
+    void asksForPlainStyleSectionsAndAFriendlyClassSummary() {
         Fixture fixture = fixture();
         fixture.server()
                 .expect(requestTo(CHAT_URL))
                 .andExpect(content().string(containsString("한국어 평서형으로 끝낸다")))
+                .andExpect(content().string(containsString("classSummary 만 해요체로 쓴다")))
                 .andExpect(content().string(not(containsString("한국어 존댓말로 쓴다"))))
                 .andRespond(MockRestResponseCreators.withSuccess(
                         chatResponse(sections(section("상태 관리", 0, 600_000))), MediaType.APPLICATION_JSON));
