@@ -60,6 +60,7 @@ describe("requestSessionSummary", () => {
       summary: SUMMARY,
       sections: [
         {
+          startOffsetMs: 0,
           startSeconds: 0,
           endSeconds: 600,
           title: "상태 관리 개요",
@@ -91,7 +92,13 @@ describe("requestSessionSummary", () => {
 
     // 요약이 없는 구간은 제목으로도 자리를 말한다. 제목·요약이 둘 다 빈 구간만 버린다.
     expect(result.sections).toEqual([
-      { startSeconds: 600, endSeconds: 1200, title: "제목만 있는 구간", summary: "" },
+      {
+        startOffsetMs: 600_000,
+        startSeconds: 600,
+        endSeconds: 1200,
+        title: "제목만 있는 구간",
+        summary: "",
+      },
     ]);
   });
 

@@ -17,6 +17,14 @@
 export type SessionSummarySection = {
   readonly title: string;
   readonly summary: string;
+  /**
+   * 반올림하지 않은 구간 시작(ms).
+   *
+   * <p>화면은 `startSeconds` 로 그리지만 드래그 앵커는 이 값을 그대로 서버로 되돌린다. 초로 낮춘 값을
+   * 다시 ×1000 해서 보내면 200,400ms 구간이 200,000ms 가 되어 **앞 구간에 떨어진다** — 그러면 서버는
+   * 옆 구간의 전사로 답하고, 답변은 여전히 유창해서 화면으로는 잡히지 않는다.
+   */
+  readonly startOffsetMs: number;
   readonly startSeconds: number;
   readonly endSeconds: number;
 };
@@ -69,6 +77,10 @@ const stringOf = (value: unknown): string => (typeof value === "string" ? value 
 const secondsOf = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value / 1000) : 0;
 
+/** ms 를 그대로. 드래그 앵커가 쓰는 값이라 여기서 반올림하면 앵커가 옆 구간으로 밀린다. */
+const msOf = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : 0;
+
 /**
  * 깨진 구간 하나만 버리고 나머지는 그린다. 목록 전체를 버리면 구간 하나가 이상하다는 이유로 수업 전체의
  * 절 구분이 사라진다.
@@ -87,6 +99,7 @@ const parseSection = (value: unknown): SessionSummarySection | null => {
   return {
     title,
     summary,
+    startOffsetMs: msOf(section.startedOffsetMs),
     startSeconds: secondsOf(section.startedOffsetMs),
     endSeconds: secondsOf(section.endedOffsetMs),
   };

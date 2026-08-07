@@ -10,12 +10,14 @@ const SUMMARY = "이번 수업은 지역 상태에서 출발해 Context 리렌�
 
 const SECTIONS = [
   {
+    startOffsetMs: 0,
     startSeconds: 0,
     endSeconds: 600,
     title: "상태 관리 개요",
     summary: "지역 상태와 전역 상태를 가르는 기준을 설명했다.",
   },
   {
+    startOffsetMs: 600_000,
     startSeconds: 600,
     endSeconds: 1200,
     title: "Context 리렌더링",

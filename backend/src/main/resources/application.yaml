@@ -277,6 +277,18 @@ gms:
   # 학생별 분석은 요약 + 추천 5개 + 4지선다 5문항을 한 번에 만든다. 학생별 분석 실측은 8.4~10.1초였다.
   # 사후 배치라 지연에 여유가 있다(8시간 SLA).
   analysis-timeout: ${GMS_ANALYSIS_TIMEOUT:60s}
+  # 리포트 질의응답 전용 timeout(259). 위의 analysis-timeout(60초)을 재사용하면 안 된다 — 그 값에는
+  # "사후 배치라 지연에 여유가 있다" 는 판단이 들어 있는데, 이쪽은 사람이 채팅창을 열어 둔 채 기다린다.
+  # 입력은 앵커 주변 전사와 목차뿐이고 출력은 답변 600자 + 인용 3개라 학생별 분석(실측 8.4~10.1초)보다
+  # 가볍다. 오래 매달려 있느니 실패를 보여 주고 다시 누르게 하는 편이 낫다.
+  assistant-timeout: ${GMS_ASSISTANT_TIMEOUT:25s}
+
+report:
+  assistant:
+    # 답변 600자 + 인용 3개의 출력 상한. 잘리면 finish_reason=length 로 JSON 이 깨져, 사람이 25초를
+    # 기다린 끝에 아무것도 받지 못한다. 한국어는 토큰당 1자 안팎이라 여유를 두어 1,500 으로 둔다.
+    # 요청 바이트 임계는 설정으로 열지 않는다 — 근거는 content-analysis 와 같고 값은 코드에 있다.
+    max-completion-tokens: ${REPORT_ASSISTANT_MAX_COMPLETION_TOKENS:1500}
 
 coach:
   history-retry-delay: ${COACH_HISTORY_RETRY_DELAY:PT5S}

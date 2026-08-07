@@ -1,20 +1,27 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { PictoClockMuted, PictoLock, PictoWarn } from "@/shared/ui";
+import type { ReportQuestionAsker } from "../infrastructure/reportAssistantApi";
 import type {
   SessionSummaryRequester,
   SessionSummarySection,
 } from "../infrastructure/sessionSummaryApi";
 import { formatOffset } from "./offsetTime";
+import { ReportAssistantPanel } from "./ReportAssistantPanel";
+import { SelectionAskButton } from "./SelectionAskButton";
+import { useReportAssistant } from "./useReportAssistant";
+import { useReportSelection } from "./useReportSelection";
 import { useSessionSummary } from "./useSessionSummary";
 
 export interface SessionSummaryCardProps {
   readonly sessionId: string;
   /** 테스트에서 갈아끼우기 위한 선택 인자. 기본값이 실제 어댑터다. */
   readonly request?: SessionSummaryRequester;
-  /** 구간 시각을 눌렀을 때 녹화를 그 자리로 옮긴다. 배선이 없으면 시각을 버튼으로 내지 않는다. */
+  /** 질의응답 어댑터. 같은 이유로 갈아끼울 수 있게 열어 둔다. */
+  readonly ask?: ReportQuestionAsker;
+  /** 구간 시각이나 인용을 눌렀을 때 녹화를 그 자리로 옮긴다. 배선이 없으면 시각을 버튼으로 내지 않는다. */
   readonly onSeek?: (offsetSeconds: number) => void;
 }
 
@@ -47,7 +54,9 @@ const SectionRow = ({
   const range = `${formatOffset(section.startSeconds)}–${formatOffset(section.endSeconds)}`;
 
   return (
-    <li className="pl-1">
+    // 드래그 앵커가 이 좌표를 읽는다. 선택 지점에서 위로 올라가 가장 가까운 [data-section-start-ms] 를
+    // 찾는 방식이라 API 를 더 부르지 않고도 "어느 구간을 짚었는지" 가 나온다.
+    <li className="pl-1" data-section-start-ms={section.startOffsetMs}>
       <div className="mb-1 flex items-baseline gap-2">
         {section.title.length > 0 && (
           <span className="font-bold text-[16.5px] text-ink-muted">
@@ -87,11 +96,18 @@ const SectionRow = ({
  * <p>전체 문단을 먼저 두고 구간을 그 아래에 편다(S15P11A105-314). 절 구분은 화면이 지어내는 것이
  * 아니라 사후 분석이 나눈 구간이며, 구간이 없는 세션은 문단만 남는다 — 빈 목록은 오류가 아니다.
  */
-export function SessionSummaryCard({ sessionId, request, onSeek }: SessionSummaryCardProps) {
+export function SessionSummaryCard({ sessionId, request, ask, onSeek }: SessionSummaryCardProps) {
   const { status, summary, sections, retry } = useSessionSummary({ sessionId, request });
 
+  // 드래그를 카드 안쪽으로 한정한다. 리포트 화면에는 전사 패널처럼 드래그할 곳이 더 있다.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const { selection, clear } = useReportSelection(cardRef);
+  const assistant = useReportAssistant({ sessionId, ask });
   return (
-    <div className="z-card px-7 py-6">
+    // 버튼과 패널은 카드 **밖**에 둔다. 안에 두면 cardRef 가 그 둘까지 품어, 패널에서 답변을
+    // 긁어 복사하려는 선택까지 "요약 카드 안의 드래그" 로 잡힌다.
+    <>
+      <div ref={cardRef} className="z-card px-7 py-6">
       <div className="z-section-title mb-4">수업 요약 레포트</div>
       {status === "loading" && (
         <Notice icon={<PictoClockMuted size={36} />} title="수업 요약을 불러오는 중이에요" />
@@ -137,6 +153,27 @@ export function SessionSummaryCard({ sessionId, request, onSeek }: SessionSummar
           )}
         </>
       )}
-    </div>
+      </div>
+
+      <SelectionAskButton
+        selection={selection}
+        onAsk={(picked) => {
+          // 누르는 즉시 드래그한 내용이 질문이 된다. 무엇을 물을지 따로 입력하지 않는다.
+          // 카드가 이미 열려 있으면 새 드래그가 새 대화를 시작한다.
+          assistant.askAbout({ anchorStartMs: picked.anchorStartMs, selectedText: picked.text });
+          clear();
+        }}
+      />
+      {assistant.anchor !== null && (
+        <ReportAssistantPanel
+          messages={assistant.messages}
+          status={assistant.status}
+          failure={assistant.failure}
+          onSend={assistant.send}
+          onClose={assistant.close}
+          onSeek={onSeek}
+        />
+      )}
+    </>
   );
 }
