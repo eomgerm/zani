@@ -93,11 +93,11 @@
   letter-spacing: -4px;
 }
 
-.hero h1.heroBrand {
+.heroBrand {
+  width: 250px;
+  height: auto;
+  display: block;
   margin-bottom: 24px;
-  font-size: 72px;
-  color: #10b981;
-  letter-spacing: -3px;
 }
 
 .hero p {
@@ -150,9 +150,11 @@
 }
 
 .showcaseViewport {
-  width: min(1180px, calc(100% - 64px));
+  width: min(1180px, 100%);
   margin: 0 auto;
-  overflow: visible;
+  padding: 28px 44px 40px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .showcaseStage {
@@ -192,10 +194,16 @@
 }
 
 .showcaseGrid {
-  display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr));
-  gap: 20px;
-  animation: galleryIn 280ms ease;
+  display: flex;
+  touch-action: pan-y pinch-zoom;
+}
+
+.showcaseSlide {
+  flex: 0 0 88%;
+  min-width: 0;
+  margin-right: 18px;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .showcaseCard {
@@ -207,7 +215,10 @@
   border-radius: 20px;
   background: #f1f7f4;
   box-shadow: 0 18px 48px rgba(31, 78, 62, 0.09);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+  backface-visibility: hidden;
+  contain: paint;
+  transform: translateZ(0);
 }
 
 .showcaseCard:hover {
@@ -234,6 +245,18 @@
 .showcaseAsset {
   position: absolute;
   inset: 0;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.showcaseAsset > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .showcaseAsset::after {
@@ -387,12 +410,12 @@
   border-radius: 20px;
   background: #ffffff;
   box-shadow: 0 16px 38px rgba(28, 80, 62, 0.07);
+  transition: transform 300ms ease, box-shadow 180ms ease;
 }
 
 .duringCard:hover {
   box-shadow: 0 18px 46px rgba(28, 80, 62, 0.08);
   transform: translateY(-10px);
-  transition: transform 300ms ease, box-shadow 180ms ease;
 }
 
 .duringAsset {
@@ -437,7 +460,7 @@
 }
 
 .afterSlide {
-  min-height: 52px;
+  min-height: 500px;
   display: grid;
   grid-template-columns: 0.78fr 1.22fr;
   overflow: hidden;
@@ -508,14 +531,77 @@
 }
 
 .afterAsset {
-  min-height: 200px;
+  min-height: 500px;
   border-left: 1px solid #dce9e4;
   
   border: 1px solid #dce9e4;
   border-radius: 24px;
-  background: #f8fcfa;
+  background: #ffffff;
   box-shadow: 0 18px 46px rgba(28, 80, 62, 0.08);
   animation: galleryIn 280ms ease;
+}
+
+.reportCapture,
+.quizResultCapture {
+  width: 100%;
+  height: 100%;
+  padding: 14px;
+  box-sizing: border-box;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.instructorReportTour .reportCapture {
+  animation: instructorReportTour 26s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.studentReportTour .reportCapture {
+  animation: studentReportTour 30s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.studentReportTour {
+  animation: galleryIn 280ms ease, studentReportBackground 30s ease infinite;
+}
+
+.quizResultCapture {
+  z-index: 2;
+  padding: 0;
+  opacity: 0;
+  animation: studentQuizResultTour 30s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.reportPointer {
+  position: absolute;
+  left: calc(50% - 3px);
+  top: calc(54% - 3px);
+  z-index: 3;
+  width: 26px;
+  height: 34px;
+  opacity: 0;
+  filter: drop-shadow(0 3px 5px rgba(15, 23, 42, 0.35));
+  animation: reportPointerTour 30s cubic-bezier(0.2, 0.72, 0.24, 1) infinite;
+}
+
+.reportPointer svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.reportPointer::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(16, 185, 129, 0.72);
+  border-radius: 999px;
+  opacity: 0;
+  animation: reportPointerClick 30s ease-out infinite;
 }
 
 .afterControls {
@@ -572,10 +658,179 @@
   }
 }
 
+@keyframes instructorReportTour {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  4%,
+  12% {
+    opacity: 1;
+    transform: scale(0.98);
+  }
+  25%,
+  31% {
+    opacity: 1;
+    transform: translateY(11%) scale(1.48);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(41%, -46%) scale(2.4);
+  }
+  53% {
+    opacity: 1;
+    transform: translate(-41%, -46%) scale(2.4);
+  }
+  64%,
+  72% {
+    opacity: 1;
+    transform: translate(40%, -86%) scale(2.35);
+  }
+  80%,
+  91% {
+    opacity: 1;
+    transform: translate(-40%, -86%) scale(2.35);
+  }
+  96% {
+    opacity: 0;
+    transform: translate(-40%, -86%) scale(2.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes studentReportTour {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  4%,
+  11% {
+    opacity: 1;
+    transform: scale(0.98);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-5%) scale(1.35);
+  }
+  36% {
+    opacity: 1;
+    transform: translate(46%, -86%) scale(2.2);
+  }
+  47%,
+  58% {
+    opacity: 1;
+    transform: translate(-46%, -86%) scale(2.2);
+  }
+  63%,
+  100% {
+    opacity: 0;
+    transform: translate(-46%, -86%) scale(2.2);
+  }
+}
+
+@keyframes studentQuizResultTour {
+  0%,
+  58% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  63%,
+  69% {
+    opacity: 1;
+    transform: translateY(25%) scale(1.5);
+  }
+  91%,
+  95% {
+    opacity: 1;
+    transform: translateY(-25%) scale(1.5);
+  }
+  99%,
+  100% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes studentReportBackground {
+  0%,
+  55%,
+  100% {
+    background-color: #ffffff;
+  }
+  63%,
+  96% {
+    background-color: #f4f7f6;
+  }
+}
+
+@keyframes reportPointerTour {
+  0%,
+  47% {
+    opacity: 0;
+    transform: translate(170px, -220px) scale(1);
+  }
+  49% {
+    opacity: 1;
+    transform: translate(170px, -220px) scale(1);
+  }
+  56% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  57% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.82);
+  }
+  58% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  62%,
+  100% {
+    opacity: 0;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes reportPointerClick {
+  0%,
+  56% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  57% {
+    opacity: 1;
+    transform: scale(0.55);
+  }
+  59% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .showcaseGrid,
   .afterSlide {
     animation: none;
+  }
+
+  .reportCapture {
+    opacity: 1;
+    object-position: center;
+    transform: scale(0.98);
+    animation: none;
+  }
+
+  .quizResultCapture,
+  .reportPointer {
+    display: none;
   }
 
   .headerButton,
