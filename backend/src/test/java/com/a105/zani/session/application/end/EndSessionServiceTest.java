@@ -101,7 +101,7 @@ class EndSessionServiceTest {
 
         service.end(new EndSessionCommand(SESSION_ID, SessionEndReason.INSTRUCTOR_REQUEST));
 
-        assertEquals(List.of("commit", "stopRecording", "closeRoom"), callOrder);
+        assertEquals(List.of("commit", "releaseAudio", "stopRecording", "closeRoom"), callOrder);
     }
 
     /**
@@ -243,13 +243,14 @@ class EndSessionServiceTest {
     }
 
     /** 반납 호출 여부만 기록하는 페이크. 코칭 오디오 버퍼는 세션당 수십 MB라 종료 시 반드시 반납돼야 한다. */
-    private static final class RecordingReleaseUseCase
+    private final class RecordingReleaseUseCase
             implements com.a105.zani.audioclip.application.releaseaudio.ReleaseInstructorAudioUseCase {
 
         private final java.util.List<Long> released = new java.util.ArrayList<>();
 
         @Override
         public void release(long sessionId) {
+            callOrder.add("releaseAudio");
             released.add(sessionId);
         }
     }

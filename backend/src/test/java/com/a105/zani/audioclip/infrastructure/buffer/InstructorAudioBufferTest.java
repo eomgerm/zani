@@ -167,6 +167,19 @@ class InstructorAudioBufferTest {
     }
 
     @Test
+    void 반납한_세션에_늦은_PCM이_도착해도_버퍼를_다시_만들지_않는다() {
+        InstructorAudioBuffer buffer = buffer();
+        buffer.append(SESSION_ID, seconds(1, 1));
+
+        buffer.release(SESSION_ID);
+        buffer.append(SESSION_ID, seconds(1, 2));
+
+        assertEquals(0, buffer.availableMs(SESSION_ID));
+        assertTrue(buffer.snapshot(SESSION_ID, WINDOW).isEmpty());
+        assertEquals(0, buffer.activeSessions());
+    }
+
+    @Test
     void 빈_조각은_무시한다() {
         InstructorAudioBuffer buffer = buffer();
 

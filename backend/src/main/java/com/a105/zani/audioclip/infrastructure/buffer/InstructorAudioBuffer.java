@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,11 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
     private final Clock clock;
     private final TranscriptionAudioEncoder encoder;
     private final Map<Long, SessionRing> ringsBySession = new ConcurrentHashMap<>();
+    /** 종료된 세션은 같은 프로세스에서 다시 열리지 않는다. Egress 종료가 늦어 release 뒤에 PCM 이 도착해도 버퍼를 재생성하지 않도록 tombstone 을 유지한다. */
+    private final Set<Long> releasedSessions = ConcurrentHashMap.newKeySet();
+
+    /** 슬롯이 찬 동안 같은 세션의 PCM 프레임마다 같은 경고가 쌓이지 않도록 첫 실패만 기억한다. */
+    private final Set<Long> exhaustedWarningSessions = ConcurrentHashMap.newKeySet();
 
     public InstructorAudioBuffer(
             PcmAudioFormat format, Duration window, int maxSessions, Clock clock, TranscriptionAudioEncoder encoder) {
@@ -59,7 +65,7 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
 
     /** 수신한 raw PCM 을 이어 붙인다. 창을 넘는 만큼 가장 오래된 바이트가 밀려난다. */
     public void append(long sessionId, byte[] pcm) {
-        if (pcm.length == 0) {
+        if (pcm.length == 0 || releasedSessions.contains(sessionId)) {
             return;
         }
         SessionRing ring = ringsBySession.get(sessionId);
@@ -74,21 +80,37 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
 
     /** 슬롯이 남아 있을 때만 버퍼를 만든다. 경쟁 상황에서도 상한을 넘지 않도록 원자적으로 확인한다. */
     private SessionRing allocate(long sessionId) {
+        if (releasedSessions.contains(sessionId)) {
+            return null;
+        }
         if (ringsBySession.size() >= maxSessions) {
-            log.warn(
-                    "Audio buffer slots exhausted ({}); session {} runs without coaching audio",
-                    maxSessions,
-                    sessionId);
+            warnSlotsExhausted(sessionId);
             return null;
         }
         SessionRing created =
                 ringsBySession.computeIfAbsent(sessionId, ignored -> new SessionRing(windowBytes, clock.millis()));
-        if (ringsBySession.size() > maxSessions) {
-            // 동시 생성으로 상한을 넘었다면 방금 만든 것을 되돌린다.
+        if (releasedSessions.contains(sessionId)) {
+            // release 와 첫 프레임이 경쟁해도 종료 세션의 버퍼를 남기지 않는다.
             ringsBySession.remove(sessionId, created);
             return null;
         }
+        if (ringsBySession.size() > maxSessions) {
+            // 동시 생성으로 상한을 넘었다면 방금 만든 것을 되돌린다.
+            ringsBySession.remove(sessionId, created);
+            warnSlotsExhausted(sessionId);
+            return null;
+        }
+        exhaustedWarningSessions.remove(sessionId);
         return created;
+    }
+
+    private void warnSlotsExhausted(long sessionId) {
+        if (exhaustedWarningSessions.add(sessionId)) {
+            log.warn(
+                    "Audio buffer slots exhausted ({}); session {} runs without coaching audio",
+                    maxSessions,
+                    sessionId);
+        }
     }
 
     /** 모든 세션에서 경과 시간 대비 부족한 만큼을 무음으로 메운다. 주기적으로 호출해야 음소거 구간이 있어도 버퍼의 바이트 수가 벽시계와 일치한다. */
@@ -114,7 +136,10 @@ public class InstructorAudioBuffer implements InstructorAudioBufferPort {
 
     @Override
     public void release(long sessionId) {
+        // tombstone 을 먼저 남겨 release 와 늦은 append 가 경쟁해도 새 버퍼가 살아남지 않게 한다.
+        releasedSessions.add(sessionId);
         ringsBySession.remove(sessionId);
+        exhaustedWarningSessions.remove(sessionId);
     }
 
     /** 현재 보관 중인 바이트 수. 메모리 상한 검증·모니터링용이다. */
