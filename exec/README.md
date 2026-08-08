@@ -2,8 +2,6 @@
 
 ZANI 프로젝트의 빌드·배포와 운영 환경 재현에 필요한 제출 문서를 정리한 폴더다.
 
-- 기준 브랜치: `dev`
-- 기준 커밋: `1233f4f2198c2eb86727a0914d6e830a1dbd38be`
 - 기준 일자: 2026-08-08
 - 운영 주소: `https://i15a105.p.ssafy.io`
 - 실제 비밀번호·API 키·토큰·개인 계정 정보는 포함하지 않는다.
@@ -12,11 +10,10 @@ ZANI 프로젝트의 빌드·배포와 운영 환경 재현에 필요한 제출 
 
 | 제출 항목 | 문서 | 내용 |
 | --- | --- | --- |
-| 빌드·배포 문서 | [`docs/porting-manual.md`](docs/porting-manual.md) | 기술 버전, Clone, 빌드, 배포, DB 접속 구조와 복구 절차 |
-| 빌드 환경변수 상세 | [`docs/environment-variables.md`](docs/environment-variables.md) | 환경변수, 운영값, Docker Secret 주입 위치 |
-| 외부 서비스 정보 | [`docs/external-services.md`](docs/external-services.md) | Google OAuth, SSAFY GMS, SMTP, LiveKit, Coturn, GitLab·Jenkins, 인증서 |
-| DB 덤프 최신본 | [`db/zani-schema.sql`](db/zani-schema.sql) | MySQL 8.4.10, Flyway V1~V20 적용 구조 덤프 |
-| 시연 시나리오 | [`docs/demo-scenario.md`](docs/demo-scenario.md) | 화면별 시연 순서와 정상 결과 |
+| 1. 빌드·배포 문서 | [`porting-manual.md`](01-porting-manual/porting-manual.md), [`environment-variables.md`](01-porting-manual/environment-variables.md) | 기술 버전, Clone, 빌드, 환경변수, 배포, DB 접속 구조와 복구 절차 |
+| 2. 외부 서비스 정보 | [`external-services.md`](02-external-services/external-services.md) | Google OAuth, SSAFY GMS, SMTP, LiveKit, Coturn, GitLab·Jenkins, 인증서 |
+| 3. DB 덤프 최신본 | [`zani-schema.sql`](03-db-dump/zani-schema.sql) | MySQL 8.4.10, Flyway V1~V20 적용 구조 덤프 |
+| 4. 시연 시나리오 | [`demo-scenario.md`](04-demo-scenario/demo-scenario.md) | 화면별 시연 순서와 정상 결과 |
 
 ## 읽는 순서
 
