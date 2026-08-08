@@ -1,5 +1,5 @@
 -- ZANI database schema dump
--- Source commit: c4c1223a9574455e45a4c43af6bb719eccf4f45b
+-- Source commit: 1233f4f2198c2eb86727a0914d6e830a1dbd38be
 -- MySQL: 8.4.10
 -- Applied migrations: 20
 -- Tables: 34
