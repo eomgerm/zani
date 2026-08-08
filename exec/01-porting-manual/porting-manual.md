@@ -15,7 +15,7 @@
 | `exec/01-porting-manual/environment-variables.md` | 전체 환경변수·운영값·Docker secret 주입 명세 |
 | `exec/02-external-services/external-services.md` | Google OAuth, SSAFY GMS, SMTP 등 외부 서비스 설정 |
 | `exec/03-db-dump/zani-schema.sql` | Flyway V1~V20을 적용한 최신 DB 구조 덤프 |
-| `exec/04-demo-scenario/demo-scenario.md` | 발표·시연 순서와 정상 결과 |
+| `exec/04-demo-scenario/demo-scenario.md` | 시연 시나리오 PDF·Figma 원본 안내 |
 
 ## 2. 시스템 구성
 
