@@ -203,7 +203,10 @@ Run the deployment-wrapper regression test without changing the host:
 2. Build the backend image.
 3. Start MySQL and Application Redis and wait for healthy status.
 4. Start the backend and wait for `/actuator/health` to report healthy.
-5. Add the Nginx API locations and run `nginx -t` before reload.
+5. Add the Nginx API locations and enable HTTP/2 on the TLS listener (`listen 443 ssl http2;`,
+   or `http2 on;` on nginx >= 1.25.1). Over HTTP/1.1 the my-lectures thumbnails queue behind the
+   browser's per-host connection cap; the header of `nginx-locations.conf` carries the rationale
+   and the `curl` verification. Run `nginx -t` before reload.
 6. Verify HTTPS API, Vercel CORS, LiveKit signaling, media, Egress, Gerrit, and SSH regression checks.
 
 ## Immutable deployment and rollback
