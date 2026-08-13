@@ -110,6 +110,11 @@ class IssueMediaUrlServiceTest {
         public Optional<Path> findLectureThumbnail(long sessionId) {
             throw new UnsupportedOperationException("녹화 발급 경로는 썸네일을 찾지 않는다");
         }
+
+        @Override
+        public Optional<Path> findLectureThumbnailForServing(long sessionId) {
+            throw new UnsupportedOperationException("녹화 발급 경로는 썸네일을 찾지 않는다");
+        }
     }
 
     private static final class StubMediaAccess implements MediaAccessPort {

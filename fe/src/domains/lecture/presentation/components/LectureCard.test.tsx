@@ -57,4 +57,26 @@ describe("LectureCard 썸네일", () => {
 
     expect(container.querySelector("img")).toBeNull();
   });
+
+  /* 첫 화면 행은 LCP 후보라 바로 받고, 접힌 카드는 스크롤이 닿을 때 받는다(/my-lectures Lighthouse). */
+
+  it("기본은 접힌 카드로 보고 lazy 로 받는다", () => {
+    const { container } = render(
+      <LectureCard lecture={lecture({ thumbnailUrl: "https://zani.example/t.png" })} />,
+    );
+
+    const img = container.querySelector("img")!;
+    expect(img.getAttribute("loading")).toBe("lazy");
+    expect(img.getAttribute("fetchpriority")).toBeNull();
+  });
+
+  it("첫 화면 카드(priority)는 lazy 없이 높은 우선순위로 받는다", () => {
+    const { container } = render(
+      <LectureCard lecture={lecture({ thumbnailUrl: "https://zani.example/t.png" })} priority />,
+    );
+
+    const img = container.querySelector("img")!;
+    expect(img.getAttribute("loading")).toBeNull();
+    expect(img.getAttribute("fetchpriority")).toBe("high");
+  });
 });

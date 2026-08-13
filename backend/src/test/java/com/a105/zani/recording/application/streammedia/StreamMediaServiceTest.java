@@ -105,5 +105,10 @@ class StreamMediaServiceTest {
         public Optional<Path> findLectureThumbnail(long sessionId) {
             throw new UnsupportedOperationException("녹화 재생 경로는 썸네일을 찾지 않는다");
         }
+
+        @Override
+        public Optional<Path> findLectureThumbnailForServing(long sessionId) {
+            throw new UnsupportedOperationException("녹화 재생 경로는 썸네일을 찾지 않는다");
+        }
     }
 }

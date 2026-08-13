@@ -90,19 +90,22 @@ public class SessionMediaController {
     }
 
     /**
-     * 내 강의실 카드가 쓰는 수업 썸네일(최종 녹화의 1/2 지점 프레임)을 내보낸다.
+     * 내 강의실 카드가 쓰는 수업 썸네일(최종 녹화의 1/2 지점 프레임을 표시 크기로 줄인 것)을 내보낸다.
      *
      * <p>재생 경로와 같은 이유로 인증 필터를 지나지 않는다 — {@code <img>} 역시 Authorization 헤더를 싣지 못해 자격이 주소 안에 들어 있다.
      *
      * <p>파일은 병합이 끝나는 순간 확정되어 다시 바뀌지 않으므로 사적 캐시를 허용한다. 발급마다 주소가 달라져 캐시가 항상 맞지는 않지만, 같은 주소로 다시 그리는 동안의 재요청은 막아 준다.
+     *
+     * <p>평소에는 줄인 JPEG 가 나가지만 변환이 안 되는 원본이면 PNG 가 그대로 나간다. 응답 형식을 확장자로 정하는 이유다.
      */
     @Operation(summary = "수업 썸네일", description = """
-                    목록 응답의 `thumbnailUrl` 로 받은 주소다. 최종 녹화의 1/2 지점 프레임(PNG)을 내려주며, 그대로 `<img src>` 에 넣는다.
+                    목록 응답의 `thumbnailUrl` 로 받은 주소다. 최종 녹화의 1/2 지점 프레임을 카드 표시 크기로 줄인
+                    이미지(JPEG, 원본 변환 불가 시 PNG)를 내려주며, 그대로 `<img src>` 에 넣는다.
 
                     이 경로는 로그인 세션이 아니라 주소에 담긴 서명으로 권한을 확인한다. 서명이 맞지 않거나 유효 기간이
                     지나면 401 이며, 목록을 다시 조회해 새 주소를 받아야 한다.""")
     @ApiResponses({
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "PNG 이미지"),
+        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "썸네일 이미지"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "자격이 위조되었거나 만료됨"),
         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "썸네일이 아직 준비되지 않음")
     })
@@ -113,8 +116,9 @@ public class SessionMediaController {
             @Parameter(description = "세션·만료 시각에 묶인 서명") @RequestParam("token") String token) {
         Path file =
                 streamThumbnailUseCase.locate(new StreamMediaQuery(sessionId, Instant.ofEpochSecond(expires), token));
+        MediaType type = file.getFileName().toString().endsWith(".jpg") ? MediaType.IMAGE_JPEG : MediaType.IMAGE_PNG;
         return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_PNG)
+                .contentType(type)
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(1)).cachePrivate())
                 .body(new FileSystemResource(file));
     }

@@ -50,6 +50,12 @@ class IssueThumbnailUrlServiceTest {
         public Optional<Path> findLectureThumbnail(long sessionId) {
             return Optional.ofNullable(file);
         }
+
+        /** 목록 발급은 세션 수만큼 부르는 경로다 — 존재 판정이 서빙용 변환 비용을 물면 안 된다. */
+        @Override
+        public Optional<Path> findLectureThumbnailForServing(long sessionId) {
+            throw new UnsupportedOperationException("발급의 존재 판정은 서빙용 변환을 부르지 않는다");
+        }
     }
 
     private static final class StubMediaAccess implements MediaAccessPort {

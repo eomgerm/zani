@@ -19,7 +19,7 @@ function hrefFor(l: MyLecture) {
  * 분석 중에는 그림 대신 검은 판에 스피너만 돈다. 이 강의는 아직 열 수 없다는 것을
  * 상태 필의 글자보다 먼저 알리려는 것이고, 자리 그림은 다 만들어진 화면처럼 보여 그 역할을 못 한다.
  */
-function Thumb({ lecture }: { lecture: MyLecture }) {
+function Thumb({ lecture, priority }: { lecture: MyLecture; priority: boolean }) {
   const si = statusInfo(lecture.status);
   // 서명 주소는 짧게 살아서, 화면을 오래 두고 다시 그리면 만료된 채 로드될 수 있다. 깨진 이미지 아이콘 대신 자리 그림으로 되돌린다.
   const [broken, setBroken] = useState(false);
@@ -40,11 +40,16 @@ function Thumb({ lecture }: { lecture: MyLecture }) {
       ) : thumbnailSrc !== null ? (
         // 서명이 든 단기 주소라 next/image 를 쓰지 않는다 — 최적화 캐시의 키가 주소인데 주소가 발급마다 달라
         // 캐시가 항상 빗나가고, 호스트도 배포마다 갈려 remotePatterns 를 좇아야 한다.
+        //
+        // 첫 화면 행(priority)은 LCP 후보라 높은 우선순위로 바로 받고, 그 아래는 스크롤이 닿을 때 받는다.
+        // 전부 eager 로 두면 접힌 카드들이 첫 행과 대역폭을 다투어 LCP 가 늦어진다(/my-lectures Lighthouse).
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={thumbnailSrc}
           alt=""
           onError={() => setBroken(true)}
+          loading={priority ? undefined : "lazy"}
+          fetchPriority={priority ? "high" : undefined}
           className="absolute inset-0 size-full object-cover"
         />
       ) : (
@@ -133,15 +138,23 @@ function RejoinButton({ lecture }: { lecture: MyLecture }) {
 /**
  * 내 강의실 강의 카드.
  * 분석이 끝나지 않은 강의는 열 수 있는 화면이 없어 링크 없이 렌더한다(프로토타입 onThumb).
+ *
+ * @param priority 첫 화면에 놓이는 카드인지. 썸네일을 lazy 대신 높은 우선순위로 받는다(LCP 후보).
  */
-export function LectureCard({ lecture }: { lecture: MyLecture }) {
+export function LectureCard({
+  lecture,
+  priority = false,
+}: {
+  lecture: MyLecture;
+  priority?: boolean;
+}) {
   const cardCls = "z-card block p-3 pb-3.5 text-ink no-underline";
   const rejoinable = lecture.status === "LIVE" && lecture.rejoinable;
 
   if (!isLectureOpenable(lecture.status)) {
     return (
       <div className={cardCls}>
-        <Thumb lecture={lecture} />
+        <Thumb lecture={lecture} priority={priority} />
         <Body lecture={lecture} />
       </div>
     );
@@ -152,7 +165,7 @@ export function LectureCard({ lecture }: { lecture: MyLecture }) {
     return (
       <div className={cardCls}>
         <Link href={hrefFor(lecture)} className="block cursor-pointer text-ink no-underline">
-          <Thumb lecture={lecture} />
+          <Thumb lecture={lecture} priority={priority} />
           <Body lecture={lecture} />
         </Link>
         <RejoinButton lecture={lecture} />
@@ -162,7 +175,7 @@ export function LectureCard({ lecture }: { lecture: MyLecture }) {
 
   return (
     <Link href={hrefFor(lecture)} className={`${cardCls} cursor-pointer`}>
-      <Thumb lecture={lecture} />
+      <Thumb lecture={lecture} priority={priority} />
       <Body lecture={lecture} />
     </Link>
   );

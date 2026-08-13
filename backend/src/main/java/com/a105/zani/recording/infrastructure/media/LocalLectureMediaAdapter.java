@@ -27,13 +27,15 @@ public class LocalLectureMediaAdapter implements LectureMediaPort {
     /** 병합 워커가 내놓는 최종 산출물의 세션 루트 기준 상대 경로. */
     private static final String LECTURE_FILE = "final/lecture.mp4";
 
-    /** 병합 워커가 최종 검증 직후 뽑는 대표 프레임 중 1/2 지점(가이드 §6). 카드 썸네일이 그대로 쓴다. */
+    /** 병합 워커가 최종 검증 직후 뽑는 대표 프레임 중 1/2 지점(가이드 §6). 카드 썸네일의 원본이 된다. */
     private static final String THUMBNAIL_FILE = "final/frames/frame-50.png";
 
     private final Path mediaRoot;
+    private final ThumbnailJpegCache thumbnailCache;
 
-    public LocalLectureMediaAdapter(RecordingProperties properties) {
+    public LocalLectureMediaAdapter(RecordingProperties properties, ThumbnailJpegCache thumbnailCache) {
         this.mediaRoot = Path.of(properties.mediaRoot()).toAbsolutePath().normalize();
+        this.thumbnailCache = thumbnailCache;
     }
 
     @Override
@@ -44,6 +46,16 @@ public class LocalLectureMediaAdapter implements LectureMediaPort {
     @Override
     public Optional<Path> findLectureThumbnail(long sessionId) {
         return findReadableFile(sessionId, THUMBNAIL_FILE);
+    }
+
+    /**
+     * 서빙할 때만 표시 크기 JPEG 캐시를 거친다 — 원본은 장당 0.5~1MB 라 목록 화면 LCP 를 지배한다. 존재 판정({@link #findLectureThumbnail})까지 이 경로를 태우면
+     * 목록 발급이 세션 수만큼 변환 비용을 문다. 변환 불가 원본이나 캐시 디스크 문제 때는 원본 경로가 그대로 나온다({@link ThumbnailJpegCache}).
+     */
+    @Override
+    public Optional<Path> findLectureThumbnailForServing(long sessionId) {
+        return findReadableFile(sessionId, THUMBNAIL_FILE)
+                .map(original -> thumbnailCache.deliverable(sessionId, original));
     }
 
     private Optional<Path> findReadableFile(long sessionId, String relativePath) {

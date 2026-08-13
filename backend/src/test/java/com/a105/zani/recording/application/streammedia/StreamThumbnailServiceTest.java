@@ -95,6 +95,12 @@ class StreamThumbnailServiceTest {
 
         @Override
         public Optional<Path> findLectureThumbnail(long sessionId) {
+            throw new UnsupportedOperationException("서빙 경로는 존재 판정용 원본 조회를 부르지 않는다");
+        }
+
+        /** 서빙 경로가 부르는 쪽이다 — 실제 바이트를 내보낼 파일(변환본 또는 원본)을 준다. */
+        @Override
+        public Optional<Path> findLectureThumbnailForServing(long sessionId) {
             lookups++;
             return Optional.ofNullable(file);
         }

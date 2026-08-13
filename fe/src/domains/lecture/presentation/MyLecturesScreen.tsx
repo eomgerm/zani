@@ -147,8 +147,10 @@ export function MyLecturesScreen({ requestList }: { requestList?: SessionListReq
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-[22px]">
-            {visible.map((l) => (
-              <LectureCard key={l.id} lecture={l} />
+            {/* grid-cols-3 의 첫 행(3장)만 우선 로드한다 — 뷰포트 최상단이라 LCP 후보이고,
+                나머지까지 eager 면 접힌 카드들이 첫 행과 대역폭을 다툰다. */}
+            {visible.map((l, i) => (
+              <LectureCard key={l.id} lecture={l} priority={i < 3} />
             ))}
           </div>
         )

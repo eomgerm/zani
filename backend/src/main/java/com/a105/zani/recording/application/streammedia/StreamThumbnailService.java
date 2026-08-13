@@ -31,6 +31,8 @@ public class StreamThumbnailService implements StreamThumbnailUseCase {
             throw new InvalidMediaAccessException();
         }
 
-        return lectureMediaPort.findLectureThumbnail(query.sessionId()).orElseThrow(MediaNotReadyException::new);
+        return lectureMediaPort
+                .findLectureThumbnailForServing(query.sessionId())
+                .orElseThrow(MediaNotReadyException::new);
     }
 }
