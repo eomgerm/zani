@@ -1,0 +1,602 @@
+// ZANI ERD — dbdiagram.io (DBML)
+// 출처: backend/src/main/resources/db/migration V1~V20 적용 후 최종 상태
+// MySQL 9.7.1 / InnoDB / utf8mb4_0900_ai_ci, id 는 애플리케이션이 만드는 TSID(BIGINT)
+// DBML 이 표현하지 못하는 CHECK 제약은 각 Table 의 Note 에 적어 두었다.
+
+Table members {
+  id bigint [pk, note: 'TSID 기본키']
+  google_subject varchar(255) [not null, unique, note: 'Google OAuth 사용자 고유 식별자']
+  email varchar(255) [not null, note: 'Google 계정 이메일']
+  display_name varchar(100) [not null, note: '서비스에 표시할 현재 이름']
+  profile_image_url varchar(500) [null, note: 'Google 프로필 이미지 주소']
+  report_email_enabled boolean [not null, default: true, note: '강의 리포트 완료 이메일 수신 여부']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+  deleted_at datetime(6) [null, note: '소프트 삭제 시각']
+  retention_expires_at datetime(6) [null, note: '최종 파기 예정 시각']
+}
+
+Table sessions {
+  id bigint [pk, note: 'TSID 기본키']
+  host_member_id bigint [not null, note: '세션을 생성하고 진행하는 강사 회원 ID']
+  title varchar(100) [not null]
+  invite_code char(8) [not null, unique, note: '링크와 직접 입력에 함께 쓰는 참여 코드']
+  status varchar(30) [not null, note: 'LIVE 또는 ENDED']
+  analysis_status varchar(30) [not null, note: 'NOT_STARTED, WAITING_FOR_NOTE, PROCESSING, COMPLETED 또는 FAILED']
+  started_at datetime(6) [not null]
+  ended_at datetime(6) [null]
+  note_due_at datetime(6) [null, note: '강사 메모 자동 확정 예정 시각']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+  deleted_at datetime(6) [null]
+  retention_expires_at datetime(6) [null]
+}
+
+Table session_participants {
+  id bigint [pk, note: 'TSID 기본키']
+  session_id bigint [not null]
+  member_id bigint [not null]
+  role varchar(20) [not null, note: 'INSTRUCTOR 또는 STUDENT']
+  first_joined_at datetime(6) [null, note: '실제 미디어 연결이 확인된 최초 시각. NULL 이면 사후 자료 접근 자격 없음']
+  last_accessed_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (session_id, member_id) [unique, name: 'UK_SESSION_PARTICIPANTS_SESSION_MEMBER']
+    (session_id, id) [unique, name: 'UK_SESSION_PARTICIPANTS_SESSION_PARTICIPANT']
+  }
+}
+
+Table session_status_changes {
+  id bigint [pk]
+  session_id bigint [not null]
+  from_status varchar(30) [null, note: '변경 전 상태. LIVE 또는 ENDED']
+  to_status varchar(30) [not null, note: '변경 후 상태. LIVE 또는 ENDED']
+  changed_at datetime(6) [not null]
+  created_at datetime(6) [not null]
+}
+
+Table session_sections {
+  id bigint [pk]
+  session_id bigint [not null]
+  title varchar(200) [not null]
+  summary text [null]
+  started_offset_ms bigint [not null]
+  ended_offset_ms bigint [not null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (session_id, started_offset_ms) [name: 'IX_SESSION_SECTIONS_SESSION_STARTED_OFFSET']
+  }
+}
+
+Table instructor_notes {
+  id bigint [pk]
+  session_id bigint [not null, unique, note: '세션당 한 행']
+  instructor_participant_id bigint [not null, note: '메모를 작성한 강사 세션 참여자 ID']
+  content text [null, note: '최대 5000자, 빈 값 허용']
+  status varchar(20) [not null, note: 'DRAFT 또는 FINALIZED']
+  last_edited_at datetime(6) [null]
+  finalized_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table attention_events {
+  id bigint [pk]
+  session_id bigint [not null]
+  session_participant_id bigint [not null]
+  detector_outcome varchar(30) [null, note: 'NOT_ENGAGED, BARELY_ENGAGED, ENGAGED, HIGHLY_ENGAGED, UNMEASURABLE, CAMERA_OFF, DETECTOR_UNAVAILABLE']
+  attention_score tinyint [null, note: '4단계 참여도 1~4. 4단계가 아닌 출력은 NULL']
+  occurred_offset_ms bigint [not null]
+  window_started_offset_ms bigint [null, note: '10초 판정 창 시작 시각(ms). 즉시 확정 출력은 NULL']
+  low_engagement tinyint(1) [null, note: '확률 합 0.35 기준 저참여 여부. 4단계 출력에만 있다']
+  feature_schema_version varchar(40) [null]
+  engine_version varchar(40) [null]
+  client_event_id varchar(64) [null, note: '클라이언트가 만든 이벤트 식별자. 재시도 멱등 기준']
+  confidence "decimal(5,4)" [null, note: '상태 신뢰도 0~1']
+  signal_quality "decimal(5,4)" [null, note: '입력 신호 품질 0~1']
+  created_at datetime(6) [not null]
+
+  indexes {
+    (session_id, session_participant_id, client_event_id) [unique, name: 'UK_ATTENTION_EVENTS_CLIENT_EVENT']
+    (session_id, session_participant_id, occurred_offset_ms) [name: 'IX_ATTENTION_EVENTS_SESSION_PARTICIPANT_OCCURRED_OFFSET']
+    (session_id, occurred_offset_ms, attention_score) [name: 'IX_ATTENTION_EVENTS_SESSION_OCCURRED_OFFSET_SCORE']
+  }
+}
+
+Table check_prompts {
+  id bigint [pk]
+  session_id bigint [not null]
+  session_participant_id bigint [not null]
+  trigger_type varchar(50) [not null, note: '서버가 기록하는 것은 UNDERSTANDING_CHECK 뿐']
+  status varchar(20) [not null, note: 'OPEN, RESPONDED 또는 TIMEOUT']
+  response varchar(30) [null, note: 'OK, CONFUSED, MISSED 또는 NON_RESPONSE']
+  shown_offset_ms bigint [not null]
+  responded_offset_ms bigint [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (session_id, session_participant_id, shown_offset_ms) [name: 'IX_CHECK_PROMPTS_SESSION_PARTICIPANT_SHOWN_OFFSET']
+  }
+}
+
+Table check_prompt_evidences {
+  id bigint [pk]
+  check_prompt_id bigint [not null]
+  attention_event_id bigint [null, note: '분석 이벤트 근거 ID']
+  interaction_event_id bigint [null, note: '상호작용 이벤트 근거 ID']
+  evidence_type varchar(50) [not null]
+  created_at datetime(6) [not null]
+
+  Note: 'CHECK CK_..._EXACTLY_ONE_SOURCE: attention_event_id 와 interaction_event_id 중 정확히 하나만 NOT NULL'
+}
+
+Table interaction_events {
+  id bigint [pk]
+  session_id bigint [not null]
+  actor_participant_id bigint [null, note: '시스템 이벤트는 NULL']
+  event_type varchar(50) [not null, note: '손들기, 이모지, 미디어 상태, 강사 제어 유형']
+  occurred_offset_ms bigint [not null]
+  payload json [not null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (session_id, occurred_offset_ms) [name: 'IX_INTERACTION_EVENTS_SESSION_OCCURRED_OFFSET']
+  }
+}
+
+Table chat_messages {
+  id bigint [pk]
+  session_id bigint [not null]
+  sender_participant_id bigint [not null]
+  recipient_participant_id bigint [null, note: '공개 채팅은 NULL']
+  channel_type varchar(20) [not null, note: 'PUBLIC 또는 PRIVATE']
+  content varchar(1000) [not null]
+  occurred_offset_ms bigint [not null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (session_id, occurred_offset_ms) [name: 'IX_CHAT_MESSAGES_SESSION_OCCURRED_OFFSET']
+  }
+}
+
+Table group_alerts {
+  id bigint [pk]
+  session_id bigint [not null]
+  alert_type varchar(50) [not null, note: '가장 강한 집단 알림 유형']
+  window_started_offset_ms bigint [not null]
+  window_ended_offset_ms bigint [not null]
+  numerator_count int [not null, note: '조건을 만족한 고유 학생 수']
+  denominator_count int [not null, note: '1분 이상 연속 접속한 학생 수']
+  occurred_offset_ms bigint [not null]
+  created_at datetime(6) [not null]
+}
+
+Table group_alert_response_counts {
+  id bigint [pk]
+  group_alert_id bigint [not null]
+  response_type varchar(30) [not null, note: 'OK, CONFUSED, MISSED 또는 NO_RESPONSE']
+  response_count int [not null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (group_alert_id, response_type) [unique, name: 'UK_GROUP_ALERT_RESPONSE_COUNTS_ALERT_TYPE']
+  }
+}
+
+Table coaching_histories {
+  id bigint [pk]
+  session_id bigint [not null]
+  trigger_id varchar(64) [not null, note: '세션 내 멱등 키']
+  triggered_at datetime(6) [not null]
+  completed_at datetime(6) [not null]
+  denominator_count int [not null]
+  selected_tip_type varchar(50) [null]
+  outcome_status varchar(30) [not null, note: 'TIP_DELIVERED 또는 TIP_UNAVAILABLE']
+  transcript_status varchar(30) [not null, note: 'TRANSCRIBED, SKIPPED_NOT_REQUIRED, NOT_ATTEMPTED, TRANSCRIPTION_FAILED 또는 NO_TRANSCRIPT']
+  transcript_started_at datetime(6) [null]
+  transcript_ended_at datetime(6) [null]
+  topic varchar(500) [null, note: '실시간 전사에서 뽑은 주제. 원문은 남기지 않는다']
+  tip_type varchar(50) [null]
+  tip_title varchar(200) [null]
+  tip_message text [null]
+  unavailable_reason varchar(50) [null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (session_id, trigger_id) [unique, name: 'UK_COACHING_HISTORIES_SESSION_TRIGGER']
+    (session_id, triggered_at) [name: 'IX_COACHING_HISTORIES_SESSION_TRIGGERED_AT']
+  }
+
+  Note: 'CHECK CK_COACHING_HISTORIES_OUTCOME: TIP_DELIVERED 면 tip_type NOT NULL 이고 unavailable_reason NULL, TIP_UNAVAILABLE 면 그 반대'
+}
+
+Table coaching_history_response_counts {
+  id bigint [pk]
+  coaching_history_id bigint [not null]
+  response_type varchar(30) [not null, note: 'SIGNIFICANT, CONFUSED, MISSED, NON_RESPONSE 또는 UNMEASURABLE']
+  response_count int [not null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (coaching_history_id, response_type) [unique, name: 'UK_COACHING_HISTORY_RESPONSE_COUNTS_HISTORY_TYPE']
+  }
+}
+
+Table recordings {
+  id bigint [pk]
+  session_id bigint [not null]
+  livekit_egress_id varchar(255) [not null, unique]
+  session_participant_id bigint [null, note: '이 Egress 가 녹화하는 트랙의 발행자']
+  track_source varchar(30) [null, note: 'MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO, CAMERA(강사만)']
+  livekit_track_sid varchar(255) [null]
+  recording_type varchar(30) [not null, note: 'ROOM_COMPOSITE 또는 TRACK']
+  attempt_number int [not null, note: '최초 실행과 1회 재시도 순번']
+  status varchar(30) [not null, note: 'STARTING, RECORDING, COMPLETE, PARTIAL 또는 FAILED']
+  started_at datetime(6) [null]
+  ended_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (session_id, id) [unique, name: 'UK_RECORDINGS_SESSION_RECORDING']
+  }
+}
+
+Table recording_files {
+  id bigint [pk]
+  session_id bigint [not null]
+  recording_id bigint [not null]
+  session_participant_id bigint [null, note: '개별 음성 파일의 화자']
+  file_type varchar(30) [not null, note: '현재 TRACK 만 쓰인다(HLS, COMPOSITE, AUDIO 는 미사용)']
+  track_source varchar(30) [null, note: 'MICROPHONE, SCREEN_SHARE, SCREEN_SHARE_AUDIO, CAMERA(강사만)']
+  storage_key varchar(500) [not null, unique, note: 'EC2 로컬 세션 디렉터리 기준 상대 경로']
+  livekit_track_sid varchar(255) [null, note: '같은 트랙의 두 번째 세그먼트부터는 NULL']
+  started_offset_ms bigint [null]
+  ended_offset_ms bigint [null]
+  created_at datetime(6) [not null]
+
+  indexes {
+    (recording_id, livekit_track_sid) [unique, name: 'UK_RECORDING_FILES_RECORDING_TRACK']
+  }
+}
+
+Table transcripts {
+  id bigint [pk]
+  session_id bigint [not null, unique, note: '세션당 한 행']
+  transcript_document json [not null, note: '화자와 시간 구간을 포함한 전체 전사 JSON']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table session_reports {
+  id bigint [pk]
+  session_id bigint [not null, unique]
+  summary text [not null, note: '강사와 학생에게 공통 공개하는 AI 수업 요약']
+  published_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table instructor_reports {
+  id bigint [pk]
+  session_id bigint [not null, unique]
+  overall_feedback text [not null]
+  question_count int [null, note: '수업 전체 질문 수. AI 가 공개 채팅에서 판단']
+  published_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table instructor_report_scores {
+  id bigint [pk]
+  instructor_report_id bigint [not null]
+  evaluation_type varchar(30) [not null, note: 'DELIVERY, STRUCTURE_FLOW, INTERACTION 또는 DIFFICULTY_CONTROL']
+  score tinyint [not null, note: '0~100']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (instructor_report_id, evaluation_type) [unique, name: 'UK_INSTRUCTOR_REPORT_SCORES_REPORT_TYPE']
+  }
+}
+
+Table instructor_report_insights {
+  id bigint [pk]
+  instructor_report_id bigint [not null]
+  title varchar(200) [null, note: 'AI 가 유형 목록 없이 직접 짓는다']
+  content text [not null, note: '제안의 근거']
+  suggestion text [null, note: 'AI 가 제시한 개선 제안']
+  started_offset_ms bigint [null, note: '전체 수업 대상이면 NULL']
+  ended_offset_ms bigint [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table student_reports {
+  id bigint [pk]
+  session_id bigint [not null]
+  session_participant_id bigint [not null]
+  participation_summary text [not null]
+  question_count int [null, note: '학생이 남긴 질문 수. AI 판단값이고 NULL 은 판정 없음']
+  published_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (session_id, session_participant_id) [unique, name: 'UK_STUDENT_REPORTS_SESSION_PARTICIPANT']
+  }
+}
+
+Table review_recommendations {
+  id bigint [pk]
+  student_report_id bigint [not null]
+  recommendation_type varchar(30) [not null, note: 'CONFUSED, MISSED, NO_RESPONSE, LOW_ENGAGEMENT 또는 QUESTION']
+  title varchar(200) [not null]
+  description text [not null]
+  started_offset_ms bigint [not null]
+  ended_offset_ms bigint [not null]
+  priority tinyint [not null, note: '작을수록 먼저 노출']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (student_report_id, priority, started_offset_ms) [name: 'IX_REVIEW_RECOMMENDATIONS_REPORT_PRIORITY_STARTED_OFFSET']
+  }
+}
+
+Table quizzes {
+  id bigint [pk]
+  student_report_id bigint [not null, unique]
+  title varchar(200) [not null]
+  description text [null]
+  estimated_duration_minutes smallint [null]
+  published_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table quiz_questions {
+  id bigint [pk]
+  quiz_id bigint [not null]
+  question_text text [not null]
+  explanation text [null]
+  section_started_offset_ms bigint [null, note: '문항이 가리키는 개념 구간 시작 시각(ms). 특정 못하면 NULL']
+  question_order int [not null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (quiz_id, question_order) [unique, name: 'UK_QUIZ_QUESTIONS_QUIZ_ORDER']
+  }
+}
+
+Table quiz_options {
+  id bigint [pk]
+  quiz_question_id bigint [not null]
+  option_text text [not null]
+  is_correct boolean [not null]
+  option_order int [not null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (quiz_question_id, option_order) [unique, name: 'UK_QUIZ_OPTIONS_QUIZ_QUESTION_ORDER']
+    (quiz_question_id, id) [unique, name: 'UK_QUIZ_OPTIONS_QUIZ_QUESTION_OPTION']
+  }
+}
+
+Table quiz_answers {
+  id bigint [pk]
+  quiz_question_id bigint [not null, unique, note: '문제당 한 번만 응답']
+  selected_quiz_option_id bigint [not null]
+  answered_at datetime(6) [not null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table pipeline_jobs {
+  id bigint [pk]
+  session_id bigint [not null, unique, note: '세션당 한 행. sessions FK 는 두지 않는다(큐 성격)']
+  status varchar(30) [not null, note: 'QUEUED, TRANSCRIBING, ANALYZING, VALIDATING, PUBLISHED 또는 FAILED']
+  attempt_count int [not null, default: 0]
+  next_attempt_at datetime(6) [null]
+  last_error varchar(500) [null]
+  created_at datetime(6) [not null, note: '= 메모 확정 시각']
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (status, created_at) [name: 'IX_PIPELINE_JOBS_STATUS_CREATED_AT']
+  }
+}
+
+Table postclass_transcription_chunks {
+  id bigint [pk]
+  session_id bigint [not null, note: 'FK 없음(작업 테이블)']
+  recording_file_id bigint [not null, note: '분할 대상 원본 트랙 파일. FK 없음']
+  chunk_index int [not null, note: '원본 안에서의 순번(0부터)']
+  start_offset_ms bigint [not null, note: 'FFmpeg segment CSV 기준 시작 시각(ms)']
+  end_offset_ms bigint [not null]
+  status varchar(30) [not null, note: 'PENDING, PROCESSING, SUCCEEDED, FAILED 또는 SKIPPED_SILENT']
+  attempt_count int [not null, default: 0]
+  lease_until datetime(6) [null, note: 'PROCESSING 선점 만료점']
+  next_attempt_at datetime(6) [null]
+  result_document json [null, note: '세그먼트 시각은 청크 기준 상대값']
+  last_error varchar(500) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (recording_file_id, chunk_index) [unique, name: 'UK_POSTCLASS_TRANSCRIPTION_CHUNKS_FILE_INDEX']
+    (session_id, status, chunk_index) [name: 'IX_POSTCLASS_TRANSCRIPTION_CHUNKS_SESSION_STATUS']
+  }
+}
+
+Table recording_outbox {
+  id bigint [pk]
+  dedup_key varchar(200) [not null, unique, note: '예: track:{sessionId}:{trackSid}']
+  outbox_type varchar(40) [not null, note: 'START_TRACK_EGRESS']
+  session_id bigint [not null, note: 'FK 없음(큐 성격)']
+  payload varchar(2000) [not null, note: 'JSON, 익명 alias 만 포함']
+  status varchar(20) [not null, note: 'PENDING, IN_PROGRESS, COMPLETED 또는 FAILED']
+  attempt_count int [not null]
+  next_attempt_at datetime(6) [not null]
+  last_error varchar(500) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null, note: 'IN_PROGRESS lease 만료 판단에 사용']
+
+  indexes {
+    (status, next_attempt_at) [name: 'IX_RECORDING_OUTBOX_STATUS_NEXT_ATTEMPT_AT']
+  }
+}
+
+Table recording_webhook_events {
+  id bigint [pk]
+  event_id varchar(100) [not null, unique, note: 'LiveKit webhook 이벤트 ID']
+  event_type varchar(60) [not null, note: 'track_published, egress_ended 등']
+  payload text [not null, note: '수신 원문(JSON)']
+  status varchar(20) [not null, note: 'RECEIVED 또는 PROCESSED']
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+}
+
+Table recording_finalization_jobs {
+  id bigint [pk]
+  session_id bigint [not null, unique, note: 'FK 없음(보존 수명이 다르다)']
+  status varchar(30) [not null, note: 'PENDING, RUNNING, COMPLETED 또는 FAILED']
+  attempt_count int [not null, default: 0]
+  lease_token int [not null, default: 0, note: 'RUNNING 실행권 fencing token']
+  lease_until datetime(6) [null]
+  next_attempt_at datetime(6) [null]
+  last_error varchar(500) [null]
+  manifest_path varchar(500) [null]
+  output_path varchar(500) [null]
+  output_size_bytes bigint [null]
+  output_sha256 char(64) [null]
+  started_at datetime(6) [null]
+  completed_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (status, next_attempt_at, lease_until, session_id) [name: 'IX_RECORDING_FINALIZATION_JOBS_DUE']
+  }
+}
+
+Table notification_outbox {
+  id bigint [pk]
+  session_id bigint [not null, note: 'FK 없음(큐 성격)']
+  member_id bigint [not null, note: 'FK 없음']
+  email varchar(255) [not null, note: '발견 시점 스냅샷']
+  display_name varchar(100) [null, note: '발견 시점 스냅샷']
+  type varchar(40) [not null, note: '현재 REPORT_READY']
+  dedup_key varchar(200) [not null, unique, note: '세션·수신자·유형 유일 키']
+  status varchar(30) [not null, note: 'PENDING, IN_PROGRESS, SENT 또는 FAILED']
+  attempt_count int [not null]
+  next_attempt_at datetime(6) [not null]
+  last_error varchar(500) [null]
+  sent_at datetime(6) [null]
+  created_at datetime(6) [not null]
+  updated_at datetime(6) [not null]
+
+  indexes {
+    (status, next_attempt_at) [name: 'IX_NOTIFICATION_OUTBOX_STATUS_NEXT']
+    (session_id, type) [name: 'IX_NOTIFICATION_OUTBOX_SESSION_TYPE']
+  }
+}
+
+// ── 관계 ──────────────────────────────────────────────
+// 세션 참여자를 가리키는 FK 는 모두 (session_id, id) 복합 참조다.
+
+Ref: sessions.host_member_id > members.id
+Ref: session_participants.session_id > sessions.id
+Ref: session_participants.member_id > members.id
+Ref: session_status_changes.session_id > sessions.id
+Ref: session_sections.session_id > sessions.id
+
+Ref: instructor_notes.(session_id, instructor_participant_id) > session_participants.(session_id, id)
+Ref: attention_events.(session_id, session_participant_id) > session_participants.(session_id, id)
+Ref: check_prompts.(session_id, session_participant_id) > session_participants.(session_id, id)
+Ref: chat_messages.(session_id, sender_participant_id) > session_participants.(session_id, id)
+Ref: chat_messages.(session_id, recipient_participant_id) > session_participants.(session_id, id)
+Ref: interaction_events.(session_id, actor_participant_id) > session_participants.(session_id, id)
+Ref: recording_files.(session_id, session_participant_id) > session_participants.(session_id, id)
+Ref: student_reports.(session_id, session_participant_id) > session_participants.(session_id, id)
+
+Ref: check_prompt_evidences.check_prompt_id > check_prompts.id
+Ref: check_prompt_evidences.attention_event_id > attention_events.id
+Ref: check_prompt_evidences.interaction_event_id > interaction_events.id
+
+Ref: interaction_events.session_id > sessions.id
+Ref: group_alerts.session_id > sessions.id
+Ref: group_alert_response_counts.group_alert_id > group_alerts.id
+Ref: coaching_histories.session_id > sessions.id
+Ref: coaching_history_response_counts.coaching_history_id > coaching_histories.id
+
+Ref: recordings.session_id > sessions.id
+Ref: recording_files.(session_id, recording_id) > recordings.(session_id, id)
+
+Ref: transcripts.session_id > sessions.id
+Ref: session_reports.session_id > sessions.id
+Ref: instructor_reports.session_id > sessions.id
+Ref: instructor_report_scores.instructor_report_id > instructor_reports.id
+Ref: instructor_report_insights.instructor_report_id > instructor_reports.id
+
+Ref: review_recommendations.student_report_id > student_reports.id
+Ref: quizzes.student_report_id > student_reports.id
+Ref: quiz_questions.quiz_id > quizzes.id
+Ref: quiz_options.quiz_question_id > quiz_questions.id
+Ref: quiz_answers.(quiz_question_id, selected_quiz_option_id) > quiz_options.(quiz_question_id, id)
+
+TableGroup "회원·세션" {
+  members
+  sessions
+  session_participants
+  session_status_changes
+  session_sections
+  instructor_notes
+}
+
+TableGroup "실시간 수집" {
+  attention_events
+  check_prompts
+  check_prompt_evidences
+  interaction_events
+  chat_messages
+  group_alerts
+  group_alert_response_counts
+  coaching_histories
+  coaching_history_response_counts
+}
+
+TableGroup "녹화·전사" {
+  recordings
+  recording_files
+  transcripts
+  postclass_transcription_chunks
+}
+
+TableGroup "리포트·퀴즈" {
+  session_reports
+  instructor_reports
+  instructor_report_scores
+  instructor_report_insights
+  student_reports
+  review_recommendations
+  quizzes
+  quiz_questions
+  quiz_options
+  quiz_answers
+}
+
+TableGroup "작업 큐" {
+  pipeline_jobs
+  recording_outbox
+  recording_webhook_events
+  recording_finalization_jobs
+  notification_outbox
+}
